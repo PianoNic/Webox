@@ -57,6 +57,7 @@ impl eframe::App for App {
         self.shortcuts_frame(ctx); // registry dispatch, global hotkeys
         self.settings_window(ctx, &t, now); // collects file-dialog results, screenshot hook (ui/settings/)
         self.appwide_frame(ctx); // settings that act app-wide (ui/settings_effects.rs)
+        self.updates_frame(ctx, now); // daily update check, restart after an update (ui/update_dialog.rs)
 
         self.poll_login();
         // Renew the sign-in while running.

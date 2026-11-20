@@ -5,5 +5,6 @@ pub mod tray;
 pub mod notify; // toast windows + tray
 pub mod webview;
 pub mod nmhost;
+pub mod updater; // app updates from the GitHub releases
 #[cfg(target_os = "linux")]
 pub mod linux; // tray (SNI), notifications, launcher badge, X11 helpers

@@ -13,7 +13,7 @@ impl Session {
                 Ok(())
             }
             // Smart Audio changed: the capture callback reads the mode on every block, no device reopen
-            CallReq::SmartMic(m, eco) => { if let Some(e) = &self.calls.engine { e.io.set_smart(m); e.io.set_eco(eco); } Ok(()) }
+            CallReq::SmartMic(m) => { if let Some(e) = &self.calls.engine { e.io.set_smart(m); } Ok(()) }
             CallReq::Audit => self.audit(false),
             CallReq::Cleanup => self.audit(true),
             CallReq::Dtmf(t) => self.dtmf(&t),
@@ -55,7 +55,7 @@ impl Session {
     pub(super) fn end_call(&mut self, why: &str) {
         self.emit(CallState::Ended(why.into()));
         if let Some(c) = self.calls.cur.take() { if let Some(m) = c.media { m.close(); } }
-        if let Some(e) = &self.calls.engine { e.close(); }
+        if let Some(e) = &self.calls.engine { e.io.set_call(false); e.close(); }
         self.calls.live.store(false, Ordering::SeqCst);
     }
 
@@ -65,6 +65,7 @@ impl Session {
         let info = engine.open(&c.input, &c.output)?;
         engine.io.set_volume(c.volume);
         c.apply_smart(&engine.io);
+        engine.io.set_call(true); // echo cancellation and gain control on the call microphone
         dbg_conn(&format!("call: audio open ({} chars)", info.len()));
         let m = Media::new(engine.io.clone(), None)?;
         m.muted.store(self.calls.muted, Ordering::Relaxed);

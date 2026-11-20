@@ -1,16 +1,19 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 
+# Without a bumping label the next version is a patch.
 version-resolver:
   default: patch
 
 categories:
+  # Left out of the changelog entirely.
   - type: 'pre-exclude'
     when:
       labels:
         - 'skip-changelog'
         - 'dependencies'
 
+  # Changelog sections. The bump a label carries lives on its section.
   - title: '🚀 Features'
     semver-increment: 'minor'
     when:
@@ -26,13 +29,14 @@ categories:
     semver-increment: 'patch'
     when:
       label: 'bug'
-  - title: '📚 Documentation'
+  - title: '📖 Documentation'
     when:
       label: 'documentation'
   - title: '🔧 CI / Build'
     when:
       label: 'CI/CD'
 
+  # Labels that only steer the version and have no section of their own.
   - type: 'version-resolver'
     semver-increment: 'major'
     when:

@@ -27,6 +27,6 @@ Translations, sounds and some pictures of the official Webex app are not part of
 | `epaint_default_fonts` | MIT OR Apache-2.0, plus OFL-1.1 and the Ubuntu Font Licence for the bundled fonts | egui's default fonts |
 | `r-efi` | MIT OR Apache-2.0 OR LGPL-2.1-or-later | used under MIT/Apache-2.0 |
 
-Microphone noise removal uses `deep_filter` (libDF of [DeepFilterNet](https://github.com/Rikorose/DeepFilterNet), MIT OR Apache-2.0, from git at the v0.5.6 release) with the `tract-*` ONNX runtime (MIT OR Apache-2.0), and `nnnoiseless` (BSD-3-Clause, a port of Xiph's RNNoise) as the lightweight fallback.
+Microphone noise removal uses `deep_filter` (libDF of [DeepFilterNet](https://github.com/Rikorose/DeepFilterNet), MIT OR Apache-2.0, from git at the v0.5.6 release) with the `tract-*` ONNX runtime (MIT OR Apache-2.0), and `nnnoiseless` (BSD-3-Clause, a port of Xiph's RNNoise). Echo cancellation and gain control in calls use `sonora` and its `sonora-*` crates (BSD-3-Clause, a Rust port of the WebRTC audio processing module, (c) The WebRTC Project Authors and contributors).
 
 Regenerate the list with `cargo metadata --format-version 1` or [`cargo about`](https://github.com/EmbarkStudios/cargo-about) before a release if dependencies change.

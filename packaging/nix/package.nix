@@ -79,7 +79,11 @@ let
       ];
     };
 
-    cargoLock.lockFile = ../../Cargo.lock;
+    cargoLock = {
+      lockFile = ../../Cargo.lock;
+      # Git dependencies need a fixed hash for the offline vendor step (Cargo.toml pins deep_filter to a commit).
+      outputHashes."deep_filter-0.5.6" = "sha256-5bYbfO1kmduNm9YV5niaaPvRIDRmPt4QOX7eKpK+sWY=";
+    };
     cargoBuildFlags = [ "-p" "webox" "--bin" "webox" ];
     # The unit tests run in the dev shell / CI; some need a display or network.
     doCheck = false;

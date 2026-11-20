@@ -57,6 +57,7 @@ pub(crate) mod unfurl;
 pub(crate) mod meetcall;
 pub(crate) mod spaces_ext;
 pub(crate) mod presence; // the presence line under a person's name
+pub(crate) mod update_dialog; // "Auf Updates prüfen" and the daily check
 
 /// The main window's context, for background threads that hand a result to the UI (`wake`).
 static UI_CTX: std::sync::OnceLock<eframe::egui::Context> = std::sync::OnceLock::new();

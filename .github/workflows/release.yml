@@ -1,5 +1,7 @@
 name: Release
 
+# Publishing the release drafted by release-drafter.yml runs this: the gates, the version bump on main, then the Windows zip +
+# installer and the Linux tarball, each with a .sha256 file ("<hex>  <name>", what the in-app updater checks).
 on:
   release:
     types: [published]
@@ -12,7 +14,7 @@ jobs:
   sync-version:
     name: Bump version to the release tag
     needs: ci
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: write
     outputs:
@@ -20,7 +22,7 @@ jobs:
       sha: ${{ steps.sync.outputs.sha }}
     steps:
       - name: Checkout main
-        uses: actions/checkout@v7
+        uses: useblacksmith/checkout@v1
         with:
           ref: main
           fetch-depth: 0
@@ -30,44 +32,26 @@ jobs:
           git config user.name "PianoNic"
           git config user.email "79938743+PianoNic@users.noreply.github.com"
 
-      - name: Bump Cargo.toml
+      - name: Bump Cargo.toml and Cargo.lock
         id: sync
         env:
           TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
-          set -uo pipefail
-
+          set -euo pipefail
           TAG_VERSION="$(printf '%s' "$TAG_NAME" | sed -E 's/^[^0-9]*//')"
-          # The version of the [package] section, not of a dependency or another table.
-          FILE_VERSION=$(awk '/^\[package\]/{p=1;next} /^\[/{p=0} p && /^version *=/{gsub(/.*= *"|".*/,""); print; exit}' Cargo.toml)
           echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
 
-          publish_head() {
-            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          }
-
-          if [ "$TAG_VERSION" = "$FILE_VERSION" ]; then
-            publish_head
-            exit 0
-          fi
-
-          awk -v v="$TAG_VERSION" '/^\[package\]/{p=1} /^\[/ && !/^\[package\]/{p=0} p && !done && /^version *=/{print "version = \"" v "\""; done=1; next} {print}' Cargo.toml > Cargo.toml.new
-          mv Cargo.toml.new Cargo.toml
-          # Refresh only the workspace's own entries in Cargo.lock.
-          cargo update --workspace
-
+          sh scripts/bump-version.sh "$TAG_VERSION"
           git add Cargo.toml Cargo.lock
           if git diff --cached --quiet; then
-            echo "::warning::Cargo.toml was not rewritten; leaving main as it is."
-            publish_head
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          git commit -m "chore: bumped version to $TAG_VERSION [skip ci]"
 
-          git commit -m "Bumped Cargo.toml to $TAG_VERSION for release [skip ci]"
-
-          for attempt in 1 2 3; do
+          for _ in 1 2 3; do
             if git push origin HEAD:main; then
-              publish_head
+              echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             git fetch origin main
@@ -77,12 +61,11 @@ jobs:
               exit 1
             fi
           done
-
           echo "::error::Could not push the version bump to main."
           exit 1
 
   windows:
-    name: Windows x64 zip
+    name: Windows zip + installer
     needs: sync-version
     runs-on: windows-latest
     timeout-minutes: 60
@@ -98,46 +81,75 @@ jobs:
 
       - run: cargo build --release --locked -p webox --bin webox
 
-      - name: Pack and attach
+      - name: Zip
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.sync-version.outputs.version }}
+        run: |
+          $name = "webox-$env:VERSION-windows-x64"
+          New-Item -ItemType Directory -Force "dist/$name" | Out-Null
+          Copy-Item target/release/webox.exe, LICENSE, THIRD_PARTY_NOTICES.md, README.md "dist/$name/"
+          Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip" -Force
+
+      - name: Installer (Inno Setup)
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.sync-version.outputs.version }}
+        run: |
+          # Inno Setup 6 or 7, preinstalled on the runner or from Chocolatey.
+          function Find-Iscc { foreach ($b in ${env:ProgramFiles(x86)}, $env:ProgramFiles) { foreach ($v in 6, 7) { $p = Join-Path $b "Inno Setup $v\ISCC.exe"; if (Test-Path $p) { return $p } } } }
+          $iscc = Find-Iscc
+          if (-not $iscc) { choco install innosetup -y --no-progress; if ($LASTEXITCODE) { exit 1 }; $iscc = Find-Iscc }
+          if (-not $iscc) { Write-Error 'ISCC.exe not found'; exit 1 }
+          pwsh packaging/windows/make-ico.ps1 -Out dist/webox.ico
+          & $iscc /Qp "/DAppVersion=$env:VERSION" "/DSourceDir=dist\webox-$env:VERSION-windows-x64" "/DIconFile=dist\webox.ico" /Odist packaging\windows\webox.iss
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+      - name: Checksums and upload
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.sync-version.outputs.version }}
           TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
-          $name = "webox-$env:VERSION-windows-x64"
-          New-Item -ItemType Directory -Force "dist/$name" | Out-Null
-          Copy-Item target/release/webox.exe, LICENSE, THIRD_PARTY_NOTICES.md, README.md "dist/$name/"
-          Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip" -Force
-          gh release upload "$env:TAG_NAME" "dist/$name.zip" --clobber
+          $files = "dist/webox-$env:VERSION-windows-x64.zip", "dist/Webox-Setup-$env:VERSION-x64.exe"
+          foreach ($f in $files) {
+            $h = (Get-FileHash -Algorithm SHA256 $f).Hash.ToLower()
+            [IO.File]::WriteAllText("$f.sha256", "$h  $(Split-Path -Leaf $f)`n")
+          }
+          gh release upload "$env:TAG_NAME" $files ($files | ForEach-Object { "$_.sha256" }) --clobber
 
   linux:
     name: Linux tarball
     needs: sync-version
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 60
     permissions:
       contents: write
     steps:
       - name: Checkout the commit the version bump landed on
-        uses: actions/checkout@v7
+        uses: useblacksmith/checkout@v1
         with:
           ref: ${{ needs.sync-version.outputs.sha }}
 
-      - name: Install the build dependencies (docs/LINUX.md)
+      # docs/LINUX.md: WebKitGTK + GTK for the sign-in window, ALSA, GStreamer headers for video playback.
+      - name: Install the build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential pkg-config \
             libwebkit2gtk-4.1-dev libgtk-3-dev libasound2-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             libxkbcommon-x11-0 libgl1 libegl1 fonts-dejavu-core
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Pack and attach
+      - name: Pack, checksum and upload
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.event.release.tag_name }}
         run: |
           set -euo pipefail
           sh packaging/linux/make-tarball.sh
-          gh release upload "$TAG_NAME" dist/webox-*-linux-*.tar.gz --clobber
+          cd dist
+          for f in webox-*-linux-*.tar.gz; do sha256sum "$f" > "$f.sha256"; done
+          gh release upload "$TAG_NAME" webox-*-linux-*.tar.gz webox-*-linux-*.tar.gz.sha256 --clobber

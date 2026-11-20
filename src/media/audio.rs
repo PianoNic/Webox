@@ -4,12 +4,12 @@
 //! device runs at. The cpal streams are not `Send`, so one thread owns them and `Engine` talks to it by messages.
 //! Device choice is persisted in the settings JSON (`audio_input`, `audio_output`, `audio_ringtone_output`,
 //! `audio_volume`, `smart_mic`); an empty name means "the system default" ("Systemstandard").
-//! The microphone runs through Smart Audio's noise removal (`denoise.rs`) before the level meter and the call sender, so the
-//! meter of Settings > Audio shows what the other side would hear.
+//! The microphone runs through `mic::MicChain` (echo cancellation and gain control in calls, noise removal always) on its
+//! own thread before the level meter and the call sender; the speaker output is its echo reference.
 pub use super::denoise::SmartMic;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};
 
@@ -17,15 +17,16 @@ pub const RATE: u32 = 48_000;
 /// 20 ms of 48 kHz mono, the Opus frame the call path uses.
 pub const FRAME: usize = 960;
 const MAX_BUFFER: usize = RATE as usize; // 1 s
+/// Captured audio waiting for the call sender is capped at 60 ms: if the microphone's clock runs faster than the sender's,
+/// the oldest 20 ms are dropped instead of the delay growing.
+const MAX_CAPTURED: usize = 3 * FRAME;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Dev { pub name: String, pub default: bool }
 
 /// The user's choices (names; empty = system default). `smart` is Settings > Smart Audio > Mikrofonaudio (`smart_mic`).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Choice { pub input: String, pub output: String, pub ringtone: String, pub volume: f32, pub smart: SmartMic,
-    /// Smart Audio eco noise removal (`smart_mic_eco`): RNNoise instead of DeepFilterNet.
-    pub eco: bool }
+pub struct Choice { pub input: String, pub output: String, pub ringtone: String, pub volume: f32, pub smart: SmartMic }
 
 impl Choice {
     pub fn load(s: &serde_json::Value) -> Choice {
@@ -33,15 +34,14 @@ impl Choice {
         // `audio_noise_removal: false` (an older setting) only matters when `smart_mic` was never set.
         let smart = match s["smart_mic"].as_str() { Some(k) => SmartMic::from_key(k), None if s["audio_noise_removal"] == false => SmartMic::Off, None => SmartMic::Auto };
         Choice { input: t("audio_input"), output: t("audio_output"), ringtone: t("audio_ringtone_output"),
-            volume: s["audio_volume"].as_f64().map_or(1.0, |v| v.clamp(0.0, 1.0) as f32), smart, eco: s["smart_mic_eco"].as_bool().unwrap_or(false) }
+            volume: s["audio_volume"].as_f64().map_or(1.0, |v| v.clamp(0.0, 1.0) as f32), smart }
     }
     /// Puts the Smart Audio choice on an engine's microphone path.
-    pub fn apply_smart(&self, io: &Io) { io.set_smart(self.smart); io.set_eco(self.eco); }
+    pub fn apply_smart(&self, io: &Io) { io.set_smart(self.smart); }
     pub fn store(&self, s: &mut serde_json::Value) {
         s["audio_input"] = self.input.clone().into(); s["audio_output"] = self.output.clone().into();
         s["audio_ringtone_output"] = self.ringtone.clone().into(); s["audio_volume"] = (self.volume as f64).into();
         s["smart_mic"] = self.smart.key().into();
-        s["smart_mic_eco"] = self.eco.into();
     }
 }
 
@@ -100,17 +100,19 @@ pub struct Io {
     level: AtomicU32,
     /// Playback gain 0..1 (f32 bits).
     volume: AtomicU32,
-    /// Smart Audio mode of the microphone (`SmartMic::to_u8`), read by the capture callback on every block.
+    /// Smart Audio mode of the microphone (`SmartMic::to_u8`), read for every block.
     smart: AtomicU8,
-    /// Eco noise removal: RNNoise instead of DeepFilterNet.
-    eco: std::sync::atomic::AtomicBool,
+    /// In a call: echo cancellation and gain control on, and the speaker output is kept as their reference.
+    call: AtomicBool,
+    /// What the speaker played (48 kHz, after the volume), waiting for the echo canceller.
+    pub far: Mutex<VecDeque<f32>>,
 }
 impl Io {
     pub fn level(&self) -> f32 { f32::from_bits(self.level.load(Ordering::Relaxed)) }
     pub fn set_smart(&self, m: SmartMic) { self.smart.store(m.to_u8(), Ordering::Relaxed) }
     pub fn smart(&self) -> SmartMic { SmartMic::from_u8(self.smart.load(Ordering::Relaxed)) }
-    pub fn set_eco(&self, on: bool) { self.eco.store(on, Ordering::Relaxed) }
-    pub fn eco(&self) -> bool { self.eco.load(Ordering::Relaxed) }
+    pub fn set_call(&self, on: bool) { self.call.store(on, Ordering::Relaxed) }
+    pub fn in_call(&self) -> bool { self.call.load(Ordering::Relaxed) }
     pub fn set_volume(&self, v: f32) { self.volume.store(v.clamp(0.0, 1.0).to_bits(), Ordering::Relaxed) }
     fn gain(&self) -> f32 { f32::from_bits(self.volume.load(Ordering::Relaxed)) }
     /// Takes exactly one 20 ms frame of microphone audio if there is one.
@@ -199,22 +201,25 @@ fn open_streams(io: &Arc<Io>, input: &str, output: &str) -> Result<(Vec<cpal::St
         let mut lin = Lin::new(rate, RATE);
         let mut mono: Vec<f32> = vec![];
         let mut res: Vec<f32> = vec![];
-        // Smart Audio runs on its own thread: DeepFilterNet must never hold up the device callback. The callback only mixes
+        // The microphone chain runs on its own thread so it never holds up the device callback. The callback only mixes
         // down, resamples to 48 kHz and hands the block over; the thread ends when the stream (and so `blocks`) is dropped.
         let (blocks, rx) = channel::<Vec<f32>>();
         let io3 = io.clone();
         std::thread::Builder::new().name("mic-dsp".into()).spawn(move || {
-            let mut dn = super::denoise::Denoiser::new();
-            let mut clean: Vec<f32> = vec![];
+            let mut chain = super::mic::MicChain::new();
+            let (mut clean, mut far) = (Vec::<f32>::new(), VecDeque::<f32>::new());
             for b in rx {
-                dn.set_eco(io3.eco());
+                if let Ok(mut f) = io3.far.lock() { far.extend(f.drain(..)); }
                 clean.clear();
-                dn.process(io3.smart(), &b, &mut clean);
+                chain.process(io3.smart(), io3.in_call(), &mut far, &b, &mut clean);
                 let pcm: Vec<i16> = clean.iter().map(|v| (v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16).collect();
                 let level = rms(&pcm).min(1.0);
                 let old = f32::from_bits(io3.level.load(Ordering::Relaxed));
                 io3.level.store((if level > old { level } else { old * 0.85 + level * 0.15 }).to_bits(), Ordering::Relaxed); // fast attack, slow release
-                if let Ok(mut q) = io3.captured.lock() { q.extend(pcm); while q.len() > MAX_BUFFER { q.pop_front(); } }
+                if let Ok(mut q) = io3.captured.lock() {
+                    q.extend(pcm);
+                    while q.len() > MAX_CAPTURED { q.drain(..FRAME); }
+                }
             }
         }).map_err(|e| format!("Mikrofon: {e}"))?;
         let mut handle = move |frames: &mut dyn Iterator<Item = f32>| {
@@ -244,8 +249,15 @@ fn open_streams(io: &Arc<Io>, input: &str, output: &str) -> Result<(Vec<cpal::St
         let play_into = move |len: usize, mut put: Box<dyn FnMut(usize, f32) + '_>| {
             let gain = io2.gain();
             let mut q = io2.to_play.lock().ok();
-            let mut src = || q.as_mut().and_then(|q| q.pop_front()).map_or(0.0, |s| s as f32 / i16::MAX as f32);
+            // in a call, what is played (at 48 kHz, after the volume) is the echo canceller's reference
+            let mut far = if io2.in_call() { io2.far.lock().ok() } else { None };
+            let mut src = || {
+                let v = q.as_mut().and_then(|q| q.pop_front()).map_or(0.0, |s| s as f32 / i16::MAX as f32);
+                if let Some(f) = far.as_mut() { f.push_back(v * gain); }
+                v
+            };
             for i in 0..len / ch { let v = pull.next(&mut src) * gain; for c in 0..ch { put(i * ch + c, v); } }
+            if let Some(f) = far.as_mut() { while f.len() > super::mic::FAR_MAX { f.pop_front(); } }
         };
         let mut play_into = play_into;
         let err = |e| eprintln!("audio output: {e}");
@@ -270,7 +282,7 @@ mod tests {
     #[test]
     fn choice_round_trip() {
         let mut v = serde_json::json!({});
-        let c = Choice { input: "Mic".into(), output: "Spk".into(), ringtone: "".into(), volume: 0.5, smart: SmartMic::Voice, eco: true };
+        let c = Choice { input: "Mic".into(), output: "Spk".into(), ringtone: "".into(), volume: 0.5, smart: SmartMic::Voice };
         c.store(&mut v);
         assert_eq!(Choice::load(&v), c);
         assert_eq!(Choice::load(&serde_json::json!({})).volume, 1.0);

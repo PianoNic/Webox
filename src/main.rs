@@ -276,9 +276,13 @@ const RAIL_WIDE: f32 = 196.0;
 fn main() -> eframe::Result<()> {
     let raw: Vec<String> = std::env::args().collect();
     if platform::nmhost::is_host_call(&raw) { platform::nmhost::run(&system::config_dir()); return Ok(()); }
+    // The updater runs a downloaded program with --version before it replaces this one.
+    if raw.iter().skip(1).any(|a| a == "--version") { println!("webox {}", env!("CARGO_PKG_VERSION")); return Ok(()); }
     let _ = rustls::crypto::ring::default_provider().install_default();
     icons::prewarm(); // rasterise the first screens' icons on a worker while the window is created
     let args = system::args();
+    #[cfg(windows)]
+    if args.screenshot.is_none() { system::hold_app_mutex(); } // the installer waits for Webox to close
     // Linux: a second start hands its link to the running copy (D-Bus) and quits; test runs (--sample / --screenshot) never do.
     #[cfg(target_os = "linux")]
     if args.screenshot.is_none() && !args.sample && std::env::var_os("WEBOX_MULTI_INSTANCE").is_none() && platform::linux::instance::hand_off(args.protocol_uri.as_deref()) {
