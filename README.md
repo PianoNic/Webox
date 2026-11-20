@@ -22,7 +22,7 @@
 
 The official Webex app is a big Qt and Chromium bundle. Webox is one small Rust binary that draws the same interface with [egui](https://github.com/emilk/egui) and talks to the same Webex cloud services. You sign in with your normal Webex account, and your spaces, messages and calls are the same ones you see in the official app.
 
-It follows the official app closely: layout, spacing, colours, icons, sounds and texts match it, so it feels familiar from the first start. It runs on Windows and on any Linux distribution, including NixOS.
+It runs on Windows and on any Linux distribution, including NixOS.
 
 ### Why "Webox"?
 
