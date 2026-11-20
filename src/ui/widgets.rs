@@ -98,6 +98,10 @@ pub(crate) fn avatar_photo_with(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th
         }
     }
     if photo.is_none() { ui.painter().text(g.rect.center(), egui::Align2::CENTER_CENTER, initials(name, space), FontId::proportional(size * if space { 0.5 } else { 0.42 }), t.avatar_text); }
+    // a design plugin's ring around your own avatar (and everybody's, if it says so)
+    if !space && (if crate::ui::theme::decor::is_self(name) { crate::ui::theme::decor::on(collabhost_plugin_api::deco::AVATAR_RING_SELF) } else { crate::ui::theme::decor::on(collabhost_plugin_api::deco::AVATAR_RING_ALL) }) {
+        crate::ui::theme::decor::ring(ui.painter(), g.rect.center(), g.rect.width() / 2.0 + 1.5, (size / 16.0).clamp(1.5, 3.0), &crate::ui::theme::decor::stripes());
+    }
     if let (Some((icon, col)), Some((x, y, d))) = (badge, dot) {
         let dr = g.texel_rect(x - d / 2.0, y - d / 2.0, d);
         if tex.is_none() { ui.painter().circle_filled(dr.center(), dr.width() / 2.0 + geom.ring, t.card); }
@@ -107,6 +111,7 @@ pub(crate) fn avatar_photo_with(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th
                 None => { ui.painter().circle_filled(dr.center(), dr.width() / 2.0, col); }
             }
         } else { ic.paint_exact(ui, icon, dr, col) }
+        if crate::ui::theme::decor::on(collabhost_plugin_api::deco::PRESENCE_RING) { crate::ui::theme::decor::ring(ui.painter(), dr.center(), dr.width() / 2.0 + 0.8, 1.4, &crate::ui::theme::decor::stripes()); }
     }
 }
 
@@ -196,6 +201,7 @@ pub(crate) fn text_tab(ui: &mut egui::Ui, label: &str, on: bool, t: &Th, on_bg: 
     let w = ui.fonts(|f| f.layout_no_wrap(label.to_string(), font.clone(), col).size().x) + 22.0;
     let (r, resp) = ui.allocate_exact_size(Vec2::new(w, 28.0), Sense::click());
     if on { ui.painter().rect_filled(r, 14.0, on_bg); } else if resp.hovered() { ui.painter().rect_filled(r, 14.0, alpha(on_bg, 0.5)); }
+    if on && crate::ui::theme::decor::on(collabhost_plugin_api::deco::TAB_PILLS) { crate::ui::theme::decor::outline(ui.painter(), r, 14.0, 1.5, &crate::ui::theme::decor::stripes(), 0.0); }
     ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, label, font, col);
     resp
 }
@@ -393,8 +399,11 @@ pub(crate) fn toggle<'a>(on: &'a mut bool, t: &'a Th) -> impl egui::Widget + 'a 
         let (r, mut resp) = ui.allocate_exact_size(Vec2::new(40.0, 22.0), Sense::click());
         if resp.clicked() { *on = !*on; resp.mark_changed(); }
         let k = ui.ctx().animate_bool(resp.id, *on);
-        ui.painter().rect_filled(r, 11.0, if *on { t.accent } else { t.pill });
-        ui.painter().circle_filled(pos2(egui::lerp(r.left() + 11.0..=r.right() - 11.0, k), r.center().y), 8.0, Color32::WHITE);
+        if *on && crate::ui::theme::decor::on(collabhost_plugin_api::deco::TOGGLE_TRACK) { crate::ui::theme::decor::fill(ui.painter(), r, 11.0, &crate::ui::theme::decor::stripes(), 0.0, 1.0); }
+        else { ui.painter().rect_filled(r, 11.0, if *on { t.accent } else { t.pill }); }
+        let knob = pos2(egui::lerp(r.left() + 11.0..=r.right() - 11.0, k), r.center().y);
+        ui.painter().circle_filled(knob, 8.0, Color32::WHITE);
+        if *on && crate::ui::theme::decor::on(collabhost_plugin_api::deco::TOGGLE_TRACK) { ui.painter().circle_stroke(knob, 8.0, Stroke::new(1.0, Color32::from_black_alpha(90))); } // the knob stays visible on light stripes
         resp
     }
 }

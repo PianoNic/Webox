@@ -9,7 +9,8 @@ fn pack(c: Color32) -> u32 { u32::from_be_bytes([c.r(), c.g(), c.b(), 0xFF]) }
 
 /// What the plugin is told about the active base theme.
 pub(crate) fn info(t: &Th) -> ThemeInfo {
-    ThemeInfo { size: std::mem::size_of::<ThemeInfo>() as u32, light: t.light as u32, background: pack(t.card), surface: pack(t.win), text: pack(t.text1) }
+    ThemeInfo { size: std::mem::size_of::<ThemeInfo>() as u32, light: t.light as u32, background: pack(t.card), surface: pack(t.win), text: pack(t.text1),
+        text_secondary: pack(t.text2) }
 }
 
 /// What applying accents gives besides the changed fields of `t`.

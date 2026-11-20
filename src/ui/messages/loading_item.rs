@@ -47,7 +47,7 @@ impl App {
     /// The message area while the first page loads or after it failed: one loading item at the bottom of the list.
     pub(crate) fn list_loading_view(&mut self, ui: &mut egui::Ui, id: &str, state: ListLoad) {
         let area = ui.max_rect();
-        let row = Rect::from_min_max(pos2(area.left(), area.bottom() - LIST_BOTTOM - LOADING_ROW_H), pos2(area.right(), area.bottom() - LIST_BOTTOM));
+        let row = Rect::from_min_max(pos2(area.left(), area.bottom() - list_bottom() - LOADING_ROW_H), pos2(area.right(), area.bottom() - list_bottom()));
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(row));
         if self.loading_item(&mut child, state == ListLoad::Failed) {
             // Retry: ask again.

@@ -49,6 +49,10 @@ impl eframe::App for App {
         self.typing_frame(ctx); // my typing → the service (throttled), typers' overlay animation (ui/typing.rs)
         self.poll_webview();
         if self.webview.is_some() { ctx.request_repaint(); }
+        // Darstellungsdichte (ui/theme/density.rs): read every frame, so a change applies at once
+        if self.frames == 1 && self.shot.is_some() { if let Ok(v) = std::env::var("WEBOX_SHOT_DENSITY") { self.settings["density"] = json!(v); }
+            if let Ok(v) = std::env::var("WEBOX_SHOT_COMPACT_VIEW") { self.settings["compact_view"] = json!(v == "1"); } }
+        crate::ui::theme::density::set_from(&self.settings);
         let t = self.apply_theme(ctx);
         self.shortcuts_frame(ctx); // registry dispatch, global hotkeys
         self.settings_window(ctx, &t, now); // collects file-dialog results, screenshot hook (ui/settings/)
@@ -66,12 +70,17 @@ impl eframe::App for App {
         if self.login_sized { self.login_sized = false; ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(MAIN_SIZE.into())); }
         // The window's own background: theme-gradient-primary (dark #1A1A1A -> #0F0F0F, light #F0F0F0 -> #FFFFFF).
         vquad(&ctx.layer_painter(egui::LayerId::background()), ctx.screen_rect(), t.win, t.win_b);
+        // a design plugin's wash over the window (behind rail and header; ui/theme/decor.rs)
+        if let Some(w) = crate::ui::theme::decor::get().and_then(|d| d.window.clone()) {
+            crate::ui::theme::decor::paint_wash(&ctx.layer_painter(egui::LayerId::background()), ctx.screen_rect(), 0.0, &w);
+        }
         super::chrome::edge_strips(ctx); // the 6 pt margin (resize border) while not maximised, see chrome::EDGE_INSET
         self.top_bar(ctx, &t, now); // splash covers everything below the header
         self.connectivity_banner(ctx, &t, load.banner.as_deref());
         let splash_area = ctx.screen_rect(); // the splash covers the ENTIRE window, header and rail included (a Webox choice)
         self.rail(ctx, &t);
         self.rail_edge_button(ctx, &t);
+        crate::ui::theme::decor::chrome(ctx); // a design plugin's flag band on the rail / stripe under the header
         match self.tab {
             Tab::Messaging => self.messaging(ctx, &t, now),
             // A team's spaces keep the messaging layout; every other page uses the page frame (ui/page_kit.rs).
@@ -86,6 +95,7 @@ impl eframe::App for App {
         if !self.need_login { self.nav_card_popup(ctx, &t, now); self.global_search_popup(ctx, &t, now); }
         self.call_overlay(ctx, &t, now);
         self.notify_update(ctx, &t, now); // toast windows, tray, taskbar
+        self.decor_effects(ctx); // design-plugin effects (burst, ripple, June sparkle), drawn last, no input (ui/theme/fx.rs)
 
         self.shortcut_search(ctx, &t); self.shortcut_dialogs(ctx, &t); // Ctrl+/ popup, sign-out confirm
         if !self.need_login { self.appwide_dialogs(ctx, &t, now); } // profile / help / device / update dialogs (ui/app_dialogs.rs)

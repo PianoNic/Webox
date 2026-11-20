@@ -19,7 +19,7 @@ which builds them in CI against a pinned plugin-api.
 
 ## Plugin API contract
 
-`plugin-api` carries an explicit contract version `CONTRACT_MAJOR.CONTRACT_MINOR` (currently **1.2**, `CONTRACT` as a string). History: 1.0 the first interface; 1.1 the contract symbol, nullable function pointers and panic-safe shims; 1.2 plugin settings; 1.3 accent themes.
+`plugin-api` carries an explicit contract version `CONTRACT_MAJOR.CONTRACT_MINOR` (currently **1.4**, `CONTRACT` as a string). History: 1.0 the first interface; 1.1 the contract symbol, nullable function pointers and panic-safe shims; 1.2 plugin settings; 1.3 accent themes; 1.4 decorations (washes, host-drawn decorations, effects).
 
 - A plugin exports `collabhost_plugin_contract() -> u32` (`(major << 16) | minor`, added by `export_plugin!`). Plugins
   built before 1.1 have no such symbol and count as 1.0.
@@ -149,6 +149,41 @@ read only from plugins that report 1.3. Both structs start with `size` (the writ
 append fields. The last enabled design plugin wins. Accent overrides only apply through `Th::tk()`, never to the theme
 fields that share a token: the red hang-up buttons stay red.
 
+### Decorations (contract 1.4)
+
+`decor(&ThemeInfo) -> Option<Decor>` lets a design plugin declare more than colours. Webox draws everything; no UI code
+crosses the boundary. `ThemeInfo` gained `text_secondary`, so the plugin can check both text colours.
+
+- **Washes** (`Wash`: up to 12 `stops`, `angle` in degrees (0 = left to right, 90 = top to bottom), `opacity` over the
+  base colour, optional gradient `border` in pt) for the `window` (behind rail and header), the `list_card` and the
+  `content_card`. The plugin picks the opacity. Keep text readable: the Pride Theme lowers each wash until primary and
+  secondary text keep 4.5:1 over every stop. Message text sits on the content card, so keep that wash faint.
+- **Decorations**: bits in `flags` (`collabhost_plugin_api::deco`), drawn in the `stripes` colours:
+
+| Bit | What Webox draws |
+|---|---|
+| `RAIL_STRIPE` | a vertical band of the stripes along the rail's left edge |
+| `HEADER_STRIPE` | a 2 pt gradient under the header |
+| `AVATAR_RING_SELF` / `AVATAR_RING_ALL` | a ring in the stripe colours around your own avatar / everybody's |
+| `PRESENCE_RING` | a ring around presence dots |
+| `SELECTED_ROW` | a gradient outline on the selected list row |
+| `TAB_PILLS` | a gradient outline on the selected text tab ("Alle", "Nachrichten", ...) |
+| `NAV_UNDERLINE` | a gradient underline on the selected settings navigation item |
+| `TOGGLE_TRACK` | switched-on toggles with a gradient track |
+| `BADGE_CYCLE` | unread dots (and the rail badge) cycling through the stripes from row to row |
+| `SCROLLBAR` | scrollbar thumbs in a vertical gradient |
+| `PROGRESS` | progress bars in a horizontal gradient |
+| `SEND_BUTTON` | the send button with a gradient outline and a soft gradient fill under its glyph |
+| `NAME_FLAG` | a small flag (the stripes, stacked) after your name in the profile menu |
+| `SEND_BURST` | effect: confetti and hearts from the send button for 0.9 s when you send |
+| `REACTION_RIPPLE` | effect: a gradient ring spreading from a reaction you add (0.6 s) |
+| `JUNE_SPARKLE` | effect: "Happy Pride!" with twinkles for 2.6 s, once a year on the first start in June (`pride_sparkle_year` in the settings) |
+
+Effects are painted on a layer that takes no input. The window repaints only while one runs (`request_repaint_after`, 16
+ms); otherwise nothing animates. None starts while Windows asks for fewer animations ("Animationen in Windows anzeigen"
+off; `WEBOX_REDUCE_MOTION` elsewhere). The `decor` entry is read only from plugins that report 1.4. Older design plugins
+keep working with their palette or accents. Screenshots: `WEBOX_SHOT_PRIDE_SPARKLE=1` forces the sparkle.
+
 ## Repository index
 
 A repository is a static file, usually `index.min.json` on the `repo` branch of a plugins monorepo (the same model as
@@ -161,16 +196,16 @@ A plain array (the shape SchulyPlugins uses):
   {
     "name": "Slash Commands",
     "pkg": "dev.webox.plugins.slash-commands",
-    "version": "1.3.0",
-    "contract": "1.3",
+    "version": "1.4.0",
+    "contract": "1.4",
     "description": "Adds /shrug, /tableflip and /count, and turns :) into a smiley.",
     "authors": ["PianoNic"],
     "icon": "icons/dev.webox.plugins.slash-commands.png",
     "homepage": "https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/slash-commands",
     "minWebox": "46.10.0",
     "files": {
-      "windows-x86_64": { "file": "files/dev.webox.plugins.slash-commands/1.3.0/windows-x86_64/collabhost_slash_commands.dll", "sha256": "<64 hex>", "size": 181248 },
-      "linux-x86_64":   { "file": "files/dev.webox.plugins.slash-commands/1.3.0/linux-x86_64/libcollabhost_slash_commands.so", "sha256": "<64 hex>", "size": 412312 }
+      "windows-x86_64": { "file": "files/dev.webox.plugins.slash-commands/1.4.0/windows-x86_64/collabhost_slash_commands.dll", "sha256": "<64 hex>", "size": 181248 },
+      "linux-x86_64":   { "file": "files/dev.webox.plugins.slash-commands/1.4.0/linux-x86_64/libcollabhost_slash_commands.so", "sha256": "<64 hex>", "size": 412312 }
     }
   }
 ]

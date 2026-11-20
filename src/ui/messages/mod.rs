@@ -21,7 +21,9 @@ fn reaction_name(ch: &str) -> String {
     REACTIONS.iter().find(|r| bare(r.1) == bare(ch)).map_or_else(|| ch.to_string(), |r| r.0.to_string())
 }
 
-// Geometry (pt).
+/// The density table.
+fn dm() -> &'static crate::ui::theme::density::Metrics { crate::ui::theme::density::m() }
+// Geometry (pt; the functions are Standard density values from `dm()`).
 const GRID_X: f32 = 1.0; // row content x
 const AVATAR_LEFT: f32 = 16.0; // avatar left margin
 const AVATAR: f32 = 32.0; // avatar size
@@ -29,7 +31,7 @@ const AVATAR_SLOT: f32 = 34.0; // avatar column width
 const BOX_LEFT: f32 = GRID_X + AVATAR_LEFT + AVATAR_SLOT; // 51; the text starts RADIUS further in
 const RADIUS: f32 = 8.0; // message frame radius
 const RIGHT_MARGIN: f32 = 5.0; // message frame right margin
-const AVATAR_TOP: f32 = 18.0; // avatar top margin
+fn avatar_top() -> f32 { dm().msg_avatar_top } // avatar top margin (18)
 /// Emoji in text are drawn this big (~1.15 x the font size; the layout reserves 1.2 em).
 const EMOJI_SIZE: f32 = 17.0;
 // Link-preview card: width min(620, available); side by side ("wide mode") when available >= 620, else the picture above
@@ -44,13 +46,13 @@ const LB_MARGIN: f32 = 48.0; // image viewer margin around the picture
 const BODY: f32 = 16.0; // body text size
 const SECOND: f32 = 14.0; // secondary text size (names, times)
 const HEADER_GAP: f32 = 12.0; // gap between name and time in the header
-const TOP_PAD: f32 = 6.0; // row top -> first line
-const HEADER_TO_BODY: f32 = 5.1; // header line bottom -> first content
+fn top_pad() -> f32 { dm().msg_top_pad } // row top -> first line (6)
+fn header_to_body() -> f32 { dm().msg_header_to_body } // header line bottom -> first content (5.1)
 /// egui sets Segoe UI 1.2 pt lower inside its line box than Qt does: body text is drawn that much higher so that header cap -> body
 /// ascender is 24.0 pt while header cap -> image top stays 19.2 pt.
 const TEXT_SHIFT: f32 = -1.2;
-const BOTTOM_PAD: f32 = 7.7; // last line -> next row (grouped single-line rows are 35 pt apart)
-const ATTACH_GAP: f32 = 8.0; // gap between attachments
+fn bottom_pad() -> f32 { dm().msg_bottom_pad } // last line -> next row (7.7; grouped single-line rows are 35 pt apart)
+fn attach_gap() -> f32 { dm().msg_attach_gap } // gap between attachments (8)
 const ATTACH_BOTTOM: f32 = 5.4; // below the attachments (image bottom -> next header cap = 23.2 pt)
 const SMALL_IMG: f32 = 80.0; // smaller pictures keep their size
 const IMG_MAX: f32 = 320.0; // largest inline image width / height
@@ -64,18 +66,18 @@ const TB_W: f32 = 32.0; // hover toolbar button width
 const CAPTION_GAP: f32 = 2.6;
 // Scrollbar: track 16 pt wide, thumb 7.6 pt, chevron buttons at both ends.
 /// Space under the last list item ("Gesehen von" row centre -> composer line = 48 pt).
-const LIST_BOTTOM: f32 = 25.5;
+fn list_bottom() -> f32 { dm().msg_list_bottom } // 25.5
 /// The offline sample's number of older pages.
 const SAMPLE_PAGES: u32 = 2;
 /// The scroll bar's width (the bar itself is the shared `autoscroll::arrow_bar`).
 const SB_W: f32 = crate::ui::autoscroll::BAR_W;
 /// Readers shown as avatars at most; the rest collapse into "+N".
 const MAX_SEEN: usize = 10;
-// Last line's top -> "Gesehen von" centre = 47.6 pt (SEEN_TOP + SEEN_H / 2 = 23.4).
+// Last line's top -> "Gesehen von" centre = 47.6 pt (SEEN_TOP + seen_h() / 2 = 23.4 in Standard).
 const SEEN_TOP: f32 = -0.6;
 // Height of the "Gesehen von" row; the label and avatars are centred in it (the avatars drawn in `seen_banner` are 22 pt).
-const SEEN_H: f32 = 48.0;
-const DAY_PAD: f32 = 30.0; // vertical padding of info rows
+fn seen_h() -> f32 { dm().seen_h } // 48
+fn day_pad() -> f32 { dm().day_pad } // vertical padding of info rows (30)
 
 /// Messages of one sender closer than this are grouped under one header.
 const GROUP_MINUTES: i32 = 5;
@@ -129,7 +131,9 @@ struct JobBuilder { job: egui::text::LayoutJob, nchars: usize, runs: Vec<EmojiRu
 struct Style { bold: bool, italic: bool, underline: bool, strike: bool, code: bool, size: Option<f32>, bg: Option<Color32> }
 
 /// What a message needs below its text, measured before painting.
-struct Content { text: Option<Arc<Galley>>, links: Vec<(std::ops::Range<usize>, String)>, emojis: Vec<EmojiRun>, quotes: Vec<(usize, usize)>, jump: Option<String>, files: Vec<String>, h: f32 }
+/// `files` / `file_atts`: the file cards (names and their attachments); `videos`: the video files of the share, drawn as video
+/// cards after the pictures (a video with a thumbnail comes in `Message.images` and is drawn there).
+struct Content { text: Option<Arc<Galley>>, links: Vec<(std::ops::Range<usize>, String)>, emojis: Vec<EmojiRun>, quotes: Vec<(usize, usize)>, jump: Option<String>, files: Vec<String>, file_atts: Vec<Option<Attachment>>, videos: Vec<Attachment>, h: f32 }
 
 #[cfg(test)]
 mod tests;
@@ -151,4 +155,9 @@ mod multisel;
 pub(crate) use multisel::*;
 mod rows;
 mod media;
+mod video;
+mod attachments;
+use attachments::split_files;
+pub(crate) use video::poster as video_poster;
+use video::is_video;
 mod interact;

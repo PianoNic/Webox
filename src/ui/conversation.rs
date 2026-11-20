@@ -35,7 +35,9 @@ impl App {
         // Only the top-left corner is rounded: the card runs flat into the window's right edge, so it is painted 10 pt wider and
         // its right-hand rounding falls outside the window.
         vgrad(ui.painter(), Rect::from_min_max(full.min, pos2(full.max.x + 10.0, full.max.y)), 10.0, t.conv, t.conv_b);
-        let banner = Rect::from_min_size(full.min, Vec2::new(full.width(), 116.0));
+        crate::ui::theme::decor::card(ui.painter(), Rect::from_min_max(full.min, pos2(full.max.x + 10.0, full.max.y)), 10.0, false);
+        let dm = crate::ui::theme::density::m(); // banner geometry
+        let banner = Rect::from_min_size(full.min, Vec2::new(full.width(), dm.banner_h));
         // The banner picture: in a direct chat the other person's own cover (their own, else the global default "@default", via
         // App::cover_for); in a group space only the space's own cover, never the user's; no cover = the flat header. Cropped to
         // fill; textures are cached by the app (photos.rs), nothing is decoded per frame.
@@ -49,17 +51,17 @@ impl App {
             cover_banner(ui.painter(), tid, banner, uv, 10.0, t.conv);
         }
         let has_cover = cover_tex.is_some(); // title (semibold 20) + favourite star at x=21 / y=28 inside the card
-        let title_g = ui.painter().text(pos2(banner.left() + 21.0, banner.top() + 26.0), egui::Align2::LEFT_CENTER, &space.title, semibold(20.0), if has_cover { Color32::WHITE } else { t.text1 });
-        let sr = Rect::from_center_size(pos2(title_g.right() + 21.0, banner.top() + 30.0), Vec2::splat(24.0));
+        let title_g = ui.painter().text(pos2(banner.left() + 21.0, banner.top() + dm.banner_title_y), egui::Align2::LEFT_CENTER, &space.title, semibold(20.0), if has_cover { Color32::WHITE } else { t.text1 });
+        let sr = Rect::from_center_size(pos2(title_g.right() + 21.0, banner.top() + dm.banner_actions_y), Vec2::splat(24.0));
         let sresp = ui.interact(sr, ui.id().with("fav-star"), Sense::click());
         self.icons.paint(ui, if space.favorite { "favorite-filled" } else { "favorite-regular" }, Rect::from_center_size(sr.center(), Vec2::splat(17.0)), if space.favorite { t.star } else { t.text2 });
         if sresp.on_hover_text("Favorit (Strg+Umschalt+F)").clicked() { self.set_favorite(&space.id, !space.favorite) }
         let line = person.as_ref().map(|p| self.person_line(p, super::chrome::now_ms()));
         let (sub, sub_col) = header_subline(t, line, &space, &self.teams, t.text2);
-        if !sub.is_empty() { ui.painter().text(pos2(banner.left() + 21.0, banner.top() + 52.0), egui::Align2::LEFT_CENTER, sub, FontId::proportional(13.0), sub_col); }
+        if !sub.is_empty() { ui.painter().text(pos2(banner.left() + 21.0, banner.top() + dm.banner_sub_y), egui::Align2::LEFT_CENTER, sub, FontId::proportional(13.0), sub_col); }
         // Top-right actions: a group space shows the calendar button and the grey "Treffen" pill; a direct space shows the round
         // action buttons.
-        let cy = banner.top() + 30.0;
+        let cy = banner.top() + dm.banner_actions_y;
         if space.direct {
             // Direct-chat row (28 pt circles on a 34 pt pitch), right to left: video + handset (emerald-60), share (cobalt-60),
             // schedule (disabled look, gray-70), start-chat/AI ring (gray-40). Hover / pressed use the next palette steps (-70 / -80).
@@ -125,7 +127,7 @@ impl App {
         // Tabs: pills 28 px high centred 89 px below the card top; space actions at the right.
         let mut gear_rect = Rect::NOTHING;
         let mut pin_rect = Rect::NOTHING;
-        let trow = Rect::from_min_size(pos2(banner.left() + 17.0, banner.top() + 69.0), Vec2::new(banner.width() - 34.0, 28.0));
+        let trow = Rect::from_min_size(pos2(banner.left() + 17.0, banner.top() + dm.banner_tabs_y), Vec2::new(banner.width() - 34.0, 28.0));
         let mut h = ui.new_child(egui::UiBuilder::new().max_rect(trow).layout(egui::Layout::left_to_right(egui::Align::Center)));
         h.spacing_mut().item_spacing.x = 12.0;
         h.horizontal(|ui| {

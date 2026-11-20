@@ -16,7 +16,7 @@ impl App {
         let icon_col = if on { t.tk("navigationtab-text:checked") } else { t.tk("navigationtab-text") };
         self.icons.paint(ui, icon, Rect::from_center_size(ic, Vec2::splat(24.0) /* 24 pt icon box */), icon_col);
         // The rail badge is appNav-badge (red-60), not the blue mainList-indicator.
-        if badge { ui.painter().circle_filled(ic + Vec2::new(10.0, -10.0), 5.0, t.tk("appNav-badge")); } // = t.badge unless an accent theme sets it
+        if badge { ui.painter().circle_filled(ic + Vec2::new(10.0, -10.0), 5.0, if crate::ui::theme::decor::on(collabhost_plugin_api::deco::BADGE_CYCLE) { crate::ui::theme::decor::cycle(0).unwrap_or(t.tk("appNav-badge")) } else { t.tk("appNav-badge") }); } // = t.badge unless an accent theme sets it
         if self.rail_wide {
             ui.painter().text(pos2(r.left() + 44.0, r.center().y), egui::Align2::LEFT_CENTER, label, if on { semibold(14.3) } else { FontId::proportional(13.7) }, icon_col);
         }
@@ -85,7 +85,7 @@ impl App {
         let e = edge_inset(ctx);
         let bx = (e + RAIL_NARROW + (RAIL_WIDE - RAIL_NARROW) * k).round();
         let screen = ctx.screen_rect();
-        let top = e + HEADER_H;
+        let top = e + header_h();
         let cy = top + (screen.height() - e - top) / 2.0;
         let btn = Rect::from_center_size(pos2(bx - 0.5, cy), Vec2::splat(20.0));
         let near = ctx.input(|i| i.pointer.hover_pos()).is_some_and(|p| (p.x - bx).abs() < 10.0 && p.y > top && ctx.layer_id_at(p).map_or(true, |l| l.order == egui::Order::Background || l.id == egui::Id::new("rail-edge"))); // not under an overlay

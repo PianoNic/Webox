@@ -12,7 +12,7 @@ impl App {
         let cid = egui::Id::new(CID);
         let mut update_hint = false;
         // Toolbar (action bar).
-        let tb = Rect::from_min_size(pos2(crect.left() + 25.0, crect.top() + off + 10.0), Vec2::new(crect.width() - 50.0, 28.0));
+        let tb = Rect::from_min_size(pos2(crect.left() + 25.0, crect.top() + off + crate::ui::theme::density::m().composer_tools_y), Vec2::new(crect.width() - 50.0, 28.0));
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(tb).layout(egui::Layout::left_to_right(egui::Align::Center)));
         // Pitch 30 pt between glyph centres = 28 button + 2, glyphs 16 pt.
         c.spacing_mut().item_spacing.x = TOOL_GAP;
@@ -86,6 +86,7 @@ impl App {
         if id == super::super::new_message::DRAFT_ID {
             let cr = Rect::from_min_max(pos2(pr.center().x, pr.top()), pr.max);
             let s = ui.interact(cr, ui.id().with("send"), Sense::click());
+            crate::ui::theme::fx::send_button(cr);
             ui.painter().circle_stroke(cr.center(), pr.height() / 2.0 - 0.5, Stroke::new(1.0, if light { hex(0xCCCCCC) } else { hex(0x3B3B3B) }));
             self.icons.paint(ui, "send-filled", Rect::from_center_size(cr.center(), Vec2::splat(16.0)), if s.hovered() { t.text1 } else { hex(0x6F6F6F) });
             if s.on_hover_text("Senden").clicked() { now_send = true; }
@@ -104,6 +105,12 @@ impl App {
         let k = ui.interact(cr, ui.id().with("later"), if can_sched { Sense::click() } else { Sense::hover() });
         let dim = hex(0x6F6F6F);
         let on = |hov: bool| if hov { t.text1 } else { t.text1.gamma_multiply(0.85) };
+        crate::ui::theme::fx::send_button(sr);
+        if can_send && crate::ui::theme::decor::on(collabhost_plugin_api::deco::SEND_BUTTON) {
+            // a soft gradient under the glyph (it stays readable) and a gradient outline round the pill
+            crate::ui::theme::decor::fill(ui.painter(), sr.shrink(2.0), 11.0, &crate::ui::theme::decor::stripes(), 0.0, 0.32);
+            crate::ui::theme::decor::outline(ui.painter(), pr, 13.0, 1.5, &crate::ui::theme::decor::stripes(), 0.0);
+        }
         if can_send && s.hovered() { ui.painter().rect_filled(sr.shrink(2.0), egui::CornerRadius { nw: 11, sw: 11, ne: 0, se: 0 }, t.hover); }
         if can_sched && k.hovered() { ui.painter().rect_filled(cr.shrink(2.0), egui::CornerRadius { nw: 0, sw: 0, ne: 11, se: 11 }, t.hover); }
         self.icons.paint(ui, "send-filled", Rect::from_center_size(sr.center(), Vec2::splat(16.0)), if can_send { on(s.hovered()) } else { dim });

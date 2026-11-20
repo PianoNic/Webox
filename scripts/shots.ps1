@@ -26,3 +26,4 @@ Shot 'plugin_search' @{ WEBOX_SHOT_SETTINGS='plugins'; WEBOX_SHOT_SETTINGS_SEARC
 # Pride Theme on (writes the switch into the shot's own config; run with APPDATA pointing at a scratch folder)
 Shot 'pride_settings' @{ WEBOX_SHOT_SETTINGS='plugins'; WEBOX_SHOT_PLUGIN_DETAIL='collabhost_pride_theme' }
 Shot 'plugins_repos' @{ WEBOX_SHOT_SETTINGS='plugins'; WEBOX_SHOT_PLUGIN_TAB='repos' }
+# Pride Theme decorations: scripts/pride-shots.ps1 renders rainbow / trans / bi on dark and light

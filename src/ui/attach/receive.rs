@@ -44,7 +44,7 @@ impl App {
         let _ = now;
     }
 
-    pub(super) fn file_write_local(&mut self, key: &str, name: &str, src: &Path, dest: &Path, now: f64) {
+    pub(crate) fn file_write_local(&mut self, key: &str, name: &str, src: &Path, dest: &Path, now: f64) {
         fs_::download_begin(key, name, dest, Then::Nothing);
         match std::fs::copy(src, dest) {
             Ok(n) => { fs_::download_progress(key, n, n); fs_::download_phase(key, Phase::Done); }
@@ -75,6 +75,8 @@ impl App {
                 match &d.phase {
                     Phase::Done if d.then == Then::Nothing => { said.insert(d.key.clone()); toasts.push(format!("{} – Download beendet", d.name)); }
                     Phase::Done => { said.insert(d.key.clone()); }
+                    // the inline player shows its own message on the card
+                    Phase::Failed(_) if d.then == Then::Play => { said.insert(d.key.clone()); }
                     Phase::Failed(_) => { said.insert(d.key.clone()); toasts.push(format!("{} – Download fehlgeschlagen", d.name)); }
                     _ => {}
                 }

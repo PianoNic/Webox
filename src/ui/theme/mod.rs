@@ -10,6 +10,9 @@
 use eframe::egui::Color32;
 
 pub(crate) mod accents;
+pub(crate) mod decor;
+pub(crate) mod density;
+pub(crate) mod fx;
 mod tokens;
 #[cfg(test)]
 mod tests;

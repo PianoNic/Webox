@@ -61,11 +61,11 @@ impl App {
         let mut job = egui::text::LayoutJob::simple(format!("{} {when}", m.notice).trim().to_string(), FontId::proportional(SECOND), c.day, (w - 20.0).max(40.0));
         job.halign = egui::Align::Center;
         let g = ui.fonts(|f| f.layout_job(job));
-        let (r, _) = ui.allocate_exact_size(Vec2::new(w, g.size().y + DAY_PAD), Sense::hover());
+        let (r, _) = ui.allocate_exact_size(Vec2::new(w, g.size().y + day_pad()), Sense::hover());
         record_row(ui.ctx(), &m.id, r);
         self.info_row_select(ui, m, r);
         // With halign Center the galley is centred on its origin x.
-        ui.painter().galley(pos2(r.center().x - g.rect.center().x, r.top() + DAY_PAD / 2.0), g, c.day);
+        ui.painter().galley(pos2(r.center().x - g.rect.center().x, r.top() + day_pad() / 2.0), g, c.day);
     }
 
     /// A collapsed join/leave row: the info row in the link colour (`text-hyperlink`) with arrow-down_12 / arrow-up_12 12 pt from
@@ -75,7 +75,7 @@ impl App {
         let (today, yesterday) = day_ref(self.client.is_some());
         let when = header_time(&m.date, &m.time, &today, &yesterday);
         let g = ui.painter().layout(format!("{} {when}", m.notice).trim().to_string(), FontId::proportional(SECOND), c.accent, (w - 60.0).max(40.0));
-        let (r, resp) = ui.allocate_exact_size(Vec2::new(w, g.size().y + DAY_PAD), Sense::click());
+        let (r, resp) = ui.allocate_exact_size(Vec2::new(w, g.size().y + day_pad()), Sense::click());
         record_row(ui.ctx(), &m.id, r);
         self.info_row_select(ui, m, r);
         let key = Id::new(("group-row-open", &m.id));
@@ -86,7 +86,7 @@ impl App {
         if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
         let tw = g.size().x + 12.0 + 12.0; // text + 12 pt gap + 12 pt arrow
         let x0 = r.center().x - tw / 2.0;
-        let ty = r.top() + DAY_PAD / 2.0;
+        let ty = r.top() + day_pad() / 2.0;
         let gh = g.size().y;
         ui.painter().galley(pos2(x0, ty), g, c.accent);
         self.icons.paint(ui, if open { "arrow-up_12" } else { "arrow-down_12" }, Rect::from_center_size(pos2(x0 + tw - 6.0, ty + gh / 2.0), Vec2::splat(12.0)), c.accent);
@@ -118,7 +118,7 @@ impl App {
     pub(super) fn day_line(&self, ui: &mut egui::Ui, _t: &Th, c: &Mc, label: &str, col: Color32) {
         let w = ui.available_width();
         let g = ui.painter().layout_no_wrap(label.to_string(), FontId::proportional(SECOND), col);
-        let (r, _) = ui.allocate_exact_size(Vec2::new(w, g.size().y + DAY_PAD), Sense::hover());
+        let (r, _) = ui.allocate_exact_size(Vec2::new(w, g.size().y + day_pad()), Sense::hover());
         let (cx, cy) = (r.center().x, r.center().y);
         let (l, rr) = (cx - g.size().x / 2.0 - 10.0, cx + g.size().x / 2.0 + 10.0);
         ui.painter().galley(pos2(cx - g.size().x / 2.0, cy - g.size().y / 2.0), g, col);
@@ -148,15 +148,13 @@ impl App {
         };
         let mut h = 0.0;
         let mut first = true;
-        let gap = |h: &mut f32, first: &mut bool| { if !*first { *h += ATTACH_GAP; } *first = false; };
-        for a in &m.images { gap(&mut h, &mut first); let tex = self.photos.image_size(ui.ctx(), &a.key); h += image_box(a, wrap, tex).y; }
-        if !files.is_empty() { gap(&mut h, &mut first); h += file_flow(files.len(), wrap).2; } // the files' flow (gallery view)
-        for p in &m.previews { gap(&mut h, &mut first); h += Self::card_parts(ui, c, p, wrap.min(CARD_MAX_W)).3.h; }
-        let attach = !m.images.is_empty() || !files.is_empty() || !m.previews.is_empty();
+        let (files, file_atts, videos) = split_files(m, files);
+        h += self.attachments_height(ui, c, m, &videos, files.len(), wrap, &mut first);
+        let attach = !m.images.is_empty() || !videos.is_empty() || !files.is_empty() || !m.previews.is_empty();
         if attach { h += ATTACH_BOTTOM; } // bottom padding of the attachments column
         if let Some(g) = &galley { if attach { h += CAPTION_GAP; } h += g.size().y; }
         if !m.reactions.is_empty() { h += 2.0 + REACT_H; } // 2 pt spacer + reactions row
-        Content { text: galley, links, emojis, quotes, jump, files, h }
+        Content { text: galley, links, emojis, quotes, jump, files, file_atts, videos, h }
     }
 
     /// `measure`, reused across frames: the key covers everything `measure` reads (message id, text, rich text, the plugin's
@@ -175,9 +173,11 @@ impl App {
             for p in &m.previews { (&p.title, &p.description, &p.site).hash(&mut h); }
             m.reactions.is_empty().hash(&mut h);
         }
-        (wrap.to_bits(), c.body, c.white, c.accent).hash(&mut h);
+        (wrap.to_bits(), c.body, c.white, c.accent, crate::ui::theme::density::get()).hash(&mut h); // density: the attachment gap
         (&self.me.id, &self.me.name, emoji_text::ensure_font(&ctx), super::super::widgets::msg_scale().to_bits(), ctx.pixels_per_point().to_bits()).hash(&mut h);
         for a in &m.images { (&a.key, a.width, a.height, self.photos.image_size(&ctx, &a.key)).hash(&mut h); }
+        // a video card's height follows its poster once the first frame is decoded
+        for a in m.files.iter().chain(&m.images).filter(|a| is_video(a)) { self.video_known_size(&ctx, a).hash(&mut h); }
         let key = h.finish();
         let pass = ctx.cumulative_pass_nr();
         let hit = ROWS.with(|r| r.borrow_mut().get_mut(&key).map(|e| { e.used = pass; e.content.clone() }));
@@ -207,8 +207,8 @@ impl App {
         let who = if m.mine { tr("You").to_string() } else { m.author.clone() };
         // The header line's height is that of the name's galley; the galleys themselves are laid out only for rows on screen.
         let hdr_h = if head { header_height(ui, &who) } else { 0.0 };
-        let content_h = ct.h + if head { hdr_h + HEADER_TO_BODY } else { 0.0 };
-        let row_h = TOP_PAD + content_h + BOTTOM_PAD;
+        let content_h = ct.h + if head { hdr_h + header_to_body() } else { 0.0 };
+        let row_h = top_pad() + content_h + bottom_pad();
         let (row, _) = ui.allocate_exact_size(Vec2::new(width, row_h), Sense::hover());
         { let top0 = ui.ctx().data(|d| d.get_temp::<f32>(Id::new("msg-top0"))).unwrap_or(0.0); ui.ctx().data_mut(|d| { d.get_temp_mut_or_insert_with(Id::new("msg-rowpos"), std::collections::HashMap::<String, f32>::new).insert(m.id.clone(), row.top() - top0); }); }
         record_row(ui.ctx(), &m.id, row);
@@ -251,7 +251,7 @@ impl App {
             }
             // Avatar: own messages carry the blue chat bubble in a ring, others the profile picture.
             if head {
-                let ar = Rect::from_min_size(origin + Vec2::new(indent + GRID_X + AVATAR_LEFT, AVATAR_TOP), Vec2::splat(AVATAR));
+                let ar = Rect::from_min_size(origin + Vec2::new(indent + GRID_X + AVATAR_LEFT, avatar_top()), Vec2::splat(AVATAR));
                 if m.mine {
                     let rc = pos2(ar.center().x.round(), ar.center().y.round()); // pixel-aligned so the 1 pt ring stays crisp
                     p.circle_stroke(rc, AVATAR / 2.0 - 0.5, Stroke::new(1.0, c.ring));
@@ -267,7 +267,7 @@ impl App {
                 }
             }
             let tx = origin.x + box_left + RADIUS;
-            let mut y = row.top() + TOP_PAD;
+            let mut y = row.top() + top_pad();
             if let Some((name, time, edited)) = hdr {
                 let mut x = tx;
                 let hy = y;
@@ -277,27 +277,9 @@ impl App {
                 x += time.size().x + HEADER_GAP;
                 if let Some(e) = edited { p.galley(pos2(x, hy), e.clone(), c.head); x += e.size().x + HEADER_GAP; }
                 if self.flags.contains(&(id.to_string(), m.id.clone())) { self.icons.paint(ui, "flag-active_12", Rect::from_min_size(pos2(x, hy + (hdr_h - 14.0) / 2.0), Vec2::splat(14.0)), c.accent); }
-                y += hdr_h + HEADER_TO_BODY;
+                y += hdr_h + header_to_body();
             }
-            let mut idx = 0usize;
-            // Gaps: every picture, the files' flow as one block, every link card.
-            let n_attach = m.images.len() + usize::from(!ct.files.is_empty()) + m.previews.len();
-            let mut block = 0usize;
-            for a in &m.images { y += self.image_block(ui, c, pos2(tx, y), a, wrap, (&m.id, idx)); idx += 1; block += 1; y += if block < n_attach { ATTACH_GAP } else { ATTACH_BOTTOM }; }
-            if !ct.files.is_empty() {
-                // The file cards side by side in a flow (spacing 8), wrapping when the message is narrow.
-                let (pos, cw, fh) = file_flow(ct.files.len(), wrap);
-                for (fi, f) in ct.files.iter().enumerate() {
-                    // The file behind the card (same order as the "📎" lines; by name when the counts differ).
-                    let att = if m.files.len() == ct.files.len() { m.files.get(fi) } else { m.files.iter().find(|a| a.name == *f) };
-                    let (dx, dy) = pos[fi];
-                    self.file_chip(ui, t, c, Rect::from_min_size(pos2(tx + dx, y + dy), Vec2::new(cw, FILE_CARD_H)), f, att.map_or(0, |a| a.size), (&m.id, idx), att.map(|a| a.key.as_str()));
-                    idx += 1;
-                }
-                block += 1;
-                y += fh + if block < n_attach { ATTACH_GAP } else { ATTACH_BOTTOM };
-            }
-            for pv in &m.previews { let h = self.link_card(ui, c, pos2(tx, y), wrap, pv, (&m.id, idx)); idx += 1; block += 1; y += h + if block < n_attach { ATTACH_GAP } else { ATTACH_BOTTOM }; }
+            let n_attach = self.draw_attachments(ui, t, c, m, &ct, pos2(tx, y), wrap, &mut y);
             if let Some(g) = &ct.text {
                 if n_attach > 0 { y += CAPTION_GAP; }
                 let tr_ = Rect::from_min_size(pos2(tx, y), g.size());

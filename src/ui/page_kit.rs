@@ -51,7 +51,7 @@ impl App {
             egui::CentralPanel::default().frame(egui::Frame::default().inner_margin(gap)).show(ctx, |ui| {
                 let card = ui.available_rect_before_wrap();
                 let _ = ui.allocate_rect(card, Sense::hover());
-                vgrad(ui.painter(), card, 10.0, t.card, t.card_b);
+                vgrad(ui.painter(), card, 10.0, t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), card, 10.0, true);
                 let (dx, dy) = if self.tab == Tab::Whiteboards { (24.0, 20.0) } else { (24.0, 24.0) };
                 let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(card.min + Vec2::new(dx, dy), card.max - Vec2::splat(24.0))));
                 c.set_min_size(c.available_size());
@@ -64,7 +64,7 @@ impl App {
             .frame(egui::Frame::default().inner_margin(gap)).show(ctx, |ui| {
             let card = ui.available_rect_before_wrap();
             let _ = ui.allocate_rect(card, Sense::hover());
-            vgrad(ui.painter(), card, 10.0, t.card, t.card_b);
+            vgrad(ui.painter(), card, 10.0, t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), card, 10.0, true);
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(pos2(card.left() + 8.0, card.top() + 18.0), pos2(card.right() - 6.0, card.bottom()))));
             c.set_min_size(c.available_size());
             self.page_list(&mut c, t, now);
@@ -73,7 +73,7 @@ impl App {
         egui::CentralPanel::default().frame(egui::Frame::default().inner_margin(gap)).show(ctx, |ui| {
             let card = ui.available_rect_before_wrap();
             let _ = ui.allocate_rect(card, Sense::hover());
-            vgrad(ui.painter(), card, 10.0, t.conv, t.conv_b);
+            vgrad(ui.painter(), card, 10.0, t.conv, t.conv_b); crate::ui::theme::decor::card(ui.painter(), card, 10.0, false);
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(card));
             c.set_min_size(card.size());
             self.page_detail(&mut c, t, now);
@@ -184,7 +184,7 @@ impl App {
         let r = Rect::from_min_max(full.min + Vec2::new(12.0, 0.0), pos2(full.max.x - 4.0, full.min.y + 50.0));
         let resp = ui.interact(r, ui.id().with(("pg-row", &s.id)), Sense::click());
         let hovered = ui.rect_contains_pointer(r);
-        if s.selected { ui.painter().rect_filled(r, 25.0, t.selected); }
+        if s.selected { ui.painter().rect_filled(r, 25.0, t.selected); if crate::ui::theme::decor::on(collabhost_plugin_api::deco::SELECTED_ROW) { crate::ui::theme::decor::outline(ui.painter(), r, 25.0, 1.5, &crate::ui::theme::decor::stripes(), 0.0); } }
         else if resp.is_pointer_button_down_on() { ui.painter().rect_filled(r, 25.0, t.ink_a(0.11)); }
         else if resp.hovered() { ui.painter().rect_filled(r, 25.0, t.ink_a(0.05)); }
         let mut out = RowOut { clicked: resp.clicked(), double: resp.double_clicked(), ..Default::default() };

@@ -26,12 +26,12 @@ impl App {
         let e = super::chrome::edge_inset(ctx); // the not-maximised margin around all content
         let x = e + rail_w + card_w + 2.0;
         let screen = ctx.screen_rect();
-        let area = Rect::from_min_max(pos2(x - 5.0, e + super::chrome::HEADER_H), pos2(x + 5.0, screen.bottom() - e));
+        let area = Rect::from_min_max(pos2(x - 5.0, e + super::chrome::header_h()), pos2(x + 5.0, screen.bottom() - e));
         egui::Area::new(egui::Id::new("list-splitter")).fixed_pos(area.min).order(egui::Order::Foreground).show(ctx, |ui| {
             let resp = ui.allocate_rect(area, Sense::click_and_drag());
             if resp.hovered() || resp.dragged() {
                 ctx.set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                ui.painter().vline(x, (e + super::chrome::HEADER_H + 10.0)..=(screen.bottom() - e), Stroke::new(2.0, if resp.dragged() { t.focus } else { t.sep }));
+                ui.painter().vline(x, (e + super::chrome::header_h() + 10.0)..=(screen.bottom() - e), Stroke::new(2.0, if resp.dragged() { t.focus } else { t.sep }));
             }
             if resp.dragged() {
                 if let Some(p) = ctx.input(|i| i.pointer.interact_pos()) {
@@ -60,9 +60,9 @@ impl App {
                 let card = ui.available_rect_before_wrap();
                 let _ = ui.allocate_rect(card, Sense::hover());
                 let crect = card;
-                vgrad(ui.painter(), crect, 10.0, t.card, t.card_b);
+                vgrad(ui.painter(), crect, 10.0, t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), crect, 10.0, true);
                 let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(
-                    pos2(crect.left() + 8.0, crect.top() + 18.0), pos2(crect.right() - 6.0, crect.bottom()))));
+                    pos2(crect.left() + 8.0, crect.top() + crate::ui::theme::density::m().list_top), pos2(crect.right() - 6.0, crect.bottom()))));
                 c.set_min_size(c.available_size());
                 self.space_list(&mut c, t);
             });
@@ -87,6 +87,7 @@ impl App {
     }
 
     pub(crate) fn space_list(&mut self, ui: &mut egui::Ui, t: &Th) {
+        let dm = crate::ui::theme::density::m();
         ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
         let mut filter_rect = Rect::NOTHING;
         ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), 28.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -112,9 +113,11 @@ impl App {
             });
         });
         {
-            let items: Vec<super::menu::Entry> = FILTERS.iter().enumerate().map(|(i, (f, name))| super::menu::Item::new(&i.to_string(), tr(name)).checked(self.filter == *f).entry()).collect();
+            let mut items: Vec<super::menu::Entry> = FILTERS.iter().enumerate().map(|(i, (f, name))| super::menu::Item::new(&i.to_string(), tr(name)).checked(self.filter == *f).entry()).collect();
+            items.extend(self.filter_menu_options()); // "Kompakte Ansicht anzeigen" (chrome/compact_list.rs)
             if let Some(a) = super::menu::webex_menu(ui.ctx(), &mut self.icons, t, "filters", filter_rect, super::menu::Side::Below, super::menu::Align::Right, true, &items) {
-                if let Some((f, _)) = a.parse::<usize>().ok().and_then(|i| FILTERS.get(i)) { self.filter = *f; }
+                if a == super::chrome::compact_list::MENU_ID { let on = !self.compact_view(); self.set_compact_view(on); }
+                else if let Some((f, _)) = a.parse::<usize>().ok().and_then(|i| FILTERS.get(i)) { self.filter = *f; }
             }
         }
         if self.tab == Tab::Teams && self.team_sel.is_none() {
@@ -125,7 +128,7 @@ impl App {
             }
             return;
         }
-        ui.add_space(8.0);
+        ui.add_space(dm.list_title_gap);
         ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), 28.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
             for (l, name) in [(ListTab::All, "All"), (ListTab::Direct, "Direct"), (ListTab::Spaces, "Spaces"), (ListTab::Public, "Public")] {
@@ -138,18 +141,18 @@ impl App {
         crate::ui::widgets::vscroll().auto_shrink([false; 2]).arrow_bar(!t.light).show(ui, |ui| {
             ui.set_max_width(ui.available_width() - crate::ui::autoscroll::BAR_W);
             ui.spacing_mut().item_spacing = Vec2::ZERO;
-            ui.add_space(8.0);
+            ui.add_space(dm.list_scroll_top);
             // "Empfohlene Nachrichten" entry at the top of the list: mint disc with a blue bolt.
-            let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 44.0), Sense::hover());
+            let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), dm.recommended_h), Sense::hover());
             let r = Rect::from_min_max(full.min + Vec2::new(12.0, 0.0), full.max - Vec2::new(4.0, 0.0));
             let resp = ui.interact(r, ui.id().with("recommended"), Sense::click());
-            if resp.hovered() { ui.painter().rect_filled(r, 22.0, t.hover); }
-            let c = r.left_center() + Vec2::new(12.0, 0.0);
+            if resp.hovered() { ui.painter().rect_filled(r, dm.recommended_h / 2.0, t.hover); }
+            let c = r.left_center() + Vec2::new(dm.recommended_disc / 2.0 - 4.0, 0.0);
             // highlights_avatar_120.svg: #BEFADE disc with the blue bolt.
-            self.icons.art(ui, "highlights_avatar_120", Rect::from_center_size(c, Vec2::splat(32.0)));
-            ui.painter().text(r.left_center() + Vec2::new(40.0, 0.0), egui::Align2::LEFT_CENTER, tr("Recommended messages"), FontId::proportional(16.4), t.text2);
+            self.icons.art(ui, "highlights_avatar_120", Rect::from_center_size(c, Vec2::splat(dm.recommended_disc)));
+            ui.painter().text(r.left_center() + Vec2::new(dm.recommended_disc + 8.0, 0.0), egui::Align2::LEFT_CENTER, tr("Recommended messages"), FontId::proportional(16.4), t.text2);
             if resp.clicked() { self.filter = if self.filter == Filter::Notifications { Filter::None } else { Filter::Notifications } }
-            ui.add_space(7.0);
+            ui.add_space(dm.recommended_gap);
             if self.skeleton_rows(ui, t) { return; }
             let list = self.visible_idx();
             let (fav, other): (Vec<usize>, Vec<usize>) = list.into_iter().partition(|&i| self.spaces[i].favorite);

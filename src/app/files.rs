@@ -27,7 +27,8 @@ pub enum Phase { Preparing, Uploading, Sharing, Done, Failed(String), Cancelled 
 
 /// What happens once a download has finished.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Then { Nothing, Open, ShowInFolder }
+pub enum Then { Nothing, Open, ShowInFolder, /// fetched for the inline video player (into the playback cache, no toast)
+    Play }
 
 #[derive(Clone, Debug)]
 pub struct Upload { pub id: String, pub space: String, pub names: Vec<String>, pub sent: u64, pub total: u64, pub phase: Phase, pub cancel: Arc<AtomicBool>, pub started: f64 }

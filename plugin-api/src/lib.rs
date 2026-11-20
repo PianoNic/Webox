@@ -31,9 +31,11 @@ pub const CONTRACT_MAJOR: u16 = 1;
 /// the end of [`HostApi`]). The host reads the new vtable entries only from plugins that report 1.2 or newer.
 /// 1.3: accent themes ([`Plugin::accents`], `accents` at the end of [`PluginVTable`]): accent-role colours and a gradient,
 /// computed by the plugin for the active base theme ([`ThemeInfo`]).
-pub const CONTRACT_MINOR: u16 = 3;
+/// 1.4: decorations ([`Plugin::decor`], `decor` at the end of [`PluginVTable`], `text_secondary` at the end of [`ThemeInfo`]):
+/// background washes, host-drawn decorations and effects.
+pub const CONTRACT_MINOR: u16 = 4;
 /// "major.minor", as written into a plugin repository index (`contract`).
-pub const CONTRACT: &str = "1.3";
+pub const CONTRACT: &str = "1.4";
 /// `(major << 16) | minor`, returned by the [`CONTRACT_SYMBOL`] function.
 pub const CONTRACT_PACKED: u32 = ((CONTRACT_MAJOR as u32) << 16) | CONTRACT_MINOR as u32;
 pub const ENTRY_SYMBOL: &[u8] = b"collabhost_plugin\0";
@@ -70,6 +72,73 @@ pub struct ThemeInfo {
     pub surface: u32,
     /// The primary text colour.
     pub text: u32,
+    /// 1.4: the secondary text colour (labels, timestamps). Read it only when `size` covers it.
+    pub text_secondary: u32,
+}
+
+/// A gradient the host paints over one surface (contract 1.4): `stops_len` colours spread evenly along `angle` (degrees,
+/// 0 = left to right, 90 = top to bottom), laid over the base colour at `opacity` (0..1). `border` > 0 also strokes the
+/// surface's outline with the same gradient at full strength, that many points wide. `stops_len` 0 = nothing.
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+pub struct Wash { pub stops_len: u32, pub stops: [u32; GRADIENT_MAX], pub angle: f32, pub opacity: f32, pub border: f32 }
+
+/// Host-drawn decorations and effects a design plugin can switch on ([`Decor::flags`]). Webox draws them in the
+/// [`Decor::stripes`] colours (falling back to the accent gradient).
+pub mod deco {
+    /// A vertical flag band along the rail's left edge.
+    pub const RAIL_STRIPE: u64 = 1 << 0;
+    /// A thin gradient line under the header.
+    pub const HEADER_STRIPE: u64 = 1 << 1;
+    /// A ring in the stripe colours around your own avatar.
+    pub const AVATAR_RING_SELF: u64 = 1 << 2;
+    /// ... and around everybody else's.
+    pub const AVATAR_RING_ALL: u64 = 1 << 3;
+    /// A gradient outline on the selected list row.
+    pub const SELECTED_ROW: u64 = 1 << 4;
+    /// A gradient outline on the selected text tab pill ("Alle", "Nachrichten", ...).
+    pub const TAB_PILLS: u64 = 1 << 5;
+    /// A gradient underline under the selected settings navigation item.
+    pub const NAV_UNDERLINE: u64 = 1 << 6;
+    /// Scrollbar thumbs in a vertical gradient.
+    pub const SCROLLBAR: u64 = 1 << 7;
+    /// Progress bars in a horizontal gradient.
+    pub const PROGRESS: u64 = 1 << 8;
+    /// A gradient ring around presence dots.
+    pub const PRESENCE_RING: u64 = 1 << 9;
+    /// The send button with a gradient outline and a soft gradient fill.
+    pub const SEND_BUTTON: u64 = 1 << 10;
+    /// A small flag (drawn as stripes) next to your name in the profile menu.
+    pub const NAME_FLAG: u64 = 1 << 11;
+    /// Switched-on toggle tracks in a horizontal gradient.
+    pub const TOGGLE_TRACK: u64 = 1 << 12;
+    /// Unread dots cycle through the stripe colours from row to row.
+    pub const BADGE_CYCLE: u64 = 1 << 13;
+    /// Effect: a short burst of confetti and hearts from the send button when you send (at most 1 s).
+    pub const SEND_BURST: u64 = 1 << 32;
+    /// Effect: a gradient ripple on a reaction you add.
+    pub const REACTION_RIPPLE: u64 = 1 << 33;
+    /// Effect: a "Happy Pride!" sparkle once, on the first start in June.
+    pub const JUNE_SPARKLE: u64 = 1 << 34;
+}
+
+/// What a design plugin asks Webox to draw (contract 1.4). Effects are skipped while the OS asks for reduced motion.
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+pub struct Decor {
+    /// `size_of::<Decor>()` of the plugin (set by the shim).
+    pub size: u32,
+    /// Behind everything: the window, rail and header.
+    pub window: Wash,
+    /// The list card (spaces, settings navigation).
+    pub list_card: Wash,
+    /// The content card (conversation, settings page). Keep `opacity` low: message text sits on it.
+    pub content_card: Wash,
+    /// The colours of the decorations, in order (e.g. a flag's stripes).
+    pub stripes_len: u32,
+    pub stripes: [u32; GRADIENT_MAX],
+    /// [`deco`] bits.
+    pub flags: u64,
 }
 
 /// Maximum stops of [`Accents::gradient`].
@@ -160,6 +229,8 @@ pub struct PluginVTable {
     pub settings_action: Option<extern "C" fn(*mut c_void, *const c_char) -> *mut c_char>,
     /// 1.3: fills the accents for the given base theme and returns 1 when the plugin is an accent theme.
     pub accents: Option<extern "C" fn(*mut c_void, *const ThemeInfo, *mut Accents) -> i32>,
+    /// 1.4: fills the decorations (backgrounds, host-drawn decorations, effects) for the given base theme; 1 = it has some.
+    pub decor: Option<extern "C" fn(*mut c_void, *const ThemeInfo, *mut Decor) -> i32>,
 }
 
 /// Safe handle to the host, given to [`Plugin::start`]. Valid until [`Plugin::stop`] returns.
@@ -222,6 +293,8 @@ pub trait Plugin: Default + 'static {
     /// For accent themes: the accent colours for this base theme (asked again whenever the theme or a setting changes;
     /// keep it cheap). Leave fields 0 to keep the host's colour.
     fn accents(&mut self, _theme: &ThemeInfo) -> Option<Accents> { None }
+    /// For design plugins: backgrounds, decorations and effects Webox draws for this base theme (contract 1.4).
+    fn decor(&mut self, _theme: &ThemeInfo) -> Option<Decor> { None }
 }
 
 /// A C string from any `&str` (interior NULs are dropped).
@@ -259,12 +332,31 @@ extern "C" fn changed_shim<T: Plugin>(p: *mut c_void, v: *const c_char) {
 extern "C" fn action_shim<T: Plugin>(p: *mut c_void, id: *const c_char) -> *mut c_char {
     with::<T, _>(p, std::ptr::null_mut(), |me| out(me.settings_action(&unsafe { arg(id) })))
 }
-extern "C" fn accents_shim<T: Plugin>(p: *mut c_void, th: *const ThemeInfo, o: *mut Accents) -> i32 {
-    if th.is_null() || o.is_null() { return 0; }
-    // Read only the fields both sides know (a newer host may pass a longer ThemeInfo).
+/// The host's ThemeInfo, reading only the fields both sides know (a newer host may pass a longer one, an older a shorter one).
+fn theme_info(th: *const ThemeInfo) -> ThemeInfo {
     let mut info = ThemeInfo::default();
     let n = (unsafe { (*th).size } as usize).min(std::mem::size_of::<ThemeInfo>());
     unsafe { std::ptr::copy_nonoverlapping(th as *const u8, &mut info as *mut ThemeInfo as *mut u8, n) };
+    info.size = std::mem::size_of::<ThemeInfo>() as u32;
+    info
+}
+extern "C" fn decor_shim<T: Plugin>(p: *mut c_void, th: *const ThemeInfo, o: *mut Decor) -> i32 {
+    if th.is_null() || o.is_null() { return 0; }
+    let info = theme_info(th);
+    with::<T, _>(p, 0, |me| match me.decor(&info) {
+        Some(mut d) => {
+            d.size = std::mem::size_of::<Decor>() as u32;
+            d.stripes_len = d.stripes_len.min(GRADIENT_MAX as u32);
+            for w in [&mut d.window, &mut d.list_card, &mut d.content_card] { w.stops_len = w.stops_len.min(GRADIENT_MAX as u32); }
+            unsafe { *o = d };
+            1
+        }
+        None => 0,
+    })
+}
+extern "C" fn accents_shim<T: Plugin>(p: *mut c_void, th: *const ThemeInfo, o: *mut Accents) -> i32 {
+    if th.is_null() || o.is_null() { return 0; }
+    let info = theme_info(th);
     with::<T, _>(p, 0, |me| match me.accents(&info) {
         Some(mut a) => { a.size = std::mem::size_of::<Accents>() as u32; a.gradient_len = a.gradient_len.min(GRADIENT_MAX as u32); unsafe { *o = a }; 1 }
         None => 0,
@@ -288,7 +380,7 @@ pub fn vtable<T: Plugin>() -> *const PluginVTable {
             start: Some(start_shim::<T>), stop: Some(stop_shim::<T>), on_send: Some(send_shim::<T>), on_message: Some(msg_shim::<T>),
             command: Some(cmd_shim::<T>), palette: Some(pal_shim::<T>), free_str: Some(free_shim), destroy: Some(destroy_shim::<T>),
             settings_schema: Some(schema_shim::<T>), settings_changed: Some(changed_shim::<T>), settings_action: Some(action_shim::<T>),
-            accents: Some(accents_shim::<T>),
+            accents: Some(accents_shim::<T>), decor: Some(decor_shim::<T>),
         })) as *const PluginVTable
     }).unwrap_or(std::ptr::null())
 }

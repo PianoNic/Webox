@@ -166,7 +166,7 @@ impl App {
                                 if src.is_some() {
                                     if let Some((v, f)) = &job {
                                         ui.label(RichText::new(format!("Lädt v{v} …")).size(kit::SECOND).color(t.text2));
-                                        ui.add(egui::ProgressBar::new(f.unwrap_or(0.0)).desired_width(140.0).show_percentage());
+                                        crate::ui::theme::decor::progress(ui, *f, 140.0);
                                     } else if let Some(u) = &update {
                                         if kit::pill(ui, t, &format!("Aktualisieren auf v{}", u.plugin.version), true, true).clicked() { action = Some((i, Act2::Update(u.clone()))); }
                                         ui.add_space(8.0);

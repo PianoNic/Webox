@@ -7,7 +7,7 @@ use super::plugin_repo::{index::check_contract, store};
 use super::plugin_settings as ps;
 pub mod settings;
 use settings::push_settings;
-use collabhost_plugin_api::{cs, unpack_contract, Accents, HostApi, Palette, PluginVTable, ThemeInfo, ABI_VERSION, CONTRACT_SYMBOL, ENTRY_SYMBOL};
+use collabhost_plugin_api::{cs, unpack_contract, Accents, Decor, HostApi, Palette, PluginVTable, ThemeInfo, ABI_VERSION, CONTRACT_SYMBOL, ENTRY_SYMBOL};
 use serde_json::{Map, Value};
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::path::{Path, PathBuf};
@@ -33,12 +33,21 @@ struct Calls {
     action: Option<extern "C" fn(Ptr, *const c_char) -> *mut c_char>,
     /// Contract 1.3 (accent themes).
     accents: Option<extern "C" fn(Ptr, *const ThemeInfo, *mut Accents) -> i32>,
+    /// Contract 1.4 (decorations).
+    decor: Option<extern "C" fn(Ptr, *const ThemeInfo, *mut Decor) -> i32>,
 }
 fn calls(v: &PluginVTable, minor: u16) -> Option<Calls> {
     let (schema, changed, action) = if minor >= 2 { (v.settings_schema, v.settings_changed, v.settings_action) } else { (None, None, None) };
     let accents = if minor >= 3 { v.accents } else { None };
+    let decor = if minor >= 4 { v.decor } else { None };
     Some(Calls { start: v.start?, stop: v.stop?, on_send: v.on_send?, on_message: v.on_message?, command: v.command?,
-        palette: v.palette?, free_str: v.free_str?, destroy: v.destroy?, schema, changed, action, accents })
+        palette: v.palette?, free_str: v.free_str?, destroy: v.destroy?, schema, changed, action, accents, decor })
+}
+/// The plugin's decorations for `th`, if it has any.
+fn decor_of(l: &Loaded, th: &ThemeInfo) -> Option<Decor> {
+    let f = l.c.decor?;
+    let mut d = Decor::default();
+    (f(l.inst, th, &mut d) == 1).then_some(d)
 }
 /// The plugin's accents for `th`, if it is an accent theme.
 fn accents_of(l: &Loaded, th: &ThemeInfo) -> Option<Accents> {
@@ -345,6 +354,13 @@ impl Plugins {
             let mut p = Palette::default();
             (l.c.palette)(l.inst, &mut p) == 1 || accents_of(l, &ThemeInfo { size: std::mem::size_of::<ThemeInfo>() as u32, ..Default::default() }).is_some()
         })
+    }
+
+    /// Decorations of the last enabled design plugin that has any, for the base theme `th`.
+    pub fn decor(&self, th: &ThemeInfo) -> Option<Decor> {
+        let mut out = None;
+        for l in self.active() { if let Some(d) = decor_of(l, th) { out = Some(d) } }
+        out
     }
 
     /// Accent colours of the last enabled accent theme, computed for the base theme `th`.

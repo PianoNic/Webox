@@ -61,6 +61,8 @@ fn fail_text(f: &Fail) -> (String, String, bool) {
         Fail::InUse(n) => ("Ihre Kamera kann nicht gestartet werden".into(), format!("Stellen Sie sicher, dass Ihr Kameragerät {n} derzeit nicht von einer anderen Anwendung verwendet wird."), false),
         Fail::Denied => ("Webex den Zugriff auf Ihre Kamera erlauben".into(), "Erlauben Sie in Ihren Systemeinstellungen den Zugriff auf Ihre Kamera, damit andere Sie in Meetings sehen können.".into(), cfg!(windows)),
         Fail::Unplugged(n) => ("Ihre Kamera ist nicht angeschlossen".into(), format!("Stellen Sie sicher, dass Ihr Kameragerät {n} verbunden ist und funktioniert."), false),
+        // invented (clone text): opened, but no frame for 5 s
+        Fail::NoPicture => ("Kein Bild von der Kamera".into(), "Die Kamera liefert kein Bild. Möglicherweise wird sie von einer anderen App verwendet, oder der Kamerazugriff ist in den Datenschutzeinstellungen deaktiviert.".into(), cfg!(windows)),
         Fail::Other(_) => ("Ihre Kamera kann nicht gestartet werden".into(), "Stellen Sie sicher, dass Ihr Kameragerät funktioniert.".into(), false),
     }
 }
@@ -124,10 +126,13 @@ impl App {
         let px = ((r.width() * ppp).round() as usize, (r.height() * ppp).round() as usize);
         let c = &mut self.call.cam;
         if c.listed {
-            let failed = c.preview.as_ref().is_some_and(|p| matches!(p.state(), State::Failed(_)));
+            let st = c.preview.as_ref().map(|p| p.state());
+            let failed = matches!(st, Some(State::Failed(_)));
             let stale = c.preview.as_ref().is_some_and(|p| p.key != key);
-            // a failed camera is retried every 3 s (in use by another app, unplugged and back, permission granted)
-            if c.preview.is_none() || stale || (failed && now - c.failed_at > 3.0) {
+            // a failed camera is retried every 3 s (in use by another app, unplugged and back, permission granted); one that
+            // opened but sent no picture only every 15 s, so the page doesn't hold the device most of the time
+            let retry = if matches!(st, Some(State::Failed(Fail::NoPicture))) { 15.0 } else { 3.0 };
+            if c.preview.is_none() || stale || (failed && now - c.failed_at > retry) {
                 c.preview = Some(Preview::start(key, look, px, crate::ui::wake));
                 c.failed_at = now;
                 if stale { c.tex = None; }
@@ -154,6 +159,10 @@ impl App {
             _ => {
                 ui.painter().rect_filled(r, 8.0, if tex.is_some() { Color32::BLACK } else { bg });
                 if let Some(id) = tex { egui::Image::from_texture(egui::load::SizedTexture::new(id, r.size())).corner_radius(8).paint_at(ui, r); }
+                // invented (clone text): frames arrive but have been black for more than 2 s
+                if self.call.cam.preview.as_ref().is_some_and(|p| p.dark()) {
+                    ui.painter().text(r.center() - Vec2::new(0.0, 14.0), egui::Align2::CENTER_CENTER, "Kein Bild – ist die Kameraabdeckung geschlossen?", FontId::proportional(kit::BODY), Color32::WHITE);
+                }
                 let band = Rect::from_min_max(pos2(r.left(), r.bottom() - 28.0), r.max);
                 ui.painter().rect_filled(band, egui::CornerRadius { nw: 0, ne: 0, sw: 8, se: 8 }, Color32::from_black_alpha(128));
                 ui.painter().text(band.center(), egui::Align2::CENTER_CENTER, "Vorschau", semibold(kit::SECOND), Color32::WHITE);

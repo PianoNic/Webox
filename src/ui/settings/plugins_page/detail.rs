@@ -49,7 +49,7 @@ impl App {
             ui.horizontal(|ui| {
                 if let Some((v, f)) = &job {
                     ui.label(RichText::new(format!("Lädt v{v} …")).size(kit::SECOND).color(t.text2));
-                    ui.add(egui::ProgressBar::new(f.unwrap_or(0.0)).desired_width(140.0).show_percentage());
+                    crate::ui::theme::decor::progress(ui, *f, 140.0);
                     return;
                 }
                 if let Some(u) = &update {

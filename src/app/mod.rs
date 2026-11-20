@@ -282,7 +282,10 @@ impl App {
             set(&mut t.link, p.hyperlink);
         }
         // Accent themes (plugin-api 1.3): accent roles only, computed by the plugin for this base theme (ui/theme/accents.rs).
-        let acc = self.plugins.accents(&crate::ui::theme::accents::info(&t)).map(|a| crate::ui::theme::accents::apply(&mut t, &a));
+        let info = crate::ui::theme::accents::info(&t);
+        // Decorations (plugin-api 1.4): washes, host-drawn decorations and effects (ui/theme/decor.rs, fx.rs).
+        crate::ui::theme::decor::set(self.plugins.decor(&info).map(|d| crate::ui::theme::decor::from_api(&d)), &self.me.name);
+        let acc = self.plugins.accents(&info).map(|a| crate::ui::theme::accents::apply(&mut t, &a));
         let sel = acc.as_ref().and_then(|a| a.selection).unwrap_or(t.accent);
         let (ov, grad) = acc.map_or_else(Default::default, |a| (a.overrides, a.gradient));
         crate::ui::theme::set_accent_overrides(ov, grad);

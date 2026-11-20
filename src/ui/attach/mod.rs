@@ -94,7 +94,7 @@ static RETRY: Mutex<Option<HashMap<String, Retry>>> = Mutex::new(None);
 /// Downloads whose end was already announced.
 static ANNOUNCED: Mutex<Option<std::collections::HashSet<String>>> = Mutex::new(None);
 
-fn local_path(key: &str) -> Option<PathBuf> { LOCAL.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(key).cloned()) }
+pub(crate) fn local_path(key: &str) -> Option<PathBuf> { LOCAL.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(key).cloned()) }
 fn set_local(key: &str, p: &Path) { LOCAL.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(key.into(), p.into()); }
 
 pub(crate) fn file_icon(name: &str) -> &'static str {
@@ -212,11 +212,18 @@ impl App {
         p.rect_filled(card, 5.0, staging_bg(light));
         let ibox = Rect::from_min_size(card.min, Vec2::new(80.0, card.height()));
         p.rect_filled(ibox, egui::CornerRadius { nw: 4, sw: 4, ne: 0, se: 0 }, staging_img_bg(light));
-        let prev = if ch.image { self.image(ui.ctx(), &staged_key(&ch.path)) } else { None };
+        // a video: its first frame (decoded on a worker, `messages::video_poster`) as the preview, with a small play mark
+        let video = !ch.image && crate::media::video::format::is_video("", &ch.name);
+        let prev = if ch.image { self.image(ui.ctx(), &staged_key(&ch.path)) }
+            else if video { super::messages::video_poster(ui.ctx(), &ch.path).map(|(t, s, _)| (t, s)) } else { None };
         match prev {
             Some((tid, [iw, ih])) => {
                 let ir = Rect::from_center_size(ibox.center(), preview_size(iw as f32, ih as f32));
                 p.with_clip_rect(ibox.intersect(p.clip_rect())).image(tid, ir, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+                if video {
+                    p.circle_filled(ibox.center(), 11.0, Color32::from_black_alpha(150));
+                    self.icons.paint(ui, "play-filled", Rect::from_center_size(ibox.center() + Vec2::new(1.0, 0.0), Vec2::splat(11.0)), Color32::WHITE);
+                }
             }
             // The file-type SVG in the box inset 30 / 5: 20 px wide.
             None => self.icons.paint(ui, file_icon(&ch.name), Rect::from_center_size(ibox.center(), Vec2::splat(20.0)), default_text(light)),
@@ -384,7 +391,7 @@ impl App {
 
 }
 
-fn cloud_finish(p: &Path, then: Then) { match then { Then::Open => fs_::open_file(p), Then::ShowInFolder => fs_::show_in_folder(p), Then::Nothing => {} } }
+fn cloud_finish(p: &Path, then: Then) { match then { Then::Open => fs_::open_file(p), Then::ShowInFolder => fs_::show_in_folder(p), Then::Nothing | Then::Play => {} } }
 
 /// Texture key of a staged image's preview.
 fn staged_key(p: &Path) -> String { format!("staged:{}", p.display()) }

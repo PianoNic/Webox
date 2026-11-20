@@ -33,6 +33,10 @@
   # at Nix's Mesa whenever the NixOS driver directory /run/opengl-driver is missing (Ubuntu, Fedora, Arch, ...): Intel/AMD
   # run accelerated, anything else falls back to software rendering. Costs ~800 MiB; the NixOS module turns it off.
   withMesaFallback ? true,
+  # Video playback plays what the GStreamer plugins decode. -base / -good / -bad cover MP4, MOV, MKV, WebM, AVI with VP8, VP9,
+  # AV1 (dav1d), H.264 (openh264) and VA-API hardware decoding; gst-libav adds HEVC and older codecs but brings FFmpeg into the
+  # closure, so it is off unless asked for (Webox bundles no FFmpeg of its own).
+  withLibav ? false,
 }:
 
 let
@@ -90,6 +94,9 @@ let
       gdk-pixbuf
       libsoup_3
       alsa-lib
+      # video playback (src/media/video/gst.rs): gstreamer-rs links libgstreamer, -app, -video, -audio
+      gst_all_1.gstreamer
+      gst_all_1.gst-plugins-base
     ];
 
     postInstall = ''
@@ -122,7 +129,8 @@ stdenvNoCC.mkDerivation {
     gst_all_1.gstreamer
     gst_all_1.gst-plugins-base
     gst_all_1.gst-plugins-good
-  ];
+    gst_all_1.gst-plugins-bad
+  ] ++ lib.optional withLibav gst_all_1.gst-libav;
 
   installPhase = ''
     runHook preInstall

@@ -205,15 +205,18 @@ impl App {
         let pulse = 0.55 + 0.45 * (0.5 + 0.5 * (now * 2.4).sin() as f32);
         let col = t.selected.gamma_multiply(pulse);
         let w = ui.available_width();
+        // 56 pt in Standard; Kompakt and the compact view make it shorter
+        let g = crate::ui::theme::density::ListRow::current(self.compact_view());
+        let k = g.avatar / 32.0; // circle and bars scale with the row's avatar
         for i in 0..9 {
-            let (r, _) = ui.allocate_exact_size(Vec2::new(w, 56.0), Sense::hover());
+            let (r, _) = ui.allocate_exact_size(Vec2::new(w, g.skeleton_h), Sense::hover());
             let p = ui.painter();
             let c = pos2(r.left() + 28.0, r.center().y);
-            p.circle_filled(c, 16.0, col);
+            p.circle_filled(c, 16.0 * k, col);
             let x = r.left() + 56.0;
             let bw = (r.right() - 16.0 - x).max(40.0);
-            p.rect_filled(Rect::from_min_size(pos2(x, r.center().y - 14.0), Vec2::new(bw * [0.7, 0.55, 0.8][i % 3], 12.0)), 4.0, col);
-            p.rect_filled(Rect::from_min_size(pos2(x, r.center().y + 4.0), Vec2::new(bw * 2.0 / 3.0 * [1.0, 0.8, 0.9][i % 3], 12.0)), 4.0, col);
+            p.rect_filled(Rect::from_min_size(pos2(x, r.center().y - 14.0 * k), Vec2::new(bw * [0.7, 0.55, 0.8][i % 3], 12.0 * k)), 4.0, col);
+            p.rect_filled(Rect::from_min_size(pos2(x, r.center().y + 4.0 * k), Vec2::new(bw * 2.0 / 3.0 * [1.0, 0.8, 0.9][i % 3], 12.0 * k)), 4.0, col);
         }
         ctx.request_repaint_after(std::time::Duration::from_millis(33));
         true

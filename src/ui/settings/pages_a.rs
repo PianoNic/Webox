@@ -18,7 +18,7 @@ impl App {
         let mut v = self.sb(key, def);
         let ch = kit::check(ui, &mut self.icons, t, label, &mut v, true, false);
         if ch { self.sset(key, json!(v)); }
-        ui.add_space(4.0);
+        ui.add_space(crate::ui::theme::density::m().settings_row_gap); // Standard 4
         ch
     }
     /// A persisted combo box over (value, label) options.
@@ -182,6 +182,12 @@ impl App {
             if hc { ui.add_space(4.0); kit::text_block(ui, "Wenn Sie ein Thema auswählen möchten, deaktivieren Sie zuerst den hohen Kontrast in den Windows-Einstellungen.", kit::SECOND, t.text2, 0.0); }
             if let Some(id) = pick { self.sset("theme", json!(id.key())); self.applied = None; }
         });
+        // Darstellungsdichte: applies at once (ui/theme/density.rs).
+        section(ui, t, "Darstellungsdichte", "Kompakt verringert die Abstände in Listen, Nachrichten, Menüs und Einstellungen. Die Schriftgrößen bleiben gleich.", false, |ui| {
+            use crate::ui::theme::density::Density;
+            let opts: Vec<(&str, &str)> = Density::ALL.iter().map(|d| (d.key(), d.label())).collect();
+            self.pradio(ui, t, "density", Density::Standard.key(), &opts);
+        });
         section(ui, t, "Meetings", "", false, |ui| {
             self.pcheck(ui, t, "always_dark_calls", false, "Immer dunkles Thema verwenden");
         });
@@ -265,6 +271,10 @@ impl App {
             ui.add_space(2.0);
             ui.horizontal(|ui| { ui.add_space(32.0); ui.add_enabled_ui(on, |ui| {
                 self.pcombo(ui, t, "spell_lang", "de", &[("de", "Deutsch"), ("en", "English (US)"), ("fr", "Français")], 260.0); }); }); // dictionary list
+        });
+        // Bereichsliste: the compact view (ui/chrome/compact_list.rs).
+        section(ui, t, &crate::trq!("Space list"), "", false, |ui| {
+            self.pcheck(ui, t, crate::ui::chrome::compact_list::KEY, false, &crate::trq!("Show compact view"));
         });
         section(ui, t, "Threads", "Wählen Sie aus, wie die Threads in Ihren Bereichen und Direktnachrichten angezeigt werden sollen.", false, |ui| {
             self.pradio(ui, t, "threads", "expand", &[("expand", "Threads erweitern"), ("collapse", "Threads reduzieren")]);

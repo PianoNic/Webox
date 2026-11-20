@@ -20,15 +20,16 @@ impl App {
 
     /// The temporary list row (top of "Andere").
     pub(crate) fn new_message_row(&mut self, ui: &mut egui::Ui, t: &Th) {
-        let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 51.0), Sense::hover());
-        let r = Rect::from_min_max(full.min + Vec2::new(12.0, 0.0), pos2(full.max.x - 4.0, full.min.y + 50.0));
+        let g = crate::ui::theme::density::ListRow::current(self.compact_view()); // the list row's geometry (chrome::row)
+        let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), g.pitch), Sense::hover());
+        let r = Rect::from_min_max(full.min + Vec2::new(12.0, 0.0), pos2(full.max.x - 4.0, full.min.y + g.h));
         let resp = ui.interact(r, egui::Id::new("newmsg-row"), Sense::click());
         if resp.clicked() { self.selected = None; super::super::invite::close_state(ui.ctx()); }
-        if self.selected.is_none() { ui.painter().rect_filled(r, 25.0, t.selected); } else if resp.hovered() { ui.painter().rect_filled(r, 25.0, t.ink_a(0.05)); }
-        let c = pos2(r.left() + 24.0, r.center().y);
-        ui.painter().circle_stroke(c, 15.5, Stroke::new(1.0, t.text2));
-        self.icons.paint(ui, "start-chat-regular", Rect::from_center_size(c, Vec2::splat(18.0)), t.text1);
-        super::super::chrome::fit_text(ui.painter(), r.left() + 52.0, r.center().y, tr("New message"), FontId::proportional(15.6), t.text1, r.width() - 86.0);
+        if self.selected.is_none() { ui.painter().rect_filled(r, g.h / 2.0, t.selected); } else if resp.hovered() { ui.painter().rect_filled(r, g.h / 2.0, t.ink_a(0.05)); }
+        let c = pos2(r.left() + (g.avatar_left + g.avatar / 2.0), r.center().y);
+        ui.painter().circle_stroke(c, g.avatar / 2.0 - 0.5, Stroke::new(1.0, t.text2));
+        self.icons.paint(ui, "start-chat-regular", Rect::from_center_size(c, Vec2::splat(g.avatar * 18.0 / 32.0)), t.text1);
+        super::super::chrome::fit_text(ui.painter(), r.left() + g.text_x, r.center().y, tr("New message"), FontId::proportional(g.title_pt), t.text1, r.width() - (g.text_x + 34.0));
         self.icons.paint(ui, "more-regular", Rect::from_center_size(r.right_center() - Vec2::new(26.0, 0.0), Vec2::splat(16.0)), t.text2);
     }
 

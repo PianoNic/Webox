@@ -32,8 +32,9 @@ struct St {
 const EDIT_HDR: f32 = 0.0;
 // Text row top below the composer line (pt), and the space under the text row: placeholder glyphs 65.6 pt below the line and
 // 22.4 pt above the bottom, composer 99.2 pt in total. The text box draws its glyphs 5 pt below the box top.
-const BASE_TOP: f32 = 60.6;
-const BOTTOM_PAD: f32 = 13.6; // 99.2 - 60.6 - 25 (one text row)
+// Standard density: 60.6 and 13.6 (99.2 - 60.6 - 25, one text row).
+fn base_top() -> f32 { crate::ui::theme::density::m().composer_text_top }
+fn bottom_pad() -> f32 { crate::ui::theme::density::m().composer_bottom_pad }
 const LINE_H: f32 = 20.0;
 const CID: &str = "composer-edit";
 const PIC_W: f32 = 22.0; // an emoji picture in the box: 20 px + 2 px air
@@ -46,11 +47,11 @@ fn st_put(ctx: &egui::Context, st: St) { ctx.data_mut(|d| d.insert_temp(egui::Id
 
 /// Layout: (text row top offset from the composer line, text row height, total composer height).
 fn metrics(edit: bool, rich: bool, chips_h: f32, rows: usize) -> (f32, f32, f32) {
-    let mut top = BASE_TOP + if edit { EDIT_HDR } else { 0.0 };
+    let mut top = base_top() + if edit { EDIT_HDR } else { 0.0 };
     if rich { top += 30.0; }
     top += chips_h; // the staging area (68 .. 92), 0 without files
     let h = 25.0 + (rows.clamp(1, 6) - 1) as f32 * LINE_H;
-    (top, h, top + h + BOTTOM_PAD)
+    (top, h, top + h + bottom_pad())
 }
 
 fn set_sel(ctx: &egui::Context, a: usize, b: usize) {

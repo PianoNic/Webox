@@ -85,12 +85,15 @@ pub fn sample_messages(room: &str) -> Vec<Message> {
             file.date = crate::system::today();
             let mut shot = m("6", "Lina Roth", "lina@example.com", "Hier der Screenshot dazu", "09:16");
             shot.images = vec![img("sample-img-1", "screenshot.png", 800, 500)];
+            // a shared video without thumbnail: the inline video card; the clip itself is made on this machine (media::video::synth)
+            let mut clip = m("15", "Mara Lind", "mara@example.com", "📎 Demo-Clip.mp4", "09:18");
+            clip.files = vec![Attachment { name: "Demo-Clip.mp4".into(), mime: "video/mp4".into(), size: 1_450_000, key: crate::media::video::synth::SAMPLE_KEY.into(), ..Default::default() }];
             let mut edited = m("7", me.0, me.1, "ok danke, mache ich", "09:20");
             edited.edited = true;
             let mut r1 = m("10", "Mara Lind", "mara@example.com", "Wer übernimmt das Review?", "09:30");
             r1.parent = String::new();
             let reply = |id: &str, a: &str, e: &str, t: &str, time: &str, parent: &str| { let mut x = m(id, a, e, t, time); x.parent = format!("{room}-{parent}"); x };
-            vec![old, first, second, m("3", "Mara Lind", "mara@example.com", "Willkommen im Bereich.", "09:00"), link, rich, head, head2, cat, card, file, shot, edited, r1,
+            vec![old, first, second, m("3", "Mara Lind", "mara@example.com", "Willkommen im Bereich.", "09:00"), link, rich, head, head2, cat, card, file, shot, clip, edited, r1,
                 reply("11", "Lina Roth", "lina@example.com", "Ich kann das morgen früh machen.", "09:31", "10"),
                 reply("12", "Alex Muster", me.1, "Super, danke dir!", "09:33", "10"),
                 reply("13", "Mara Lind", "mara@example.com", "Perfekt, dann reviewt Lina.", "09:35", "10"),

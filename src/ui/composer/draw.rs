@@ -45,14 +45,14 @@ impl App {
             self.plugins.commands().into_iter().filter(|(c, _)| c.starts_with(&typed)).map(|(c, p)| format!("/{c} · {p}")).collect()
         } else { vec![] };
         if let Compose::Reply { to, .. } = &self.compose {
-            let br = Rect::from_min_size(pos2(crect.left() + 19.0, crect.top() + off + 40.0), Vec2::new(crect.width() - 38.0, 18.0));
+            let br = Rect::from_min_size(pos2(crect.left() + 19.0, crect.top() + off + crate::ui::theme::density::m().composer_reply_y), Vec2::new(crect.width() - 38.0, 18.0)); // Standard 40
             let mut bc = ui.new_child(egui::UiBuilder::new().max_rect(br).layout(egui::Layout::left_to_right(egui::Align::Center)));
             bc.label(RichText::new(format!("Antwort im Thread an {to}")).size(12.5).color(t.link));
             if bc.small_button("Abbrechen (Esc)").clicked() { self.compose = Compose::New; }
         }
 
         // Rich-text toolbar row: [B I U S] [H1 H2 H3] link more | markdown.
-        let mut y = crect.top() + off + BASE_TOP;
+        let mut y = crect.top() + off + base_top();
         if rich {
             let row = Rect::from_min_size(pos2(crect.left() + 25.0, y), Vec2::new(crect.width() - 50.0, 28.0));
             self.rich_toolbar(ui, t, row, &mut st, &id);

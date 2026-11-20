@@ -66,6 +66,7 @@ impl App {
     /// Sends the composer text; `mentions` are the `@name`s chosen in the popup (signed in: they go out as `<spark-mention>`).
     /// Markdown is sent as `object.content` HTML (see richtext.rs).
     pub(crate) fn send_text_with(&mut self, text: String, mentions: Vec<crate::richtext::MentionRef>, now: f64) {
+        crate::ui::theme::fx::sent(); // a design plugin's send burst (SEND_BURST), if on
         let Some(id) = self.selected.clone() else { return };
         let mut text = text.trim().to_string();
         if text.is_empty() { return; }

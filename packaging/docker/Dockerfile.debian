@@ -9,4 +9,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
       libxkbcommon-x11-0 fonts-dejavu-core \
       xvfb weston libgl1-mesa-dri mesa-vulkan-drivers dbus dbus-x11 x11-apps imagemagick xdotool \
       gstreamer1.0-plugins-base gstreamer1.0-plugins-good ca-certificates python3-gi gir1.2-glib-2.0 \
+      # video playback (src/media/video/gst.rs): headers to build against, H.264 / HEVC / VP9 decoders (gst-libav = the
+      # distribution's FFmpeg plugin, not bundled with Webox) for the runtime test
+      libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-bad gstreamer1.0-libav \
     && rm -rf /var/lib/apt/lists/*

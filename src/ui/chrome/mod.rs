@@ -5,8 +5,8 @@ use crate::*;
 const ROW_INSET_L: f32 = 12.0;
 const ROW_INSET_R: f32 = 4.0;
 
-/// Header height (pt). The 28 pt search field and the 32 pt avatar are centred at 18.4 pt.
-pub(crate) const HEADER_H: f32 = 44.8;
+/// Header height (pt; 44.8 in Standard density). The 28 pt search field and the 32 pt avatar are centred at 18.4 pt.
+pub(crate) fn header_h() -> f32 { crate::ui::theme::density::m().header_h }
 /// Collapsed rail width (pt); the selected 40 pt circle spans x 4.8-44.8 (centre 24.8), vertical centre 72.4.
 pub(crate) const RAIL_NARROW: f32 = 60.8;
 /// Margin around all content while the window is not maximised (pt): the window background shows through, it is the resize
@@ -88,7 +88,7 @@ mod control_cell_tests {
     fn control_cells_reach_the_window_edge() {
         // Not maximised: 6 pt strips around a 1000 x 700 window.
         let win = Rect::from_min_size(pos2(0.0, 0.0), Vec2::new(1000.0, 700.0));
-        let header = Rect::from_min_max(pos2(6.0, 6.0), pos2(994.0, 6.0 + HEADER_H));
+        let header = Rect::from_min_max(pos2(6.0, 6.0), pos2(994.0, 6.0 + header_h()));
         let (close, cg) = control_cell(header, win, 1.0);
         assert_eq!((close.top(), close.right(), close.bottom()), (0.0, 1000.0, header.bottom()));
         assert!(close.contains(pos2(999.5, 0.5))); // the corner pixel closes
@@ -98,7 +98,7 @@ mod control_cell_tests {
         assert!((close.left() - max.right()).abs() < 0.25); // 40 pt cells on the 40.2 pt glyph pitch
         assert_eq!(mg.x, 1000.0 - 6.0 - 14.0 - 40.2);
         // Maximised: no strips, the cells end at the window edge.
-        let (close, _) = control_cell(win.with_max_y(HEADER_H), win, 1.0);
+        let (close, _) = control_cell(win.with_max_y(header_h()), win, 1.0);
         assert_eq!((close.top(), close.right()), (0.0, 1000.0));
     }
 }
@@ -150,7 +150,7 @@ impl App {
     }
 
     pub(crate) fn top_bar(&mut self, ctx: &egui::Context, t: &Th, now: f64) {
-        egui::TopBottomPanel::top("top").exact_height(HEADER_H).show_separator_line(false).frame(egui::Frame::default()).show(ctx, |ui| {
+        egui::TopBottomPanel::top("top").exact_height(header_h()).show_separator_line(false).frame(egui::Frame::default()).show(ctx, |ui| {
             let full = ui.max_rect();
             let cy = full.top() + HEADER_CY;
             let forced = std::env::var("WEBOX_SHOT_HOVER").unwrap_or_default();
@@ -284,21 +284,25 @@ impl App {
 
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn row(&mut self, ui: &mut egui::Ui, t: &Th, title: &str, sub: &str, sub_color: Color32, selected: bool, unread: bool, space: bool, av_bg: Option<Color32>, status: Option<&str>, photo: Option<egui::TextureId>) -> egui::Response {
-        // 50 pt rows on a 51 pt pitch, inset from the list's edges.
-        let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 51.0), Sense::hover());
-        let r = Rect::from_min_max(full.min + Vec2::new(ROW_INSET_L, 0.0), pos2(full.max.x - ROW_INSET_R, full.min.y + 50.0));
+        // Row geometry from the density table, or the compact view (Standard: 50 pt rows on a 51 pt pitch), inset from the list's edges.
+        let g = crate::ui::theme::density::ListRow::current(self.compact_view());
+        let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), g.pitch), Sense::hover());
+        let r = Rect::from_min_max(full.min + Vec2::new(ROW_INSET_L, 0.0), pos2(full.max.x - ROW_INSET_R, full.min.y + g.h));
         let resp = ui.interact(r, ui.id().with(("row", title, sub, self.row_salt.clone())), Sense::click());
-        if selected { ui.painter().rect_filled(r, 25.0, t.selected); } else if resp.is_pointer_button_down_on() { ui.painter().rect_filled(r, 25.0, t.tk("listitem-background:pressed")); } else if resp.hovered() { ui.painter().rect_filled(r, 25.0, t.tk("listitem-background:hovered")); } // listitem-background: 7 % hover, 11 % pressed
-        let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_center_size(pos2(r.left() + 24.0, r.center().y), Vec2::splat(32.0))));
-        avatar_photo(&mut c, &mut self.icons, t, title, 32.0, space, av_bg, status, photo);
-        let tx = r.left() + 52.0;
+        let rad = g.h / 2.0;
+        if selected { ui.painter().rect_filled(r, rad, t.selected); if crate::ui::theme::decor::on(collabhost_plugin_api::deco::SELECTED_ROW) { crate::ui::theme::decor::outline(ui.painter(), r, rad, 1.5, &crate::ui::theme::decor::stripes(), 0.0); } } else if resp.is_pointer_button_down_on() { ui.painter().rect_filled(r, rad, t.tk("listitem-background:pressed")); } else if resp.hovered() { ui.painter().rect_filled(r, rad, t.tk("listitem-background:hovered")); } // listitem-background: 7 % hover, 11 % pressed
+        let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_center_size(pos2(r.left() + (g.avatar_left + g.avatar / 2.0), r.center().y), Vec2::splat(g.avatar))));
+        avatar_photo(&mut c, &mut self.icons, t, title, g.avatar, space, av_bg, status, photo);
+        let tx = r.left() + g.text_x;
         let hovered_row = selected || ui.rect_contains_pointer(r);
         // Draft icon ("draft-indicator-bold", 14 x 14, right margin 14; the "···" button, 24 wide with right margin 14, appears to
         // its right on hover), colour wx-brickletNotificationIcon-background.
         let draft_at = self.row_draft.then(|| pos2(r.right() - if hovered_row { 14.0 + 24.0 + 14.0 } else { 14.0 } - 7.0, r.center().y));
         let max_w = draft_at.map_or(r.right() - 34.0, |c| c.x - 7.0 - 6.0) - tx; // the title's right padding 6
-        let tf = if unread { semibold(15.6) } else { FontId::proportional(15.6) };
-        if sub.is_empty() {
+        let tf = if unread { semibold(g.title_pt) } else { FontId::proportional(g.title_pt) };
+        if g.one_line {
+            compact_list::one_line(ui.painter(), tx, r.center().y, max_w, title, tf, t.text1, sub, sub_color, t.text2);
+        } else if sub.is_empty() {
             fit_text(ui.painter(), tx, r.center().y, title, tf, t.text1, max_w);
         } else {
             fit_text(ui.painter(), tx, r.center().y - 9.5, title, tf, t.text1, max_w);
@@ -325,13 +329,13 @@ impl App {
             }
             self.icons.paint(ui, "more-regular", Rect::from_center_size(r.right_center() - Vec2::new(26.0, 0.0), Vec2::splat(16.0)), t.text2)
         }
-        else if unread { ui.painter().circle_filled(r.right_center() - Vec2::new(20.0, 0.0), 5.0, t.unread); }
+        else if unread { let c = if crate::ui::theme::decor::on(collabhost_plugin_api::deco::BADGE_CYCLE) { crate::ui::theme::decor::cycle((r.top() / r.height().max(1.0)).round() as usize).unwrap_or(t.unread) } else { t.unread }; ui.painter().circle_filled(r.right_center() - Vec2::new(20.0, 0.0), 5.0, c); }
         resp
     }
 
     pub(crate) fn section(&mut self, ui: &mut egui::Ui, t: &Th, key: &'static str, label: &str, star: bool) -> bool {
         let open = !self.collapsed.contains(key);
-        let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.0), Sense::hover());
+        let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), crate::ui::theme::density::m().section_h), Sense::hover());
         let r = Rect::from_min_max(full.min + Vec2::new(ROW_INSET_L, 0.0), full.max);
         let resp = ui.interact(r, ui.id().with(("section", key)), Sense::click());
         // The chevron glyph is 12.8 x 6.4 pt centred at x 32, 0.8 pt below the label's centre.
@@ -346,7 +350,8 @@ impl App {
     /// `space_row` for `self.spaces[i]`; a row outside the list's visible area only takes its place (rows have a fixed
     /// 51 pt pitch, see `row`), so a long list costs what its visible part costs.
     pub(crate) fn space_row_at(&mut self, ui: &mut egui::Ui, t: &Th, i: usize) {
-        let place = Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width(), 51.0));
+        let pitch = crate::ui::theme::density::ListRow::current(self.compact_view()).pitch;
+        let place = Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width(), pitch));
         if !ui.is_rect_visible(place) { ui.allocate_exact_size(place.size(), Sense::hover()); return; }
         let Some(s) = self.spaces.get(i).cloned() else { return };
         self.space_row(ui, t, &s);
@@ -383,4 +388,5 @@ impl App {
     }
 }
 
+pub(crate) mod compact_list;
 mod rail;

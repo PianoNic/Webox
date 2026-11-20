@@ -22,7 +22,7 @@ use nav::Page;
 pub(crate) use pages_a::msg_font_scale_of;
 
 const NAV_W: f32 = 280.0; // navigation column width
-const HEADER_H: f32 = 52.0; // page header height
+fn header_h() -> f32 { crate::ui::theme::density::m().settings_header_h } // page header height (52)
 const CONTENT_W: f32 = 720.0; // page body width cap
 
 #[derive(Clone)]
@@ -81,8 +81,8 @@ impl App {
             let full = ui.available_rect_before_wrap();
             let _ = ui.allocate_rect(full, Sense::hover());
             let (nav_r, page_r) = (Rect::from_min_max(full.min, pos2(full.left() + NAV_W, full.bottom())), Rect::from_min_max(pos2(full.left() + NAV_W + 4.0, full.top()), full.max));
-            vgrad(ui.painter(), nav_r, 10.0, t.card, t.card_b);
-            vgrad(ui.painter(), page_r, 10.0, t.card, t.card_b);
+            vgrad(ui.painter(), nav_r, 10.0, t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), nav_r, 10.0, true);
+            vgrad(ui.painter(), page_r, 10.0, t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), page_r, 10.0, false);
             let mut s: SUi = ctx.data(|d| d.get_temp(egui::Id::new("settings-ui"))).unwrap_or_default();
             if let Some(p) = ctx.data_mut(|d| d.remove_temp::<Page>(egui::Id::new("settings-goto"))) { s.page = p; if let Some(par) = nav::parent(p) { if !s.open.contains(&par) { s.open.push(par); } } }
             self.settings_nav(ui, t, &mut s, nav_r);
@@ -98,14 +98,15 @@ impl App {
     fn settings_nav(&mut self, ui: &mut egui::Ui, t: &Th, s: &mut SUi, nav_rect: Rect) {
         let k = kit::tok(t);
         let sf = Rect::from_min_size(nav_rect.min + Vec2::new(12.0, 12.0), Vec2::new(NAV_W - 24.0, 32.0));
-        let mut y = nav_rect.top() + 56.0;
+        let dm = crate::ui::theme::density::m(); // navigation rows: Standard top 56, rows 36 on a 38 pitch
+        let mut y = nav_rect.top() + dm.settings_nav_top;
         for (p, title, icon, depth) in nav::NAV {
             if let Some(par) = nav::parent(p) { if !s.open.contains(&par) { continue; } }
-            let r = Rect::from_min_size(pos2(nav_rect.left() + 8.0, y), Vec2::new(NAV_W - 16.0, 36.0));
-            y += 38.0;
+            let r = Rect::from_min_size(pos2(nav_rect.left() + 8.0, y), Vec2::new(NAV_W - 16.0, dm.settings_nav_row));
+            y += dm.settings_nav_pitch;
             let resp = ui.interact(r, egui::Id::new(("settings-nav", p as usize)), Sense::click());
             let sel = s.page == p;
-            if sel { ui.painter().rect_filled(r, 4.0, k.item_pressed); } else if resp.hovered() { ui.painter().rect_filled(r, 4.0, k.item_hover); }
+            if sel { ui.painter().rect_filled(r, 4.0, k.item_pressed); if crate::ui::theme::decor::on(collabhost_plugin_api::deco::NAV_UNDERLINE) { crate::ui::theme::decor::fill(ui.painter(), Rect::from_min_max(pos2(r.left() + 8.0, r.bottom() - 3.0), pos2(r.right() - 8.0, r.bottom())), 1.5, &crate::ui::theme::decor::stripes(), 0.0, 1.0); } } else if resp.hovered() { ui.painter().rect_filled(r, 4.0, k.item_hover); }
             let x0 = r.left() + 8.0 + if depth > 0 { 28.0 } else { 0.0 };
             if !icon.is_empty() { self.icons.paint(ui, icon, Rect::from_center_size(pos2(x0 + 10.0, r.center().y), Vec2::splat(20.0)), t.text1); }
             let tx = x0 + if icon.is_empty() { 0.0 } else { 28.0 };
@@ -122,7 +123,7 @@ impl App {
 
     fn settings_content(&mut self, ui: &mut egui::Ui, t: &Th, s: &mut SUi, pr: Rect, now: f64) {
         ui.painter().text(pr.left_top() + Vec2::new(24.0, 10.0 + 18.0), egui::Align2::LEFT_CENTER, nav::title(s.page), semibold(20.0), t.text1);
-        let mut top = pr.top() + HEADER_H + 8.0;
+        let mut top = pr.top() + header_h() + 8.0;
         // Pinned content: the Video page's camera preview stays above the scrolling body.
         if s.page == Page::Video {
             let r = Rect::from_min_size(pos2(pr.left() + 24.0, top), video_page::PREVIEW);

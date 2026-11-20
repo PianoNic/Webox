@@ -120,7 +120,7 @@ impl App {
             { let y = ui.cursor().top(); ctx.data_mut(|d| { d.insert_temp(Id::new("msg-top0"), y); d.insert_temp(Id::new("msg-rowpos"), std::collections::HashMap::<String, f32>::new()); d.insert_temp(Id::new("msg-rowspans"), Vec::<(String, f32, f32)>::new()); d.insert_temp(Id::new("msg-copyrows"), Vec::<CopyRow>::new()); d.remove::<String>(Id::new("msg-pointer-row")); d.remove::<String>(Id::new("msg-press-row")); }); }
             // Older messages loading: the loading item (loading_item.rs).
             if loading { self.loading_item(ui, false); } else if reached { self.start_marker(ui, &c, &space_title); }
-            ui.add_space(8.0);
+            ui.add_space(dm().msg_list_top);
             let (mut prev, mut day) = (String::new(), String::new());
             let (mut prev_min, mut prev_share) = (None::<i32>, false);
             let mut prev_ms = 0i64;
@@ -169,7 +169,7 @@ impl App {
             }
             if let Some(p) = &seen { self.seen_banner(ui, t, &c, p); } // the "Gesehen von" row: always the last row of the list
             self.sched_list(ui, t, id); // scheduled messages of this space
-            ui.add_space(LIST_BOTTOM); // "Gesehen von" centre -> composer line = 48 pt
+            ui.add_space(list_bottom()); // "Gesehen von" centre -> composer line = 48 pt
         })
         }).inner;
         self.multi_select_input(&ctx, ui, id, list);
@@ -251,6 +251,7 @@ impl App {
         if should_request_older(seen_frames, next_pinned, off, out.inner_rect.height(), max, loading, reached, !msgs.is_empty(), quiet >= 3) { self.request_older(&ctx, id); }
         if next_pinned && prev_max.map_or(true, |p| (p - max).abs() > 0.5) { ctx.request_repaint(); } // late image heights
         self.lightbox(ui.ctx(), msgs);
+        self.video_viewer(ui.ctx(), t);
         self.reaction_picker_draw(ui);
         self.forward_dialog(ui.ctx(), t, id);
         self.delete_dialog(ui.ctx(), t);

@@ -17,6 +17,7 @@ For other distributions, build it with Cargo as described below.
 | Second start | (new instance) | hands its link to the running copy over D-Bus and exits (`WEBOX_MULTI_INSTANCE=1` turns this off) |
 | File dialogs | IFileOpenDialog | xdg-desktop-portal (rfd) |
 | Audio | WASAPI (cpal) | ALSA (cpal), which reaches PulseAudio / PipeWire through their ALSA plugins |
+| Video playback (shared videos) | Media Foundation: MP4 / MOV / M4V / 3GP, ASF / WMV, AVI, MPEG-TS, MKV / WebM with the codecs Windows has (H.264, MPEG-4, MJPEG, WMV; HEVC, VP9, AV1 with their Store extensions); DXVA hardware decoding | GStreamer (`playbin`): whatever the installed plugins decode, see [Video formats](#video-formats); VA-API hardware decoding when the distribution's `va` plugin is installed. Sound goes to the speaker chosen in Settings > Audio on both |
 | Font | Segoe UI from the system | bundled Selawik (OFL, Segoe-UI-compatible metrics), plus the system's DejaVu / Noto Sans as fallback |
 | Settings | `%APPDATA%\WebOx` | `$XDG_CONFIG_HOME/webox` (`~/.config/webox`) |
 | Links | `url.dll` | `xdg-open` |
@@ -29,18 +30,21 @@ development packages:
 **Debian 12+ / Ubuntu 22.04+** (tested: Debian 13 "trixie")
 ```sh
 sudo apt install build-essential pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev libasound2-dev \
+  libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
   libxkbcommon-x11-0 libgl1 libegl1 fonts-dejavu-core
 ```
 
 **Fedora 39+** (untested)
 ```sh
 sudo dnf install gcc pkgconf-pkg-config webkit2gtk4.1-devel gtk3-devel alsa-lib-devel \
+  gstreamer1-devel gstreamer1-plugins-base-devel gstreamer1-plugins-good gstreamer1-plugins-bad-free \
   libxkbcommon-x11 mesa-libGL mesa-libEGL dejavu-sans-fonts
 ```
 
 **Arch Linux / Manjaro** (untested)
 ```sh
-sudo pacman -S --needed base-devel pkgconf webkit2gtk-4.1 gtk3 alsa-lib libxkbcommon-x11 mesa ttf-dejavu
+sudo pacman -S --needed base-devel pkgconf webkit2gtk-4.1 gtk3 alsa-lib gstreamer gst-plugins-base gst-plugins-good \
+  gst-plugins-bad libxkbcommon-x11 mesa ttf-dejavu
 ```
 
 Then:
@@ -58,7 +62,8 @@ tar xf dist/webox-*-linux-*.tar.gz -C /tmp
 /tmp/webox-*/install.sh --uninstall
 ```
 The tarball contains the program only. The target system needs the run-time libraries: WebKitGTK 4.1, GTK 3, ALSA,
-libxkbcommon-x11, OpenGL/EGL (e.g. `libwebkit2gtk-4.1-0 libgtk-3-0 libasound2 libxkbcommon-x11-0 libgl1 libegl1` on Debian/Ubuntu).
+libxkbcommon-x11, OpenGL/EGL and GStreamer 1.x with its base plugins (e.g. `libwebkit2gtk-4.1-0 libgtk-3-0 libasound2
+libxkbcommon-x11-0 libgl1 libegl1 libgstreamer1.0-0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good` on Debian/Ubuntu).
 
 ## Useful switches
 
@@ -70,6 +75,23 @@ libxkbcommon-x11, OpenGL/EGL (e.g. `libwebkit2gtk-4.1-0 libgtk-3-0 libasound2 li
 | `WEBOX_MULTI_INSTANCE=1` | allow several running copies |
 | `WEBKIT_DISABLE_DMABUF_RENDERER=1` | blank or flickering sign-in window (NVIDIA, some VMs) |
 | `WEBOX_FALLBACK_FONT=/path/font.ttf` | glyph fallback font |
+| `WEBOX_VIDEO_LOG=/path/file` | appends why a video does not play (the framework's message and the file name) |
+
+## Video formats
+
+Webox brings no decoder of its own (no FFmpeg is bundled): a shared video plays when GStreamer on the system can decode it.
+
+| Plugins | Adds |
+|---|---|
+| `gstreamer1.0-plugins-base` (needed) | `playbin`, colour conversion and scaling, Ogg / Theora / Vorbis / Opus |
+| `gstreamer1.0-plugins-good` | MP4 / MOV / 3GP, Matroska / WebM, AVI, VP8 / VP9 (libvpx), MJPEG, FLAC |
+| `gstreamer1.0-plugins-bad` | AV1 (dav1d), MPEG-TS, H.264 through openh264 where the distribution builds it, VA-API hardware decoding (`va`) |
+| `gstreamer1.0-libav` (optional) | H.264, HEVC, AAC, WMV and most other codecs through the distribution's own FFmpeg |
+
+Phone and screen recordings are mostly H.264 + AAC in MP4; on Debian / Ubuntu they need `gstreamer1.0-libav` (or a VA-API
+plugin for GPU decoding). A file that cannot be decoded shows "Video kann nicht abgespielt werden" with
+"Erneut laden" on its card and can still be downloaded. The Nix package has -base / -good / -bad; `withLibav = true` adds
+gst-libav (FFmpeg in the closure, therefore off by default).
 
 ## Headless tests (Docker)
 

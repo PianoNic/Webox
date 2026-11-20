@@ -163,6 +163,44 @@ fn accent_theme_plugin_follows_theme_and_settings() {
 }
 
 #[test]
+fn pride_decorations_keep_text_readable_on_every_theme() {
+    use crate::ui::theme::{accents, decor, Th, ThemeId};
+    use collabhost_plugin_api::color::{contrast, mix};
+    let name = format!("{}collabhost_pride_theme.{}", std::env::consts::DLL_PREFIX, std::env::consts::DLL_EXTENSION);
+    let Some(built) = crate::extras::plugin_repo::tests::built(&name) else { eprintln!("build the workspace first; skipping"); return };
+    let d = tmp("pride-decor");
+    std::fs::create_dir_all(d.join("plugins")).unwrap();
+    std::fs::copy(&built, d.join("plugins").join(&name)).unwrap();
+    let mut p = crate::extras::plugins::Plugins::with_root(&d, d.join("data"));
+    let i = p.list.iter().position(|e| e.name == "Pride Theme").expect("listed");
+    assert!(p.decor(&accents::info(&Th::of(ThemeId::Dark))).is_none(), "off: nothing");
+    p.set_enabled(i, true);
+    let pack = |c: eframe::egui::Color32| u32::from_be_bytes([c.r(), c.g(), c.b(), 0xFF]);
+    for flag in ["rainbow", "progress", "trans", "bi", "lesbian", "pan", "nonbinary", "ace"] {
+        p.set_setting(i, "flag", json!(flag)).unwrap();
+        for id in ThemeId::EVERY {
+            let t = Th::of(id);
+            let dec = decor::from_api(&p.decor(&accents::info(&t)).expect("decorations"));
+            assert!(!dec.stripes.is_empty() && dec.flags != 0);
+            for (w, base) in [(&dec.window, t.win), (&dec.list, t.card), (&dec.content, t.card)] {
+                let Some(w) = w else { continue };
+                for s in &w.stops {
+                    let b = mix(pack(base), pack(*s), w.opacity as f64);
+                    for txt in [t.text1, t.text2] {
+                        let need = 4.5f64.min(contrast(pack(txt), pack(base)));
+                        assert!(contrast(pack(txt), b) >= need - 0.05, "{flag} {id:?}: text over the wash");
+                    }
+                }
+            }
+        }
+    }
+    // a decoration switched off in the settings is off in Webox at once
+    p.set_setting(i, "rail_stripe", json!(false)).unwrap();
+    let dec = decor::from_api(&p.decor(&accents::info(&Th::of(ThemeId::Dark))).unwrap());
+    assert!(dec.flags & collabhost_plugin_api::deco::RAIL_STRIPE == 0 && dec.flags & collabhost_plugin_api::deco::SEND_BURST != 0);
+}
+
+#[test]
 fn builtin_plugin_uses_the_same_schema() {
     let d = tmp("builtin");
     let mut p = crate::extras::plugins::Plugins::with_root(&d, d.join("data"));

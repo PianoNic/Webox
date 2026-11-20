@@ -173,7 +173,22 @@ pub(super) fn raw_from(pix: Pix, w: u32, h: u32, stride: i32, data: &[u8]) -> Op
     }
 }
 
+/// The media source, to shut down from the preview's watchdog thread (Media Foundation sources are free-threaded).
+struct SendSrc(IMFMediaSource);
+unsafe impl Send for SendSrc {}
+unsafe impl Sync for SendSrc {}
+
 impl Source for MfSource {
+    /// Shutting the source down makes a `ReadSample` that is waiting for a frame return with an error.
+    fn aborter(&self) -> Option<super::Aborter> {
+        let s = SendSrc(self.src.clone());
+        Some(super::Aborter(Box::new(move || unsafe {
+            let s = &s; // capture the Send wrapper, not its (non-Send) field
+            let com = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
+            let _ = s.0.Shutdown();
+            if com { CoUninitialize(); }
+        })))
+    }
     fn mode(&self) -> Mode { self.mode }
     fn modes(&self) -> Vec<Mode> { self.modes.clone() }
     fn name(&self) -> String { self.name.clone() }
@@ -225,6 +240,115 @@ mod tests {
         let r = raw_from(Pix::Bgra, 2, 2, -8, &d).unwrap();
         assert_eq!(&r.data[..8], &[1, 2, 3, 4, 5, 6, 7, 8]);
         assert_eq!(raw_from(Pix::Yuyv, 4, 2, 0, &[0; 16]).unwrap().stride, 8);
+    }
+
+    /// Luma statistics of a raw frame straight from its bytes (Y samples; RGB via BT.601 weights): (mean, min, max).
+    fn luma(r: &Raw) -> (f32, u8, u8) {
+        let (w, h) = (r.w as usize, r.h as usize);
+        let mut v = Vec::with_capacity(w * h / 16);
+        for y in (0..h).step_by(4) { for x in (0..w).step_by(4) {
+            v.push(match r.pix {
+                Pix::Nv12 => r.data[y * r.stride + x],
+                Pix::Yuyv => r.data[y * r.stride + x * 2],
+                Pix::Bgra => { let i = y * r.stride + x * 4; ((r.data[i] as u32 * 29 + r.data[i + 1] as u32 * 150 + r.data[i + 2] as u32 * 77) >> 8) as u8 }
+                Pix::Rgb24 => { let i = y * r.stride + x * 3; ((r.data[i] as u32 * 77 + r.data[i + 1] as u32 * 150 + r.data[i + 2] as u32 * 29) >> 8) as u8 }
+                Pix::Mjpg => 0,
+            });
+        } }
+        (v.iter().map(|&x| x as f32).sum::<f32>() / v.len().max(1) as f32, *v.iter().min().unwrap_or(&0), *v.iter().max().unwrap_or(&0))
+    }
+
+    /// Live diagnosis on a real camera (`cargo test --bin webox camera::mf::tests::live_probe -- --ignored --nocapture`):
+    /// (1) Webox's own path open() -> next() -> render(): rate, negotiated format, stride, buffer length, luma before and after;
+    /// (2) a minimal capture of each native format with no output conversion, to tell "the camera delivers black" from "we break it".
+    static STEP: std::sync::Mutex<(String, Option<std::time::Instant>)> = std::sync::Mutex::new((String::new(), None));
+    fn step(s: &str) { eprintln!("step: {s}"); *STEP.lock().unwrap() = (s.to_string(), Some(std::time::Instant::now())); }
+    /// Probe watchdog: a step may take 20 s, the whole probe 60 s; then it says where it is and exits with code 3.
+    fn watchdog() {
+        let t0 = std::time::Instant::now();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let (s, at) = STEP.lock().unwrap().clone();
+            let stuck = at.is_some_and(|a| a.elapsed().as_secs() >= 20);
+            if stuck || t0.elapsed().as_secs() >= 60 { eprintln!("WATCHDOG: stuck at step '{s}' ({:.0} s total)", t0.elapsed().as_secs_f32()); std::process::exit(3); }
+        });
+    }
+
+    #[test]
+    #[ignore]
+    fn live_probe() {
+        watchdog();
+        step("list");
+        let Some(dev) = list().into_iter().next() else { eprintln!("no camera"); return };
+        eprintln!("camera: {}", dev.name);
+        let hw = std::env::var("PROBE_HW").map_or(true, |v| v != "0");
+        step(&format!("open (hardware transforms {hw})"));
+        match open(&dev, 1080, hw) {
+            Err(f) => eprintln!("open failed: {f:?}"),
+            Ok(mut s) => {
+                eprintln!("native modes: {:?}", s.modes());
+                eprintln!("chosen {:?}; reader delivers {:?} {}x{} default stride {}", s.mode(), s.out, s.w, s.h, s.stride);
+                let t0 = std::time::Instant::now();
+                let (mut got, mut none) = (0, 0);
+                step("first ReadSample (webox path)");
+                while t0.elapsed().as_secs_f32() < 3.0 {
+                    match s.next() {
+                        Ok(Some(r)) => {
+                            got += 1;
+                            if got == 1 { step("reading (webox path)"); }
+                            if got % 15 == 1 {
+                                let (m, lo, hi) = luma(&r);
+                                let out = super::super::render(&r, 424, 240, &super::super::Look::default());
+                                let lum: Vec<u32> = out.chunks_exact(4).map(|p| (p[0] as u32 * 77 + p[1] as u32 * 150 + p[2] as u32 * 29) >> 8).collect();
+                                let alpha_min = out.chunks_exact(4).map(|p| p[3]).min().unwrap();
+                                eprintln!("  frame {got}: {:?} {}x{} stride {} uv_off {} len {} | luma mean {m:.1} min {lo} max {hi} | rgba mean {:.1} min {} max {} alpha_min {alpha_min}",
+                                    r.pix, r.w, r.h, r.stride, r.uv_off, r.data.len(), lum.iter().sum::<u32>() as f32 / lum.len() as f32, lum.iter().min().unwrap(), lum.iter().max().unwrap());
+                            }
+                        }
+                        Ok(None) => none += 1,
+                        Err(f) => { eprintln!("next failed: {f:?}"); break; }
+                    }
+                }
+                eprintln!("webox path: {got} frames in 3 s ({:.1}/s), {none} empty reads", got as f32 / 3.0);
+            }
+        }
+        // (2) minimal capture: each native format as it is
+        step("raw: open source");
+        unsafe {
+            let _init = MfInit::new().unwrap();
+            let all = activates().unwrap();
+            let act = all.iter().find(|a| dev_of(a).is_some_and(|d| d.id == dev.id)).unwrap();
+            let src: IMFMediaSource = act.ActivateObject().unwrap();
+            let reader = MFCreateSourceReaderFromMediaSource(&src, None).unwrap();
+            let mut k = 0;
+            let mut tried = std::collections::HashSet::new();
+            while let Ok(t) = reader.GetNativeMediaType(FIRST_VIDEO, k) {
+                k += 1;
+                let Some(m) = mode_of(&t) else { continue };
+                if !tried.insert(m.pix as u8) { continue; } // first (usually largest) mode of each format
+                step(&format!("raw: set {:?}", m));
+                if reader.SetCurrentMediaType(FIRST_VIDEO, None, &t).is_err() { eprintln!("raw {:?}: set failed", m); continue; }
+                let stride = t.GetUINT32(&MF_MT_DEFAULT_STRIDE).map_or(0, |v| v as i32);
+                let mut stats = vec![];
+                step(&format!("raw: first ReadSample {:?}", m.pix));
+                for _ in 0..30 {
+                    let mut flags = 0u32;
+                    let mut sample: Option<IMFSample> = None;
+                    if reader.ReadSample(FIRST_VIDEO, 0, None, Some(&mut flags), None, Some(&mut sample)).is_err() { break; }
+                    let Some(sample) = sample else { continue };
+                    let buf = sample.ConvertToContiguousBuffer().unwrap();
+                    let mut p = std::ptr::null_mut(); let mut len = 0u32;
+                    buf.Lock(&mut p, None, Some(&mut len)).unwrap();
+                    let data = std::slice::from_raw_parts(p, len as usize).to_vec();
+                    let _ = buf.Unlock();
+                    let raw = if m.pix == Pix::Mjpg { Raw { pix: Pix::Mjpg, w: m.w, h: m.h, stride: 0, uv_off: 0, data }.decoded().ok() } else { raw_from(m.pix, m.w, m.h, stride, &data) };
+                    if let Some(r) = raw { stats.push(luma(&r)); }
+                }
+                let last = stats.last().copied();
+                eprintln!("raw {:?} {}x{} @{:.0} stride {stride}: {} frames, last luma {:?}", m.pix, m.w, m.h, m.fps, stats.len(), last);
+            }
+            let _ = src.Shutdown(); let _ = act.ShutdownObject();
+        }
     }
 
     /// Runs on the build machine: lists whatever cameras there are, without opening one.

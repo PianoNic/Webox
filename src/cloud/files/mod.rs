@@ -248,10 +248,10 @@ impl Session {
         let scr: Value = serde_json::from_slice(&plain).map_err(|e| fail(e.to_string()))?;
         let (agent, token, key, path) = (self.agent.clone(), self.token.clone(), key.to_string(), path.to_path_buf());
         std::thread::spawn(move || {
-            let r = fetch(&agent, &token, &scr, &key, &cancel).and_then(|b| {
-                let part = PathBuf::from(format!("{}.part", path.display()));
-                std::fs::write(&part, &b).and_then(|_| std::fs::rename(&part, &path)).map_err(|e| e.to_string())
-            });
+            // decrypted into `path.part` as it arrives; renamed only once the tag checked out
+            let part = PathBuf::from(format!("{}.part", path.display()));
+            let r = fetch_to(&agent, &token, &scr, &key, &cancel, &part).and_then(|()| std::fs::rename(&part, &path).map_err(|e| e.to_string()));
+            if r.is_err() { let _ = std::fs::remove_file(&part); }
             match r {
                 Ok(()) => { shared::download_phase(&key, Phase::Done); finish(&path, then); }
                 Err(_) if cancel.load(Ordering::SeqCst) => shared::download_phase(&key, Phase::Cancelled),
@@ -264,7 +264,7 @@ impl Session {
 
 /// After a download: "Öffnen" / "In Ordner anzeigen".
 pub(crate) fn finish(path: &Path, then: Then) {
-    match then { Then::Open => shared::open_file(path), Then::ShowInFolder => shared::show_in_folder(path), Then::Nothing => {} }
+    match then { Then::Open => shared::open_file(path), Then::ShowInFolder => shared::show_in_folder(path), Then::Nothing | Then::Play => {} }
 }
 
 /// Uploads every file (and the thumbnails of images); returns the file items (encrypted) and their mime types.
@@ -302,8 +302,10 @@ fn upload_all(agent: &ureq::Agent, token: &str, r: &SendFiles, key: &[u8], key_u
     Ok((items, mimes))
 }
 
-/// Download + decrypt one file (any size), with progress and cancel.
-fn fetch(agent: &ureq::Agent, token: &str, scr: &Value, key: &str, cancel: &Arc<AtomicBool>) -> Result<Vec<u8>, String> {
+/// Download + decrypt one file (any size) into `out`, with progress and cancel. Memory stays at one read buffer: the bytes are
+/// decrypted as they arrive (`stream::GcmStream`) and the tag is checked at the end (an error leaves a file the caller deletes).
+fn fetch_to(agent: &ureq::Agent, token: &str, scr: &Value, key: &str, cancel: &Arc<AtomicBool>, out: &Path) -> Result<(), String> {
+    use std::io::Write;
     let loc = st(scr, "loc");
     let plain_get = images::giphy_host(&loc);
     let url = if plain_get { loc.replacen("http://", "https://", 1) } else {
@@ -317,22 +319,32 @@ fn fetch(agent: &ureq::Agent, token: &str, scr: &Value, key: &str, cancel: &Arc<
     if !plain_get && images::token_host(&url) { req = req.set("Authorization", &format!("Bearer {token}")); }
     let resp = req.call().map_err(|e| match e { ureq::Error::Status(c, _) => format!("http {c}"), e => e.kind().to_string() })?;
     let total = resp.header("content-length").and_then(|v| v.parse::<u64>().ok()).unwrap_or(0);
+    let mut gcm = if plain_get { None } else {
+        if !st(scr, "enc").eq_ignore_ascii_case("A256GCM") { return Err("unsupported content cipher".into()); }
+        let (k, iv, tag) = (jose::unb64(&st(scr, "key"))?, jose::unb64(&st(scr, "iv"))?, jose::unb64(&st(scr, "tag")).unwrap_or_default());
+        Some((stream::GcmStream::new(&k, &iv, st(scr, "aad").as_bytes(), tag.is_empty())?, tag))
+    };
     let mut rd = resp.into_reader().take(shared::DEFAULT_LIMIT_MB * 1024 * 1024 + 16);
-    let mut blob = Vec::with_capacity(total.min(512 * 1024 * 1024) as usize);
-    let mut buf = vec![0u8; 256 * 1024];
+    let mut file = std::io::BufWriter::new(std::fs::File::create(out).map_err(|e| e.to_string())?);
+    let (mut buf, mut plain) = (vec![0u8; 256 * 1024], Vec::with_capacity(256 * 1024));
+    let mut got = 0u64;
     loop {
         if cancel.load(Ordering::SeqCst) { return Err(CANCELLED.into()); }
         let n = rd.read(&mut buf).map_err(|e| e.to_string())?;
         if n == 0 { break; }
-        blob.extend_from_slice(&buf[..n]);
-        shared::download_progress(key, blob.len() as u64, total.max(blob.len() as u64));
+        got += n as u64;
+        match &mut gcm {
+            Some((g, _)) => { plain.clear(); g.update(&buf[..n], &mut plain); file.write_all(&plain).map_err(|e| e.to_string())?; }
+            None => file.write_all(&buf[..n]).map_err(|e| e.to_string())?,
+        }
+        shared::download_progress(key, got, total.max(got));
     }
-    if blob.is_empty() { return Err("leere Datei".into()); }
-    if plain_get { return Ok(blob); }
-    if !st(scr, "enc").eq_ignore_ascii_case("A256GCM") { return Err("unsupported content cipher".into()); }
-    let (k, iv, tag) = (jose::unb64(&st(scr, "key"))?, jose::unb64(&st(scr, "iv"))?, jose::unb64(&st(scr, "tag")).unwrap_or_default());
-    jose::gcm_open(&k, &iv, st(scr, "aad").as_bytes(), &blob, &tag)
+    if got == 0 { return Err("leere Datei".into()); }
+    if let Some((g, tag)) = gcm { g.finish(&tag)?; }
+    file.flush().map_err(|e| e.to_string())
 }
+
+mod stream;
 
 #[cfg(test)]
 mod tests;

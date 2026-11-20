@@ -37,7 +37,7 @@ impl App {
                 ui.add_enabled_ui(a.compat.is_ok(), |ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                         if let Some((v, f)) = &job {
-                            ui.add(egui::ProgressBar::new(f.unwrap_or(0.0)).desired_width(120.0).show_percentage());
+                            crate::ui::theme::decor::progress(ui, *f, 120.0);
                             ui.label(RichText::new(format!("v{v}")).size(kit::SECOND).color(t.text2));
                         } else if a.compat.is_ok() {
                             let (label, enabled) = match &have {

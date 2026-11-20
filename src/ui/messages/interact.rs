@@ -22,7 +22,10 @@ impl App {
             if !self.icons.emoji(ui, &glyph, er) { ui.painter().text(er.center(), Align2::CENTER_CENTER, &glyph, FontId::proportional(14.0), c.body); }
             ui.painter().galley(pos2(right.left() + 6.0, rect.center().y - count.size().y / 2.0), count, c.body);
             let tip = if r.mine.is_some() { "Reaktion entfernen" } else { "Reaktion hinzufügen" };
-            if l.on_hover_text(tip).clicked() | rr.on_hover_text(format!("{} {}", r.count, r.name)).clicked() { self.toggle_reaction(&m.id, &r.name); }
+            if l.on_hover_text(tip).clicked() | rr.on_hover_text(format!("{} {}", r.count, r.name)).clicked() {
+                if r.mine.is_none() { crate::ui::theme::fx::reacted(rect); } // adding one: a design plugin's ripple
+                self.toggle_reaction(&m.id, &r.name);
+            }
             x = rect.right() + 4.0;
         }
         // Add-reaction pill (reactions_12): height = row height, width = height + 8.
@@ -68,7 +71,7 @@ impl App {
     /// arrow-down_12, and the time of the last reply, spaced 3.
     pub(super) fn collapsed_thread(&mut self, ui: &mut egui::Ui, t: &Th, c: &Mc, root: &Message, replies: &[&Message]) {
         let w = ui.available_width();
-        let (row, resp) = ui.allocate_exact_size(Vec2::new(w, 48.0), Sense::click());
+        let (row, resp) = ui.allocate_exact_size(Vec2::new(w, dm().thread_collapsed_h), Sense::click()); // Standard 48
         let hovered = resp.hovered();
         let x0 = row.left() + GRID_X + REPLY_LEFT;
         let cy = row.center().y;
@@ -107,7 +110,7 @@ impl App {
     /// can collapse, "Ausblenden" (hide-bold).
     pub(super) fn thread_end(&mut self, ui: &mut egui::Ui, _t: &Th, c: &Mc, root: &Message, collapsible: bool) {
         let w = ui.available_width();
-        let (row, _) = ui.allocate_exact_size(Vec2::new(w, 5.0 + 28.0 + 8.0), Sense::hover());
+        let (row, _) = ui.allocate_exact_size(Vec2::new(w, 5.0 + 28.0 + dm().thread_end_bottom), Sense::hover()); // Standard 5 + 28 + 8
         let mut x = row.left() + GRID_X + REPLY_LEFT + 1.0;
         let y = row.top() + 5.0;
         let mut pill = |s: &mut Self, ui: &mut egui::Ui, icon: &'static str, label: &str, key: &str| -> bool {
@@ -129,8 +132,8 @@ impl App {
     /// 13.6 pt after the label), then the overflow "+N".
     pub(super) fn seen_banner(&mut self, ui: &mut egui::Ui, t: &Th, c: &Mc, people: &[Person]) {
         let w = ui.available_width();
-        let (row, _) = ui.allocate_exact_size(Vec2::new(w, SEEN_H + SEEN_TOP), Sense::hover());
-        let cy = row.top() + SEEN_TOP + SEEN_H / 2.0;
+        let (row, _) = ui.allocate_exact_size(Vec2::new(w, seen_h() + SEEN_TOP), Sense::hover());
+        let cy = row.top() + SEEN_TOP + seen_h() / 2.0;
         let g = ui.painter().layout_no_wrap(tr("Seen by").to_string(), FontId::proportional(SECOND), c.body);
         let (shown, overflow) = seen_overflow(people.len());
         let more_txt = format!("+{}", people.len().saturating_sub(shown));

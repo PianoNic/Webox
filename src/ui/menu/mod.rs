@@ -86,7 +86,7 @@ pub(crate) fn menu_toggle(ctx: &egui::Context, k: &str) { let o = menu_is_open(c
 
 // Minimum item width 264 + the panel padding 8 on each side = 280.
 const WIDTH: f32 = 280.0;
-const ITEM_H: f32 = 40.0;
+// (item height: `entry_h`, from the density table)
 const SEP_H: f32 = 11.0;
 const TITLE_H: f32 = 32.0;
 const PAD: f32 = 8.0;
@@ -102,7 +102,8 @@ pub(crate) fn scroll_into_view(off: f32, row_top: f32, row_h: f32, view_h: f32, 
     o.clamp(0.0, max.max(0.0))
 }
 
-fn entry_h(e: &Entry) -> f32 { match e { Entry::Item(it) => if it.avatar.is_some() || it.sub.is_some() { 48.0 } else { ITEM_H }, Entry::Sep => SEP_H, Entry::Title(_) => TITLE_H,
+/// Item heights: 40, and 48 for two-line and avatar rows (Standard); the density table may lower both (ui/theme/density.rs).
+fn entry_h(e: &Entry) -> f32 { let dm = crate::ui::theme::density::m(); match e { Entry::Item(it) => if it.avatar.is_some() || it.sub.is_some() { dm.menu_item2_h } else { dm.menu_item_h }, Entry::Sep => SEP_H, Entry::Title(_) => TITLE_H,
     Entry::Profile(_) => CARD_H - PAD + CARD_GAP } }
 
 /// A menu anchored at `anchor`. Returns the id of the picked item (the menu closes itself on a pick, Esc, or a click elsewhere).
@@ -229,7 +230,12 @@ pub(crate) fn menu_impl(ctx: &egui::Context, icons: &mut icons::Icons, t: &Th, k
                     let ac = pos2(card.center().x, banner.bottom());
                     let mut au = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_center_size(ac, Vec2::splat(CARD_AVATAR))));
                     super::widgets::avatar_photo(&mut au, icons, t, &c.name, CARD_AVATAR, false, None, None, c.photo);
-                    pt.text(pos2(card.center().x, card.top() + 170.0), egui::Align2::CENTER_CENTER, &c.name, super::widgets::semibold(16.0), p.text);
+                    let nr = pt.text(pos2(card.center().x, card.top() + 170.0), egui::Align2::CENTER_CENTER, &c.name, super::widgets::semibold(16.0), p.text);
+                    if crate::ui::theme::decor::on(collabhost_plugin_api::deco::NAME_FLAG) { // a small flag after your name, drawn as stripes
+                        let fr = Rect::from_min_size(pos2(nr.right() + 8.0, nr.center().y - 6.5), Vec2::new(19.0, 13.0));
+                        crate::ui::theme::decor::flag(&pt, fr, &crate::ui::theme::decor::stripes());
+                        pt.rect_stroke(fr, 1.5, Stroke::new(1.0, p.text2), egui::StrokeKind::Outside);
+                    }
                     pt.text(pos2(card.center().x, card.top() + 193.0), egui::Align2::CENTER_CENTER, &c.email, FontId::proportional(14.0), p.text2);
                 }
                 Entry::Item(it) => {

@@ -69,7 +69,7 @@ pub(crate) fn text_block(ui: &mut egui::Ui, text: &str, size: f32, col: Color32,
 
 /// Settings section: header (semibold), optional description (secondary), then the content.
 pub(crate) fn section(ui: &mut egui::Ui, t: &Th, title: &str, desc: &str, first: bool, add: impl FnOnce(&mut egui::Ui)) {
-    if !first { ui.add_space(16.0); }
+    if !first { ui.add_space(crate::ui::theme::density::m().settings_section_gap); } // Standard 16
     if !title.is_empty() { ui.label(RichText::new(title).font(semibold(16.0)).color(t.text1)); ui.add_space(4.0); }
     if !desc.is_empty() { text_block(ui, desc, SECOND, t.text2, 0.0); ui.add_space(4.0); }
     add(ui);
@@ -83,7 +83,7 @@ pub(crate) fn check(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th, label: &st
     // Disabled: checkbox-*-text disabled = white / black 40 %.
     let base = if is_dark(t) { Color32::WHITE } else { Color32::BLACK };
     let g = ui.painter().layout(label.to_string(), font(BODY), if enabled { t.text1 } else { alpha(base, 0.4) }, (width - indent - 32.0 - 4.0).max(40.0));
-    let h = (g.size().y + 2.0).max(24.0);
+    let h = (g.size().y + 2.0).max(crate::ui::theme::density::m().settings_row_min);
     // Left margin -6 and indicator margin 8 -> the box sits 2 px from the section's left edge.
     let (r, resp) = ui.allocate_exact_size(Vec2::new(width, h), if enabled { Sense::click() } else { Sense::hover() });
     let b = Rect::from_min_size(pos2(r.left() + indent + 2.0, r.top() + (h - 16.0) / 2.0), Vec2::splat(16.0));
@@ -131,9 +131,9 @@ pub(crate) fn radio(ui: &mut egui::Ui, t: &Th, label: &str, selected: bool, desc
     let width = ui.available_width();
     let g = ui.painter().layout(label.to_string(), font(BODY), t.text1, (width - 24.0 - 12.0).max(40.0));
     let dg = (!desc.is_empty()).then(|| ui.painter().layout(desc.to_string(), font(SECOND), t.text2, (width - 24.0).max(40.0)));
-    let h = (g.size().y + 2.0).max(24.0) + dg.as_ref().map_or(0.0, |d| d.size().y);
+    let h = (g.size().y + 2.0).max(crate::ui::theme::density::m().settings_row_min) + dg.as_ref().map_or(0.0, |d| d.size().y); // Standard 24
     let (r, resp) = ui.allocate_exact_size(Vec2::new(width, h), Sense::click());
-    let c = pos2(r.left() + 8.0, r.top() + 12.0);
+    let c = pos2(r.left() + 8.0, r.top() + crate::ui::theme::density::m().settings_row_min / 2.0); // Standard 12
     let p = ui.painter();
     if selected {
         p.circle_filled(c, 8.0, k.checked_bg.pick(&resp)); // radio-checked-background (= radio-checked-border)

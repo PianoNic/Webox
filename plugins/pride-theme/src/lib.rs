@@ -1,10 +1,14 @@
-//! Pride Theme: the colours of a Pride flag on Webox's accents (links, focus, selection, unread dots, badges, the selected rail
-//! item, primary buttons, toggles / checkboxes / sliders, mentions, the scrollbar and the composer's focus line, there as a
-//! gradient). Backgrounds and body text stay the base theme's, so it works on every theme, dark and light. Every colour is moved
-//! in lightness just enough for WCAG AA on the active theme: 4.5:1 for text and for text on a fill, 3:1 for dots, rings and
-//! control fills.
+//! Pride Theme: Webox in the colours of a Pride flag. The accents (links, focus, selection, unread dots, badges, the selected
+//! rail item, primary buttons, controls, mentions, the composer line as a gradient) take the flag's colours, spread across the
+//! roles; a soft wash of the flag lies behind the rail and header and a gentle one with a gradient rim on the cards; Webox
+//! draws the decorations and effects left switched on (decor.rs). Backgrounds stay the base theme's underneath and body text is
+//! never recoloured, so it works on every theme, dark and light: every colour is moved in lightness just enough for WCAG AA on
+//! the active theme (4.5:1 for text and text on a fill, 3:1 for dots, rings and control fills), and every wash is only as
+//! strong as the text on it allows.
+pub mod decor;
+
 use collabhost_plugin_api::color::{contrast, fill_for_text, is_grey, mix, readable, rgb, text_on, AA_GRAPHIC, AA_TEXT};
-use collabhost_plugin_api::{export_plugin, Accents, Plugin, Schema, ThemeInfo, Values, GRADIENT_MAX};
+use collabhost_plugin_api::{export_plugin, Accents, Decor, Plugin, Schema, ThemeInfo, Values, GRADIENT_MAX};
 
 /// (setting value, label, stripes top to bottom as 0xRRGGBB): the flags' standard colours.
 pub const FLAGS: [(&str, &str, &[u32]); 8] = [
@@ -19,8 +23,13 @@ pub const FLAGS: [(&str, &str, &[u32]); 8] = [
     ("ace", "Asexuell", &[0x000000, 0xA3A3A3, 0xFFFFFF, 0x800080]),
 ];
 
-struct Pride { flag: usize, gradient: bool }
-impl Default for Pride { fn default() -> Self { Pride { flag: 0, gradient: true } } }
+struct Pride { flag: usize, gradient: bool, wash_window: bool, wash_cards: bool, flags: u64 }
+impl Default for Pride {
+    fn default() -> Self {
+        let flags = decor::TOGGLES.iter().filter(|t| t.4).fold(0, |a, t| a | t.3);
+        Pride { flag: 0, gradient: true, wash_window: true, wash_cards: true, flags }
+    }
+}
 
 /// The distinct coloured (not grey) stripes, in flag order.
 fn hues(stripes: &[u32]) -> Vec<u32> {
@@ -57,6 +66,12 @@ pub fn accents_for(stripes: &[u32], th: &ThemeInfo, gradient: bool) -> Accents {
     a
 }
 
+/// A host that sent no colours (e.g. a capability probe): assume the default dark theme.
+fn filled(th: &ThemeInfo) -> ThemeInfo {
+    if th.background != 0 { return *th; }
+    ThemeInfo { background: rgb(0x262626), surface: rgb(0x1A1A1A), text: rgb(0xF7F7F7), text_secondary: rgb(0xB2B2B2), ..*th }
+}
+
 impl Plugin for Pride {
     const NAME: &'static str = "Pride Theme";
     const AUTHOR: &'static str = "Webox examples";
@@ -65,71 +80,33 @@ impl Plugin for Pride {
 
     fn settings(&self) -> Option<Schema> {
         let opts: Vec<(&str, &str)> = FLAGS.iter().map(|(v, l, _)| (*v, *l)).collect();
-        Some(Schema::new()
-            .section("Farben", "Hintergründe und Text bleiben die des gewählten Themas; nur Akzente werden eingefärbt.")
-            .choice("flag", "Flagge", "Deren Farben auf Links, Markierungen, Schaltflächen und Schaltern.", "rainbow", &opts)
-            .toggle("gradient", "Verlauf als Akzent", "Die Fokuslinie über dem Eingabefeld als Verlauf in allen Farben der Flagge.", true))
+        let mut s = Schema::new()
+            .section("Flagge", "Alle Farben, Hintergründe und Dekorationen kommen aus dieser Flagge. Text bleibt immer gut lesbar.")
+            .choice("flag", "Flagge", "", "rainbow", &opts)
+            .toggle("gradient", "Fokuslinie als Verlauf", "Die Linie über dem Eingabefeld in allen Farben der Flagge.", true)
+            .section("Hintergründe", "So kräftig, wie es der Text darauf zulässt (WCAG AA).")
+            .toggle("wash_window", "Schleier hinter Seitenleiste und Kopfzeile", "Ein sanfter diagonaler Verlauf der Flagge.", true)
+            .toggle("wash_cards", "Liste und Unterhaltung", "Ein Hauch der Flagge und ein farbiger Rand; unter Nachrichten besonders zurückhaltend.", true)
+            .section("Dekorationen", "");
+        for (id, label, desc, bit, def) in decor::TOGGLES { if !decor::is_effect(bit) { s = s.toggle(id, label, desc, def); } }
+        s = s.section("Effekte", "Kurz und ohne Eingaben zu blockieren; aus, wenn Windows weniger Animationen verlangt.");
+        for (id, label, desc, bit, def) in decor::TOGGLES { if decor::is_effect(bit) { s = s.toggle(id, label, desc, def); } }
+        Some(s)
     }
     fn settings_changed(&mut self, v: &Values) {
         self.flag = v.text("flag").and_then(|f| FLAGS.iter().position(|x| x.0 == f)).unwrap_or(0);
         self.gradient = v.bool("gradient").unwrap_or(true);
+        self.wash_window = v.bool("wash_window").unwrap_or(true);
+        self.wash_cards = v.bool("wash_cards").unwrap_or(true);
+        self.flags = decor::TOGGLES.iter().filter(|t| v.bool(t.0).unwrap_or(t.4)).fold(0, |a, t| a | t.3);
     }
-    fn accents(&mut self, th: &ThemeInfo) -> Option<Accents> {
-        // a host that sent no colours (e.g. a capability probe): assume the default dark card
-        let th = if th.background == 0 { ThemeInfo { background: rgb(0x262626), text: rgb(0xF7F7F7), ..*th } } else { *th };
-        Some(accents_for(FLAGS[self.flag].2, &th, self.gradient))
+    fn accents(&mut self, th: &ThemeInfo) -> Option<Accents> { Some(accents_for(FLAGS[self.flag].2, &filled(th), self.gradient)) }
+    fn decor(&mut self, th: &ThemeInfo) -> Option<Decor> {
+        Some(decor::decor_for(FLAGS[self.flag].2, &filled(th), self.wash_window, self.wash_cards, self.flags))
     }
 }
 
 export_plugin!(Pride);
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn theme(light: bool) -> ThemeInfo {
-        if light { ThemeInfo { light: 1, background: rgb(0xFAFAFA), surface: rgb(0xF0F0F0), text: rgb(0x121212), ..Default::default() } }
-        else { ThemeInfo { light: 0, background: rgb(0x262626), surface: rgb(0x1A1A1A), text: rgb(0xF7F7F7), ..Default::default() } }
-    }
-
-    #[test]
-    fn every_flag_is_readable_on_dark_and_light() {
-        for (name, _, stripes) in FLAGS {
-            for light in [false, true] {
-                let th = theme(light);
-                let a = accents_for(stripes, &th, true);
-                let bg = th.background;
-                let ctx = format!("{name} light={light}");
-                assert!(contrast(a.link, bg) >= AA_TEXT, "link {ctx}");
-                assert!(contrast(a.mention, bg) >= AA_TEXT, "mention {ctx}");
-                assert!(contrast(a.button, a.button_text) >= AA_TEXT, "button {ctx}");
-                assert!(contrast(a.badge, a.badge_text) >= AA_TEXT, "badge {ctx}");
-                for (role, c) in [("focus", a.focus), ("unread", a.unread), ("control", a.control), ("scrollbar", a.scrollbar_hover)] {
-                    assert!(contrast(c, bg) >= AA_GRAPHIC, "{role} {ctx}");
-                }
-                assert!(contrast(a.rail_selected, th.text) >= AA_TEXT, "rail icon {ctx}");
-                assert!(a.gradient_len >= 3 && a.gradient_len as usize <= GRADIENT_MAX, "gradient {ctx}");
-            }
-        }
-    }
-
-    #[test]
-    fn rainbow_spreads_its_six_colours() {
-        let a = accents_for(FLAGS[0].2, &theme(false), false);
-        assert_eq!(a.gradient_len, 0, "no gradient when switched off");
-        let roles = [a.unread, a.scrollbar_hover, a.mention, a.button, a.link, a.focus];
-        let distinct: std::collections::HashSet<u32> = roles.iter().copied().collect();
-        assert_eq!(distinct.len(), 6);
-    }
-
-    #[test]
-    fn settings_pick_the_flag() {
-        let mut p = Pride::default();
-        assert!(p.settings().unwrap().to_json().contains("\"value\":\"ace\""));
-        p.settings_changed(&Values::parse(r#"{"flag":"trans","gradient":false}"#));
-        assert_eq!((FLAGS[p.flag].0, p.gradient), ("trans", false));
-        p.settings_changed(&Values::parse(r#"{"flag":"nope"}"#));
-        assert_eq!(p.flag, 0);
-        assert!(p.accents(&ThemeInfo::default()).is_some());
-    }
-}
+mod tests;

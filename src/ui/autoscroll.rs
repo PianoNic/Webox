@@ -209,7 +209,8 @@ pub(crate) fn arrow_bar(ui: &mut Ui, id: Id, track: Rect, off: f32, max: f32, vi
     let hot = th_resp.hovered() || th_resp.dragged();
     // Thumb under the pointer: #808080 dark, #797979 light; an accent-theme plugin may colour it (ui/theme/accents.rs).
     let hot_c = crate::ui::theme::over("scrollbar-thumb-background:hovered").unwrap_or(if dark { crate::hex(0xA0A0A0) } else { crate::hex(0x5A5A5A) });
-    p.rect_filled(thumb, BAR_THUMB_W / 2.0, if hot { hot_c } else if dark { crate::hex(0x808080) } else { crate::hex(0x797979) });
+    if crate::ui::theme::decor::on(collabhost_plugin_api::deco::SCROLLBAR) { crate::ui::theme::decor::fill(&p, thumb, BAR_THUMB_W / 2.0, &crate::ui::theme::decor::stripes(), 90.0, if hot { 1.0 } else { 0.85 }); }
+    else { p.rect_filled(thumb, BAR_THUMB_W / 2.0, if hot { hot_c } else if dark { crate::hex(0x808080) } else { crate::hex(0x797979) }); }
     let chev = |r: Rect, dir: f32, on: bool| {
         let (cx, cy) = (r.center().x, r.center().y);
         let s = Stroke::new(1.3, crate::alpha(fg, if on { 0.95 } else { 0.55 }));
