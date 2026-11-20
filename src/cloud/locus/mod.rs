@@ -43,7 +43,7 @@ pub enum CallState { Dialing, Ringing, Incoming, Connecting, Connected, Ended(St
 pub struct CallEvent { pub state: CallState, pub name: String, pub email: String, pub incoming: bool }
 /// `HangUp` also declines a call that is still ringing for us. `Audit` reports remaining active calls, `Cleanup` leaves
 /// active calls that this very device (and nobody else) is joined to.
-pub enum CallReq { Dial(String, audio::Choice), Answer(audio::Choice), HangUp, Mute(bool), Devices(audio::Choice), SmartMic(audio::SmartMic, bool), #[allow(dead_code)] Audit, Cleanup,
+pub enum CallReq { Dial(String, audio::Choice), Answer(audio::Choice), HangUp, Mute(bool), Devices(audio::Choice), SmartMic(audio::SmartMic), #[allow(dead_code)] Audit, Cleanup,
     // keypad tones during a connected call
     Dtmf(String) }
 

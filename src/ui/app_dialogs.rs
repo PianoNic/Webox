@@ -33,7 +33,7 @@ impl App {
         self.edit_profile_dialog(ctx, t);
         self.health_dialog(ctx, t);
         self.feedback_dialog(ctx, t);
-        self.updates_dialog(ctx, t);
+        self.updates_dialog(ctx, t); // ui/update_dialog.rs
         self.device_dialog(ctx, t);
         self.time_picker(ctx, t, now);
         self.sessions_dialog(ctx, t);
@@ -161,19 +161,6 @@ impl App {
             Some(_) => menu::menu_close(ctx, FEEDBACK),
             None => {}
         }
-    }
-
-    /// "Auf Updates prüfen" (425 wide): Webox has no update server and is the latest build of itself, so the answer is the
-    /// "up to date" pair ("You're up to date" / "You're on the latest version ({{0}})."); while a call runs "Check for updates
-    /// is unavailable while you're on a call".
-    fn updates_dialog(&mut self, ctx: &egui::Context, t: &Th) {
-        if !menu::menu_is_open(ctx, UPDATES) { return; }
-        let (head, info) = if self.call_active() {
-            ("Auf Updates prüfen".to_string(), "„Auf Updates prüfen“ ist nicht verfügbar, während Sie sich in einem Anruf befinden".to_string())
-        } else {
-            ("Sie sind auf dem neuesten Stand".to_string(), "Sie haben die aktuelle Version ({{0}}).".replace("{{0}}", env!("CARGO_PKG_VERSION")))
-        };
-        if menu::webex_dialog(ctx, t, UPDATES, &head, &info, None, &[Button::primary("close", "Schließen")]).is_some() { menu::menu_close(ctx, UPDATES); }
     }
 
     /// "Mit einem Gerät verbinden" (device list → device search → code pairing). Webox finds no devices (no ultrasound / device

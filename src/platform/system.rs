@@ -229,6 +229,29 @@ fn reg_run_value(name: &str, value: Option<&str>) -> bool {
     }
 }
 
+/// Held for the whole run: the installer (packaging/windows/webox.iss, `AppMutex`) asks to close Webox while it exists.
+#[cfg(windows)]
+pub fn hold_app_mutex() {
+    use windows::core::PCWSTR;
+    let name = wide("WeboxAppMutex");
+    // The handle is never closed; Windows releases it when the process ends.
+    let _ = unsafe { windows::Win32::System::Threading::CreateMutexW(None, false, PCWSTR(name.as_ptr())) };
+}
+
+/// Whether the Run key starts Webox (the installer's "start with Windows" writes the same value). `None` off Windows.
+pub fn autostart_registered() -> Option<bool> {
+    #[cfg(windows)]
+    {
+        use windows::core::PCWSTR;
+        use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_SZ};
+        let (k, n) = (wide(r"Software\Microsoft\Windows\CurrentVersion\Run"), wide("WebOx"));
+        let mut len = 0u32;
+        Some(unsafe { RegGetValueW(HKEY_CURRENT_USER, PCWSTR(k.as_ptr()), PCWSTR(n.as_ptr()), RRF_RT_REG_SZ, None, None, Some(&mut len)) }.is_ok())
+    }
+    #[cfg(not(windows))]
+    None
+}
+
 /// Start with the computer: the Run key on Windows, an XDG autostart entry on Linux.
 pub fn set_autostart(on: bool) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;

@@ -42,7 +42,8 @@ impl App {
     pub(super) fn page_general(&mut self, ui: &mut egui::Ui, t: &Th, now: f64) {
         // Startup section: "Anmelden" / "Webox zusammen mit meinem Computer starten" (autostart, system.rs).
         section(ui, t, "Anmelden", "", true, |ui| {
-            let mut v = self.sb("autostart", false);
+            // Windows: the Run key itself, which the installer may have set.
+            let mut v = system::autostart_registered().unwrap_or_else(|| self.sb("autostart", false));
             if kit::check(ui, &mut self.icons, t, concat!(crate::app_name!(), " zusammen mit meinem Computer starten"), &mut v, true, false) {
                 match system::set_autostart(v) { Ok(()) => self.sset("autostart", json!(v)), Err(e) => self.toast(e, now) }
             }
@@ -90,6 +91,11 @@ impl App {
         section(ui, t, "Fenster", "", false, |ui| { // key shared with notify.rs
             self.pcheck(ui, t, "close_to_tray", true, "Beim Schließen in den Infobereich minimieren");
         });
+        // Webox's own updates (platform/updater): checked once a day; installing always asks first.
+        section(ui, t, "Updates", "Sucht einmal täglich auf GitHub nach einer neuen Version. Installiert wird erst, wenn Sie zustimmen, und nie während eines Anrufs.", false, |ui| {
+            self.pcheck(ui, t, "auto_update_check", true, "Automatisch nach Updates suchen");
+            if kit::link(ui, t, "Jetzt prüfen").clicked() { crate::ui::menu::menu_open(ui.ctx(), crate::ui::update_dialog::KEY); }
+        });
         section(ui, t, "Meetings aus dem Browser", "Ersetzt den Webex-Browser-Helper.", false, |ui| { // Webox feature
             let label = if cfg!(windows) { "Meeting-Links aus Chrome, Edge und Firefox hier öffnen" } else { "Meeting-Links aus Chrome, Chromium, Edge und Firefox hier öffnen" };
             let mut v = self.sb("browser_helper", false);
@@ -130,21 +136,12 @@ impl App {
         // Option labels of the Smart Audio page (not in the pack).
         let opts = [("auto", "Automatisch"), ("off", "Aus"), ("voice", "Nur Stimme"), ("all", "Alle Geräusche")];
         section(ui, t, "Mikrofonaudio", "Wählen Sie, wie Ihr Mikrofonaudio bei Anrufen und Meetings zu hören sein soll.", false, |ui| {
-            let eco = self.sb("smart_mic_eco", false);
-            if let Some(v) = self.pradio(ui, t, "smart_mic", "auto", &opts) { self.apply_smart_mic(crate::media::audio::SmartMic::from_key(&v), eco); }
-            // Webox addition (own labels): the lighter engine, and which one runs (meter / call microphone).
-            ui.add_space(4.0);
-            let mut e = eco;
-            if kit::check_more(ui, &mut self.icons, t, "Energiesparende Geräuschentfernung", &mut e,
-                "Verwendet RNNoise statt DeepFilterNet: braucht deutlich weniger Rechenleistung, entfernt Geräusche aber weniger gründlich.") {
-                self.sset("smart_mic_eco", json!(e));
-                let m = crate::media::audio::SmartMic::from_key(&self.ss("smart_mic", "auto"));
-                self.apply_smart_mic(m, e);
-            }
+            if let Some(v) = self.pradio(ui, t, "smart_mic", "auto", &opts) { self.apply_smart_mic(crate::media::audio::SmartMic::from_key(&v)); }
+            // Webox addition (own labels): which engine runs (level meter / call microphone).
             use crate::media::denoise::{engine, Engine};
             let s = match engine() {
-                Engine::Idle => "", Engine::Loading => "DeepFilterNet wird geladen …",
-                Engine::DeepFilter => "Aktiv: DeepFilterNet 3", Engine::RnnEco => "Aktiv: RNNoise (energiesparend)",
+                Engine::Idle => "", Engine::Rnnoise => "Aktiv: RNNoise",
+                Engine::Loading => "DeepFilterNet wird geladen …", Engine::DeepFilter => "Aktiv: DeepFilterNet 3",
                 Engine::RnnFallback => "Aktiv: RNNoise (DeepFilterNet ist auf diesem Gerät zu langsam)",
                 Engine::LoadFailed => "Aktiv: RNNoise (DeepFilterNet konnte nicht geladen werden)",
             };

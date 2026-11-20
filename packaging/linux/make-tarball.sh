@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds a release binary and packs a relocatable tarball (no AppImage): bin/webox, the desktop entry, hicolor icons and an
 # install.sh that copies them to ~/.local (or PREFIX). The target system needs the run-time libraries listed in docs/LINUX.md
-# (WebKitGTK 4.1, GTK 3, ALSA, libxkbcommon-x11, OpenGL/EGL).
+# (WebKitGTK 4.1, GTK 3, ALSA, libxkbcommon-x11, OpenGL/EGL, GStreamer with its base plugins).
 #   packaging/linux/make-tarball.sh            -> dist/webox-<version>-linux-<arch>.tar.gz
 set -eu
 cd "$(dirname "$0")/../.."

@@ -18,10 +18,10 @@ impl App {
     }
     /// Smart Audio > Mikrofonaudio changed (already stored as `smart_mic`): applies it to the cached choice, the level
     /// meter's microphone and a running call at once (the capture callback reads the mode per block, nothing reopens).
-    pub(crate) fn apply_smart_mic(&mut self, m: audio::SmartMic, eco: bool) {
-        if let Some(c) = self.call.choice.as_mut() { c.smart = m; c.eco = eco; }
-        if let Some(e) = &self.call.mic_test { e.io.set_smart(m); e.io.set_eco(eco); }
-        if self.call.cur.as_ref().is_some_and(|x| x.ended_at.is_none()) { if let Some(cl) = &self.client { cl.req(Req::Call(CallReq::SmartMic(m, eco))); } }
+    pub(crate) fn apply_smart_mic(&mut self, m: audio::SmartMic) {
+        if let Some(c) = self.call.choice.as_mut() { c.smart = m; }
+        if let Some(e) = &self.call.mic_test { e.io.set_smart(m); }
+        if self.call.cur.as_ref().is_some_and(|x| x.ended_at.is_none()) { if let Some(cl) = &self.client { cl.req(Req::Call(CallReq::SmartMic(m))); } }
     }
     /// Device lists, refreshed at most every 2 s while a picker is visible (hot-plug). The enumeration itself runs on a
     /// worker thread so the UI never waits for it; the previous list stays on screen until the new one arrives.

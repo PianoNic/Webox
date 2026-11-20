@@ -4,5 +4,6 @@
 pub mod audio;
 pub mod camera;
 pub mod denoise;
+pub mod mic;
 pub mod sounds;
 pub mod video;

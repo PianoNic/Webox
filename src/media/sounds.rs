@@ -258,7 +258,8 @@ mod tests {
     #[test]
     fn loopback_queue_holds_a_whole_ringtone() {
         let io = crate::media::audio::Io::default();
-        let r = pcm("Sunrise").unwrap();
+        // A ringtone-length tone (5 s at 48 kHz); the bundled ringtones are not in every checkout.
+        let r: Vec<i16> = (0..48_000 * 5).map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16).collect();
         io.play_long(&r);
         assert_eq!(io.play_pending(), r.len()); // not truncated to the 1 s call buffer
     }

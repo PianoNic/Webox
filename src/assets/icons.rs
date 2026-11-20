@@ -20,6 +20,7 @@ pub(crate) const FALLBACKS: &[(&str, &str)] = &[
     ("highlights_avatar_120", "color-sparkle-filled"),
     ("lighthouse-filter-192-cobalt-lime", "flashlight-search-192-cobalt-lime"),
     ("message-send-320-cobalt-lime", "message-send-320"),
+    ("update_24", "refresh-regular"), // the rail's update button
 ];
 
 /// Whether an SVG is single-colour black line art (every fill / stroke / stop colour black or none).

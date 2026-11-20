@@ -4,6 +4,8 @@
 # Images: image<TAB>path<TAB>git blob sha1 (git hash-object <file>) of the reviewed version.
 
 uuid	00AAC56B-CD44-11D0-8CC2-00C04FC295EE	docs/*	# WINTRUST_ACTION_GENERIC_VERIFY_V2, public Windows SDK constant
+uuid	6F3A2D1C-8B4E-4C7A-9E15-2B7D0C4F8A61	packaging/windows/webox.iss	# invented installer AppId of Webox
+uuid	6F3A2D1C-8B4E-4C7A-9E15-2B7D0C4F8A61	src/platform/updater/registry.rs	# the same AppId, read back by the updater
 email	ciscowebexstart@cisco.com	src/platform/nmhost.rs	# public Firefox extension id of the official Webex browser extension
 email	ciscowebexstart1@cisco.com	src/platform/nmhost.rs	# public Firefox extension id of the official Webex browser extension
 email	someone@go.webex.com	src/ui/meetings_page.rs	# placeholder video address in a test

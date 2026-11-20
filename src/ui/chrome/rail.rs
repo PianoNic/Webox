@@ -5,6 +5,13 @@ use super::*;
 impl App {
     /// One rail entry: wide = rounded pill (172 x 42) with label; narrow = round highlight.
     fn rail_item(&mut self, ui: &mut egui::Ui, t: &Th, icon: &'static str, label: &str, on: bool, badge: bool, h: f32) -> egui::Response {
+        self.rail_entry(ui, t, icon, label, on, badge, None, h)
+    }
+    /// A rail entry whose icon (and label) has its own colour, e.g. the update button.
+    pub(crate) fn rail_item_tinted(&mut self, ui: &mut egui::Ui, t: &Th, icon: &'static str, label: &str, tint: Option<Color32>, h: f32) -> egui::Response {
+        self.rail_entry(ui, t, icon, label, false, false, tint, h)
+    }
+    fn rail_entry(&mut self, ui: &mut egui::Ui, t: &Th, icon: &'static str, label: &str, on: bool, badge: bool, tint: Option<Color32>, h: f32) -> egui::Response {
         let w = if self.rail_wide { ui.available_width() } else { 40.0_f32.min(ui.available_width()) }; // collapsed: the 40 pt circle itself
         let (r, resp) = ui.allocate_exact_size(Vec2::new(w, h), Sense::click());
         // navigationtab-background: hovered white/black 7 %, checked 20 % (pressed = checked).
@@ -13,7 +20,7 @@ impl App {
         if let Some(c) = bg { if self.rail_wide { ui.painter().rect_filled(r, h / 2.0, c); } else { ui.painter().circle_filled(r.center(), 20.0, c); } }
         let ic = if self.rail_wide { pos2(r.left() + 20.0, r.center().y) } else { r.center() };
         // navigationtab-text: normal 70 %, checked 95 %.
-        let icon_col = if on { t.tk("navigationtab-text:checked") } else { t.tk("navigationtab-text") };
+        let icon_col = tint.unwrap_or_else(|| if on { t.tk("navigationtab-text:checked") } else { t.tk("navigationtab-text") });
         self.icons.paint(ui, icon, Rect::from_center_size(ic, Vec2::splat(24.0) /* 24 pt icon box */), icon_col);
         // The rail badge is appNav-badge (red-60), not the blue mainList-indicator.
         if badge { ui.painter().circle_filled(ic + Vec2::new(10.0, -10.0), 5.0, if crate::ui::theme::decor::on(collabhost_plugin_api::deco::BADGE_CYCLE) { crate::ui::theme::decor::cycle(0).unwrap_or(t.tk("appNav-badge")) } else { t.tk("appNav-badge") }); } // = t.badge unless an accent theme sets it
@@ -72,6 +79,7 @@ impl App {
                 if self.rail_item(ui, t, "help-circle-filled", tr("Help"), false, false, bh).clicked() { system::open(super::super::profile_menu::HELP_CENTER_URL) }
                 let on = self.tab == Tab::Settings;
                 if self.rail_item(ui, t, "settings-filled", tr("Settings"), on, false, bh).clicked() { self.set_tab(Tab::Settings) }
+                self.rail_update_button(ui, t, bh); // above the gear while a newer version is known (ui/update_dialog.rs)
             });
         });
     }
