@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Webox
+GenericName=Team Messaging and Meetings
+Comment=Desktop client for Webex messaging, meetings and calls
+Exec=webox %u
+Icon=webox
+Terminal=false
+Categories=Network;InstantMessaging;Chat;VideoConference;
+Keywords=webex;chat;meeting;call;
+MimeType=x-scheme-handler/collabhost;
+StartupNotify=true
+StartupWMClass=webox
+SingleMainWindow=true

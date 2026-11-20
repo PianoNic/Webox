@@ -1,0 +1,123 @@
+[workspace]
+members = [".", "plugin-api", "plugins/slash-commands", "plugins/pride-theme"]
+default-members = [".", "plugins/slash-commands", "plugins/pride-theme"]
+resolver = "2"
+
+[package]
+name = "webox"
+version = "46.10.0"
+edition = "2021"
+
+[[bin]]
+name = "webox"
+path = "src/main.rs"
+
+[dependencies]
+collabhost-plugin-api = { path = "plugin-api" }
+eframe = "0.31"
+serde_json = "1"
+ureq = { version = "2", features = ["json"] }
+# Plugin repositories (src/extras/plugin_repo/): URL joins for index-relative binaries, semver version compare. Both already in the tree (ureq, cargo metadata).
+url = "2"
+semver = "1"
+tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+libloading = "0.8"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
+base64 = "0.22"
+rand = "0.8"
+p256 = { version = "0.13", features = ["ecdh"] }
+rsa = { version = "0.9", features = ["sha2"] }
+sha1 = { version = "0.10", features = ["oid"] }
+sha2 = { version = "0.10", features = ["oid"] }
+aes-gcm = "0.10"
+hkdf = "0.12"
+hmac = "0.12"
+resvg = { version = "0.45", default-features = false }
+# Calling media: WebRTC peer connection (ICE/DTLS-SRTP/RTP, pure Rust), audio devices, Opus (pure-Rust port). No Cisco media libs.
+webrtc = "0.14"
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "sync", "time", "macros"] }
+cpal = "0.15"
+bytes = "1"
+ropus = "0.12"
+# Smart Audio noise removal on the microphone. Primary: DeepFilterNet 3 (libDF, MIT/Apache-2.0) with tract, a pure-Rust ONNX
+# runtime. The real-time API is not on crates.io (only the old 0.2.5 is), so libDF is pinned to the v0.5.6 release commit, the
+# version built for tract 0.19 (upstream main moved to tract 0.21, which fails to compile the DFN3 graph: "duplicate name
+# /convt3/Conv.bias"). The model ships in assets/models/deepfilternet3 (loaded with DfParams::from_bytes): no default-model
+# or audio-file features.
+deep_filter = { git = "https://github.com/Rikorose/DeepFilterNet", rev = "978576aa8400552a4ce9730838c635aa30db5e61", default-features = false, features = ["tract"] }
+# libDF's process() takes ndarray 0.15 views.
+ndarray = "0.15"
+# Fallback / eco mode: pure-Rust port of RNNoise (no bins / dasp / hound).
+nnnoiseless = { version = "0.5", default-features = false }
+# zlib for the embedded translation packs (pure-Rust miniz_oxide backend, already in the tree)
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+# Custom ringtone / message sounds: decode wav/mp3/ogg/flac (pure Rust), pick the file with the native open dialog.
+symphonia = { version = "0.5", default-features = false, features = ["mp3", "ogg", "vorbis", "flac", "wav", "pcm"] }
+# Native open-file / folder dialog (Windows: IFileOpenDialog; Linux: desktop portal). No tauri/tao/wry.
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
+# images from the clipboard (pasted screenshots). Already in the tree via egui-winit (same version + feature).
+arboard = { version = "3", default-features = false, features = ["image-data"] }
+
+# Embedded in-window sign-in. Each OS pulls only its own native webview (kept out of the
+# lean path, behind per-target deps). No tauri / wry / tao anywhere.
+[target.'cfg(windows)'.dependencies]
+# Edge WebView2 (Windows).
+# webview2-com 0.33 pins windows ^0.58, matching the winit copy already in the tree (no duplicate).
+webview2-com = "0.33"
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_WinRT", "Win32_Graphics_Dwm", "Win32_System_Time", "Win32_UI_WindowsAndMessaging", "Win32_Globalization", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Threading", "Win32_System_Registry", "Win32_System_SystemInformation",
+  # tray icon, toast windows, taskbar flash/overlay, screen capture (raw Win32, no tray crates)
+  "Win32_UI_Shell", "Win32_UI_HiDpi", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_UI_Accessibility",
+  # secret plugin settings in the Credential Manager (src/extras/plugin_settings/secret.rs)
+  "Win32_Security_Credentials",
+  # cameras: Settings > Video preview (Media Foundation source reader)
+  "Win32_Media_MediaFoundation"] } # Time+Globalization (i18n, local time), WindowsAndMessaging (call windows), KeyboardAndMouse+Threading (global hotkeys, shortcuts)
+raw-window-handle = "0.6"
+
+# Example-only (examples/webview_probe.rs): window creation + screenshot for verifying the WebView2
+# plumbing on Windows. Dev-dependencies don't affect `cargo build`/release (resolver v2), so the lean
+# bin build pulls none of these extra `windows` features.
+[target.'cfg(windows)'.dev-dependencies]
+windows = { version = "0.58", features = [
+  "Win32_Foundation", "Win32_System_WinRT", "Win32_System_LibraryLoader",
+  "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_Storage_Xps",
+] }
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+# WebKitGTK (webkit2gtk-4.1) via the gtk-rs bindings. Needs GTK3/webkit at build + run time (flake.nix).
+webkit2gtk = { version = "2.0", features = ["v2_40"] }
+gtk = "0.18"
+glib = "0.18"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# Native desktop integration on Linux (src/platform/linux/): all of these are already in the tree through rfd's xdg-portal backend
+# (ashpd -> zbus 5 / zvariant 5 / futures-util / serde) and winit (x11rb, raw-window-handle), so they add no new crates.
+# StatusNotifierItem tray + dbusmenu, desktop notifications, launcher badge (D-Bus via zbus on its own tokio runtime).
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+zvariant = "5"
+serde = { version = "1", features = ["derive"] }
+futures-util = "0.3"
+# GlobalShortcuts portal (Wayland global hotkeys).
+ashpd = { version = "0.11", default-features = false, features = ["tokio"] }
+# X11: XGrabKey hotkeys, EWMH work area, toast window placement / capture, popup shapes without a compositor (pure-Rust connection, no libxcb).
+x11rb = { version = "0.13", features = ["shape"] }
+# V4L2 cameras (raw ioctls / mmap / poll for Settings > Video); already in the tree.
+libc = "0.2"
+raw-window-handle = "0.6"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
+
+# Shipping build: `cargo build --profile dist` (output in target/dist). Thin LTO, one codegen unit, stripped. Measured against
+# `release` at the same commit: exe 50.0 -> 39.1 MB, frame times and startup within noise, but much slower to build (relink
+# ~4 min, clean ~30 min), so local runs keep `release`. panic stays "unwind": a panicking worker (e.g. an image decoder on a
+# broken file) must not take the window down.
+[profile.dist]
+inherits = "release"
+lto = "thin"
+codegen-units = 1
+strip = true
+debug = false

@@ -1,0 +1,12 @@
+# Plain-Linux (Debian/Ubuntu) build + headless test image for WebOx.
+#   docker build -t webox-debian -f packaging/docker/Dockerfile.debian packaging/docker
+#   docker run --rm -v "$PWD:/src" -v webox-target:/target -e CARGO_TARGET_DIR=/target webox-debian cargo build --release
+FROM rust:1-trixie
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev libasound2-dev \
+      libxkbcommon-dev libwayland-dev libgl1-mesa-dev libegl1-mesa-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+      # headless runtime test: X server, Wayland compositor, software GL, session bus, screenshot tools
+      libxkbcommon-x11-0 fonts-dejavu-core \
+      xvfb weston libgl1-mesa-dri mesa-vulkan-drivers dbus dbus-x11 x11-apps imagemagick xdotool \
+      gstreamer1.0-plugins-base gstreamer1.0-plugins-good ca-certificates python3-gi gir1.2-glib-2.0 \
+    && rm -rf /var/lib/apt/lists/*

@@ -1,0 +1,34 @@
+# Build output
+target/
+target*/
+dist/
+result
+result-*
+
+# Local screenshots and logs
+shots/
+*.log
+
+# Local secrets (see secrets.example.toml)
+secrets.toml
+.env
+
+# Files from the official Webex client, kept locally only (see docs/cisco-assets.md)
+assets/cisco/
+
+# Python
+__pycache__/
+*.pyc
+
+# Local-only dev material: tracked here, never exported by scripts/publish-fresh.ps1
+CLAUDE.md
+scripts/inspect/
+scripts/dump_themes.py
+scripts/gen_theme_tokens.py
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+.DS_Store

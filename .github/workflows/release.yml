@@ -1,0 +1,143 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  ci:
+    name: Gates
+    uses: ./.github/workflows/ci.yml
+
+  sync-version:
+    name: Bump version to the release tag
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.sync.outputs.version }}
+      sha: ${{ steps.sync.outputs.sha }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git as the maintainer
+        run: |
+          git config user.name "PianoNic"
+          git config user.email "79938743+PianoNic@users.noreply.github.com"
+
+      - name: Bump Cargo.toml
+        id: sync
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          set -uo pipefail
+
+          TAG_VERSION="$(printf '%s' "$TAG_NAME" | sed -E 's/^[^0-9]*//')"
+          # The version of the [package] section, not of a dependency or another table.
+          FILE_VERSION=$(awk '/^\[package\]/{p=1;next} /^\[/{p=0} p && /^version *=/{gsub(/.*= *"|".*/,""); print; exit}' Cargo.toml)
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+
+          publish_head() {
+            echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          }
+
+          if [ "$TAG_VERSION" = "$FILE_VERSION" ]; then
+            publish_head
+            exit 0
+          fi
+
+          awk -v v="$TAG_VERSION" '/^\[package\]/{p=1} /^\[/ && !/^\[package\]/{p=0} p && !done && /^version *=/{print "version = \"" v "\""; done=1; next} {print}' Cargo.toml > Cargo.toml.new
+          mv Cargo.toml.new Cargo.toml
+          # Refresh only the workspace's own entries in Cargo.lock.
+          cargo update --workspace
+
+          git add Cargo.toml Cargo.lock
+          if git diff --cached --quiet; then
+            echo "::warning::Cargo.toml was not rewritten; leaving main as it is."
+            publish_head
+            exit 0
+          fi
+
+          git commit -m "Bumped Cargo.toml to $TAG_VERSION for release [skip ci]"
+
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then
+              publish_head
+              exit 0
+            fi
+            git fetch origin main
+            if ! git rebase origin/main; then
+              git rebase --abort || true
+              echo "::error::The version bump does not rebase onto main cleanly."
+              exit 1
+            fi
+          done
+
+          echo "::error::Could not push the version bump to main."
+          exit 1
+
+  windows:
+    name: Windows x64 zip
+    needs: sync-version
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout the commit the version bump landed on
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.sync-version.outputs.sha }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: cargo build --release --locked -p webox --bin webox
+
+      - name: Pack and attach
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.sync-version.outputs.version }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          $name = "webox-$env:VERSION-windows-x64"
+          New-Item -ItemType Directory -Force "dist/$name" | Out-Null
+          Copy-Item target/release/webox.exe, LICENSE, THIRD_PARTY_NOTICES.md, README.md "dist/$name/"
+          Compress-Archive -Path "dist/$name/*" -DestinationPath "dist/$name.zip" -Force
+          gh release upload "$env:TAG_NAME" "dist/$name.zip" --clobber
+
+  linux:
+    name: Linux tarball
+    needs: sync-version
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout the commit the version bump landed on
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.sync-version.outputs.sha }}
+
+      - name: Install the build dependencies (docs/LINUX.md)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libasound2-dev \
+            libxkbcommon-x11-0 libgl1 libegl1 fonts-dejavu-core
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Pack and attach
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          sh packaging/linux/make-tarball.sh
+          gh release upload "$TAG_NAME" dist/webox-*-linux-*.tar.gz --clobber

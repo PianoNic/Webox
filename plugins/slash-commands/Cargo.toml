@@ -1,0 +1,11 @@
+[package]
+name = "collabhost_slash_commands"
+version = "1.3.0"
+description = "Adds /shrug, /tableflip and /count, and turns :) into a smiley."
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+collabhost-plugin-api = { path = "../../plugin-api" }

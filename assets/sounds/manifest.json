@@ -1,0 +1,23 @@
+{
+  "source": "CiscoSparkLauncher/dynamic_dependencies (the original's own downloaded resource groups ringtones, momentum_ringtones, sounds)",
+  "format": "RIFF/WAVE 16-bit PCM",
+  "sounds": [
+    {"id": "Delight", "file": "Delight.wav", "group": "ringtones", "use": "incoming call ringtone (the original's default, policy incoming-call-alert-sound_1)", "loop": true},
+    {"id": "Sunrise", "file": "Sunrise.wav", "group": "ringtones", "use": "incoming call ringtone choice", "loop": true},
+    {"id": "Beep", "file": "Beep.wav", "group": "ringtones", "use": "incoming call ringtone choice", "loop": true},
+    {"id": "Open", "file": "Open.wav", "group": "momentum_ringtones", "use": "message notification sound choice", "loop": false},
+    {"id": "Tick", "file": "Tick.wav", "group": "momentum_ringtones", "use": "message notification sound choice", "loop": false},
+    {"id": "Ringback", "file": "Ringback.wav", "group": "sounds", "use": "outgoing call ringback", "loop": true},
+    {"id": "BusyTone", "file": "BusyTone.wav", "group": "sounds", "use": "call ended: declined / busy (estimated)", "loop": false},
+    {"id": "FastBusy", "file": "FastBusy.wav", "group": "sounds", "use": "call ended: failed (estimated)", "loop": false},
+    {"id": "DTMF_Tone", "file": "DTMF_Tone.wav", "group": "sounds", "use": "dial pad key tone", "loop": false},
+    {"id": "VoicemailBeep", "file": "VoicemailBeep.wav", "group": "sounds", "use": "voicemail beep (played when a voicemail recording starts)", "loop": false},
+    {"id": "GroupCallInvite", "file": "GroupCallInvite.wav", "group": "sounds", "use": "invited to a group call (name from spark-windows-desktop-ui.dll sound list)", "loop": false},
+    {"id": "Reconnect", "file": "Reconnect.wav", "group": "sounds", "use": "media connection lost / reconnecting (name from the dll list; BroadWorksCalling.dll tone list has [Reconnect])", "loop": false},
+    {"id": "ClosedCaptionActiveDisclaimer", "file": "ClosedCaptionActiveDisclaimer.wav", "group": "sounds", "use": "spoken disclaimer: captions are active (dll list)", "loop": false},
+    {"id": "RecordingStartDisclaimer", "file": "RecordingStartDisclaimer.wav", "group": "sounds", "use": "spoken disclaimer: recording started (dll list)", "loop": false}
+  ],
+  "not_copied": ["Ringback.mp3 / DTMF_Tone.mp3 (same audio as the WAVs, verified by duration in a test)"],
+  "named_in_dll_but_not_on_disk": ["MuteBeep","UnmuteBeep","CallWaiting","AutoParkedCall","CallPickupAlertNotification","Ringer","Ascent","Mischief","Mellow","Evolve","Ripples","Simulation","Zen","Nimba"]
+}
+

@@ -1,0 +1,21 @@
+# Line endings are pinned so a checkout or export does not depend on core.autocrlf.
+# Text is LF in the repository; files that are CRLF in the index today stay untouched until rewritten.
+* text=auto eol=lf
+# binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.flac binary
+*.qm binary
+*.z binary
+*.zip binary
+*.exe binary
+*.dll binary

@@ -1,0 +1,20 @@
+# False positives of scripts/check-company-data.ps1 (see docs/privacy-guard.md).
+# category<TAB>value<TAB>path glob (optional)<TAB># why
+# Only public or invented values belong here. Deny-list hits only by sha256:<hex of the lower-cased match>.
+# Images: image<TAB>path<TAB>git blob sha1 (git hash-object <file>) of the reviewed version.
+
+uuid	00AAC56B-CD44-11D0-8CC2-00C04FC295EE	docs/*	# WINTRUST_ACTION_GENERIC_VERIFY_V2, public Windows SDK constant
+email	ciscowebexstart@cisco.com	src/platform/nmhost.rs	# public Firefox extension id of the official Webex browser extension
+email	ciscowebexstart1@cisco.com	src/platform/nmhost.rs	# public Firefox extension id of the official Webex browser extension
+email	someone@go.webex.com	src/ui/meetings_page.rs	# placeholder video address in a test
+email	name@site.webex.com	src/ui/meetings_page.rs	# placeholder video address in a doc comment
+
+# vendored Unicode CLDR emoji names: ordinary words, saints' names in flag names; only the name-token categories
+person-token	*	assets/emoji_*.tsv	# CLDR data
+space-token	*	assets/emoji_*.tsv	# CLDR data
+team-token	*	assets/emoji_*.tsv	# CLDR data
+
+image	assets/branding/screenshot.png	83ad6e73989de8e166fb4b73497ef3524640b7fd	# reviewed: --sample render (made-up people and spaces only), 1200x720
+image	assets/branding/webox.png	3ccf0e3a0614b110fc23bd6c5c2fcc09f98f5900	# reviewed: app logo, 256x256
+image	assets/logo-256.png	b27d3a7a0a2e35a1baa53c5e98dfcca9388165a4	# reviewed: app logo, 256x256
+image	assets/logo-64.png	0e86c3b3fa1be19b2b79b1059e78375cc14332ba	# reviewed: app logo, 64x64
