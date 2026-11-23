@@ -2,7 +2,9 @@
 # `programs.webox.autostart = true;` adds ~/.config/autostart/webox.desktop (starts minimized in the tray).
 # (While home-manager owns that file, the in-app "start with the computer" switch can't change it.)
 self:
-{ config, lib, pkgs, osConfig ? null, ... }:
+# `osConfig` is only there when home-manager runs as a NixOS module (a special arg). It is read through `args`: the module system
+# ignores default values of module arguments (`osConfig ? null` fails with "attribute 'osConfig' missing" in standalone use).
+{ config, lib, pkgs, ... }@args:
 
 let
   cfg = config.programs.webox;
@@ -14,8 +16,8 @@ in
     package = lib.mkOption {
       type = lib.types.package;
       # As a NixOS module (osConfig set) the system has its own GL drivers: skip the ~800 MiB Mesa fallback.
-      default = self.packages.${pkgs.stdenv.hostPlatform.system}.${if osConfig != null then "webox-nixos" else "default"};
-      defaultText = lib.literalExpression "webox.packages.\${pkgs.stdenv.hostPlatform.system}.default";
+      default = self.packages.${pkgs.stdenv.hostPlatform.system}.${if args ? osConfig then "webox-nixos" else "default"};
+      defaultText = lib.literalMD "`webox.packages.<system>.webox-nixos` when home-manager runs as a NixOS module, else `webox.packages.<system>.default`";
       description = "The Webox package to use.";
     };
 
