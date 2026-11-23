@@ -12,6 +12,11 @@ pub mod features; // feature toggles + client policies (App::feature)
 mod images;
 pub mod locus;
 pub mod media;
+mod sdp; // answer filtering and address-free summaries for the media leg
+mod sdp_compat; // remote descriptions rewritten into what webrtc-rs accepts
+mod ice_socket; // the call's own ICE socket (survives Windows' ICMP errors)
+mod backoff; // 429 / 503: Retry-After and exponential backoff per host
+mod report; // which job errors the user sees, in which words
 mod mercury;
 mod people;
 mod sample;
@@ -115,7 +120,12 @@ pub struct Giphy { pub id: String, pub url: String, pub title: String }
 #[derive(Clone, Debug, Default)]
 pub struct ReadMark { pub person: String, pub email: String, pub activity: String, pub time: String }
 #[derive(Clone, Debug, Default)]
-pub struct Reaction { pub name: String, pub count: u32, pub mine: Option<String> }
+pub struct Reaction { pub name: String, pub count: u32, pub mine: Option<String>,
+    /// Who reacted, in the order the service lists them (the reactors popover).
+    pub users: Vec<Reactor> }
+/// One person behind a reaction: the participant id (uuid) and when they reacted (ISO, UTC; may be empty).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Reactor { pub id: String, pub published: String }
 #[derive(Clone, Debug, Default)]
 pub struct Person { pub id: String, pub name: String, pub email: String, pub status: String }
 #[derive(Clone, Debug, Default)]
@@ -138,9 +148,7 @@ pub struct Meeting { pub title: String, pub start: String, pub link: String }
 pub enum PostKind { New, Reply(String), Edit(String) }
 
 pub enum Req {
-    Spaces, Messages(String), Send(String, String), CreateSpace(String), Meetings,
-    /// (space, message, text)
-    Reply(String, String, String), Edit(String, String, String),
+    Spaces, Messages(String), Send(String, String), Meetings,
     /// (space, message)
     Delete(String, String), Ack(String, String),
     /// (space, message, reaction name); Unreact takes the reaction's own id

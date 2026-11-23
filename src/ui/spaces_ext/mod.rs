@@ -253,7 +253,7 @@ impl App {
                     let radio = |ui: &mut egui::Ui, i: usize, label: &str, sel: &mut usize| {
                         let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 32.0), Sense::click());
                         let c = pos2(r.left() + 12.0, r.center().y);
-                        ui.painter().circle_stroke(c, 8.0, Stroke::new(1.0, if *sel == i { text } else { text2 }));
+                        ui.painter().circle_stroke(c, 8.0, Stroke::new(1.0_f32, if *sel == i { text } else { text2 }));
                         if *sel == i { ui.painter().circle_filled(c, 4.5, text); }
                         ui.painter().text(pos2(r.left() + 28.0, r.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(14.5), text);
                         if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }

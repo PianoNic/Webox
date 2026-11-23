@@ -204,7 +204,7 @@ impl App {
 
                 ui.label(RichText::new(crate::tr!("SetStatusDialog", "Status").into_owned()).size(16.0).color(t.text1));
                 ui.add_space(6.0);
-                let field = egui::Frame::default().stroke(Stroke::new(1.0, alpha(t.text1, 0.9))).corner_radius(8.0).inner_margin(egui::Margin { left: 12, right: 12, top: 8, bottom: 6 });
+                let field = egui::Frame::default().stroke(Stroke::new(1.0_f32, alpha(t.text1, 0.9))).corner_radius(8.0).inner_margin(egui::Margin { left: 12, right: 12, top: 8, bottom: 6 });
                 field.show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.add(egui::TextEdit::singleline(&mut text).hint_text(crate::trq!("What's your status?").into_owned()).frame(false).font(FontId::proportional(16.0)).desired_width(ui.available_width() - 24.0).char_limit(MAX_CHARS));

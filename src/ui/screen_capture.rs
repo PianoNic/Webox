@@ -89,7 +89,7 @@ impl App {
                     Some(s) => {
                         for r in [Rect::from_min_max(view.min, pos2(view.max.x, s.min.y)), Rect::from_min_max(pos2(view.min.x, s.max.y), view.max),
                             Rect::from_min_max(pos2(view.min.x, s.min.y), pos2(s.min.x, s.max.y)), Rect::from_min_max(pos2(s.max.x, s.min.y), pos2(view.max.x, s.max.y))] { p.rect_filled(r, 0.0, dim); }
-                        p.rect_stroke(s, 0.0, Stroke::new(2.0, hex(0x07C1F5)), egui::StrokeKind::Outside);
+                        p.rect_stroke(s, 0.0, Stroke::new(2.0_f32, hex(0x07C1F5)), egui::StrokeKind::Outside);
                         let (_, _, pw, ph) = crop_px(s, view, (iw, ih));
                         p.text(s.left_top() - Vec2::new(0.0, 6.0), egui::Align2::LEFT_BOTTOM, format!("{pw} × {ph}"), FontId::proportional(13.0), Color32::WHITE);
                     }
@@ -110,7 +110,7 @@ impl App {
                     let can_r = Rect::from_min_size(pos2(cap_r.left() - 118.0, y), Vec2::new(110.0, 34.0));
                     let (a, b) = (ui.interact(can_r, egui::Id::new("cap-cancel"), Sense::click()), ui.interact(cap_r, egui::Id::new("cap-ok"), Sense::click()));
                     ui.painter().rect_filled(can_r, 17.0, if a.hovered() { hex(0x3B3B3B) } else { hex(0x262626) });
-                    ui.painter().rect_stroke(can_r, 17.0, Stroke::new(1.0, hex(0x7F7F7F)), egui::StrokeKind::Inside);
+                    ui.painter().rect_stroke(can_r, 17.0, Stroke::new(1.0_f32, hex(0x7F7F7F)), egui::StrokeKind::Inside);
                     ui.painter().text(can_r.center(), egui::Align2::CENTER_CENTER, "Abbrechen", semibold(14.0), Color32::WHITE);
                     ui.painter().rect_filled(cap_r, 17.0, if b.hovered() { hex(0xDEDEDE) } else { hex(0xF2F3F1) });
                     ui.painter().text(cap_r.center(), egui::Align2::CENTER_CENTER, "Screenshot", semibold(14.0), hex(0x121212));

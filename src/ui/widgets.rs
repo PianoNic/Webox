@@ -141,7 +141,10 @@ impl AvatarGrid {
 
 /// The vertical card gradients (theme-gradient-primary/-secondary), as a rounded mesh: perimeter points (corner arcs plus
 /// straight edges) fanned from the centre.
-pub(crate) fn vgrad(p: &egui::Painter, r: Rect, radius: f32, top: Color32, bottom: Color32) {
+pub(crate) fn vgrad(p: &egui::Painter, r: Rect, radius: f32, top: Color32, bottom: Color32) { vgrad_corners(p, r, [radius; 4], top, bottom) }
+
+/// `vgrad` with one radius per corner: top-left, bottom-left, bottom-right, top-right.
+pub(crate) fn vgrad_corners(p: &egui::Painter, r: Rect, radii: [f32; 4], top: Color32, bottom: Color32) {
     let lerp = |y: f32| {
         let k = ((y - r.top()) / r.height().max(1.0)).clamp(0.0, 1.0);
         Color32::from_rgb(
@@ -150,30 +153,20 @@ pub(crate) fn vgrad(p: &egui::Painter, r: Rect, radius: f32, top: Color32, botto
             (top.b() as f32 + (bottom.b() as f32 - top.b() as f32) * k) as u8,
         )
     };
-    let rad = radius.min(r.width() / 2.0).min(r.height() / 2.0);
+    let max = r.width().min(r.height()) / 2.0;
     let c = r.center();
     let steps = 7;
-    // Perimeter, clockwise: each corner arc from its start angle to end angle around the corner centre.
-    let arcs = [
-        (egui::pos2(r.left() + rad, r.top()), 90.0, 180.0, egui::pos2(r.left(), r.top() + rad)),
-        (egui::pos2(r.left(), r.bottom() - rad), 180.0, 270.0, egui::pos2(r.left() + rad, r.bottom())),
-        (egui::pos2(r.right() - rad, r.bottom()), 270.0, 360.0, egui::pos2(r.right(), r.bottom() - rad)),
-        (egui::pos2(r.right(), r.top() + rad), 0.0, 90.0, egui::pos2(r.right() - rad, r.top())),
-    ];
+    // Perimeter, counter-clockwise on screen: each corner arc around its centre (sx / sy point from the centre to the corner).
+    let corners = [(-1.0, -1.0, 90.0f32), (-1.0, 1.0, 180.0), (1.0, 1.0, 270.0), (1.0, -1.0, 0.0)];
     let mut pts: Vec<egui::Pos2> = Vec::new();
-    for (start, a0, a1, end) in arcs {
-        pts.push(start);
-        let center = match (a0, a1) {
-            (90.0, 180.0) => egui::pos2(r.left() + rad, r.top() + rad),
-            (0.0, 90.0) => egui::pos2(r.right() - rad, r.top() + rad),
-            (270.0, 360.0) => egui::pos2(r.right() - rad, r.bottom() - rad),
-            _ => egui::pos2(r.left() + rad, r.bottom() - rad),
-        };
-        for s in 1..steps {
-            let ang = egui::remap(s as f32 / steps as f32, 0.0..=1.0, a0..=a1).to_radians();
+    for ((sx, sy, a0), rad) in corners.into_iter().zip(radii) {
+        let rad = rad.clamp(0.0, max);
+        let corner = egui::pos2(if sx < 0.0 { r.left() } else { r.right() }, if sy < 0.0 { r.top() } else { r.bottom() });
+        let center = corner - egui::vec2(sx, sy) * rad;
+        for s in 0..=steps {
+            let ang = (a0 + 90.0 * s as f32 / steps as f32).to_radians();
             pts.push(egui::pos2(center.x + rad * ang.cos(), center.y - rad * ang.sin()));
         }
-        pts.push(end);
     }
     let mut m = egui::Mesh::default();
     m.colored_vertex(c, lerp(c.y));
@@ -215,20 +208,6 @@ pub(crate) fn vscroll() -> super::autoscroll::VScroll { super::autoscroll::VScro
 /// `Response::hovered()` already works that way; this is for the manual checks (hover toolbars, custom hover fills). Also
 /// clip-aware (a scrolled-away row isn't hovered).
 pub(crate) fn hover_ok(ui: &egui::Ui, rect: Rect) -> bool { ui.rect_contains_pointer(rect) }
-
-/// Whether the pointer is currently over `layer` itself (and not over another layer on top of it).
-pub(crate) fn pointer_on_layer(ctx: &egui::Context, layer: egui::LayerId) -> bool {
-    ctx.input(|i| i.pointer.hover_pos()).is_some_and(|p| layer_is_top(ctx.layer_id_at(p), layer))
-}
-
-/// Whether the pointer is over the application background (the panels), not over any overlay: for page-level hover effects that
-/// are not tied to a `Ui`.
-pub(crate) fn pointer_on_background(ctx: &egui::Context) -> bool {
-    ctx.input(|i| i.pointer.hover_pos()).map_or(false, |p| ctx.layer_id_at(p).map_or(true, |l| l.order == egui::Order::Background))
-}
-
-/// `top` = the layer under the pointer (`Context::layer_id_at`): is it `mine`?
-pub(crate) fn layer_is_top(top: Option<egui::LayerId>, mine: egui::LayerId) -> bool { top == Some(mine) }
 
 #[cfg(test)]
 mod presence_badge_tests {
@@ -322,41 +301,30 @@ mod avatar_grid_tests {
 #[cfg(test)]
 mod overlay_tests {
     use super::*;
-    use egui::{Id, LayerId, Order};
-
-    #[test]
-    fn only_the_topmost_layer_gets_the_pointer() {
-        let page = LayerId::new(Order::Background, Id::new("page"));
-        let viewer = LayerId::new(Order::Foreground, Id::new("lightbox-area"));
-        assert!(layer_is_top(Some(page), page));
-        assert!(!layer_is_top(Some(viewer), page)); // an overlay covers the point: the page below is not hovered
-        assert!(layer_is_top(Some(viewer), viewer));
-        assert!(!layer_is_top(None, page)); // pointer outside the window
-    }
+    use egui::{Id, Order};
 
     #[test]
     fn hover_checks_follow_the_layer_under_the_pointer() {
         let ctx = egui::Context::default();
         let rect = Rect::from_min_size(pos2(10.0, 10.0), Vec2::new(100.0, 40.0));
         let run = |cover: bool| {
-            let mut hovered = (false, false);
+            let mut hovered = false;
             let mut raw = egui::RawInput { screen_rect: Some(Rect::from_min_size(pos2(0.0, 0.0), Vec2::new(300.0, 200.0))), ..Default::default() };
             raw.events.push(egui::Event::PointerMoved(pos2(40.0, 30.0)));
             for _ in 0..3 {
                 let r = raw.clone();
                 let _ = ctx.run(r, |ctx| {
-                    egui::CentralPanel::default().show(ctx, |ui| { hovered.0 = hover_ok(ui, rect); });
+                    egui::CentralPanel::default().show(ctx, |ui| { hovered = hover_ok(ui, rect); });
                     if cover {
                         egui::Area::new(Id::new("cover")).fixed_pos(pos2(0.0, 0.0)).order(Order::Foreground).show(ctx, |ui| { ui.allocate_exact_size(Vec2::new(300.0, 200.0), Sense::click_and_drag()); });
                     }
-                    hovered.1 = pointer_on_background(ctx);
                 });
                 raw.events.clear();
             }
             hovered
         };
-        assert_eq!(run(false), (true, true));
-        assert_eq!(run(true), (false, false)); // an overlay on top: no hover for the page behind it
+        assert!(run(false));
+        assert!(!run(true)); // an overlay on top: no hover for the page behind it
     }
 }
 
@@ -403,7 +371,7 @@ pub(crate) fn toggle<'a>(on: &'a mut bool, t: &'a Th) -> impl egui::Widget + 'a 
         else { ui.painter().rect_filled(r, 11.0, if *on { t.accent } else { t.pill }); }
         let knob = pos2(egui::lerp(r.left() + 11.0..=r.right() - 11.0, k), r.center().y);
         ui.painter().circle_filled(knob, 8.0, Color32::WHITE);
-        if *on && crate::ui::theme::decor::on(collabhost_plugin_api::deco::TOGGLE_TRACK) { ui.painter().circle_stroke(knob, 8.0, Stroke::new(1.0, Color32::from_black_alpha(90))); } // the knob stays visible on light stripes
+        if *on && crate::ui::theme::decor::on(collabhost_plugin_api::deco::TOGGLE_TRACK) { ui.painter().circle_stroke(knob, 8.0, Stroke::new(1.0_f32, Color32::from_black_alpha(90))); } // the knob stays visible on light stripes
         resp
     }
 }

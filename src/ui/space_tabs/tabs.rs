@@ -209,7 +209,7 @@ impl App {
                 let g = ui.painter().layout_no_wrap(label.to_string(), FontId::proportional(13.5), t.link);
                 let lr = Rect::from_min_max(pos2(x - g.size().x, r.top() + 10.0), pos2(x, r.bottom() - 10.0));
                 let lresp = ui.interact(lr, ui.id().with(("file-row-act", i, *id)), Sense::click());
-                if lresp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); ui.painter().hline(lr.x_range(), r.center().y + 9.0, Stroke::new(1.0, t.link)); }
+                if lresp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); ui.painter().hline(lr.x_range(), r.center().y + 9.0, Stroke::new(1.0_f32, t.link)); }
                 ui.painter().galley(pos2(lr.left(), r.center().y - g.size().y / 2.0), g, t.link);
                 if lresp.clicked() { clicked = Some(id); }
                 x = lr.left() - 18.0;

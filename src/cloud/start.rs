@@ -6,9 +6,7 @@ pub fn start(token: String, device: Option<String>, kms_src: Option<(String, Str
     let (out, from_cloud) = channel::<Resp>();
     // Every answer / live event wakes the UI as it arrives. Ends when the session's senders are gone or the UI dropped the client.
     let (to_ui, rx) = channel::<Resp>();
-    std::thread::spawn(move || {
-        for r in from_cloud { if to_ui.send(r).is_err() { break } crate::ui::wake(); }
-    });
+    std::thread::spawn(move || forward(from_cloud, to_ui, crate::ui::wake));
     let job_tx = tx.clone();
     // A new session: earlier sockets / job loops end, the socket takes this bearer.
     let gen = SESSION_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
@@ -59,19 +57,17 @@ pub fn start(token: String, device: Option<String>, kms_src: Option<(String, Str
                 }
                 Err(_) => break,
             };
+            let user = super::report::user_started(&job);
             let r = match job {
                 Job::Ui(Req::Token { access, kms }) => { s.renew_token(access, kms); Ok(()) }
                 Job::Catchup(since) => { renew_presence = Instant::now() + Duration::from_secs(PRESENCE_RENEW_SECS); s.catchup(since) }
                 Job::Ui(Req::Spaces) => s.spaces(),
-                Job::Ui(Req::Messages(id)) => { s.register_typing(&id); let r = s.messages(&id); if r.is_err() { let _ = s.out.send(Resp::MessagesFailed(id.clone())); } r } // shown: receive its typing (cloud/typing.rs)
+                Job::Ui(Req::Messages(id)) => { s.register_typing(&id); let r = s.messages(&id); s.publish_typing(&id); if r.is_err() { let _ = s.out.send(Resp::MessagesFailed(id.clone())); } r } // shown: receive its typing (cloud/typing.rs)
                 Job::Ui(Req::Typing(id)) => s.send_typing(&id),
                 Job::Typing(d) => { s.typing_event(&d); Ok(()) }
                 Job::TypingTtl(id, ttl) => { s.typing_ttl(&id, ttl); Ok(()) }
                 Job::Ui(Req::Send(id, text)) => s.send(&id, &text).and_then(|_| s.after_write(&id)),
-                Job::Ui(Req::CreateSpace(t)) => s.create(&t).and_then(|_| s.spaces()),
                 Job::Ui(Req::Meetings) => s.meetings(),
-                Job::Ui(Req::Reply(id, p, t)) => s.reply(&id, &p, &t).and_then(|_| s.after_write(&id)),
-                Job::Ui(Req::Edit(id, m, t)) => s.edit(&id, &m, &t).and_then(|_| s.after_write(&id)),
                 Job::Ui(Req::Delete(id, m)) => s.delete(&id, &m).and_then(|_| s.after_write(&id)),
                 Job::Ui(Req::Ack(id, m)) => s.ack(&id, &m),
                 Job::Ui(Req::React(id, m, n)) => s.react(&id, &m, &n).and_then(|_| s.after_write(&id)),
@@ -112,10 +108,20 @@ pub fn start(token: String, device: Option<String>, kms_src: Option<(String, Str
                 Job::Ui(Req::PersonalRoom) => s.personal_room(),
                 Job::Ui(Req::SpaceOp(op)) => s.space_op(op),
             };
-            if let Err(e) = r { if out.send(Resp::Error(e)).is_err() { break; } }
+            // background failures only reach the debug log; the user's own actions get a short message (report.rs)
+            if let Err(e) = r {
+                let (ui, log) = super::report::report(user, &e);
+                dbg_conn(&log);
+                if let Some(m) = ui { if out.send(Resp::Error(m)).is_err() { break; } }
+            }
         }
     });
     Client { tx, rx }
+}
+
+/// Hands every cloud answer / live event to the UI and wakes it at once (no batching).
+pub(super) fn forward(from_cloud: Receiver<Resp>, to_ui: Sender<Resp>, wake: impl Fn()) {
+    for r in from_cloud { if to_ui.send(r).is_err() { break } wake(); }
 }
 
 /// Unix ms now (the keepalive's clock).
@@ -128,12 +134,14 @@ pub fn debug_log_enabled() -> bool {
 }
 
 /// Connection diagnostics → `%APPDATA%/WebOx/connect-debug.log`, only when `WEBOX_DEBUG_LOG=1` (off by default).
+/// Each line starts with the UTC time of day (hh:mm:ss.mmm).
 pub fn dbg_conn(s: &str) {
     if !debug_log_enabled() { return; }
     use std::io::Write;
     if let Ok(d) = std::env::var("APPDATA") {
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(std::path::Path::new(&d).join("WebOx").join("connect-debug.log")) {
-            let _ = writeln!(f, "{s}");
+            let ms = keepalive_now().rem_euclid(86_400_000);
+            let _ = writeln!(f, "{:02}:{:02}:{:02}.{:03} {s}", ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, ms % 1000);
         }
     }
 }

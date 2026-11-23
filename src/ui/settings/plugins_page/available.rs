@@ -32,7 +32,7 @@ impl App {
             let have = self.plugins.installed(&p.pkg).map(|i| i.version.clone());
             let job = self.repos.job(&p.pkg).map(|j| (j.version.clone(), j.fraction()));
             ui.add_space(12.0);
-            egui::Frame::default().stroke(Stroke::new(1.0, k.border)).corner_radius(8.0).inner_margin(12).show(ui, |ui| {
+            egui::Frame::default().stroke(Stroke::new(1.0_f32, k.border)).corner_radius(8.0).inner_margin(12).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.add_enabled_ui(a.compat.is_ok(), |ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
@@ -76,7 +76,7 @@ impl App {
                 ui.add_space(8.0);
                 // Each row is as high as its three lines. The badge / remove button sits in a child at the row's top right: a
                 // right-to-left layout with centred cross alignment would take the whole remaining page height.
-                egui::Frame::default().stroke(Stroke::new(1.0, k.border)).corner_radius(8.0).inner_margin(10).show(ui, |ui| {
+                egui::Frame::default().stroke(Stroke::new(1.0_f32, k.border)).corner_radius(8.0).inner_margin(10).show(ui, |ui| {
                     let w = ui.available_width();
                     ui.set_width(w);
                     let top = ui.cursor().min;

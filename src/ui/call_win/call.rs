@@ -163,8 +163,8 @@ impl App {
             let r = Rect::from_min_size(pos2(right_top.x - WIN_BTN_W * (3 - i) as f32, right_top.y), Vec2::new(WIN_BTN_W, h));
             let resp = ui.interact(r, ui.id().with(("win-btn", id)), Sense::click());
             if resp.hovered() { ui.painter().rect_filled(r, 0.0, if i == 2 { hex(0xA12512) } else { t.selected }); }
-            if resp.has_focus() { ui.painter().rect_stroke(r.shrink(2.0), 2.0, Stroke::new(2.0, t.focus), egui::StrokeKind::Inside); }
-            let (p, c, s) = (ui.painter(), r.center(), Stroke::new(1.0, t.text1));
+            if resp.has_focus() { ui.painter().rect_stroke(r.shrink(2.0), 2.0, Stroke::new(2.0_f32, t.focus), egui::StrokeKind::Inside); }
+            let (p, c, s) = (ui.painter(), r.center(), Stroke::new(1.0_f32, t.text1));
             match i {
                 0 => { p.line_segment([c - Vec2::new(5.0, 0.0), c + Vec2::new(5.0, 0.0)], s); }
                 1 if maxed => {
@@ -261,7 +261,7 @@ impl App {
                 bu.painter().rect_filled(pill, 20.0, if pr.hovered() { t.badge.gamma_multiply(0.85) } else { t.badge });
                 self.icons.paint(&bu, "handset-down-slash-regular", Rect::from_center_size(pill.left_center() + Vec2::new(24.0, 0.0), Vec2::splat(20.0)), Color32::WHITE);
                 bu.painter().text(pill.left_center() + Vec2::new(42.0, 0.0), egui::Align2::LEFT_CENTER, "Anruf beenden", semibold(13.0), Color32::WHITE);
-                if pr.has_focus() { bu.painter().rect_stroke(pill.expand(1.5), 21.5, Stroke::new(2.0, t.focus), egui::StrokeKind::Inside); }
+                if pr.has_focus() { bu.painter().rect_stroke(pill.expand(1.5), 21.5, Stroke::new(2.0_f32, t.focus), egui::StrokeKind::Inside); }
                 if pr.on_hover_text("Anruf beenden").clicked() { a.hang = true; }
                 self.device_menu(vctx, t, now, dev.rect);
             }

@@ -124,3 +124,68 @@ fn home_screen_tiles() {
     use picker::{home_tiles, Tile};
     assert_eq!(home_tiles(2), vec![Tile::Favs, Tile::Trending, Tile::Cat(0), Tile::Cat(1)]);
 }
+
+#[test]
+fn compact_size_setting_is_off_by_default_saved_and_overridable() {
+    let d = tmp("compact");
+    let mut p = Plugins::new(&d);
+    assert!(settings_schema().contains("Kompakte Größe") && settings_schema().contains("350 × 390"));
+    assert!(!compact(&p, None), "default: the standard size");
+    let i = p.list.iter().position(|e| e.key == KEY).unwrap();
+    p.set_setting(i, COMPACT, serde_json::Value::Bool(true)).unwrap();
+    assert!(compact(&p, None), "live: on at once");
+    assert!(compact(&Plugins::new(&d), None), "saved");
+    // Screenshot override wins both ways.
+    assert!(!compact(&p, Some("0")));
+    p.set_setting(i, COMPACT, serde_json::Value::Bool(false)).unwrap();
+    assert!(!compact(&p, None) && compact(&p, Some("1")));
+    let _ = std::fs::remove_dir_all(d);
+}
+
+#[test]
+fn compact_layout_matches_the_earlier_popup() {
+    use picker::layout::{compact_rect, geo, COMPACT_H, COMPACT_W};
+    let screen = Rect::from_min_size(pos2(0.0, 0.0), Vec2::new(1200.0, 800.0));
+    let button = Rect::from_min_size(pos2(300.0, 700.0), Vec2::splat(28.0));
+    // 40 px left of the button's centre, 10 px above it.
+    let r = compact_rect(screen, button);
+    assert_eq!((r.width(), r.height()), (COMPACT_W, COMPACT_H));
+    assert_eq!((r.left(), r.bottom()), (274.0, 690.0));
+    let g = geo(r, true);
+    assert_eq!((g.cols, g.gap, g.colw, g.tile_h), (2, 6.0, 156.0, 76.0));
+    assert_eq!(g.content_w(), 318.0);
+    assert!(g.content_w() + 8.0 <= g.grid.width(), "room for the scroll bar");
+    assert_eq!(g.grid.top() - r.top(), 46.0 + 28.0 + 8.0);
+    assert_eq!(r.bottom() - g.grid.bottom(), 34.0);
+    assert_eq!(g.home_tile(3), Rect::from_min_size(pos2(162.0, 82.0), Vec2::new(156.0, 76.0)));
+    assert_eq!(g.home_h(5), 3.0 * 82.0);
+    let [a, b, tip] = g.caret(button).unwrap();
+    assert_eq!((a.x, b.x, tip), (306.0, 322.0, pos2(314.0, 698.0)));
+    // Masonry with the compact gap: two columns 162 px apart.
+    let gif = |w, h| crate::extras::giphy::Gif { thumb_w: w, thumb_h: h, ..Default::default() };
+    let (t, _) = crate::ui::gif_picker::masonry_gap(&[gif(200, 100), gif(200, 200), gif(200, 100)], g.colw, g.cols, g.gap);
+    assert_eq!((t[0].min.x, t[1].min.x, t[2].min, t[2].height()), (0.0, 162.0, pos2(0.0, 84.0), 78.0));
+}
+
+#[test]
+fn compact_popup_stays_in_the_window() {
+    use picker::layout::compact_rect;
+    // A 1280 x 720 window at 125 % zoom is 1024 x 576 points; the button at the right edge and near the top.
+    let screen = Rect::from_min_size(pos2(0.0, 0.0), Vec2::new(1024.0, 576.0));
+    let r = compact_rect(screen, Rect::from_min_size(pos2(1000.0, 540.0), Vec2::splat(24.0)));
+    assert!(r.left() >= 8.0 && r.right() <= screen.right() - 8.0 && r.top() >= 8.0 && r.bottom() <= 540.0);
+    let r = compact_rect(screen, Rect::from_min_size(pos2(2.0, 200.0), Vec2::splat(24.0)));
+    assert_eq!((r.left(), r.top()), (8.0, 8.0));
+}
+
+#[test]
+fn standard_layout_is_unchanged() {
+    use crate::ui::gif_picker::{col_width, popup_rect, COLS, GAP, GRID_PAD};
+    let screen = Rect::from_min_size(pos2(0.0, 0.0), Vec2::new(1200.0, 800.0));
+    let r = popup_rect(screen, Rect::from_min_size(pos2(300.0, 700.0), Vec2::splat(28.0)));
+    let g = picker::layout::geo(r, false);
+    assert_eq!((g.rect, g.cols, g.gap, g.tile_h, g.caret(r)), (r, COLS, GAP, 96.0, None));
+    let grid = Rect::from_min_max(pos2(r.left() + 12.0, r.top() + 82.0), pos2(r.right() - 2.0, r.bottom() - 34.0));
+    assert_eq!((g.grid, g.colw), (grid, col_width(grid.width() + 2.0 * GRID_PAD - 12.0, COLS)));
+    assert_eq!((g.hit(), g.clip()), (r, r.expand(2.0)));
+}

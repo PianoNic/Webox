@@ -136,7 +136,7 @@ impl App {
                 e.commands.iter().map(|c| format!("/{c}")).collect::<Vec<_>>().join("  "), e.error.clone(), e.enabled, e.builtin);
             let has_settings = e.settings.schema.is_some();
             ui.add_space(12.0);
-            egui::Frame::default().stroke(Stroke::new(1.0, k.border)).corner_radius(8.0).inner_margin(12).show(ui, |ui| {
+            egui::Frame::default().stroke(Stroke::new(1.0_f32, k.border)).corner_radius(8.0).inner_margin(12).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
@@ -214,14 +214,14 @@ fn tabs(ui: &mut egui::Ui, t: &Th, sel: &mut PTab, items: &[(PTab, String)]) {
         }
     });
     let r = ui.min_rect();
-    ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0, k.border));
+    ui.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0_f32, k.border));
 }
 
 /// A small rounded label after a plugin's name (e.g. "Built-in" for the plugins compiled into the app).
 fn badge(ui: &mut egui::Ui, t: &Th, text: &str) {
     let g = ui.painter().layout_no_wrap(text.to_string(), FontId::proportional(11.0), t.text2);
     let (r, _) = ui.allocate_exact_size(g.size() + Vec2::new(12.0, 4.0), Sense::hover());
-    ui.painter().rect_stroke(r, r.height() / 2.0, Stroke::new(1.0, t.text2.gamma_multiply(0.6)), egui::StrokeKind::Inside);
+    ui.painter().rect_stroke(r, r.height() / 2.0, Stroke::new(1.0_f32, t.text2.gamma_multiply(0.6)), egui::StrokeKind::Inside);
     ui.painter().galley(r.center() - g.size() / 2.0, g, t.text2);
 }
 

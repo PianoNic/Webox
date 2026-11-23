@@ -72,6 +72,50 @@ fn roap_messages_match_the_sdk_shapes() {
     let resp = json!({"mediaConnections": [{"mediaId": "m1", "remoteSdp": json!({"roapMessage": {"messageType": "ANSWER", "seq": 1, "sdps": ["x"]}}).to_string()}]});
     assert_eq!(remote_roap(&resp), Some(("ANSWER".into(), 1, Some("x".into()))));
     assert!(remote_roap(&json!({"mediaConnections": [{"mediaId": "m1"}]})).is_none());
+    assert!(remote_roap(&json!({"mediaConnections": [{"mediaId": "m1", "remoteSdp": "{}"}]})).is_none());
+}
+/// Reads per minute of 1 s ticks (fake clock), with the reads `poll_due` asks for; `stale_at` = ticks where an event
+/// without the full locus arrived.
+fn reads_per_minute(connected: bool, stale_at: &[u64]) -> usize {
+    let t0 = Instant::now();
+    let (mut read_at, mut stale, mut reads) = (Some(t0), false, 0);
+    for s in 1..=60 {
+        let now = t0 + Duration::from_secs(s);
+        if stale_at.contains(&s) { stale = true; }
+        if poll_due(read_at, now, connected, stale) { reads += 1; read_at = Some(now); stale = false; }
+    }
+    reads
+}
+#[test]
+fn locus_poll_cadence() {
+    assert_eq!(reads_per_minute(true, &[]), 2); // every 30 s while connected
+    assert_eq!(reads_per_minute(false, &[]), 4); // every 15 s before
+    // a burst of events without the full locus: at most one read per 2 s
+    assert!(reads_per_minute(true, &(10..20).collect::<Vec<_>>()) <= 2 + 5);
+    assert!(poll_due(None, Instant::now(), true, false), "first read");
+}
+#[test]
+fn events_carry_the_full_locus() {
+    let full = json!({"eventType": "locus.self_changed", "locus": locus("JOINED", "JOINED", true)});
+    let l = full_locus(&full).expect("full locus");
+    assert_eq!(parse_locus(l, "").others[0].state, "JOINED");
+    let partial = json!({"eventType": "locus.difference", "locusUrl": "https://locus-a.wbx2.com/locus/api/v1/loci/x", "locus": {"baseSequence": {}, "sequence": {"entries": [5]}}});
+    assert!(full_locus(&partial).is_none());
+    assert_eq!(locus_seq(&partial["locus"]), 5);
+    assert_eq!(locus_seq(&json!({})), 0);
+}
+#[test]
+fn media_id_from_the_top_or_from_this_device() {
+    assert_eq!(media_id_of(&json!({"mediaConnections": [{"mediaId": "m1"}], "locus": {}}), "d"), "m1");
+    let devs = json!({"locus": {"self": {"devices": [{"url": "other", "mediaConnections": [{"mediaId": "m2"}]}, {"url": "d", "mediaConnections": [{"type": "SDP", "mediaId": "m3"}]}]}}});
+    assert_eq!(media_id_of(&devs, "d"), "m3");
+    assert_eq!(media_id_of(&devs, "unknown"), "m2");
+    assert_eq!(media_id_of(&json!({"mediaConnections": [{"mediaId": ""}]}), "d"), "");
+}
+#[test]
+fn roap_error_logs_only_its_cause() {
+    let m = json!({"messageType": "ERROR", "seq": 2, "errorType": "DOUBLECONFLICT", "errorCause": "glare by someone@example.com\n"});
+    assert_eq!(roap_error(&m), "seq=2 errorType=DOUBLECONFLICT errorCause=glare by <addr>");
 }
 #[test]
 fn mercury_event_shapes() {

@@ -2,6 +2,13 @@ use super::*;
 
 fn c(s: &str) -> Combo { Combo::parse(s).unwrap_or_else(|| panic!("parse {s}")) }
 
+/// The table marks `id` UNSUPPORTED in its Windows (`qt`) column.
+fn unsupported(id: &str) -> bool {
+    let v: serde_json::Value = serde_json::from_str(json().trim_start_matches('\u{feff}')).unwrap();
+    v["keyboardShortcutGroups"].as_array().into_iter().flatten().flat_map(|g| g["shortcuts"].as_array().into_iter().flatten())
+        .any(|s| s["command"] == id && s["keyCombination"]["qt"] == "UNSUPPORTED")
+}
+
 #[test]
 fn parses_qt_key_strings() {
     assert_eq!(c("Ctrl+Shift+N"), Combo { ctrl: true, alt: false, shift: true, key: Key::N });
@@ -74,7 +81,7 @@ fn registry_is_the_json_with_unique_commands_and_german_labels() {
     assert_eq!(get("Search").default, Some(c("Ctrl+F")));
     assert_eq!(get("HistoryBack").default, Some(c("Alt+Left")));
     assert_eq!(get("ZoomIn").default, Some(c("Ctrl++")));
-    assert!(get("OpenHome").default.is_none() && get("OpenHome").unsupported); // UNSUPPORTED: no default on Windows
+    assert!(get("OpenHome").default.is_none() && unsupported("OpenHome")); // UNSUPPORTED: no default on Windows
     assert!(get("Minimize").default.is_none()); // macOS string in the table
     assert!(!get("Quit").customizable && get("Search").customizable);
     assert!(get("AnswerCall").default_global && get("AnswerCall").can_be_global);
@@ -83,7 +90,7 @@ fn registry_is_the_json_with_unique_commands_and_german_labels() {
     assert_eq!(get("OpenSpaces").group, Group::General);
     assert_eq!(get("ToggleBold").group, Group::Formatting);
     assert_eq!(get("DeclineCall").group, Group::Calling);
-    assert!(r.cmds.iter().all(|c| c.default.is_some() || c.unsupported || matches!(c.id, "Minimize" | "Maximize")));
+    assert!(r.cmds.iter().all(|c| c.default.is_some() || unsupported(c.id) || matches!(c.id, "Minimize" | "Maximize")));
 }
 
 /// Default keys that two different commands share. Only combinations used in different contexts (meeting-only vs. messaging) may do so.

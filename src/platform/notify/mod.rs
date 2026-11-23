@@ -85,7 +85,7 @@ impl Toast {
     }
 }
 
-enum Out { Open(Option<String>), Button(Toast, &'static str), Menu(String) }
+enum Out { Open(Option<String>), Button(Toast, &'static str), #[cfg(target_os = "linux")] Menu(String) }
 
 struct TrayMenu { pos: (i32, i32), opened: f64, focused: bool, hwnd: Option<isize>, placed: Option<(i32, i32, i32, i32)> }
 
@@ -102,7 +102,7 @@ pub(crate) struct Hub {
     shaped: Option<Vec<(i32, i32, i32, i32)>>,
     shown_unread: Option<usize>, want_flash: bool, flashing: bool,
     fired: HashSet<String>, snoozed: HashMap<String, u64>,
-    started: bool, shot_at: Option<f64>, sample_at: Option<(f64, String)>, hide_at: Option<f64>,
+    started: bool, sample_at: Option<(f64, String)>, hide_at: Option<f64>,
     /// Toasts handed to the desktop's notification server (Linux/Wayland), by its notification id.
     #[cfg(target_os = "linux")]
     native: HashMap<u32, Toast>,
@@ -145,7 +145,7 @@ fn job(width: f32, rows: usize) -> LayoutJob {
 }
 
 struct Lay { h: f32, kicker: Option<Arc<Galley>>, title: Option<Arc<Galley>>, body: Option<Arc<Galley>>, emoji: Vec<(usize, String)>,
-    ind_w: f32, col_x: f32, buttons: Vec<(Arc<Galley>, f32)>,
+    col_x: f32, buttons: Vec<(Arc<Galley>, f32)>,
     /// Card width, and for the message toast its own rows: (sender line, y of title / sender / body from the top).
     w: f32, sender: Option<Arc<Galley>>, ys: Option<(f32, f32, f32)> }
 

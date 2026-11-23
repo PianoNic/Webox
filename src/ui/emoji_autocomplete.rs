@@ -119,7 +119,7 @@ pub(crate) fn popup(ctx: &egui::Context, icons: &mut icons::Icons, t: &Th, pos: 
     egui::Area::new(egui::Id::new("emoji-autocomplete")).fixed_pos(pos).order(egui::Order::Foreground).show(ctx, |ui| {
         ui.allocate_exact_size(outer.size(), Sense::hover()); // the layer must have the popup's size (wheel routing)
         ui.painter().rect_filled(outer, 4.0, normal);
-        ui.painter().rect_stroke(outer, 4.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(outer, 4.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
         let inner = outer.shrink(1.0);
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
         c.set_clip_rect(inner);

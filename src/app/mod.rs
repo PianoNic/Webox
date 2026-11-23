@@ -296,8 +296,8 @@ impl App {
             let mut v = if light_mode { egui::Visuals::light() } else { egui::Visuals::dark() };
             v.panel_fill = t.win; v.window_fill = t.card; v.extreme_bg_color = t.composer; v.faint_bg_color = t.card;
             v.hyperlink_color = t.link; v.override_text_color = Some(t.text1);
-            v.selection.bg_fill = alpha(sel, 0.4); v.selection.stroke = Stroke::new(1.0, sel);
-            v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, t.sep);
+            v.selection.bg_fill = alpha(sel, 0.4); v.selection.stroke = Stroke::new(1.0_f32, sel);
+            v.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, t.sep);
             v.widgets.inactive.weak_bg_fill = t.selected; v.widgets.inactive.bg_fill = t.selected; v.widgets.inactive.bg_stroke = Stroke::NONE;
             v.widgets.hovered.weak_bg_fill = t.pill; v.widgets.hovered.bg_fill = t.pill;
             v.widgets.active.weak_bg_fill = t.accent; v.widgets.active.bg_fill = t.accent;

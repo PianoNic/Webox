@@ -88,7 +88,7 @@ impl App {
                     ui.painter().circle_filled(c, 14.0, if resp.is_pointer_button_down_on() { p } else if resp.hovered() { h } else { n });
                 } else {
                     if resp.hovered() && which == 4 && !closed { ui.painter().circle_filled(c, 14.0, t.ink_a(0.10)); }
-                    ui.painter().circle_stroke(c, 13.5, Stroke::new(1.0, ring));
+                    ui.painter().circle_stroke(c, 13.5, Stroke::new(1.0_f32, ring));
                 }
                 s.icons.paint(ui, icon, Rect::from_center_size(c, Vec2::splat(16.0)), glyph);
                 if resp.hovered() && !closed { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -116,7 +116,7 @@ impl App {
             let cal = Rect::from_center_size(pos2(pill.left() - 6.0 - 14.0, cy), Vec2::splat(28.0));
             let cresp = ui.interact(cal, ui.id().with("cal-btn"), Sense::click());
             if cresp.hovered() { ui.painter().circle_filled(cal.center(), 14.0, t.hover); }
-            ui.painter().circle_stroke(cal.center(), 13.5, Stroke::new(1.0, t.tk("button-secondary-border:disabled")));
+            ui.painter().circle_stroke(cal.center(), 13.5, Stroke::new(1.0_f32, t.tk("button-secondary-border:disabled")));
             self.icons.paint(ui, "calendar-add-regular", Rect::from_center_size(cal.center(), Vec2::splat(15.0)), t.ink_a(0.8));
             // The in-app scheduler with the space's people invited ("Schedule a meeting. Share a link and meet later").
             if cresp.on_hover_text("Setzen Sie ein Meeting an. Link teilen und später treffen").clicked() {

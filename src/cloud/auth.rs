@@ -12,8 +12,6 @@
 //! embedded webview (`isHideAuthzCode=true`) → the webview captures the one-time code idbroker hands back →
 //! `exchange` POSTs it to the same cluster's `/access_token`. (A browser+paste path remains as a fallback
 //! when no embedded webview is available.)
-#[cfg(test)]
-use base64::Engine;
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 

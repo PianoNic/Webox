@@ -18,7 +18,7 @@ pub(crate) enum CallKind { Incoming, Outgoing, Missed }
 /// One row of the call history: the janus `userSessions` of the account (cloud/meetcall.rs), made-up rows in `--sample`.
 /// `session_id` / `end_ms` identify the record for janus `markAsDeleted`.
 #[derive(Clone, Debug)]
-pub(crate) struct CallLogEntry { pub name: String, pub email: String, pub kind: CallKind, pub at_ms: i64, pub secs: u32, pub video: bool, pub session_id: String, pub end_ms: i64, pub phone: String }
+pub(crate) struct CallLogEntry { pub name: String, pub email: String, pub kind: CallKind, pub at_ms: i64, pub secs: u32, pub session_id: String, pub end_ms: i64, pub phone: String }
 impl CallLogEntry { pub(crate) fn key(&self) -> String { if self.session_id.is_empty() { format!("{}|{}", self.name, self.at_ms) } else { self.session_id.clone() } } }
 
 /// "Mehr erfahren" of the upgrade prompt: the Webex help root.
@@ -43,16 +43,16 @@ impl App {
         if self.client.is_none() {
             let now = super::chrome::now_ms();
             let (m, h, d) = (60_000_i64, 3_600_000_i64, 86_400_000_i64);
-            let e = |n: &str, em: &str, k: CallKind, ago: i64, secs: u32, video: bool| CallLogEntry { name: n.into(), email: em.into(), kind: k, at_ms: now - ago, secs, video,
+            let e = |n: &str, em: &str, k: CallKind, ago: i64, secs: u32| CallLogEntry { name: n.into(), email: em.into(), kind: k, at_ms: now - ago, secs,
                 session_id: String::new(), end_ms: now - ago + secs as i64 * 1000, phone: String::new() };
             return vec![
-                e("Jonas Weber", "jonas@example.com", CallKind::Missed, 25 * m, 0, false),
-                e("Timo Steiner", "timo@example.com", CallKind::Outgoing, 3 * h, 252, false),
-                e("Mara Lind", "mara@example.com", CallKind::Incoming, d + h, 725, true),
-                e("Lina Roth", "lina@example.com", CallKind::Missed, d + 4 * h, 0, false),
-                e("Nina Huber", "nina@example.com", CallKind::Outgoing, 2 * d, 45, false),
-                e("Jonas Weber", "jonas@example.com", CallKind::Incoming, 4 * d, 1867, true),
-                e("Timo Steiner", "timo@example.com", CallKind::Missed, 9 * d, 0, false),
+                e("Jonas Weber", "jonas@example.com", CallKind::Missed, 25 * m, 0),
+                e("Timo Steiner", "timo@example.com", CallKind::Outgoing, 3 * h, 252),
+                e("Mara Lind", "mara@example.com", CallKind::Incoming, d + h, 725),
+                e("Lina Roth", "lina@example.com", CallKind::Missed, d + 4 * h, 0),
+                e("Nina Huber", "nina@example.com", CallKind::Outgoing, 2 * d, 45),
+                e("Jonas Weber", "jonas@example.com", CallKind::Incoming, 4 * d, 1867),
+                e("Timo Steiner", "timo@example.com", CallKind::Missed, 9 * d, 0),
             ];
         }
         if let Some(recs) = &self.call.mc.records {
@@ -63,13 +63,13 @@ impl App {
                     name: known.map(|p| p.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| r.name.clone()),
                     email: known.map(|p| p.email.clone()).filter(|e| !e.is_empty()).unwrap_or_else(|| r.email.clone()),
                     kind: if r.missed() { CallKind::Missed } else if r.outgoing { CallKind::Outgoing } else { CallKind::Incoming },
-                    at_ms: r.start_ms, secs: r.secs, video: false, session_id: r.session_id.clone(), end_ms: r.end_ms, phone: r.phone.clone(),
+                    at_ms: r.start_ms, secs: r.secs, session_id: r.session_id.clone(), end_ms: r.end_ms, phone: r.phone.clone(),
                 }
             }).collect();
         }
         self.call.history.iter().map(|(name, incoming, result)| CallLogEntry {
             name: name.clone(), email: self.people.iter().find(|p| &p.name == name).map(|p| p.email.clone()).unwrap_or_default(),
-            kind: if *result == "Verpasst" { CallKind::Missed } else if *incoming { CallKind::Incoming } else { CallKind::Outgoing }, at_ms: 0, secs: 0, video: false,
+            kind: if *result == "Verpasst" { CallKind::Missed } else if *incoming { CallKind::Incoming } else { CallKind::Outgoing }, at_ms: 0, secs: 0,
             session_id: String::new(), end_ms: 0, phone: String::new(),
         }).collect()
     }
@@ -286,7 +286,7 @@ impl App {
             let when = if h.at_ms > 0 { when_text(h.at_ms, nowms) } else { String::new() };
             let right = if h.secs > 0 { format!("{when}   Dauer {}", duration_text(h.secs)) } else { when };
             c.painter().text(r.right_center(), egui::Align2::RIGHT_CENTER, right, FontId::proportional(13.5), t.text2);
-            c.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0, t.ink_a(0.08)));
+            c.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0_f32, t.ink_a(0.08)));
         }
     }
 

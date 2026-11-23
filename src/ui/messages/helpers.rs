@@ -168,8 +168,6 @@ pub(super) fn chip_emoji(name: &str) -> Option<String> {
     (!cl.is_empty()).then(|| cl.concat())
 }
 
-pub(crate) fn emoji(name: &str) -> &str { REACTIONS.iter().find(|r| r.0 == name).map_or(name, |r| r.1) }
-
 /// The data layer delivers UTC: `Message.date` is the UTC day and `Message.time` the UTC "HH:MM" of the activity. The UI shows local
 /// time (Windows: the system time zone incl. daylight saving through SystemTimeToTzSpecificLocalTime; elsewhere UTC is kept).
 #[cfg(windows)]

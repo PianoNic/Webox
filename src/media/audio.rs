@@ -151,9 +151,11 @@ pub fn rms(pcm: &[i16]) -> f32 {
     (pcm.iter().map(|&s| { let f = s as f32 / i16::MAX as f32; f * f }).sum::<f32>() / pcm.len() as f32).sqrt()
 }
 
-enum Cmd { Open(String, String, Sender<Result<String, String>>), Close }
+/// Devices to open: `None` leaves that side closed (an empty name is the system default, not "none").
+enum Cmd { Open(Option<String>, Option<String>, Sender<Result<String, String>>), Close }
 
 /// Owns the audio thread. `open` (re)starts capture + playback on the chosen devices; `close` stops them.
+/// Sounds open only the speaker (`open_output*`), the level meter only the microphone (`open_input_async`).
 pub struct Engine { tx: Sender<Cmd>, pub io: Arc<Io> }
 
 impl Engine {
@@ -167,7 +169,7 @@ impl Engine {
             for cmd in rx {
                 streams.clear(); // dropping stops them
                 if let Cmd::Open(i, o, reply) = cmd {
-                    let r = open_streams(&io2, &i, &o);
+                    let r = open_streams(&io2, i.as_deref(), o.as_deref());
                     let _ = reply.send(match r { Ok((s, info)) => { streams = s; Ok(info) } Err(e) => Err(e) });
                 }
             }
@@ -175,16 +177,21 @@ impl Engine {
         Engine { tx, io }
     }
     /// Starts the streams. Returns a short description ("In: …, Out: …") or the reason it failed. Blocks briefly.
-    pub fn open(&self, input: &str, output: &str) -> Result<String, String> {
-        let (rtx, rrx) = channel();
-        self.tx.send(Cmd::Open(input.into(), output.into(), rtx)).map_err(|_| "audio thread gone".to_string())?;
+    pub fn open(&self, input: &str, output: &str) -> Result<String, String> { self.open_wait(Some(input), Some(output)) }
+    /// Only the speaker (ringtones, sounds): a microphone that is missing, busy or blocked never stops them.
+    pub fn open_output(&self, output: &str) -> Result<String, String> { self.open_wait(None, Some(output)) }
+    fn open_wait(&self, input: Option<&str>, output: Option<&str>) -> Result<String, String> {
+        let rrx = self.send_open(input, output);
         rrx.recv_timeout(std::time::Duration::from_secs(10)).map_err(|_| "audio devices didn't answer".to_string())?
     }
-    /// `open` without waiting: the devices open on the engine's thread and the answer arrives on the returned channel
-    /// (disconnected if the thread is gone). Sound queued meanwhile plays once the output is open.
-    pub fn open_async(&self, input: &str, output: &str) -> std::sync::mpsc::Receiver<Result<String, String>> {
+    /// `open_output` without waiting: the device opens on the engine's thread and the answer arrives on the returned
+    /// channel (disconnected if the thread is gone). Sound queued meanwhile plays once the output is open.
+    pub fn open_output_async(&self, output: &str) -> std::sync::mpsc::Receiver<Result<String, String>> { self.send_open(None, Some(output)) }
+    /// Only the microphone, without waiting (the level meter).
+    pub fn open_input_async(&self, input: &str) -> std::sync::mpsc::Receiver<Result<String, String>> { self.send_open(Some(input), None) }
+    fn send_open(&self, input: Option<&str>, output: Option<&str>) -> std::sync::mpsc::Receiver<Result<String, String>> {
         let (rtx, rrx) = channel();
-        let _ = self.tx.send(Cmd::Open(input.into(), output.into(), rtx));
+        let _ = self.tx.send(Cmd::Open(input.map(String::from), output.map(String::from), rtx));
         rrx
     }
     pub fn close(&self) { let _ = self.tx.send(Cmd::Close); }
@@ -192,10 +199,10 @@ impl Engine {
 
 fn to_f32<T: cpal::Sample>(v: T) -> f32 where T: cpal::SizedSample, f32: cpal::FromSample<T> { v.to_sample::<f32>() }
 
-fn open_streams(io: &Arc<Io>, input: &str, output: &str) -> Result<(Vec<cpal::Stream>, String), String> {
+fn open_streams(io: &Arc<Io>, input: Option<&str>, output: Option<&str>) -> Result<(Vec<cpal::Stream>, String), String> {
     let mut streams = vec![];
     let mut info = vec![];
-    if let Some(dev) = pick(input, true) {
+    if let Some(dev) = input.and_then(|i| pick(i, true)) {
         let cfg = dev.default_input_config().map_err(|e| format!("Mikrofon: {e}"))?;
         let (rate, ch, fmt) = (cfg.sample_rate().0, cfg.channels() as usize, cfg.sample_format());
         let mut lin = Lin::new(rate, RATE);
@@ -241,7 +248,7 @@ fn open_streams(io: &Arc<Io>, input: &str, output: &str) -> Result<(Vec<cpal::St
         streams.push(st);
         info.push(format!("In: {}", dev.name().unwrap_or_default()));
     }
-    if let Some(dev) = pick(output, false) {
+    if let Some(dev) = output.and_then(|o| pick(o, false)) {
         let cfg = dev.default_output_config().map_err(|e| format!("Lautsprecher: {e}"))?;
         let (rate, ch, fmt) = (cfg.sample_rate().0, cfg.channels() as usize, cfg.sample_format());
         let io2 = io.clone();
@@ -337,5 +344,23 @@ mod tests {
     #[test]
     fn enumeration_does_not_panic() {
         let _ = (inputs(), outputs());
+    }
+
+    /// A real speaker-only engine at volume 0 (silent): it opens no microphone and plays its queue out. Skips on machines
+    /// without an output device (CI).
+    #[test]
+    fn output_only_engine_plays_out_silently() {
+        let e = Engine::new();
+        e.io.set_volume(0.0);
+        e.io.play_long(&tone(440.0, 300, 0.5));
+        let info = match e.open_output_async("").recv_timeout(std::time::Duration::from_secs(10)) {
+            Ok(Ok(i)) => i,
+            other => { eprintln!("no output device, skipped: {other:?}"); return; }
+        };
+        assert!(info.starts_with("Out: ") && !info.contains("In: "), "{info}");
+        let t0 = std::time::Instant::now();
+        while e.io.play_pending() > 0 && t0.elapsed() < std::time::Duration::from_secs(5) { std::thread::sleep(std::time::Duration::from_millis(20)); }
+        assert_eq!(e.io.play_pending(), 0, "the speaker pulled the queued sound");
+        assert_eq!(e.io.level(), 0.0, "no microphone ran");
     }
 }

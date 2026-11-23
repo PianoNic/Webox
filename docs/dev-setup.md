@@ -44,7 +44,7 @@ cargo run -- --sample              # debug build, for stepping through code
 | `--signin` | starts the sign-in right away with the saved address |
 | `--minimized` | starts in the tray |
 
-Screenshots of specific states use `WEBOX_SHOT_*` variables together with `--sample --screenshot`, for example `WEBOX_SHOT_OPEN=s2` (a direct chat), `WEBOX_SHOT_SETTINGS=notifications`, `WEBOX_SHOT_GIF=1` (the GIF picker; with `WEBOX_SHOT_GIF_EXTRAS=1` the GIF-Extras plugin's popup, e.g. `WEBOX_SHOT_GIF=stickers`) or `WEBOX_SHOT_THEME=light`. `WEBOX_LANG=en` picks the language. Each variable is documented where it is read; `scripts/shots.ps1` renders a set into `shots/`.
+Screenshots of specific states use `WEBOX_SHOT_*` variables together with `--sample --screenshot`, for example `WEBOX_SHOT_OPEN=s2` (a direct chat), `WEBOX_SHOT_SETTINGS=notifications`, `WEBOX_SHOT_GIF=1` (the GIF picker; with `WEBOX_SHOT_GIF_EXTRAS=1` the GIF-Extras plugin's popup, e.g. `WEBOX_SHOT_GIF=stickers`, and `WEBOX_SHOT_GIF_COMPACT=1` for its compact size) or `WEBOX_SHOT_THEME=light`. `WEBOX_LANG=en` picks the language. Each variable is documented where it is read; `scripts/shots.ps1` renders a set into `shots/`.
 
 ## Tests
 

@@ -199,7 +199,7 @@ impl Session {
         let mut list: Vec<Message> = vec![];
         let mut edits = vec![];
         let mut deleted = HashSet::new();
-        let mut reacts: Vec<(String, String, String, bool, String)> = vec![]; // (message, name, reaction id, mine, published)
+        let mut reacts: Vec<(String, String, String, bool, String, String)> = vec![]; // (message, name, reaction id, mine, published, actor)
         // The listing holds reaction *summaries* ("add" / object.reaction2Summary, parent.type "reactionSummary"): cumulative
         // snapshots, several per message, so only the newest per message counts.
         let mut summaries: HashMap<String, &Value> = HashMap::new();
@@ -214,7 +214,8 @@ impl Session {
                 "add" if a["object"]["objectType"] == "reaction2" => {
                     let ku = Some(st(a, "encryptionKeyUrl")).filter(|k| !k.is_empty()).unwrap_or_else(|| key_url.to_string());
                     let name = self.decrypt(&st(&a["object"], "displayName"), &ku);
-                    reacts.push((pid, name, st(a, "id"), self.actor_is_me(&a["actor"]), st(a, "published")));
+                    let actor = [st(&a["actor"], "entryUUID"), st(&a["actor"], "id")].into_iter().find(|s| !s.is_empty()).unwrap_or_default();
+                    reacts.push((pid, name, st(a, "id"), self.actor_is_me(&a["actor"]), st(a, "published"), actor));
                 }
                 "add" if a["object"]["objectType"] == "reaction2Summary" => {
                     let newer = summaries.get(&pid).map_or(true, |o| st(o, "published") <= st(a, "published"));
@@ -255,16 +256,18 @@ impl Session {
                 }
                 let count = r["count"].as_u64().map(|c| c as u32).unwrap_or(users as u32);
                 let mine = r["users"].as_array().into_iter().flatten().any(|u| st(u, "id") == self.user);
+                let users = reactors(r);
                 // The summary doesn't carry my own reaction activity id; `unreact` resolves this token lazily.
-                out.push(Reaction { mine: mine.then(|| format!("{msg}|{name}")), name, count });
+                out.push(Reaction { mine: mine.then(|| format!("{msg}|{name}")), name, count, users });
             }
             m.reactions = out;
         }
-        for (msg, name, rid, mine, _) in reacts.into_iter().filter(|r| !deleted.contains(&r.2)) {
+        for (msg, name, rid, mine, published, actor) in reacts.into_iter().filter(|r| !deleted.contains(&r.2)) {
             let Some(m) = list.iter_mut().find(|m| m.id == msg) else { continue };
+            let who = Reactor { id: actor, published };
             match m.reactions.iter_mut().find(|r| r.name == name) {
-                Some(r) => { r.count += 1; if mine { r.mine = Some(rid) } }
-                None => m.reactions.push(Reaction { name, count: 1, mine: mine.then_some(rid) }),
+                Some(r) => { r.count += 1; if mine { r.mine = Some(rid) } if !who.id.is_empty() && !r.users.iter().any(|u| u.id == who.id) { r.users.push(who) } }
+                None => m.reactions.push(Reaction { name, count: 1, mine: mine.then_some(rid), users: if who.id.is_empty() { vec![] } else { vec![who] } }),
             }
         }
         collapse_join_leave(list, &joins)
@@ -364,4 +367,14 @@ impl Session {
         if added > 0 { list.sort_by(|a, b| st(a, "published").cmp(&st(b, "published"))); }
         added
     }
+}
+
+/// The reactors of one entry of a reaction summary (`users: [{id, published}]`), in the service's order, each once.
+pub(crate) fn reactors(entry: &Value) -> Vec<Reactor> {
+    let mut out: Vec<Reactor> = vec![];
+    for u in entry["users"].as_array().into_iter().flatten() {
+        let id = st(u, "id");
+        if !id.is_empty() && !out.iter().any(|r| r.id == id) { out.push(Reactor { id, published: st(u, "published") }); }
+    }
+    out
 }

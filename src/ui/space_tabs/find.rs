@@ -21,11 +21,11 @@ impl App {
             let p = ui.painter().clone();
             p.add(egui::Shadow { offset: [0, 4], blur: 18, spread: 0, color: Color32::from_black_alpha(if light { 40 } else { 140 }) }.as_shape(body, 5.0));
             p.rect_filled(body, 5.0, bg);
-            p.rect_stroke(body, 5.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+            p.rect_stroke(body, 5.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
             let cx = (anchor.center().x).clamp(body.left() + 20.0, body.right() - 20.0);
             p.add(egui::Shape::convex_polygon(vec![pos2(cx - 9.0, body.top() + 1.0), pos2(cx + 9.0, body.top() + 1.0), pos2(cx, body.top() - arrow)], bg, Stroke::NONE));
-            p.line_segment([pos2(cx - 9.0, body.top()), pos2(cx, body.top() - arrow)], Stroke::new(1.0, border));
-            p.line_segment([pos2(cx + 9.0, body.top()), pos2(cx, body.top() - arrow)], Stroke::new(1.0, border));
+            p.line_segment([pos2(cx - 9.0, body.top()), pos2(cx, body.top() - arrow)], Stroke::new(1.0_f32, border));
+            p.line_segment([pos2(cx + 9.0, body.top()), pos2(cx, body.top() - arrow)], Stroke::new(1.0_f32, border));
             // Header 46 pt, bold title centred; empty state: illustration, header, subtitle.
             p.text(pos2(body.center().x, body.top() + 23.0 + 5.0), egui::Align2::CENTER_CENTER, "Angeheftete Nachrichten", semibold(15.0), t.text1);
             self.icons.art(ui, "message-activity-192-cobalt-lime", Rect::from_center_size(pos2(body.center().x, body.top() + 140.0), Vec2::splat(150.0)));

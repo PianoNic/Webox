@@ -90,8 +90,8 @@ impl App {
                 let xresp = ui.interact(xr, ui.id().with("cal-x"), Sense::click());
                 if xresp.hovered() { ui.painter().circle_filled(xr.center(), 12.0, t.ink_a(0.12)); ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 let (c, d) = (xr.center(), 4.5);
-                ui.painter().line_segment([c - Vec2::splat(d), c + Vec2::splat(d)], Stroke::new(1.3, t.text1));
-                ui.painter().line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.3, t.text1));
+                ui.painter().line_segment([c - Vec2::splat(d), c + Vec2::splat(d)], Stroke::new(1.3_f32, t.text1));
+                ui.painter().line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.3_f32, t.text1));
                 if xresp.on_hover_text("Schließen").clicked() { st.cal_prompt_closed = true; }
                 ui.painter().galley(pos2(r.left() + 16.0, r.top() + 42.0), g.clone(), t.text2);
                 let br = Rect::from_min_size(pos2(r.left() + 16.0, r.top() + 42.0 + g.size().y + 12.0), Vec2::new(150.0, 32.0));

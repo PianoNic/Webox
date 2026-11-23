@@ -47,7 +47,7 @@ impl App {
 
         let mut outer = Rect::NOTHING;
         let area = egui::Area::new(egui::Id::new("sc-search")).anchor(egui::Align2::CENTER_TOP, [0.0, 64.0]).order(egui::Order::Foreground).show(ctx, |ui| {
-            egui::Frame::default().fill(bg).stroke(Stroke::new(1.0, border)).corner_radius(12.0).inner_margin(12)
+            egui::Frame::default().fill(bg).stroke(Stroke::new(1.0_f32, border)).corner_radius(12.0).inner_margin(12)
                 .shadow(egui::Shadow { offset: [0, 8], blur: 28, spread: 0, color: Color32::from_black_alpha(if light { 50 } else { 170 }) })
                 .show(ui, |ui| {
                     ui.set_width(W - 24.0);

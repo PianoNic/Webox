@@ -260,7 +260,7 @@ impl App {
         let (r, _) = ui.allocate_exact_size(tile, Sense::hover());
         let resp = ui.interact(r, ui.id().with("wb-new"), Sense::click());
         ui.painter().rect_filled(r, 12.0, if resp.hovered() { t.ink_a(0.12) } else { t.ink_a(0.07) });
-        ui.painter().rect_stroke(r, 12.0, Stroke::new(1.0, t.ink_a(0.2)), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(r, 12.0, Stroke::new(1.0_f32, t.ink_a(0.2)), egui::StrokeKind::Inside);
         if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
         self.icons.paint(ui, "plus-circle-regular", Rect::from_center_size(r.center() - Vec2::new(0.0, 12.0), Vec2::splat(32.0)), t.text1);
         ui.painter().text(r.center() + Vec2::new(0.0, 28.0), egui::Align2::CENTER_CENTER, "Neues Whiteboard", semibold(14.0), t.text1);

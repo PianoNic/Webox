@@ -40,7 +40,7 @@ fn emoji_job(text: &str, font: FontId, color: Color32, underline: bool, wrap: f3
     let mut job = LayoutJob::default();
     job.wrap.max_width = wrap;
     job.halign = egui::Align::Center;
-    let fmt = TextFormat { font_id: font, color, underline: if underline { Stroke::new(1.0, color) } else { Stroke::NONE }, ..Default::default() };
+    let fmt = TextFormat { font_id: font, color, underline: if underline { Stroke::new(1.0_f32, color) } else { Stroke::NONE }, ..Default::default() };
     let mut marks = vec![];
     let (mut at, mut chars) = (0usize, 0usize);
     for (a, b) in super::emoji_text::clusters(text) {
@@ -131,7 +131,7 @@ impl App {
             let resp = ui.interact(r, ui.id().with(("welcome-btn", *act)), Sense::click());
             let bg = if resp.is_pointer_button_down_on() { prs } else if resp.hovered() { hov } else { Color32::TRANSPARENT };
             ui.painter().rect_filled(r, BTN_H / 2.0, bg);
-            ui.painter().rect_stroke(r, BTN_H / 2.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(r, BTN_H / 2.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
             self.icons.paint(ui, icon, Rect::from_center_size(pos2(r.left() + 2.0 * SPACING + 8.0, r.center().y), Vec2::splat(16.0)), txt);
             ui.painter().text(pos2(r.left() + 2.0 * SPACING + 16.0 + 8.0, r.center().y), egui::Align2::LEFT_CENTER, label, font.clone(), txt);
             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }

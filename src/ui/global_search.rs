@@ -137,11 +137,11 @@ impl App {
             let p = ui.painter().clone();
             p.add(egui::Shadow { offset: [0, 8], blur: 28, spread: 0, color: Color32::from_black_alpha(if light { 50 } else { 170 }) }.as_shape(outer, 12.0));
             p.rect_filled(outer, 12.0, bg);
-            p.rect_stroke(outer, 12.0, Stroke::new(2.0, border), egui::StrokeKind::Inside);
+            p.rect_stroke(outer, 12.0, Stroke::new(2.0_f32, border), egui::StrokeKind::Inside);
             // Field row: field 28 pt high, 20 pt from the top, 24 pt side margins, close button 28 pt.
             let field = Rect::from_min_size(outer.min + Vec2::new(24.0, 20.0), Vec2::new(w - 48.0 - 36.0, 28.0));
             p.rect_filled(field, 14.0, if light { hex(0xEDEDED) } else { hex(0x3B3B3B) });
-            p.rect_stroke(field, 14.0, Stroke::new(1.0, t.accent), egui::StrokeKind::Inside); // `focus` is the keyboard-focus ring
+            p.rect_stroke(field, 14.0, Stroke::new(1.0_f32, t.accent), egui::StrokeKind::Inside); // `focus` is the keyboard-focus ring
             self.icons.paint(ui, "search-regular", Rect::from_center_size(field.left_center() + Vec2::new(18.0, 0.0), Vec2::splat(16.0)), text);
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(field.min + Vec2::new(34.0, 0.0), field.max - Vec2::new(12.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
             let r = c.add(egui::TextEdit::singleline(&mut g2.q).id(egui::Id::new("gs-input")).hint_text(RichText::new(tr("Search, meet, and call")).color(text2).size(14.5)).font(FontId::proportional(14.5)).frame(false).desired_width(field.width() - 46.0));

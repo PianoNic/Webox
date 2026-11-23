@@ -115,15 +115,15 @@ impl App {
 
     /// Day separator: secondary label centred, 1 px lines of the same colour from x=75 to the label and from the label to the
     /// right edge minus 75; the label has 10 pt side padding.
-    pub(super) fn day_line(&self, ui: &mut egui::Ui, _t: &Th, c: &Mc, label: &str, col: Color32) {
+    pub(super) fn day_line(&self, ui: &mut egui::Ui, _t: &Th, label: &str, col: Color32) {
         let w = ui.available_width();
         let g = ui.painter().layout_no_wrap(label.to_string(), FontId::proportional(SECOND), col);
         let (r, _) = ui.allocate_exact_size(Vec2::new(w, g.size().y + day_pad()), Sense::hover());
         let (cx, cy) = (r.center().x, r.center().y);
         let (l, rr) = (cx - g.size().x / 2.0 - 10.0, cx + g.size().x / 2.0 + 10.0);
         ui.painter().galley(pos2(cx - g.size().x / 2.0, cy - g.size().y / 2.0), g, col);
-        ui.painter().hline(r.left() + 75.0..=l, cy.round() + 0.5, Stroke::new(1.0, col));
-        ui.painter().hline(rr..=r.right() - 75.0, cy.round() + 0.5, Stroke::new(1.0, col));
+        ui.painter().hline(r.left() + 75.0..=l, cy.round() + 0.5, Stroke::new(1.0_f32, col));
+        ui.painter().hline(rr..=r.right() - 75.0, cy.round() + 0.5, Stroke::new(1.0_f32, col));
     }
 
     /// Measures the body of a message: text (links / mentions), file chips and image heights.
@@ -254,7 +254,7 @@ impl App {
                 let ar = Rect::from_min_size(origin + Vec2::new(indent + GRID_X + AVATAR_LEFT, avatar_top()), Vec2::splat(AVATAR));
                 if m.mine {
                     let rc = pos2(ar.center().x.round(), ar.center().y.round()); // pixel-aligned so the 1 pt ring stays crisp
-                    p.circle_stroke(rc, AVATAR / 2.0 - 0.5, Stroke::new(1.0, c.ring));
+                    p.circle_stroke(rc, AVATAR / 2.0 - 0.5, Stroke::new(1.0_f32, c.ring));
                     // "chat-filled" is the speech bubble (an icon-font glyph, drawable since the icon loader gives such glyphs their em box),
                     // drawn at 19.8 pt so the bubble itself is ~16 pt.
                     self.icons.paint(ui, "chat-filled", Rect::from_center_size(ar.center() + Vec2::new(0.0, 0.3), Vec2::splat(19.8)), c.bubble);
@@ -334,7 +334,7 @@ impl App {
                     let Some(r) = r else { continue };
                     let rect = Rect::from_center_size(origin + r.center().to_vec2() + Vec2::new(0.0, 0.5), Vec2::splat(run.size));
                     if !run.picture.as_ref().is_some_and(|name| self.icons.emoji(ui, name, rect)) {
-                        p.rect_stroke(rect.shrink(2.5), 3.0, Stroke::new(1.0, c.head), StrokeKind::Inside); // never somebody else's glyph
+                        p.rect_stroke(rect.shrink(2.5), 3.0, Stroke::new(1.0_f32, c.head), StrokeKind::Inside); // never somebody else's glyph
                         if let Some(k) = run.keycap { p.text(rect.center(), Align2::CENTER_CENTER, k, FontId::proportional(BODY - 4.0), c.body); }
                     }
                 }

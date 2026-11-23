@@ -78,6 +78,7 @@ impl Store {
         Some(id)
     }
 
+    #[cfg(test)]
     pub fn len(&self) -> usize { self.tex.len() }
 }
 

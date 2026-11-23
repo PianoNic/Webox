@@ -12,4 +12,6 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
       # video playback (src/media/video/gst.rs): headers to build against, H.264 / HEVC / VP9 decoders (gst-libav = the
       # distribution's FFmpeg plugin, not bundled with Webox) for the runtime test
       libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-bad gstreamer1.0-libav \
+      # screen sharing (src/media/share/linux/): x264enc and pipewiresrc for the encoder round-trip test
+      gstreamer1.0-plugins-ugly gstreamer1.0-pipewire \
     && rm -rf /var/lib/apt/lists/*

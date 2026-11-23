@@ -69,7 +69,7 @@ pub(crate) fn popup(ui_app: &mut App, ctx: &egui::Context, t: &Th, pl: Placement
         // The Area must occupy its rect: egui routes the wheel by the layer under the pointer, and a layer without size is never under it.
         ui.allocate_exact_size(outer.size(), Sense::hover());
         ui.painter().rect_filled(outer, 8.0, bg);
-        ui.painter().rect_stroke(outer, 8.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(outer, 8.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(outer.shrink(1.0)).layout(egui::Layout::top_down(egui::Align::Min)));
         c.set_clip_rect(outer.shrink(1.0));
         c.spacing_mut().item_spacing = Vec2::ZERO;

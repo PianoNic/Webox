@@ -132,7 +132,7 @@ pub(crate) fn emoji_query(text: &str, cursor: usize, min: usize) -> Option<(usiz
 // Formatting.
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) enum Format { Bold, Italic, Underline, Strike, Link, NumberList, BulletList, CodeBlock, InlineCode, Quote, Heading(u8), Sub, Sup, Indent, Dedent }
+pub(crate) enum Format { Bold, Italic, Underline, Strike, Link, NumberList, BulletList, CodeBlock, InlineCode, Heading(u8), Sub, Sup, Indent, Dedent }
 
 /// Result of an edit: new text and the new selection (anchor, caret) in chars.
 pub(crate) type Edit = (String, usize, usize);
@@ -225,7 +225,6 @@ pub(crate) fn apply_format(text: &str, a: usize, b: usize, f: Format) -> Edit {
             (out, start, start + 4)
         }
         Format::Heading(n) => { let p = format!("{} ", "#".repeat(n as usize)); line_prefix(text, a, b, &p) }
-        Format::Quote => line_prefix(text, a, b, "> "),
         Format::BulletList => line_prefix(text, a, b, "* "),
         Format::NumberList => line_prefix(text, a, b, "num"),
         Format::Indent | Format::Dedent => {
@@ -263,17 +262,6 @@ pub(crate) fn newline(text: &str, cursor: usize, markdown: bool) -> (String, usi
     }
     let out = format!("{}\n{}", &text[..cb], &text[cb..]);
     (out, cursor + 1)
-}
-
-/// Backspace on an empty list item dedents/leaves the list (markdown mode): returns the edit when the caret sits right behind a bare marker.
-pub(crate) fn backspace_empty_item(text: &str, cursor: usize) -> Option<(String, usize)> {
-    let cb = byte_of(text, cursor);
-    let ls = text[..cb].rfind('\n').map_or(0, |p| p + 1);
-    let line = &text[ls..cb];
-    let (ind, body) = strip_prefix_of_line(line);
-    if !body.is_empty() || ind.len() == line.len() { return None; }
-    let out = format!("{}{}{}", &text[..ls], ind, &text[cb..]);
-    Some((out.clone(), char_of(&out, ls + ind.len())))
 }
 
 #[cfg(test)]

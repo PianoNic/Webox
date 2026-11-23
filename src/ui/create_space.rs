@@ -19,7 +19,7 @@ struct Pending { title: String, known: Vec<String>, emails: Vec<String> }
 /// inputBackground (#121212 / #FFFFFF) with a 1 px border at 60 % ink.
 fn outline_field(ui: &mut egui::Ui, t: &Th, rect: Rect) {
     ui.painter().rect_filled(rect, 14.0, t.tk("inputBackground"));
-    ui.painter().rect_stroke(rect, 14.0, Stroke::new(1.0, t.ink_a(0.6)), egui::StrokeKind::Inside);
+    ui.painter().rect_stroke(rect, 14.0, Stroke::new(1.0_f32, t.ink_a(0.6)), egui::StrokeKind::Inside);
 }
 /// The bottom row's left edge (the row is 577 pt wide and centred), and its top (y of the checkbox / buttons from the card top).
 const ROW_W: f32 = 577.0;
@@ -122,7 +122,7 @@ impl App {
             ui.painter().rect_filled(cb, 4.0, t.white_btn);
             self.icons.paint(ui, "check-bold", Rect::from_center_size(cb.center(), Vec2::splat(12.0)), t.white_btn_text);
         } else {
-            ui.painter().rect_stroke(cb, 4.0, Stroke::new(1.0, dim(t.tk("checkbox-unchecked-border"))), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(cb, 4.0, Stroke::new(1.0_f32, dim(t.tk("checkbox-unchecked-border"))), egui::StrokeKind::Inside);
         }
         ui.painter().text(pos2(row_x + 24.0, cb.center().y), egui::Align2::LEFT_CENTER, "Machen Sie den Bereich öffentlich", FontId::proportional(14.0), dim(t.text1));
         // Explanation: indented 22, three lines (~236 wide).
@@ -142,7 +142,7 @@ impl App {
         ui.painter().text(make.center(), egui::Align2::CENTER_CENTER, "Erstellen", semibold(14.0), if ready { t.white_btn_text } else { t.tk("button-primary-text:disabled") });
         let cresp2 = ui.interact(close, egui::Id::new("create-close"), Sense::click());
         if cresp2.hovered() { ui.painter().rect_filled(close, 16.0, t.hover); }
-        ui.painter().rect_stroke(close, 16.0, Stroke::new(1.0, t.tk("button-secondary-border")), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(close, 16.0, Stroke::new(1.0_f32, t.tk("button-secondary-border")), egui::StrokeKind::Inside);
         ui.painter().text(close.center(), egui::Align2::CENTER_CENTER, "Schließen", semibold(14.0), t.text1);
 
         let enter = name_resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));

@@ -53,9 +53,9 @@ pub(super) fn mercury(ws: String, gen: u64, jobs: Sender<Job>, kms: Sender<Strin
                 loop {
                     if !session_current(gen) { let _ = sock.close(None); let _ = sock.flush(); return }
                     match sock.read() {
-                        Ok(M::Text(t)) => if handle(&t, &mut sock, &jobs, &kms, &mut ping, &mut last_pong, &mut online, down_since) == Flow::Stop { return },
+                        Ok(M::Text(t)) => if handle(&t, &mut sock, &jobs, &kms, &out, &mut ping, &mut last_pong, &mut online, down_since) == Flow::Stop { return },
                         Ok(M::Binary(b)) => if let Ok(t) = String::from_utf8(b.to_vec()) {
-                            if handle(&t, &mut sock, &jobs, &kms, &mut ping, &mut last_pong, &mut online, down_since) == Flow::Stop { return }
+                            if handle(&t, &mut sock, &jobs, &kms, &out, &mut ping, &mut last_pong, &mut online, down_since) == Flow::Stop { return }
                         },
                         Ok(M::Close(f)) => { close = f.map(|f| (u16::from(f.code), f.reason.to_string())); dbg_conn(&format!("mercury closed by the service: {close:?}")); }
                         Ok(_) => {}
@@ -104,7 +104,7 @@ enum Flow { Go, Stop }
 
 /// One text frame: acknowledge it (every message with an id), match pongs to the outstanding ping, and route the event.
 #[allow(clippy::too_many_arguments)]
-fn handle<S: std::io::Read + std::io::Write>(t: &str, sock: &mut tungstenite::WebSocket<S>, jobs: &Sender<Job>, kms: &Sender<String>,
+fn handle<S: std::io::Read + std::io::Write>(t: &str, sock: &mut tungstenite::WebSocket<S>, jobs: &Sender<Job>, kms: &Sender<String>, out: &Sender<Resp>,
     ping: &mut Option<(String, Instant)>, last_pong: &mut Instant, online: &mut bool, down_since: Option<i64>) -> Flow {
     use tungstenite::Message as M;
     let Ok(v) = serde_json::from_str::<Value>(t) else { return Flow::Go };
@@ -138,8 +138,8 @@ fn handle<S: std::io::Read + std::io::Write>(t: &str, sock: &mut tungstenite::We
             }
             if jobs.send(Job::Activity(v["data"]["activity"].clone())).is_err() { return Flow::Stop }
         }
-        // Someone typing (cloud/typing.rs).
-        "status.start_typing" | "status.stop_typing" => { let _ = jobs.send(Job::Typing(v["data"].clone())); }
+        // Someone typing (cloud/typing.rs): straight to the window, not behind the job loop's requests.
+        "status.start_typing" | "status.stop_typing" => if !typing::fast(&v["data"], out) { let _ = jobs.send(Job::Typing(v["data"].clone())); },
         e if e.starts_with("locus.") => { let _ = jobs.send(Job::Locus(v["data"].clone())); }
         "directory.search" => { let _ = jobs.send(Job::Directory(v["data"].clone())); } // people search results
         // A toggle changed for this user.
@@ -173,6 +173,48 @@ mod tests {
         assert!(!reconnect_after_close(1003, "rejected"));
         for c in [1000, 1001, 1005, 1006, 1011, 1008] { assert!(reconnect_after_close(c, "idle")); }
     }
+    /// A fake socket: nothing to read, the acks are kept.
+    struct Fake(Vec<u8>);
+    impl std::io::Read for Fake { fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> { Err(std::io::ErrorKind::WouldBlock.into()) } }
+    impl std::io::Write for Fake {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> { self.0.extend_from_slice(b); Ok(b.len()) }
+        fn flush(&mut self) -> std::io::Result<()> { Ok(()) }
+    }
+
+    #[test]
+    fn typing_wakes_the_window_at_once_while_the_job_loop_is_busy() {
+        // The shown conversation is published; the job loop is never drained here, like one stuck in a slow request.
+        let (mut s, _rx) = super::super::live_list::tests::session();
+        s.spaces.insert("lat-c".into(), Space { id: "lat-c".into(), participants: vec![Person { id: "erika@example.com".into(), name: "Erika Beispiel".into(), email: "erika@example.com".into(), status: String::new() }], ..Default::default() });
+        s.uuids.insert("erika@example.com".into(), "u-lat".into());
+        s.publish_typing("lat-c");
+        let (jobs, jobs_rx) = channel::<Job>();
+        let (kms, _k) = channel::<String>();
+        let (out, from_cloud) = channel::<Resp>();
+        let (to_ui, ui_rx) = channel::<Resp>();
+        let woke = std::sync::Arc::new(std::sync::Mutex::new(None::<Instant>));
+        let w = woke.clone();
+        std::thread::spawn(move || super::super::start::forward(from_cloud, to_ui, move || { w.lock().unwrap().get_or_insert(Instant::now()); }));
+        let mut sock = tungstenite::WebSocket::from_raw_socket(Fake(vec![]), tungstenite::protocol::Role::Client, None);
+        let (mut ping, mut pong, mut online) = (None, Instant::now(), true);
+        let mut lat = vec![];
+        for (n, ev) in ["status.start_typing", "status.stop_typing"].into_iter().enumerate() {
+            let frame = json!({"id": format!("m{n}"), "type": "event", "data": {"eventType": ev, "conversationId": "lat-c", "actor": {"id": "u-lat"}}}).to_string();
+            *woke.lock().unwrap() = None;
+            let t0 = Instant::now();
+            assert!(handle(&frame, &mut sock, &jobs, &kms, &out, &mut ping, &mut pong, &mut online, None) == Flow::Go);
+            let r = ui_rx.recv_timeout(Duration::from_secs(1)).expect("the event reaches the window");
+            let got = t0.elapsed();
+            std::thread::sleep(Duration::from_millis(5)); // the wake follows the hand-over
+            let wake = woke.lock().unwrap().expect("the window was woken") - t0;
+            assert!(matches!(&r, Resp::Typing { space, person, on } if space == "lat-c" && person.name == "Erika Beispiel" && *on == (n == 0)));
+            lat.push((got, wake));
+        }
+        for (got, wake) in &lat { assert!(*got < Duration::from_millis(50) && *wake < Duration::from_millis(50), "latency {lat:?}"); }
+        assert!(jobs_rx.try_recv().is_err(), "nothing waits for the job loop");
+        assert!(!sock.get_ref().0.is_empty(), "every event is acknowledged");
+    }
+
     #[test]
     fn backoff() {
         let mut w = RECONNECT_FIRST_MS; let mut seen = vec![];

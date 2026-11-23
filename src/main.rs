@@ -77,7 +77,7 @@ fn team_tones(t: &Th, color: Option<(u8, u8, u8)>, id: &str) -> (Color32, Color3
 
 // Navigation in the Webex rail order; shortcuts from the keyboard-shortcut registry.
 #[derive(Clone, Copy, PartialEq, Debug)]
-enum Tab { Messaging, Meetings, Calling, Whiteboards, Contacts, Teams, Voicemail, Plugins, Settings }
+enum Tab { Messaging, Meetings, Calling, Whiteboards, Contacts, Teams, Voicemail, Settings }
 // Rail order (Vidcast is left out).
 const RAIL: [(Tab, &str, &str, &str); 6] = [
     // The rail uses filled glyphs in both states.
@@ -288,7 +288,7 @@ fn main() -> eframe::Result<()> {
     if args.screenshot.is_none() && !args.sample && std::env::var_os("WEBOX_MULTI_INSTANCE").is_none() && platform::linux::instance::hand_off(args.protocol_uri.as_deref()) {
         return Ok(());
     }
-    let mut vp = egui::ViewportBuilder::default().with_title("Webox").with_inner_size([1280.0, 800.0]).with_min_inner_size([760.0, 540.0])
+    let mut vp = egui::ViewportBuilder::default().with_title("Webox").with_inner_size([1280.0, 800.0]).with_min_inner_size(ui::chrome::MIN_WINDOW)
         .with_decorations(false) // Webox draws its own window controls in its header
         .with_app_id("webox"); // X11 WM_CLASS / Wayland app_id = webox.desktop (icon + grouping in the Linux panels; unused on Windows)
     if let Ok(img) = image::load_from_memory(icons::APP_ICON_256) { // app icon (window + taskbar button)
@@ -296,7 +296,9 @@ fn main() -> eframe::Result<()> {
         vp = vp.with_icon(egui::IconData { width: img.width(), height: img.height(), rgba: img.into_raw() });
     }
     if args.screenshot.is_some() {
-        vp = vp.with_active(false).with_inner_size([1200.0, 720.0]); // a fixed size so screenshots compare 1:1
+        // A fixed size so screenshots compare 1:1; WEBOX_SHOT_SIZE=WxH (pt) overrides it, e.g. for narrow-window checks.
+        let size = std::env::var("WEBOX_SHOT_SIZE").ok().and_then(|v| v.split_once('x').and_then(|(w, h)| Some([w.trim().parse::<f32>().ok()?, h.trim().parse::<f32>().ok()?])));
+        vp = vp.with_active(false).with_inner_size(size.unwrap_or([1200.0, 720.0]));
         #[cfg(windows)] { vp = vp.with_window_level(egui::WindowLevel::AlwaysOnBottom); }
     }
     // X11: a transparent root viewport makes eframe pick an ARGB GL config, which every window shares, so the toast / tray-menu /

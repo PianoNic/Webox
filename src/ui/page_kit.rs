@@ -47,7 +47,7 @@ impl App {
     /// The main area of every page except Messaging: Plugins/Settings keep their single card, Whiteboards is a single card, the others a list card + detail card.
     pub(crate) fn pages_frame(&mut self, ctx: &egui::Context, t: &Th, now: f64) {
         let gap = egui::Margin { left: 0, right: 4, top: 0, bottom: 0 };
-        if matches!(self.tab, Tab::Plugins | Tab::Settings | Tab::Whiteboards) {
+        if matches!(self.tab, Tab::Settings | Tab::Whiteboards) {
             egui::CentralPanel::default().frame(egui::Frame::default().inner_margin(gap)).show(ctx, |ui| {
                 let card = ui.available_rect_before_wrap();
                 let _ = ui.allocate_rect(card, Sense::hover());
@@ -156,7 +156,7 @@ impl App {
         let (fill, fg, stroke) = match kind {
             Pill::Join => (if hov { t.green.gamma_multiply(0.85) } else { t.green }, hex(0x121212), Stroke::NONE),
             Pill::Primary => (if hov { t.white_btn.gamma_multiply(0.85) } else { t.white_btn }, t.white_btn_text, Stroke::NONE),
-            Pill::Secondary => (if hov { alpha(t.text1, 0.1) } else { Color32::TRANSPARENT }, t.text1, Stroke::new(1.0, alpha(t.text1, 0.3))), // button-secondary-border white @ 30 %
+            Pill::Secondary => (if hov { alpha(t.text1, 0.1) } else { Color32::TRANSPARENT }, t.text1, Stroke::new(1.0_f32, alpha(t.text1, 0.3))), // button-secondary-border white @ 30 %
         };
         ui.painter().rect_filled(r, 16.0, fill);
         if stroke.width > 0.0 { ui.painter().rect_stroke(r, 16.0, stroke, egui::StrokeKind::Inside); }
@@ -242,8 +242,8 @@ impl App {
             let resp = ui.interact(cr, ui.id().with("search-clear"), Sense::click());
             if resp.hovered() { ui.painter().circle_filled(cr.center(), 11.0, t.ink_a(0.12)); ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             let (c, d) = (cr.center(), 4.0);
-            ui.painter().line_segment([c - Vec2::splat(d), c + Vec2::splat(d)], Stroke::new(1.3, t.text1));
-            ui.painter().line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.3, t.text1));
+            ui.painter().line_segment([c - Vec2::splat(d), c + Vec2::splat(d)], Stroke::new(1.3_f32, t.text1));
+            ui.painter().line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.3_f32, t.text1));
             if resp.on_hover_text("Suche löschen").clicked() { text.clear(); }
         }
     }
@@ -275,7 +275,7 @@ impl App {
             let resp = ui.interact(lr, ui.id().with(("empty-link", l)), Sense::click());
             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             ui.painter().text(lr.left_center(), egui::Align2::LEFT_CENTER, l, semibold(14.0), t.link);
-            if resp.hovered() { ui.painter().hline(lr.x_range(), lr.bottom() - 1.0, Stroke::new(1.0, t.link)); }
+            if resp.hovered() { ui.painter().hline(lr.x_range(), lr.bottom() - 1.0, Stroke::new(1.0_f32, t.link)); }
             clicked = resp.clicked();
         }
         clicked

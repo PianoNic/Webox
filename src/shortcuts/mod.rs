@@ -128,9 +128,9 @@ impl Group {
 }
 
 pub(crate) struct Command {
-    pub id: &'static str, pub group: Group, pub comment: &'static str, pub customizable: bool, pub default_global: bool, pub can_be_global: bool,
+    pub id: &'static str, pub group: Group, pub customizable: bool, pub default_global: bool, pub can_be_global: bool,
     /// The Windows (`qt`) default; `None` for UNSUPPORTED (and for the macOS strings the JSON ships for Minimize/Maximize).
-    pub default: Option<Combo>, pub unsupported: bool,
+    pub default: Option<Combo>,
     pub label: &'static str, pub kind: Kind,
 }
 impl Command {
@@ -156,9 +156,9 @@ fn build_registry(json: &str) -> Registry {
             let id = leak(s["command"].as_str().unwrap_or(""));
             let qt = s["keyCombination"]["qt"].as_str().unwrap_or("");
             let (label, kind) = table::spec(id).unwrap_or((id, Kind::Stub));
-            cmds.push(Command { id, group, comment: leak(s["comment"].as_str().unwrap_or("")), customizable: s["isCustomizable"].as_bool().unwrap_or(false),
+            cmds.push(Command { id, group, customizable: s["isCustomizable"].as_bool().unwrap_or(false),
                 default_global: s["isGlobal"].as_bool().unwrap_or(false), can_be_global: s["canBeGlobal"].as_bool().unwrap_or(false),
-                default: Combo::parse(qt), unsupported: qt == "UNSUPPORTED", label, kind });
+                default: Combo::parse(qt), label, kind });
         }
     }
     let by_id = cmds.iter().enumerate().map(|(i, c)| (c.id, i)).collect();

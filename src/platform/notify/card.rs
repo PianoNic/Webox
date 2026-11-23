@@ -49,7 +49,7 @@ pub(super) fn layout_message(ctx: &egui::Context, t: &Th, ts: &Toast) -> Lay {
     });
     y += body.as_ref().map_or(0.0, |g| g.size().y.min(BODY_MAX_H));
     let h = (y + MB).max(MT + AVATAR + MB).clamp(100.0, 160.0); // min / max height of the card
-    Lay { h, kicker: None, title, body, emoji, ind_w: AVATAR_COL, col_x, buttons: vec![], w: W, sender, ys: Some((title_y, sender_y, body_y)) }
+    Lay { h, kicker: None, title, body, emoji, col_x, buttons: vec![], w: W, sender, ys: Some((title_y, sender_y, body_y)) }
 }
 
 pub(super) fn layout(ctx: &egui::Context, t: &Th, ts: &Toast) -> Lay {
@@ -106,7 +106,7 @@ pub(super) fn layout(ctx: &egui::Context, t: &Th, ts: &Toast) -> Lay {
         (g, w)
     }).collect();
     let btn = if buttons.is_empty() { 0.0 } else { 28.0 + 12.0 };
-    Lay { h: ind_h.max(32.0 + col_h + btn), kicker, title, body, emoji, ind_w, col_x, buttons, w: W, sender: None, ys: None }
+    Lay { h: ind_h.max(32.0 + col_h + btn), kicker, title, body, emoji, col_x, buttons, w: W, sender: None, ys: None }
 }
 
 // Drawing.
@@ -131,7 +131,7 @@ pub(super) fn draw_card(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th, ts: &T
         let p = ui.painter().clone();
         // Fill and 1 px border only, no shadow: on a dark desktop a light shadow reads as a white glow.
         p.rect_filled(rect, 0.0, bg); // square corners
-        p.rect_stroke(rect, 0.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+        p.rect_stroke(rect, 0.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
         let card = ui.interact(rect, egui::Id::new(("toast-card", ts.id)), Sense::click());
         out.hovered = card.hovered();
         if card.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -188,7 +188,7 @@ pub(super) fn draw_card(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th, ts: &T
                 if primary { p.rect_filled(r, 14.0, if hov { alpha(t.white_btn, 0.85) } else { t.white_btn }); }
                 else {
                     p.rect_filled(r, 14.0, if hov { t.pill } else { Color32::TRANSPARENT });
-                    p.rect_stroke(r, 14.0, Stroke::new(1.0, t.ink_a(0.3)), egui::StrokeKind::Inside); // button-secondary-border
+                    p.rect_stroke(r, 14.0, Stroke::new(1.0_f32, t.ink_a(0.3)), egui::StrokeKind::Inside); // button-secondary-border
                 }
                 p.galley(r.center() - g.size() / 2.0, g.clone(), t.text1);
                 if hov { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }

@@ -123,9 +123,17 @@ pub(crate) fn sample_progress(started: f64, now: f64) -> f32 {
     ((now - started) / secs).clamp(0.0, 1.0) as f32
 }
 
-/// Ctrl+V went down since the last frame. egui-winit swallows Ctrl+V when the clipboard has no text (no `Event::Paste`, no key
-/// event), so the key state is read from Windows directly (edge-detected).
-pub(super) fn paste_key_edge() -> bool {
+/// Ctrl+V went down since the last frame (`paste_key_poll` reads the key once per frame, so the edge is never stale; a press
+/// while the window is not focused does not count).
+pub(super) fn paste_key_edge(ctx: &egui::Context) -> bool { ctx.data(|d| d.get_temp::<u64>(egui::Id::new("paste-key-edge"))) == Some(ctx.cumulative_pass_nr()) }
+pub(crate) fn paste_key_poll(ctx: &egui::Context, window_focused: bool) -> bool {
+    let (edge, pass) = (paste_key_down_edge() && window_focused, ctx.cumulative_pass_nr());
+    if edge { ctx.data_mut(|d| d.insert_temp(egui::Id::new("paste-key-edge"), pass)); }
+    edge
+}
+/// egui-winit swallows Ctrl+V when the clipboard has no text (no `Event::Paste`, no key event), so the key state is read from
+/// Windows directly (edge-detected).
+fn paste_key_down_edge() -> bool {
     #[cfg(windows)]
     {
         use std::sync::atomic::{AtomicBool, Ordering};
@@ -320,11 +328,12 @@ impl App {
             let r = Rect::from_min_max(pos2(composer.left() + 20.0, y - STRIP_H), pos2(composer.right() - 20.0, y));
             y -= STRIP_H + 4.0;
             let id = egui::Id::new(("upload-strip", &u.id));
+            crate::ui::type_focus::passive(ui.ctx(), egui::LayerId::new(egui::Order::Foreground, id));
             egui::Area::new(id).fixed_pos(r.min).order(egui::Order::Foreground).show(ui.ctx(), |ui| {
                 let (r, _) = ui.allocate_exact_size(r.size(), Sense::hover());
                 let p = ui.painter();
                 p.rect_filled(r, 8.0, if light { Color32::WHITE } else { hex(0x1F1F1F) });
-                p.rect_stroke(r, 8.0, Stroke::new(1.0, if light { hex(0xDEDEDE) } else { hex(0x3B3B3B) }), egui::StrokeKind::Inside);
+                p.rect_stroke(r, 8.0, Stroke::new(1.0_f32, if light { hex(0xDEDEDE) } else { hex(0x3B3B3B) }), egui::StrokeKind::Inside);
                 self.icons.paint(ui, "attachment-regular", Rect::from_center_size(pos2(r.left() + 18.0, r.center().y), Vec2::splat(16.0)), t.text2);
                 let failed = if let Phase::Failed(e) = &phase { Some(e.clone()) } else { None };
                 let (name, rest) = uploading_parts(&u.names);
@@ -344,7 +353,7 @@ impl App {
                 if let Some(_e) = failed {
                     let rr = Rect::from_min_max(pos2(xr.left() - 110.0, r.top() + 7.0), pos2(xr.left() - 8.0, r.bottom() - 7.0));
                     let rs = ui.interact(rr, id.with("retry"), Sense::click());
-                    ui.painter().rect_stroke(rr, 13.0, Stroke::new(1.0, t.text2), egui::StrokeKind::Inside);
+                    ui.painter().rect_stroke(rr, 13.0, Stroke::new(1.0_f32, t.text2), egui::StrokeKind::Inside);
                     if rs.hovered() { ui.painter().rect_filled(rr, 13.0, t.hover); ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     ui.painter().text(rr.center(), egui::Align2::CENTER_CENTER, "Wiederholen", semibold(13.0), t.text1);
                     if rs.clicked() { self.upload_retry(&u.id, space, now); }

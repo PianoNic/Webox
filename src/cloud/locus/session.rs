@@ -61,16 +61,20 @@ impl Session {
 
     /// Opens the audio devices and the WebRTC peer and returns it with the ROAP OFFER SDP (ICE gathering complete).
     pub(super) fn prepare_media(&mut self, c: &audio::Choice) -> Result<(Media, String), String> {
+        // ICE binds only where the system routes to Webex (the locus host stands in for the media servers)
+        let host = self.url("locus", "").split("://").nth(1).and_then(|r| r.split(['/', ':']).next()).unwrap_or_default().to_string();
         let engine = self.calls.engine.get_or_insert_with(audio::Engine::new);
-        let info = engine.open(&c.input, &c.output)?;
+        let info = engine.open(&c.input, &c.output).map_err(|e| { dbg_conn(&format!("call: audio devices failed: {}", scrub(&e))); e })?;
         engine.io.set_volume(c.volume);
         c.apply_smart(&engine.io);
         engine.io.set_call(true); // echo cancellation and gain control on the call microphone
         dbg_conn(&format!("call: audio open ({} chars)", info.len()));
-        let m = Media::new(engine.io.clone(), None)?;
+        let ip = route_ip(&host);
+        dbg_conn(&format!("call: route interface {}", ip.map_or("unknown (all interfaces)", |i| if i.is_ipv4() { "found (IPv4)" } else { "found (IPv6)" })));
+        let m = Media::new(engine.io.clone(), None, Net::Route(ip)).map_err(|e| { dbg_conn(&format!("call: media setup failed: {}", scrub(&e))); e })?;
         m.muted.store(self.calls.muted, Ordering::Relaxed);
         let offer = m.offer().map_err(|e| { dbg_conn(&format!("call: offer failed: {}", scrub(&e))); e })?;
-        dbg_conn(&format!("call: offer ready ({} bytes, {} candidates)", offer.len(), offer.matches("a=candidate").count()));
+        dbg_conn(&format!("call: offer ready ({} bytes) {}", offer.len(), crate::cloud::sdp::summary(&offer)));
         Ok((m, offer))
     }
 
@@ -104,7 +108,11 @@ impl Session {
         let body = json!({"device": self.device_body(), "usingResource": null, "moveMediaToResource": false, "correlationId": corr,
             "respOnlySdp": true, "allowMultiDevice": true, "ensureConversation": false, "supportsNativeLobby": 1,
             "clientMediaPreferences": {"preferTranscoding": true}, "localMedias": [{"localSdp": roap_local_sdp("OFFER", Some(&offer), 1, self.calls.muted)}]});
-        let r = match self.http("POST", &format!("{url}/participant"), Some(body)) { Ok(r) => r, Err(e) => { media.close(); return Err(format!("Annehmen fehlgeschlagen: {}", scrub(&e))); } };
+        dbg_conn("call: POST /participant (answer, with ROAP offer)");
+        let r = match self.http("POST", &format!("{url}/participant"), Some(body)) {
+            Ok(r) => r,
+            Err(e) => { dbg_conn(&format!("call: answer failed: {}", scrub(&e))); media.close(); return Err(format!("Annehmen fehlgeschlagen: {}", scrub(&e))); }
+        };
         self.adopt(&r, media, corr, false)
     }
 
@@ -118,15 +126,18 @@ impl Session {
             let keys = r.as_object().map(|m| m.keys().cloned().collect::<Vec<_>>().join(",")).unwrap_or_default();
             return Err(format!("Anruf: unerwartete Antwort (keys: {keys})"));
         }
-        dbg_conn(&format!("call: joined {} media_id={}", describe(&v), r["mediaConnections"][0]["mediaId"].is_string()));
-        let media_id = st(&r["mediaConnections"][0], "mediaId");
+        let media_id = media_id_of(r, &self.device);
+        dbg_conn(&format!("call: joined {} media_id={} (top level {})", describe(&v), !media_id.is_empty(), r["mediaConnections"][0]["mediaId"].is_string()));
         if new_call {
             let name = v.others.first().map(|p| p.name.clone()).unwrap_or_default();
             let email = v.others.first().map(|p| p.email.clone()).unwrap_or_default();
-            self.calls.cur = Some(Active { url: lurl, self_id: v.self_id.clone(), self_url: v.self_url.clone(), media_id, correlation_id: corr, outgoing: true, name, email,
-                last: None, answered: true, media: Some(media), roap_seq: 1, roap_done: false });
-        } else if let Some(c) = self.calls.cur.as_mut() {
+            self.calls.cur = Some(Active::new(lurl, v.self_id.clone(), v.self_url.clone(), true, name, email));
+        }
+        if let Some(c) = self.calls.cur.as_mut() {
             c.self_id = v.self_id.clone(); c.self_url = v.self_url.clone(); c.media_id = media_id; c.correlation_id = corr; c.answered = true; c.media = Some(media); c.roap_seq = 1; c.roap_done = false;
+            c.media_warned = false;
+            // the join answer carries the locus: it counts as read
+            c.view = Some(v.clone()); c.seq = locus_seq(l); c.read_at = Some(Instant::now());
         }
         self.start_ticker();
         if let Some(m) = remote_roap(r) { self.handle_roap(m); }
@@ -137,6 +148,7 @@ impl Session {
     pub(super) fn send_roap(&mut self, message_type: &str, sdp: Option<&str>, seq: u32) -> Result<(), String> {
         let (url, media_id, corr) = match &self.calls.cur { Some(c) => (c.self_url.clone(), c.media_id.clone(), c.correlation_id.clone()), None => return Ok(()) };
         if !webex_host(&url) { return Err("Keine gültige Medien-Adresse.".into()); }
+        if media_id.is_empty() { return Err("no media id".into()); } // like the original client: no ROAP message without it
         let body = json!({"device": self.device_body(), "correlationId": corr, "clientMediaPreferences": {"preferTranscoding": true},
             "localMedias": [{"localSdp": roap_local_sdp(message_type, sdp, seq, self.calls.muted), "mediaId": media_id}]});
         self.http("PUT", &format!("{url}/media"), Some(body)).map(|_| ())
@@ -153,23 +165,30 @@ impl Session {
                     Ok(()) => {
                         if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; }
                         let r = self.send_roap("OK", None, seq);
-                        dbg_conn(&format!("call: roap OK sent -> {}", if r.is_ok() { "ok" } else { "failed" }));
+                        dbg_conn(&format!("call: roap OK sent -> {}", r.as_ref().map_or_else(|e| format!("failed: {}", scrub(e)), |_| "ok".into())));
                     }
-                    Err(e) => { dbg_conn(&format!("call: bad answer: {}", scrub(&e))); self.fail_media("Medienaushandlung fehlgeschlagen"); }
+                    Err(e) => { dbg_conn(&format!("call: bad answer: {}", scrub(&e))); self.media_trouble("Medienaushandlung fehlgeschlagen"); }
                 }
             }
             "OFFER" => { // the server renegotiating: answer it
                 let (Some(sdp), Some(m)) = (sdp, self.calls.cur.as_ref().and_then(|c| c.media.as_ref())) else { return };
-                match m.answer(sdp) { Ok(a) => { let _ = self.send_roap("ANSWER", Some(&a), seq); } Err(e) => dbg_conn(&format!("call: answer failed: {}", scrub(&e))) }
+                match m.answer(sdp) {
+                    Ok(a) => { let r = self.send_roap("ANSWER", Some(&a), seq); dbg_conn(&format!("call: roap ANSWER sent -> {}", if r.is_ok() { "ok" } else { "failed" })); }
+                    Err(e) => dbg_conn(&format!("call: answer failed: {}", scrub(&e))),
+                }
             }
-            "ERROR" => self.fail_media("Medienfehler"),
+            // like the original client: an error report (glare, sequence) is logged, the call stays
+            "ERROR" => dbg_conn("call: roap ERROR, call kept"),
             _ => {} // OK, TURN_DISCOVERY_RESPONSE, SHUTDOWN: nothing to do
         }
     }
 
-    pub(super) fn fail_media(&mut self, why: &str) {
+    /// Media trouble keeps the call (ICE may still recover, the user hangs up): logged, one notice per call.
+    pub(super) fn media_trouble(&mut self, why: &str) {
+        let Some(c) = self.calls.cur.as_mut() else { return };
+        if std::mem::replace(&mut c.media_warned, true) { return; }
+        dbg_conn(&format!("call: media trouble, call kept: {why}"));
         let _ = self.out.send(Resp::Error(why.into()));
-        let _ = self.hang_up();
     }
 
     /// Cancel (outgoing) / leave (connected) / decline (incoming, not answered).
@@ -197,42 +216,74 @@ impl Session {
         let Some(mut s) = call_state(v, outgoing || answered) else { return Ok(()) };
         if s == CallState::Connected {
             match media { Some(MediaState::Connected) => {}
-                Some(MediaState::Failed) => { self.fail_media("Verbindung fehlgeschlagen"); return Ok(()) }
+                Some(MediaState::Failed) => { self.media_trouble("Keine Audioverbindung"); s = CallState::Connecting }
                 _ => s = CallState::Connecting }
         }
         if let CallState::Ended(w) = &s { self.end_call(w); } else { self.emit(s); }
         Ok(())
     }
 
-    /// Mercury `locus.*` events and our own ticks while a call exists. Re-reads the locus (a full GET, no delta merging).
+    /// Mercury `locus.*` events and our own ticks while a call exists. An event's own (full) locus is applied as it is;
+    /// a GET happens only for an event without it (at most every 2 s) and as the slow fallback poll (`poll_due`).
     pub(crate) fn locus_event(&mut self, d: &Value) -> Result<(), String> {
         if let Some(m) = roap_in(d) {
-            if self.calls.cur.as_ref().is_some_and(|c| d["correlationId"].as_str().is_none_or(|x| x == c.correlation_id)) { self.handle_roap(m); }
+            let ours = self.calls.cur.as_ref().is_some_and(|c| d["correlationId"].as_str().is_none_or(|x| x == c.correlation_id));
+            if m.0 == "ERROR" { dbg_conn(&format!("call: roap ERROR ours={ours} {}", roap_error(&d["message"]))); }
+            if ours { self.handle_roap(m); } else { dbg_conn(&format!("call: roap {} for another correlation id, ignored", m.0)); }
             return Ok(());
         }
-        let url = match &self.calls.cur {
-            Some(c) if d["tick"].as_bool() == Some(true) => c.url.clone(),
-            Some(c) => { let u = locus_url_of(d); if u.is_empty() || u == c.url { c.url.clone() } else { return Ok(()) } }
+        let (tick, now) = (d["tick"].as_bool() == Some(true), Instant::now());
+        let (url, carried) = match self.calls.cur.as_mut() {
+            Some(c) if tick => {
+                if c.stats_at.is_none_or(|t| now.saturating_duration_since(t) >= STATS_EVERY) {
+                    c.stats_at = Some(now);
+                    if let Some(m) = c.media.as_ref() { dbg_conn(&format!("call: media {:?} rx={} tx={}", m.state(), m.rx_packets.load(Ordering::Relaxed), m.tx_frames.load(Ordering::Relaxed))); }
+                }
+                if !poll_due(c.read_at, now, c.last == Some(CallState::Connected), c.stale) {
+                    let v = c.view.clone();
+                    return v.map_or(Ok(()), |v| self.evaluate(&v)); // the known state again: media may have connected meanwhile
+                }
+                (c.url.clone(), None)
+            }
+            Some(c) => {
+                let u = locus_url_of(d);
+                if !(u.is_empty() || u == c.url) { return Ok(()) }
+                let carried = full_locus(d);
+                if carried.is_none() && c.read_at.is_some_and(|t| now.saturating_duration_since(t) < MIN_READ_GAP) { c.stale = true; return Ok(()) } // the next tick reads
+                (c.url.clone(), carried)
+            }
             None => {
                 let u = locus_url_of(d);
-                if d["tick"].as_bool() == Some(true) || u.is_empty() { return Ok(()) }
+                if tick || u.is_empty() { return Ok(()) }
                 // No call of ours: only a locus that can be an incoming 1:1 call is read (meetings and others are not).
                 if !idle_event_needs_read(d, &self.my_email) { return Ok(()) }
-                u
+                (u, full_locus(d))
             }
         };
         if !webex_host(&url) { return Ok(()); }
-        let r = self.http("GET", &url, None)?;
-        let v = parse_locus(locus_of(&r), &self.my_email);
+        let (l, how) = match carried {
+            Some(l) => (l.clone(), "event"),
+            None => {
+                let r = self.http("GET", &url, None)?;
+                if let Some(c) = self.calls.cur.as_mut() { c.read_at = Some(now); c.stale = false; }
+                (locus_of(&r).clone(), "read")
+            }
+        };
+        let seq = locus_seq(&l);
+        if let Some(c) = self.calls.cur.as_mut() {
+            if seq != 0 && seq < c.seq { dbg_conn("call: older locus ignored"); return Ok(()); }
+            c.seq = c.seq.max(seq);
+        }
+        let v = parse_locus(&l, &self.my_email);
         let v = LocusView { url: if v.url.is_empty() { url.clone() } else { v.url }, ..v };
-        let mdbg = self.calls.cur.as_ref().and_then(|c| c.media.as_ref()).map(|m| format!("{:?} rx={} tx={}", m.state(), m.rx_packets.load(Ordering::Relaxed), m.tx_frames.load(Ordering::Relaxed)));
-        dbg_conn(&format!("call: read {} media={:?}", describe(&v), mdbg));
-        if self.calls.cur.is_some() { return self.evaluate(&v); }
+        dbg_conn(&format!("call: {how} {}", describe(&v)));
+        if let Some(c) = self.calls.cur.as_mut() { c.view = Some(v.clone()); return self.evaluate(&v); }
         // A call someone else started: only real 1:1 calls that are ringing for us (never meetings), and never while busy.
         if v.kind == "CALL" && call_state(&v, false) == Some(CallState::Incoming) {
             let p = v.others.iter().find(|p| p.state == "JOINED").cloned().unwrap_or_default();
-            self.calls.cur = Some(Active { url: v.url.clone(), self_id: v.self_id.clone(), self_url: v.self_url.clone(), media_id: String::new(), correlation_id: String::new(),
-                outgoing: false, name: p.name, email: p.email, last: None, answered: false, media: None, roap_seq: 0, roap_done: false });
+            let mut a = Active::new(v.url.clone(), v.self_id.clone(), v.self_url.clone(), false, p.name, p.email);
+            (a.view, a.seq, a.read_at) = (Some(v.clone()), seq, (how == "read").then_some(now));
+            self.calls.cur = Some(a);
             self.start_ticker();
             self.emit(CallState::Incoming);
             // Tell Locus this device is ringing (the caller then sees "ringing").

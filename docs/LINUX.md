@@ -18,6 +18,7 @@ For other distributions, build it with Cargo as described below.
 | File dialogs | IFileOpenDialog | xdg-desktop-portal (rfd) |
 | Audio | WASAPI (cpal) | ALSA (cpal), which reaches PulseAudio / PipeWire through their ALSA plugins |
 | Video playback (shared videos) | Media Foundation: MP4 / MOV / M4V / 3GP, ASF / WMV, AVI, MPEG-TS, MKV / WebM with the codecs Windows has (H.264, MPEG-4, MJPEG, WMV; HEVC, VP9, AV1 with their Store extensions); DXVA hardware decoding | GStreamer (`playbin`): whatever the installed plugins decode, see [Video formats](#video-formats); VA-API hardware decoding when the distribution's `va` plugin is installed. Sound goes to the speaker chosen in Settings > Audio on both |
+| Screen sharing (capture + H.264) | Windows.Graphics.Capture (DXGI Desktop Duplication for monitors where it is missing); Media Foundation H.264 encoder, the GPU's when there is one | xdg-desktop-portal ScreenCast -> PipeWire (`pipewiresrc`), on X11 without the portal `ximagesrc`; GStreamer H.264 encoder, see [Screen sharing](#screen-sharing) |
 | Font | Segoe UI from the system | bundled Selawik (OFL, Segoe-UI-compatible metrics), plus the system's DejaVu / Noto Sans as fallback |
 | Settings | `%APPDATA%\WebOx` | `$XDG_CONFIG_HOME/webox` (`~/.config/webox`) |
 | Links | `url.dll` | `xdg-open` |
@@ -92,6 +93,22 @@ Phone and screen recordings are mostly H.264 + AAC in MP4; on Debian / Ubuntu th
 plugin for GPU decoding). A file that cannot be decoded shows "Video kann nicht abgespielt werden" with
 "Erneut laden" on its card and can still be downloaded. The Nix package has -base / -good / -bad; `withLibav = true` adds
 gst-libav (FFmpeg in the closure, therefore off by default).
+
+## Screen sharing
+
+Sharing a screen or window needs a way to capture it and an H.264 encoder from GStreamer; Webox bundles neither.
+
+- **Capture.** Through the desktop portal's ScreenCast interface (GNOME, KDE, wlroots portals; Wayland and X11). The
+  desktop's own dialog picks the screen or window, and the share dialog shows one "Bildschirm" and one "Anwendung" entry
+  that open it. This needs `xdg-desktop-portal` with a backend for the desktop plus `gstreamer1.0-pipewire`
+  (`pipewiresrc`). On X11 without the portal, Webox lists the screen and the windows itself, with thumbnails, and captures
+  them with `ximagesrc` (gst-plugins-good). `WEBOX_SHARE_X11=1` prefers this on X11 even when the portal is there.
+- **Encoder.** The first one installed, in this order: `x264enc` (`gstreamer1.0-plugins-ugly`), `openh264enc`
+  (`gstreamer1.0-plugins-bad` where the distribution builds openh264), `vah264enc` / `vaapih264enc` (VA-API: `-plugins-bad`'s
+  `va` / `gstreamer1.0-vaapi`). `WEBOX_SHARE_ENCODER=<element>` picks one. `h264parse` (`-plugins-bad`) is used when present.
+
+Debian / Ubuntu: `sudo apt install gstreamer1.0-pipewire gstreamer1.0-plugins-ugly xdg-desktop-portal`
+(plus the desktop's portal backend, e.g. `xdg-desktop-portal-gnome` or `-kde`).
 
 ## Headless tests (Docker)
 

@@ -27,7 +27,7 @@ impl App {
         if resp.clicked() { self.selected = None; super::super::invite::close_state(ui.ctx()); }
         if self.selected.is_none() { ui.painter().rect_filled(r, g.h / 2.0, t.selected); } else if resp.hovered() { ui.painter().rect_filled(r, g.h / 2.0, t.ink_a(0.05)); }
         let c = pos2(r.left() + (g.avatar_left + g.avatar / 2.0), r.center().y);
-        ui.painter().circle_stroke(c, g.avatar / 2.0 - 0.5, Stroke::new(1.0, t.text2));
+        ui.painter().circle_stroke(c, g.avatar / 2.0 - 0.5, Stroke::new(1.0_f32, t.text2));
         self.icons.paint(ui, "start-chat-regular", Rect::from_center_size(c, Vec2::splat(g.avatar * 18.0 / 32.0)), t.text1);
         super::super::chrome::fit_text(ui.painter(), r.left() + g.text_x, r.center().y, tr("New message"), FontId::proportional(g.title_pt), t.text1, r.width() - (g.text_x + 34.0));
         self.icons.paint(ui, "more-regular", Rect::from_center_size(r.right_center() - Vec2::new(26.0, 0.0), Vec2::splat(16.0)), t.text2);
@@ -68,7 +68,7 @@ impl App {
         let pill = Rect::from_min_size(pos2(full.right() - RIGHT - PILL.0, full.top() + HEAD_Y - PILL.1 / 2.0), Vec2::new(PILL.0, PILL.1));
         let cresp = ui.interact(pill, egui::Id::new("newmsg-cancel"), Sense::click());
         if cresp.hovered() { ui.painter().rect_filled(pill, PILL.1 / 2.0, t.hover); ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        ui.painter().rect_stroke(pill, PILL.1 / 2.0, Stroke::new(1.0, t.tk("button-secondary-border")), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(pill, PILL.1 / 2.0, Stroke::new(1.0_f32, t.tk("button-secondary-border")), egui::StrokeKind::Inside);
         ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, crate::tr!("NewMessageWidget", "Cancel"), semibold(15.0), t.text1);
         if cresp.clicked() { self.new_message_close(&ctx); return; }
 
@@ -79,7 +79,7 @@ impl App {
         let focused = ctx.memory(|m| m.has_focus(tid));
         // inputBackground; border #A6A6A6 / #E6E6E6 focused = 60 % / 90 % ink.
         ui.painter().rect_filled(field, FIELD_H / 2.0, t.tk("inputBackground"));
-        ui.painter().rect_stroke(field, FIELD_H / 2.0, Stroke::new(1.0, if focused || !s.query.is_empty() { t.ink_a(0.9) } else { t.ink_a(0.6) }), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(field, FIELD_H / 2.0, Stroke::new(1.0_f32, if focused || !s.query.is_empty() { t.ink_a(0.9) } else { t.ink_a(0.6) }), egui::StrokeKind::Inside);
         self.icons.paint(ui, "search-regular", Rect::from_center_size(pos2(field.left() + 11.2, field.center().y + 1.0), Vec2::splat(16.0)), t.text1);
         // Recipients as chips: height 24, 16 px / 400, colours button-secondary-background / -border / -text (dark: transparent,
         // hover white 7 %, pressed 20 %; border white 50 %; text white 95 %), a cancel-bold icon at the right (10 pt icon, 12 pt
@@ -98,7 +98,7 @@ impl App {
             let cresp = ui.interact(chip, egui::Id::new(("newmsg-chip", i)), Sense::click());
             let fill = if cresp.is_pointer_button_down_on() { alpha(cb, 0.2) } else if cresp.hovered() { alpha(cb, 0.07) } else { Color32::TRANSPARENT };
             ui.painter().rect_filled(chip, 12.0, fill);
-            ui.painter().rect_stroke(chip, 12.0, Stroke::new(1.0, alpha(cb, 0.5)), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(chip, 12.0, Stroke::new(1.0_f32, alpha(cb, 0.5)), egui::StrokeKind::Inside);
             ui.painter().text(pos2(chip.left() + 12.0, chip.center().y), egui::Align2::LEFT_CENTER, &label, FontId::proportional(16.0), alpha(ct, 0.95));
             self.icons.paint(ui, "cancel-bold", Rect::from_center_size(pos2(chip.right() - 13.0 + 4.0 - 4.0, chip.center().y + 1.0), Vec2::splat(10.0)), alpha(ct, 0.95));
             // A click on the chip's icon or the chip removes it ("%1, To remove press spacebar").
@@ -176,7 +176,7 @@ impl App {
                 ui.allocate_exact_size(drop.size(), Sense::hover());
                 let p = ui.painter().clone();
                 p.rect_filled(drop, 0.0, t.tk("background-primary"));
-                p.rect_stroke(drop, 0.0, Stroke::new(1.0, t.tk("listitem-background:pressed")), egui::StrokeKind::Inside); // listitem-background:pressed (11 %)
+                p.rect_stroke(drop, 0.0, Stroke::new(1.0_f32, t.tk("listitem-background:pressed")), egui::StrokeKind::Inside); // listitem-background:pressed (11 %)
                 let mut y = drop.top();
                 for (i, l) in ls.iter().enumerate() {
                     let r = Rect::from_min_size(pos2(drop.left(), y), Vec2::new(drop.width(), l.h()));
@@ -186,8 +186,8 @@ impl App {
                     let resp = l.pickable().then(|| ui.interact(r, egui::Id::new(("newmsg-line", i)), Sense::click()));
                     if ring == Some(i) || resp.as_ref().is_some_and(|r| r.hovered()) { p.rect_filled(inner, 8.0, t.tk("listitem-background:pressed")); }
                     if ring == Some(i) {
-                        p.rect_stroke(r.shrink(0.8), 10.0, Stroke::new(2.0, FOCUS), egui::StrokeKind::Inside);
-                        p.rect_stroke(r.shrink(2.8), 9.0, Stroke::new(2.0, t.tk("global-focus-innerline")), egui::StrokeKind::Inside);
+                        p.rect_stroke(r.shrink(0.8), 10.0, Stroke::new(2.0_f32, FOCUS), egui::StrokeKind::Inside);
+                        p.rect_stroke(r.shrink(2.8), 9.0, Stroke::new(2.0_f32, t.tk("global-focus-innerline")), egui::StrokeKind::Inside);
                     }
                     match l {
                         Line::Header(h) => { p.text(pos2(r.left() + 14.4, r.center().y + 1.2), egui::Align2::LEFT_CENTER, tr(h), FontId::proportional(16.0), t.text2); }

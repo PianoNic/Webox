@@ -110,7 +110,6 @@ fn raster_px(data: &[u8], tint: bool, px_size: u32, name: Option<&str>) -> Optio
     Some(egui::ColorImage { size: [px_size as usize, px_size as usize], pixels: px })
 }
 pub const LOGO_256: &[u8] = include_bytes!("../../assets/logo-256.png");
-pub const LOGO_64: &[u8] = include_bytes!("../../assets/logo-64.png");
 
 // The application icon (window / taskbar / tray) at sizes 16, 20, 24, 32, 40, 48, 60, 64, 256, so every size is the
 // artwork's own and nothing is scaled blurry.

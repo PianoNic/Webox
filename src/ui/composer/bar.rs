@@ -66,7 +66,7 @@ impl App {
             let (ru, rc) = (ui.interact(ur, ui.id().with("edit-update"), Sense::click()), ui.interact(cr, ui.id().with("edit-cancel"), Sense::click()));
             ui.painter().rect_filled(ur, 14.0, if ru.hovered() { t.white_btn.gamma_multiply(0.85) } else { t.white_btn });
             ui.painter().text(ur.center(), egui::Align2::CENTER_CENTER, "Aktualisieren", semibold(13.5), t.white_btn_text); // "Update"
-            ui.painter().rect_stroke(cr, 14.0, Stroke::new(1.0, t.sep), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(cr, 14.0, Stroke::new(1.0_f32, t.sep), egui::StrokeKind::Inside);
             if rc.hovered() { ui.painter().rect_filled(cr, 14.0, t.hover); }
             ui.painter().text(cr.center(), egui::Align2::CENTER_CENTER, "Abbrechen", semibold(13.5), t.text1);
             if ru.clicked() { update_hint = true; }
@@ -87,13 +87,13 @@ impl App {
             let cr = Rect::from_min_max(pos2(pr.center().x, pr.top()), pr.max);
             let s = ui.interact(cr, ui.id().with("send"), Sense::click());
             crate::ui::theme::fx::send_button(cr);
-            ui.painter().circle_stroke(cr.center(), pr.height() / 2.0 - 0.5, Stroke::new(1.0, if light { hex(0xCCCCCC) } else { hex(0x3B3B3B) }));
+            ui.painter().circle_stroke(cr.center(), pr.height() / 2.0 - 0.5, Stroke::new(1.0_f32, if light { hex(0xCCCCCC) } else { hex(0x3B3B3B) }));
             self.icons.paint(ui, "send-filled", Rect::from_center_size(cr.center(), Vec2::splat(16.0)), if s.hovered() { t.text1 } else { hex(0x6F6F6F) });
             if s.on_hover_text("Senden").clicked() { now_send = true; }
         } else {
         // Send pill: send | schedule.
-        ui.painter().rect_stroke(pr, 13.0, Stroke::new(1.0, if light { hex(0xCCCCCC) } else { hex(0x3B3B3B) }), egui::StrokeKind::Inside);
-        ui.painter().vline(pr.center().x, pr.y_range().shrink(6.0), Stroke::new(1.0, if light { hex(0xCCCCCC) } else { hex(0x3B3B3B) }));
+        ui.painter().rect_stroke(pr, 13.0, Stroke::new(1.0_f32, if light { hex(0xCCCCCC) } else { hex(0x3B3B3B) }), egui::StrokeKind::Inside);
+        ui.painter().vline(pr.center().x, pr.y_range().shrink(6.0), Stroke::new(1.0_f32, if light { hex(0xCCCCCC) } else { hex(0x3B3B3B) }));
         let sr = Rect::from_min_max(pr.min, pos2(pr.center().x, pr.bottom()));
         let cr = Rect::from_min_max(pos2(pr.center().x, pr.top()), pr.max);
         // States: both halves are disabled (dim #6F6F6F) until there is something to send; "Später senden" needs text and isn't

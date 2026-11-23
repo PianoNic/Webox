@@ -10,6 +10,7 @@ impl App {
         let cid = egui::Id::new(CID);
         let light = super::super::menu::light(t);
         let mut st = st_get(&ctx);
+        super::super::type_focus::composer_drawn(&ctx, &space.id);
 
         // First frame / space switch: restore drafts, markdown mode; screenshot presets (WEBOX_SHOT_COMPOSER).
         let shot = if self.shot.is_some() { std::env::var("WEBOX_SHOT_COMPOSER").ok() } else { None };
@@ -132,7 +133,7 @@ impl App {
             }
         }
         // Ctrl+V with an image (and no text) on the clipboard stages it as a PNG named "<guid>.PNG" (see files::pasted_image_name).
-        if focused_prev && super::super::attach::paste_key_edge() && !ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Paste(_)))) {
+        if focused_prev && super::super::attach::paste_key_edge(&ctx) && !ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Paste(_)))) {
             if let Some(png) = super::super::attach::clipboard_png() { self.stage_bytes(&mut st.chips, &crate::app::files::pasted_image_name(), &png, edit, now); }
         }
         if paste_too_long { self.toast("Der Inhalt der Zwischenablage überschreitet die maximale Anzahl an Zeichen für eine einzelne Nachricht.", now); }
@@ -355,7 +356,7 @@ impl App {
 
         // Dropped files become chips; while files hover the composer is outlined.
         let hovering = ctx.input(|i| !i.raw.hovered_files.is_empty());
-        if hovering { ui.painter().rect_stroke(full.shrink(2.0), 10.0, Stroke::new(2.0, t.accent), egui::StrokeKind::Inside); }
+        if hovering { ui.painter().rect_stroke(full.shrink(2.0), 10.0, Stroke::new(2.0_f32, t.accent), egui::StrokeKind::Inside); }
         // Dropped files are staged (in edit mode they are refused with the pack's message).
         let dropped = ctx.input(|i| i.raw.dropped_files.clone());
         let mut paths = vec![];
@@ -380,7 +381,8 @@ impl App {
             }
         }
 
-        // Sending.
+        // Sending (never in the frame that typing moved the focus here, ui/type_focus.rs).
+        if want_send && super::super::type_focus::redirected_now(&ctx) { want_send = false; }
         if (want_send || now_send || update_hint) && !st.confirm_all { self.composer_send(&mut st, space, false, now); }
         // Shift+Up in an empty box edits the last own message (EditLastMessage).
         if focused && self.drafts.get(&id).is_none_or(|d| d.is_empty()) && ctx.input(|i| i.modifiers.shift && i.key_pressed(Key::ArrowUp)) {

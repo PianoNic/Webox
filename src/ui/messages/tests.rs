@@ -124,7 +124,7 @@ fn content_revision_follows_what_the_list_draws() {
     assert_eq!(r, content_rev(&m.clone()));
     let mut e = m.clone(); e.text = "hallo!".into(); assert_ne!(content_rev(&e), r);
     let mut e = m.clone(); e.edited = true; assert_ne!(content_rev(&e), r);
-    let mut e = m.clone(); e.reactions.push(cloud::Reaction { name: "heart".into(), count: 1, mine: None }); assert_ne!(content_rev(&e), r);
+    let mut e = m.clone(); e.reactions.push(cloud::Reaction { name: "heart".into(), count: 1, mine: None, ..Default::default() }); assert_ne!(content_rev(&e), r);
     let mut e = m.clone(); e.html = "<b>hallo</b>".into(); assert_ne!(content_rev(&e), r);
     // The date / time are not part of it (the header is laid out at drawing time).
     let mut e = m.clone(); e.time = "10:00".into(); assert_eq!(content_rev(&e), r);

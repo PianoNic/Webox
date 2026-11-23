@@ -18,6 +18,7 @@ pub(super) const TOKENS: &[(&str, [u32; 13])] = &[
     ("avatar-color-avatar-background-violet", [0x643ABDFF, 0x643ABDFF, 0x643ABDFF, 0x643ABDFF, 0x643ABDFF, 0x643ABDFF, 0x643ABDFF, 0x643ABDFF, 0x643ABDFF, 0x643ABDFF, 0x643ABDFF, 0x643ABDFF, 0x00000000]),
     ("avatar-color-avatar-text-default", [0xFFFFFFF2, 0xFFFFFFF2, 0xFFFFFFF2, 0xFFFFFFF2, 0xFFFFFFF2, 0xFFFFFFF2, 0xFFFFFFF2, 0xFFFFFFF2, 0xFFFFFFF2, 0xFFFFFFF2, 0xFFFFFFF2, 0xFFFFFFF2, 0x00000000]),
     ("background-primary", [0x121212FF, 0xFFFFFFFF, 0x121212FF, 0xFFFFFFFF, 0x121212FF, 0xFFFFFFFF, 0x121212FF, 0xFFFFFFFF, 0x121212FF, 0xFFFFFFFF, 0x121212FF, 0xFFFFFFFF, 0x00000000]),
+    ("background-quaternary", [0x3B3B3BFF, 0xDEDEDEFF, 0x3B3B3BFF, 0xDEDEDEFF, 0x3B3B3BFF, 0xDEDEDEFF, 0x3B3B3BFF, 0xDEDEDEFF, 0x3B3B3BFF, 0xDEDEDEFF, 0x3B3B3BFF, 0xDEDEDEFF, 0x00000000]),
     ("button-hyperlink-text", [0x64B4FAFF, 0x0353A8FF, 0x64B4FAFF, 0x0353A8FF, 0x64B4FAFF, 0x0353A8FF, 0x64B4FAFF, 0x0353A8FF, 0x64B4FAFF, 0x0353A8FF, 0x64B4FAFF, 0x0353A8FF, 0x00000000]),
     ("button-primary-background", [0xFFFFFFF2, 0x000000F2, 0xFFFFFFF2, 0x000000F2, 0xFFFFFFF2, 0x000000F2, 0xFFFFFFF2, 0x000000F2, 0xFFFFFFF2, 0x000000F2, 0xFFFFFFF2, 0x000000F2, 0x00000000]),
     ("button-primary-background:disabled", [0xFFFFFF33, 0x00000033, 0xFFFFFF33, 0x00000033, 0xFFFFFF33, 0x00000033, 0xFFFFFF33, 0x00000033, 0xFFFFFF33, 0x00000033, 0xFFFFFF33, 0x00000033, 0x00000000]),
@@ -92,6 +93,8 @@ pub(super) const TOKENS: &[(&str, [u32; 13])] = &[
     ("navigationtab-text", [0xFFFFFFB2, 0x000000B2, 0xFFFFFFB2, 0x000000B2, 0xFFFFFFB2, 0x000000B2, 0xFFFFFFB2, 0x000000B2, 0xFFFFFFB2, 0x000000B2, 0xFFFFFFB2, 0x000000B2, 0x00000000]),
     ("navigationtab-text:checked", [0xFFFFFFF2, 0x000000F2, 0xFFFFFFF2, 0x000000F2, 0xFFFFFFF2, 0x000000F2, 0xFFFFFFF2, 0x000000F2, 0xFFFFFFF2, 0x000000F2, 0xFFFFFFF2, 0x000000F2, 0x00000000]),
     ("popover-primary-background", [0x000000FF, 0xFFFFFFFF, 0x000000FF, 0xFFFFFFFF, 0x000000FF, 0xFFFFFFFF, 0x000000FF, 0xFFFFFFFF, 0x000000FF, 0xFFFFFFFF, 0x000000FF, 0xFFFFFFFF, 0x00000000]),
+    ("sharewindow-viewwindow-hovered", [0xFFFFFF80, 0x00000080, 0xFFFFFF80, 0x00000080, 0xFFFFFF80, 0x00000080, 0xFFFFFF80, 0x00000080, 0xFFFFFF80, 0x00000080, 0xFFFFFF80, 0x00000080, 0x00000000]),
+    ("sharewindow-viewwindow-selected", [0xFFFFFFE6, 0x000000E6, 0xFFFFFFE6, 0x000000E6, 0xFFFFFFE6, 0x000000E6, 0xFFFFFFE6, 0x000000E6, 0xFFFFFFE6, 0x000000E6, 0xFFFFFFE6, 0x000000E6, 0x00000000]),
     ("slider-handle-background", [0x000000FF, 0xFFFFFFFF, 0x000000FF, 0xFFFFFFFF, 0x000000FF, 0xFFFFFFFF, 0x000000FF, 0xFFFFFFFF, 0x000000FF, 0xFFFFFFFF, 0x000000FF, 0xFFFFFFFF, 0x00000000]),
     ("slider-handle-background:hovered", [0x1A1A1AFF, 0xF7F7F7FF, 0x1A1A1AFF, 0xF7F7F7FF, 0x1A1A1AFF, 0xF7F7F7FF, 0x1A1A1AFF, 0xF7F7F7FF, 0x1A1A1AFF, 0xF7F7F7FF, 0x1A1A1AFF, 0xF7F7F7FF, 0x00000000]),
     ("slider-handle-background:pressed", [0x262626FF, 0xEDEDEDFF, 0x262626FF, 0xEDEDEDFF, 0x262626FF, 0xEDEDEDFF, 0x262626FF, 0xEDEDEDFF, 0x262626FF, 0xEDEDEDFF, 0x262626FF, 0xEDEDEDFF, 0x00000000]),
@@ -133,6 +136,7 @@ pub(super) const TOKENS: &[(&str, [u32; 13])] = &[
     ("wx-mentionsHighlight-text", [0x30C9B0FF, 0x12615AFF, 0x30C9B0FF, 0x12615AFF, 0x30C9B0FF, 0x12615AFF, 0x30C9B0FF, 0x12615AFF, 0x30C9B0FF, 0x12615AFF, 0x30C9B0FF, 0x12615AFF, 0x00000000]),
     ("wx-menuList-background", [0x1C1C1CFF, 0xFFFFFFFF, 0x1C1C1CFF, 0xFFFFFFFF, 0x1C1C1CFF, 0xFFFFFFFF, 0x1C1C1CFF, 0xFFFFFFFF, 0x1C1C1CFF, 0xFFFFFFFF, 0x1C1C1CFF, 0xFFFFFFFF, 0x00000000]),
     ("wx-menuList-background:hovered", [0x064157FF, 0xE5FBFFFF, 0x064157FF, 0xE5FBFFFF, 0x064157FF, 0xE5FBFFFF, 0x064157FF, 0xE5FBFFFF, 0x064157FF, 0xE5FBFFFF, 0x064157FF, 0xE5FBFFFF, 0x00000000]),
+    ("wx-searchInputBox-border", [0x545454FF, 0xDEDEDEFF, 0x545454FF, 0xDEDEDEFF, 0x545454FF, 0xDEDEDEFF, 0x545454FF, 0xDEDEDEFF, 0x545454FF, 0xDEDEDEFF, 0x545454FF, 0xDEDEDEFF, 0x00000000]),
     ("wx-statusReadyIcon", [0x00CF64FF, 0x00CF64FF, 0x00CF64FF, 0x00CF64FF, 0x00CF64FF, 0x00CF64FF, 0x00CF64FF, 0x00CF64FF, 0x00CF64FF, 0x00CF64FF, 0x00CF64FF, 0x00CF64FF, 0x00000000]),
 ];
 /// High contrast: tokens drawn in a Windows system colour, index into SYS_NAMES
@@ -156,6 +160,7 @@ pub(super) const SYS: &[(&str, u8)] = &[
     ("avatar-color-avatar-background-violet", 1),
     ("avatar-color-avatar-text-default", 255),
     ("background-primary", 0),
+    ("background-quaternary", 0),
     ("button-hyperlink-text", 7),
     ("button-primary-background", 4),
     ("button-primary-background:disabled", 4),
@@ -230,6 +235,8 @@ pub(super) const SYS: &[(&str, u8)] = &[
     ("navigationtab-text", 5),
     ("navigationtab-text:checked", 5),
     ("popover-primary-background", 0),
+    ("sharewindow-viewwindow-hovered", 2),
+    ("sharewindow-viewwindow-selected", 2),
     ("slider-handle-background", 0),
     ("slider-handle-background:hovered", 0),
     ("slider-handle-background:pressed", 0),
@@ -271,6 +278,7 @@ pub(super) const SYS: &[(&str, u8)] = &[
     ("wx-mentionsHighlight-text", 1),
     ("wx-menuList-background", 0),
     ("wx-menuList-background:hovered", 2),
+    ("wx-searchInputBox-border", 1),
     ("wx-statusReadyIcon", 255),
 ];
 /// Theme preview tiles: background gradient top / bottom, inner card gradient top / bottom, 20 % outline colour; 0xRRGGBB.

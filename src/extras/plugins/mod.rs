@@ -130,7 +130,6 @@ impl Plugins {
         if let Some(exe_dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
             dirs.push(exe_dir.join("plugins"));
             dirs.push(exe_dir.join("../lib/collabhost/plugins")); // Nix / Linux package layout
-            dirs.push(exe_dir.clone()); // cargo build output (only collabhost_* files)
         }
         if let Some(extra) = std::env::var_os("COLLABHOST_PLUGIN_PATH") { dirs.extend(std::env::split_paths(&extra)); }
         let _ = std::fs::create_dir_all(&dirs[0]);
@@ -184,8 +183,6 @@ impl Plugins {
             files.sort();
             for f in files {
                 let stem = stem_of(&f);
-                // The exe folder holds other libraries too, so only take ours from there.
-                if exe_dir.as_ref() == Some(dir) && !stem.starts_with("collabhost_") { continue; }
                 if !seen.insert(stem.clone()) { continue; }
                 let mut e = Self::entry(f, &stem, &state, None);
                 if protect && !shipped {

@@ -113,8 +113,8 @@ pub(crate) fn paint(ctx: &egui::Context) {
                         let tw = ((t as f32 * 6.0 + i as f32).sin() * 0.5 + 0.5) * a;
                         let s = 4.0 + 5.0 * rnd(fx.seed, i + 90);
                         let col = crate::alpha(c(i as usize), tw);
-                        p.line_segment([q - vec2(s, 0.0), q + vec2(s, 0.0)], Stroke::new(2.0, col));
-                        p.line_segment([q - vec2(0.0, s), q + vec2(0.0, s)], Stroke::new(2.0, col));
+                        p.line_segment([q - vec2(s, 0.0), q + vec2(s, 0.0)], Stroke::new(2.0_f32, col));
+                        p.line_segment([q - vec2(0.0, s), q + vec2(0.0, s)], Stroke::new(2.0_f32, col));
                     }
                 }
             }

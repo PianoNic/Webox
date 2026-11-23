@@ -26,7 +26,11 @@ impl Session {
         }
     }
 
+    /// One request. A host that answered 429 / 503 gets nothing until its wait is over (`backoff.rs`): the request then fails
+    /// at once with "… → 429 …", like the throttled answer.
     pub(super) fn http_once(&self, method: &str, url: &str, body: Option<Value>, bearer: Option<&str>) -> Result<Value, String> {
+        let host = backoff::host_of(url).to_string();
+        if let Some(w) = backoff::BACKOFF.wait(&host, Instant::now()) { return Err(format!("{method} {url} → 429 (waiting {} s more)", w.as_secs() + 1)); }
         let tok = bearer.unwrap_or(if url.contains("/kms/messages") { &self.kms_token } else { &self.token });
         // TrackingID `CLIENT_<uuid>`; the same native User-Agent as the idbroker calls; `cisco-device-url` on every service
         // request once the device is registered (all services but idbroker/oauth/saml).
@@ -35,8 +39,15 @@ impl Session {
         if !self.device.is_empty() && webex_host(url) && !url.contains("idbroker") { r = r.set("cisco-device-url", &self.device); }
         let resp = match body { Some(b) => r.send_json(b), None => r.call() };
         match resp {
-            Ok(r) => Ok(r.into_json::<Value>().unwrap_or(Value::Null)),
-            Err(ureq::Error::Status(code, r)) => Err(format!("{method} {url} → {code} {}", r.into_string().unwrap_or_default().chars().take(200).collect::<String>())),
+            Ok(r) => { backoff::BACKOFF.ok(&host); Ok(r.into_json::<Value>().unwrap_or(Value::Null)) }
+            Err(ureq::Error::Status(code, r)) => {
+                if backoff::is_throttle(code) {
+                    let after = r.header("Retry-After").and_then(|v| backoff::parse_retry_after(v, keepalive_now() / 1000));
+                    let w = backoff::BACKOFF.throttled(&host, Instant::now(), after, backoff::jitter());
+                    dbg_conn(&format!("http {code} from {host}: waiting {} ms (Retry-After {})", w.as_millis(), if after.is_some() { "given" } else { "absent" }));
+                }
+                Err(format!("{method} {url} → {code} {}", r.into_string().unwrap_or_default().chars().take(200).collect::<String>()))
+            }
             Err(e) => Err(e.to_string()),
         }
     }

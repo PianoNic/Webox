@@ -188,14 +188,14 @@ pub(crate) fn menu_impl(ctx: &egui::Context, icons: &mut icons::Icons, t: &Th, k
         let br = if combo { 12.0 } else { 10.0 };
         if !tray { pt.add(egui::Shadow { offset: [0, 4], blur: 18, spread: 0, color: Color32::from_black_alpha(if light(t) { 40 } else { 140 }) }.as_shape(body, br)); }
         pt.rect_filled(body, br, p.bg);
-        pt.rect_stroke(body, br, Stroke::new(1.0, p.border), egui::StrokeKind::Inside);
+        pt.rect_stroke(body, br, Stroke::new(1.0_f32, p.border), egui::StrokeKind::Inside);
         if caret && side != Side::Right {
             let cx = anchor.center().x.clamp(body.left() + 22.0, body.right() - 22.0);
             let (base_y, tip_y) = if side == Side::Below { (body.top(), body.top() - cd) } else { (body.bottom(), body.bottom() + cd) };
             let (a, b, tip) = (pos2(cx - 11.0, base_y), pos2(cx + 11.0, base_y), pos2(cx, tip_y));
             pt.add(egui::Shape::convex_polygon(vec![pos2(a.x, base_y + if side == Side::Below { 1.0 } else { -1.0 }), pos2(b.x, base_y + if side == Side::Below { 1.0 } else { -1.0 }), tip], p.bg, Stroke::NONE));
-            pt.line_segment([a, tip], Stroke::new(1.0, p.border));
-            pt.line_segment([b, tip], Stroke::new(1.0, p.border));
+            pt.line_segment([a, tip], Stroke::new(1.0_f32, p.border));
+            pt.line_segment([b, tip], Stroke::new(1.0_f32, p.border));
         }
         let off_id = egui::Id::new(("webex-menu-off", k));
         let mut off: f32 = if overflow { ctx.data(|d| d.get_temp(off_id)).unwrap_or(0.0) } else { 0.0 };
@@ -212,7 +212,7 @@ pub(crate) fn menu_impl(ctx: &egui::Context, icons: &mut icons::Icons, t: &Th, k
             let rr = if combo { 6.0 } else { 8.0 };
             if overflow && moved && sel == Some(i) { want_off = scroll_into_view(off, yy + off - (body.top() + PAD), h, view_h, max_off); }
             match e {
-                Entry::Sep => { pt.hline((row.left() + 4.0)..=(row.right() - 4.0), row.center().y, Stroke::new(1.0, p.sep)); }
+                Entry::Sep => { pt.hline((row.left() + 4.0)..=(row.right() - 4.0), row.center().y, Stroke::new(1.0_f32, p.sep)); }
                 Entry::Title(s) => { pt.text(pos2(row.left() + 12.0, row.center().y), egui::Align2::LEFT_CENTER, s, FontId::proportional(13.0), p.text2); }
                 Entry::Profile(c) => { // the avatar menu's header card, edge to edge from the balloon top
                     let card = Rect::from_min_size(pos2(body.left(), yy - PAD), Vec2::new(body.width(), CARD_H));
@@ -234,7 +234,7 @@ pub(crate) fn menu_impl(ctx: &egui::Context, icons: &mut icons::Icons, t: &Th, k
                     if crate::ui::theme::decor::on(collabhost_plugin_api::deco::NAME_FLAG) { // a small flag after your name, drawn as stripes
                         let fr = Rect::from_min_size(pos2(nr.right() + 8.0, nr.center().y - 6.5), Vec2::new(19.0, 13.0));
                         crate::ui::theme::decor::flag(&pt, fr, &crate::ui::theme::decor::stripes());
-                        pt.rect_stroke(fr, 1.5, Stroke::new(1.0, p.text2), egui::StrokeKind::Outside);
+                        pt.rect_stroke(fr, 1.5, Stroke::new(1.0_f32, p.text2), egui::StrokeKind::Outside);
                     }
                     pt.text(pos2(card.center().x, card.top() + 193.0), egui::Align2::CENTER_CENTER, &c.email, FontId::proportional(14.0), p.text2);
                 }

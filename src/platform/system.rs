@@ -3,6 +3,7 @@
 use serde_json::{json, Value};
 use std::path::PathBuf;
 
+#[cfg(windows)]
 pub const AUTOSTART_ARGS: &str = "/minimized /autostartedWithWindows=true"; // the arguments Webex uses for autostart
 pub const HOST_LOG: &str = "webox-host-log.txt";
 

@@ -18,7 +18,7 @@ pub(crate) fn webex_dialog_bg(ctx: &egui::Context, t: &Th, k: &str, title: &str,
     let w = 402.0_f32.max(buttons.iter().map(|b| b.label.chars().count() as f32 * 8.5 + 56.0).sum::<f32>() + 40.0);
     let w = ctx.data(|d| d.get_temp::<f32>(dialog_width_id(k))).unwrap_or(w); // a fixed width set by the caller
     egui::Area::new(egui::Id::new(("webex-dialog", k))).anchor(egui::Align2::CENTER_CENTER, [0.0, -20.0]).order(egui::Order::Tooltip).show(ctx, |ui| {
-        let frame = egui::Frame::default().fill(bg).stroke(Stroke::new(1.0, border)).corner_radius(12.0).inner_margin(egui::Margin { left: 20, right: 20, top: 16, bottom: 20 })
+        let frame = egui::Frame::default().fill(bg).stroke(Stroke::new(1.0_f32, border)).corner_radius(12.0).inner_margin(egui::Margin { left: 20, right: 20, top: 16, bottom: 20 })
             .shadow(egui::Shadow { offset: [0, 8], blur: 28, spread: 0, color: Color32::from_black_alpha(if light { 50 } else { 170 }) });
         frame.show(ui, |ui| {
             ui.set_width(w - 40.0);
@@ -28,8 +28,8 @@ pub(crate) fn webex_dialog_bg(ctx: &egui::Context, t: &Th, k: &str, title: &str,
                     let (r, resp) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
                     if resp.hovered() { ui.painter().circle_filled(r.center(), 12.0, if light { alpha(Color32::BLACK, 0.08) } else { alpha(Color32::WHITE, 0.15) }); ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
                     let c = r.center(); let d = 5.0;
-                    ui.painter().line_segment([c - Vec2::splat(d), c + Vec2::splat(d)], Stroke::new(1.3, text));
-                    ui.painter().line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.3, text));
+                    ui.painter().line_segment([c - Vec2::splat(d), c + Vec2::splat(d)], Stroke::new(1.3_f32, text));
+                    ui.painter().line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.3_f32, text));
                     if resp.clicked() { result = Some("cancel".into()); }
                 });
             });
@@ -45,7 +45,7 @@ pub(crate) fn webex_dialog_bg(ctx: &egui::Context, t: &Th, k: &str, title: &str,
                     if hov { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
                     let (fill, fg, stroke) = if b.danger { (if hov { hex(0xA12512) } else { hex(0xD43519) }, Color32::WHITE, Stroke::NONE) }
                         else if b.primary { (if hov { if light { hex(0x2B2B2B) } else { hex(0xDCDDDB) } } else if light { hex(0x121212) } else { hex(0xF2F3F1) }, if light { Color32::WHITE } else { hex(0x121212) }, Stroke::NONE) }
-                        else { (if hov { if light { alpha(Color32::BLACK, 0.07) } else { alpha(Color32::WHITE, 0.12) } } else { Color32::TRANSPARENT }, text, Stroke::new(1.0, if light { alpha(Color32::BLACK, 0.3) } else { alpha(Color32::WHITE, 0.3) }) ) };
+                        else { (if hov { if light { alpha(Color32::BLACK, 0.07) } else { alpha(Color32::WHITE, 0.12) } } else { Color32::TRANSPARENT }, text, Stroke::new(1.0_f32, if light { alpha(Color32::BLACK, 0.3) } else { alpha(Color32::WHITE, 0.3) }) ) };
                     ui.painter().rect_filled(r, 16.0, fill);
                     if stroke.width > 0.0 { ui.painter().rect_stroke(r, 16.0, stroke, egui::StrokeKind::Inside); }
                     ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, &b.label, semibold(14.0), fg);
@@ -61,7 +61,7 @@ pub(crate) fn webex_dialog_bg(ctx: &egui::Context, t: &Th, k: &str, title: &str,
 /// The frame of a toast: black card, 1 px border (white @ 20 %), radius 8.
 pub(crate) fn toast_frame(t: &Th) -> egui::Frame {
     let p = pal(t);
-    egui::Frame::default().fill(p.bg).stroke(Stroke::new(1.0, p.border)).corner_radius(8.0).inner_margin(12)
+    egui::Frame::default().fill(p.bg).stroke(Stroke::new(1.0_f32, p.border)).corner_radius(8.0).inner_margin(12)
         .shadow(egui::Shadow { offset: [0, 4], blur: 14, spread: 0, color: Color32::from_black_alpha(if light(t) { 40 } else { 120 }) })
 }
 
@@ -89,7 +89,7 @@ pub(crate) fn dropdown(ui: &mut egui::Ui, icons: &mut icons::Icons, t: &Th, id: 
     // Hovered wins over open (white 7 %); normal #000000.
     let fill = if !enabled { Color32::TRANSPARENT } else if resp.is_pointer_button_down_on() { alpha(base, 0.11) } else if resp.hovered() { alpha(base, 0.07) } else if open { alpha(base, 0.11) } else if lt { Color32::WHITE } else { Color32::BLACK };
     p.rect_filled(r, 8.0, fill);
-    p.rect_stroke(r, 8.0, Stroke::new(1.0, alpha(base, border_a)), egui::StrokeKind::Inside);
+    p.rect_stroke(r, 8.0, Stroke::new(1.0_f32, alpha(base, border_a)), egui::StrokeKind::Inside);
     let col = alpha(base, text_a);
     super::super::chrome::fit_text(p, r.left() + 12.0, r.center().y, options.get(*selected).map_or("", |s| s.as_str()), FontId::proportional(15.0), col, r.width() - 12.0 - 34.0);
     // The chevron points up while the list is open.

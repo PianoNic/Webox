@@ -19,7 +19,6 @@ pub struct QmMessage {
 /// A parsed `.qm` file.
 #[derive(Debug, Clone, Default)]
 pub struct Qm {
-    pub language: String,
     /// Qt numerus rule bytecode (section 0x88).
     pub numerus_rules: Vec<u8>,
     pub messages: Vec<QmMessage>,
@@ -45,7 +44,6 @@ pub fn parse_qm(d: &[u8]) -> Result<Qm, String> {
         match tag {
             0x69 => messages = body,
             0x88 => qm.numerus_rules = body.to_vec(),
-            0xa7 => qm.language = String::from_utf8_lossy(body).into_owned(),
             _ => {}
         }
         p += 5 + len;
@@ -175,7 +173,6 @@ pub fn numerus_index(rules: &[u8], n: i64) -> usize {
 /// An in-memory translation catalog for one language.
 #[derive(Debug, Default)]
 pub struct Catalog {
-    pub lang: String,
     rules: Vec<u8>,
     by_ctx: HashMap<String, HashMap<String, Vec<String>>>,
     /// Source -> context used for context-less lookups (QObject preferred, else alphabetically first).
@@ -187,11 +184,9 @@ pub(super) fn first_nonempty(forms: &[String]) -> Option<&str> {
 }
 
 impl Catalog {
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.by_ctx.values().map(|m| m.len()).sum()
-    }
-    pub fn is_empty(&self) -> bool {
-        self.by_ctx.is_empty()
     }
 
     pub(super) fn insert(&mut self, ctx: &str, src: &str, forms: Vec<String>) {
@@ -217,7 +212,7 @@ impl Catalog {
 
     /// Build from a parsed `.qm`.
     pub fn from_qm(qm: &Qm) -> Catalog {
-        let mut c = Catalog { lang: qm.language.clone(), rules: qm.numerus_rules.clone(), ..Default::default() };
+        let mut c = Catalog { rules: qm.numerus_rules.clone(), ..Default::default() };
         c.merge_qm(qm);
         c
     }
@@ -245,7 +240,8 @@ impl Catalog {
         if r.take(4)? != b"WXI1" {
             return Err("bad pack magic".into());
         }
-        let mut c = Catalog { lang: r.string()?, ..Default::default() };
+        r.string()?; // language code
+        let mut c = Catalog::default();
         let nr = r.varint()? as usize;
         c.rules = r.take(nr)?.to_vec();
         let nctx = r.varint()? as usize;
@@ -289,7 +285,8 @@ impl Catalog {
         f.get(i).map(|s| s.as_str()).filter(|s| !s.is_empty()).or_else(|| first_nonempty(f))
     }
 
-    /// Exact-context lookup only (no fallback), used by dev tooling and tests.
+    /// Exact-context lookup only (no fallback), used by the tests.
+    #[cfg(test)]
     pub fn get_exact(&self, ctx: &str, src: &str) -> Option<&str> {
         first_nonempty(self.by_ctx.get(ctx)?.get(src)?)
     }

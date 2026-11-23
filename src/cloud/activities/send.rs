@@ -14,13 +14,6 @@ impl Session {
         self.spaces.get(id).map(|s| s.key_url.clone()).filter(|k| !k.is_empty()).ok_or_else(|| "this space has no key".to_string())
     }
 
-    pub(super) fn encrypt_for(&mut self, id: &str, text: &str) -> Result<(String, String), String> {
-        let key_url = self.key_url(id)?;
-        let key = self.key(&key_url)?;
-        let jwe = jose::encrypt_dir(&key, &key_url, text.as_bytes())?;
-        Ok((key_url, jwe))
-    }
-
     /// Posts one activity to a space.
     pub(crate) fn submit(&mut self, id: &str, mut body: Value) -> Result<(), String> {
         body["target"] = json!({"id": id, "objectType": "conversation"});
@@ -65,8 +58,6 @@ impl Session {
     }
 
     pub(crate) fn send(&mut self, id: &str, text: &str) -> Result<(), String> { self.post(id, text, None) }
-    pub(crate) fn reply(&mut self, id: &str, parent: &str, text: &str) -> Result<(), String> { self.post(id, text, Some((parent, "reply"))) }
-    pub(crate) fn edit(&mut self, id: &str, msg: &str, text: &str) -> Result<(), String> { self.post(id, text, Some((msg, "edit"))) }
 
     /// Shares a Giphy GIF (`Req::SendGif`): a `share` activity whose file item points at Giphy's public CDN; nothing is uploaded and
     /// the "encryption" of the `scr` only hides the location from the service, as in real shares (see `gif_share_body`).
