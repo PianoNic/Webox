@@ -73,9 +73,9 @@ impl App {
     }
 
     /// The call notification (Wayland only, see `CallNote`): sent once per ringing; its buttons act like the toast's.
+    #[cfg(target_os = "linux")]
     pub(crate) fn call_note(&mut self, ctx: &egui::Context, v: &CallView) -> CallActions {
         let mut a = CallActions::default();
-        #[cfg(target_os = "linux")]
         if crate::platform::linux::session() == crate::platform::linux::Session::Wayland && self.shot.is_none() {
             let pass = ctx.cumulative_pass_nr();
             let action = {
@@ -88,15 +88,17 @@ impl App {
                 n.seen = pass;
                 n.action.take()
             };
-            match action.as_deref() {
-                Some("decline") => a.hang = true,
-                Some(k) => { a.answer = k == "answer"; self.show_main(ctx); } // the notification's activation token raises the window
+            match action {
+                Some((k, _)) if k == "decline" => a.hang = true,
+                Some((k, token)) => { a.answer = k == "answer"; self.notify.raise_token = token; self.show_main(ctx); } // its own activation token raises the window
                 None => {}
             }
         }
-        let _ = (ctx, v);
         a
     }
+    /// No call notification off Linux (the toast window is placed and kept on top there).
+    #[cfg(not(target_os = "linux"))]
+    pub(crate) fn call_note(&mut self, _ctx: &egui::Context, _v: &CallView) -> CallActions { CallActions::default() }
 
     fn toast_content(&mut self, vctx: &egui::Context, t: &Th, v: &CallView, opacity: f32) -> CallActions {
         let mut a = CallActions::default();
@@ -162,16 +164,17 @@ impl App {
 /// Wayland: the incoming call also goes to the desktop's notification server (critical, "Annehmen" / "Ablehnen"), since the toast
 /// window can neither be placed nor kept on top there. One notification per ringing; it closes when the ringing stops.
 #[cfg(target_os = "linux")]
-struct CallNote { sent: crate::platform::linux::notifications::Sent, seen: u64, action: Option<String> }
+/// `action`: the key of a pressed button and its activation token.
+struct CallNote { sent: crate::platform::linux::notifications::Sent, seen: u64, action: Option<(String, Option<String>)> }
 #[cfg(target_os = "linux")]
 static CALL_NOTE: std::sync::Mutex<Option<CallNote>> = std::sync::Mutex::new(None);
 
 /// An action of the call notification (from `native_toasts`): true when `id` is that notification.
 #[cfg(target_os = "linux")]
-pub(crate) fn call_note_invoked(id: u32, key: &str) -> bool {
+pub(crate) fn call_note_invoked(id: u32, key: &str, token: Option<String>) -> bool {
     let mut g = CALL_NOTE.lock().unwrap();
     let Some(n) = g.as_mut().filter(|n| n.sent.get() == Some(&Some(id))) else { return false };
-    n.action = Some(key.to_string());
+    n.action = Some((key.to_string(), token));
     true
 }
 

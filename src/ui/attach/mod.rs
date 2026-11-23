@@ -154,9 +154,11 @@ fn paste_key_down_edge(ctx: &egui::Context) -> bool {
 
 /// Image paste without a key press: a release of V whose press egui never saw (egui-winit dropped it as a paste command), with
 /// Ctrl held since the last V release and no text paste since then (that press was a text paste). Fed once per frame.
+/// Not needed on Windows (the key state is read from the OS there); its unit test runs everywhere.
 #[derive(Clone, Copy, Default, Debug)]
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg(any(not(windows), test))]
 pub(super) struct PasteKeys { v_down: bool, cmd: bool, text_paste: bool }
+#[cfg(any(not(windows), test))]
 impl PasteKeys {
     /// `cmd_now` / `v_down_now`: Ctrl and V held at the end of this frame.
     pub(super) fn frame(&mut self, events: &[egui::Event], cmd_now: bool, v_down_now: bool) -> bool {

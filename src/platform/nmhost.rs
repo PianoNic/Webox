@@ -117,13 +117,11 @@ pub fn register(config: &Path, on: bool) -> Result<(), String> {
 
 /// Linux/Nix, at every start: rewrites the manifests when the helper is switched on, so they follow the launcher (a store path goes
 /// stale after an update or a garbage collection). Only from a Nix build, so a development binary never takes the registration.
+#[cfg(not(windows))]
 pub fn refresh(config: &Path) {
-    #[cfg(not(windows))]
     if crate::system::launcher_exe().starts_with("/nix/store") && crate::system::load_settings(config)["browser_helper"].as_bool() == Some(true) {
         let _ = register(config, true);
     }
-    #[cfg(windows)]
-    let _ = config;
 }
 
 #[cfg(test)]

@@ -1,7 +1,8 @@
 //! Raising the main window on Wayland (xdg-activation-v1). winit 0.30 ignores Visible / Minimized(false) / Focus there; a
 //! toplevel only comes to the front with an activation token the compositor handed out for a user action: the panel's
-//! (StatusNotifierItem `ProvideXdgActivationToken`, sni.rs), the notification server's (`ActivationToken`, notifications.rs) or
-//! the launching process's `XDG_ACTIVATION_TOKEN` (instance.rs). Without one the window asks for a token of its own (no input
+//! (StatusNotifierItem `ProvideXdgActivationToken`, sni.rs), the notification server's (`ActivationToken`, notifications.rs; it
+//! travels with its own action to `activate(Some(..))`, see notify/hub.rs) or the launching process's `XDG_ACTIVATION_TOKEN`
+//! (instance.rs). Without one the window asks for a token of its own (no input
 //! serial, so KWin usually just marks the taskbar entry as demanding attention).
 //!
 //! A second wl_event_queue on winit's own wl_display (Backend::from_foreign_display), used only from the UI thread; the main
@@ -88,7 +89,7 @@ pub(crate) fn note(display: usize, surface: usize) {
 /// True when the compositor offers xdg-activation (only known once the window was seen; false before that).
 pub(crate) fn available() -> bool { ACT.lock().unwrap().as_ref().is_some_and(|a| a.st.act.is_some()) }
 
-/// Keeps a token for the next `activate(None)` (panel, notification server, second start; any thread).
+/// Keeps a token for the next `activate(None)` (panel, second start; any thread).
 pub(crate) fn offer(token: String) {
     if !token.is_empty() { *OFFER.lock().unwrap() = Some((token, Instant::now())); }
 }

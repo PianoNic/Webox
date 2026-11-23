@@ -15,7 +15,7 @@ impl App {
         // Wayland ignores all three: only an xdg-activation token brings the window to the front (the panel's, the notification's,
         // the second start's; else one of its own). Without a handed-in token the taskbar entry asks for attention as well.
         #[cfg(target_os = "linux")]
-        if crate::platform::linux::session() == crate::platform::linux::Session::Wayland && !crate::platform::linux::activation::activate(None) {
+        if crate::platform::linux::session() == crate::platform::linux::Session::Wayland && !crate::platform::linux::activation::activate(self.notify.raise_token.take()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
             self.notify.flashing = true;
         }
@@ -255,6 +255,8 @@ impl App {
         let outs = std::mem::take(&mut self.notify.out);
         for o in outs {
             match o {
+                #[cfg(target_os = "linux")]
+                Out::Token(t) => { self.notify.raise_token = Some(t); continue; }
                 Out::Open(space) => { self.show_main(ctx); if let Some(id) = space { if self.spaces.iter().any(|s| s.id == id) { self.set_tab(Tab::Messaging); self.open_space(id); } } }
                 Out::Button(ts, id) => match id {
                     "join" => { if let Some(l) = &ts.link { system::open(l); } }
@@ -265,6 +267,9 @@ impl App {
                 #[cfg(target_os = "linux")]
                 Out::Menu(id) => self.pick_tray(&id, ctx, now),
             }
+            // an action that didn't raise the window (snooze, join) leaves its token unused: it must not raise for a later one
+            #[cfg(target_os = "linux")]
+            { self.notify.raise_token = None; }
         }
 
         // Test hook: capture the toast window (and the sidecar facts), then quit.
@@ -371,10 +376,10 @@ impl App {
         }
         let closed = n::closed(); // applied after the actions: a click and its close can land in the same frame
         for (id, key, token) in n::invoked() {
-            if let Some(t) = token { crate::platform::linux::activation::offer(t); } // raises the window for this very action (show_main)
-            if crate::ui::call_toast::call_note_invoked(id, &key) { continue; } // the incoming-call notification's Annehmen / Ablehnen
+            if crate::ui::call_toast::call_note_invoked(id, &key, token.clone()) { continue; } // the incoming-call notification's Annehmen / Ablehnen
             let Some(ts) = hub.native.remove(&id) else { continue };
             n::close(id);
+            if let Some(t) = token { hub.out.push(Out::Token(t)); } // raises the window for this very action (its show_main), not another
             match ts.buttons.iter().find(|b| b.0 == key).map(|b| b.0) {
                 Some(b) => hub.out.push(Out::Button(ts, b)),
                 None => hub.out.push(Out::Open(ts.space.clone())),
