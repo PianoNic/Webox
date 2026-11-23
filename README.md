@@ -3,7 +3,7 @@
 </p>
 <p align="center">
   <strong>Webox</strong><br/>
-  A fast, native Webex desktop client for Windows and Linux, written in Rust. 
+  A fast, native Webex desktop client for Windows and Linux, written in Rust.
 </p>
 <p align="center">
   <a href="https://github.com/PianoNic/Webox"><img src="https://badgetrack.pianonic.ch/badge?tag=webox&label=visits&color=07C1F5&style=flat" alt="visits" /></a>
