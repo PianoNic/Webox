@@ -47,6 +47,23 @@ mod markdown_tests {
 impl App {
     pub(crate) fn send_text(&mut self, text: String, now: f64) { self.send_text_with(text, vec![], now) }
 
+    /// A plugin's message for `space` (the `space.send` method): plain text as a new message, through the plugins' send hooks,
+    /// without touching the composer. Dropped for unknown spaces and ones I cannot write in.
+    pub(crate) fn post_to(&mut self, space: String, text: String) {
+        if !self.spaces.iter().any(|s| s.id == space && !s.closed && !s.announcement) { return; }
+        let text = text.trim();
+        if text.is_empty() { return; }
+        let Some(text) = self.plugins.on_send(text) else { return };
+        match &self.client {
+            Some(c) => c.req(Req::Post { space, text, markdown: false, mentions: vec![], kind: cloud::PostKind::New }),
+            None => {
+                let list = self.messages.entry(space.clone()).or_default();
+                let id = format!("{space}-local{}", list.len());
+                list.push(Message { id, author: self.me.name.clone(), email: self.me.email.clone(), text, time: "now".into(), date: system::today(), mine: true, ..Default::default() });
+            }
+        }
+    }
+
     /// "Einzelne Emojis groß senden" (Webox addition, Messaging settings, default on).
     pub(crate) fn big_emoji_on(&self) -> bool { self.settings["big_emoji_send"].as_bool().unwrap_or(true) }
 

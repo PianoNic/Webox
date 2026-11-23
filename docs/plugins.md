@@ -19,7 +19,7 @@ which builds them in CI against a pinned plugin-api.
 
 ## Plugin API contract
 
-`plugin-api` carries an explicit contract version `CONTRACT_MAJOR.CONTRACT_MINOR` (currently **1.4**, `CONTRACT` as a string). History: 1.0 the first interface; 1.1 the contract symbol, nullable function pointers and panic-safe shims; 1.2 plugin settings; 1.3 accent themes; 1.4 decorations (washes, host-drawn decorations, effects).
+`plugin-api` carries an explicit contract version `CONTRACT_MAJOR.CONTRACT_MINOR` (currently **1.6**, `CONTRACT` as a string). History: 1.0 the first interface; 1.1 the contract symbol, nullable function pointers and panic-safe shims; 1.2 plugin settings; 1.3 accent themes; 1.4 decorations (washes, host-drawn decorations, effects); 1.6 named events and methods (see below; after 1.6 new capabilities are names, not table entries).
 
 - A plugin exports `collabhost_plugin_contract() -> u32` (`(major << 16) | minor`, added by `export_plugin!`). Plugins
   built before 1.1 have no such symbol and count as 1.0.
@@ -41,6 +41,63 @@ What keeps the boundary stable:
   the host callbacks. A panic in an `extern "C"` function would otherwise abort Webox.
 - A plugin must not keep threads running after `stop` returns. Webox may unload the library afterwards (uninstall, update,
   "Neu laden").
+
+## Events and methods (contract 1.6)
+
+Since 1.6 the tables no longer grow for each feature. A plugin receives **events** and calls host **methods** by name, with
+JSON payloads, through one generic entry on each side:
+
+| Where | Entry | Meaning |
+|---|---|---|
+| `PluginVTable` | `events: *const c_char` | space-separated events the plugin subscribes to (`Plugin::EVENTS`). Webox sends only these. |
+| `PluginVTable` | `on_event(inst, name, json) -> *mut c_char` | an event fired: its JSON answer (freed with the plugin's `free_str`), or null = not handled / no answer |
+| `HostApi` | `call(ctx, method, json) -> *mut c_char` | a host method: its JSON result (freed with the host's `free_str`), or null = unknown method |
+
+Webox reads `events` / `on_event` only from plugins that report 1.6. Ownership and panics follow the rules above: a panic
+in `on_event` or in a host method answers null.
+
+```rust
+const EVENTS: &'static str = "settings.changed";
+fn on_event(&mut self, name: &str, payload: &str) -> Option<String> { /* ... */ None }
+// in start(host) or later:
+if host.has("ui.toast") { host.call("ui.toast", r#"{"text":"Hallo"}"#); }
+```
+
+`host.capabilities` returns every method and event the host knows with its version, as one flat object
+(`{"host.capabilities":1,"ui.toast":1,...,"settings.changed":1}`). `Host::version(name)` / `Host::has(name)` read it, so a
+plugin can check for something newer than its own contract and degrade when the host lacks it.
+
+| Method | Argument | Result |
+|---|---|---|
+| `host.capabilities` | none | `{name: version, ...}` for methods and events |
+| `ui.toast` | `{"text": "..."}` | `{}`; shown as "<plugin>: text" (same as the `toast` hook) |
+| `log.write` | `{"text": "..."}` | `{}`; written to the plugin log (same as the `log` hook) |
+| `settings.get` | none | the plugin's setting values (same as `settings_get`) |
+| `space.send` | `{"space": "...", "text": "..."}` | `{}`; posted into that space as a new plain-text message on the next frame, through the plugins' send hooks like a typed one. Dropped for a space you cannot write in; the composer is not touched. |
+| `space.history` | `{"space": "...", "limit": n}` | `{"messages": [{"author": "...", "mine": true, "text": "..."}]}`, the last `limit` (at most 200) messages Webox has loaded, oldest first, system lines left out. No network request: a space never opened holds only what arrived live. Filled only while a plugin subscribes to `message.received`. Safe to call from any thread. |
+
+| Event | Payload | Answer |
+|---|---|---|
+| `settings.changed` | all setting values (as `settings.get`); also once before every start | ignored |
+| `message.received` | `{"space", "id", "author", "text", "mine", "direct", "mentioned"}`: a message arrived live, once per message id, also your own (`mine`, from any client). `direct` = a 1:1 space, `mentioned` = it @-mentions you. Fired on the UI thread: return at once and do slow work on a thread of your own. | ignored |
+
+Naming and versioning rules:
+
+- Names are `<area>.<name>`, lower case: methods are verbs (`ui.toast`, `space.send`), events say what happened
+  (`settings.changed`, `message.received`). Methods and events share one namespace.
+- Payloads are JSON objects. They only ever gain **optional** fields; each addition bumps that name's version in
+  `host.capabilities`. Readers ignore fields they do not know.
+- Anything incompatible (a field removed, retyped, or made required, different semantics) gets a **new name**
+  (`space.history2`); the old one stays as long as it can.
+- A method that cannot do its work answers `{"error": "..."}`. Null means only "no such method".
+- Adding a method or event needs no contract bump: register it in `METHODS` / `EVENTS` in `src/extras/plugins/mod.rs` and
+  list it here. The contract minor still goes up when the tables themselves change.
+
+The fixed hooks of 1.0–1.4 stay as they are; older plugins keep using them. Note that `on_message(author, text)` is a
+display hook (the message list calls it for the rows on screen on every repaint, without a space or message id) and the
+`send` hook posts into whichever space is open: a plugin that reacts to messages uses `message.received` and `space.send`.
+
+The [Auto-Antwort](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/auto-reply) plugin uses all three.
 
 ## Plugin settings
 
@@ -271,5 +328,5 @@ request. CI builds it for every platform and publishes it to the `repo` branch.
 `cargo build` (it builds the example plugins), then `cargo test`. `src/extras/plugin_repo/tests.rs` covers index parsing
 (array and object form, invalid entries), the contract and platform checks, the transport rules, the persistence of the
 repository list, the ETag cache, refusal of a SHA-256 or size mismatch and of foreign redirects, and a full install,
-update, tamper check and uninstall of the example plugin. `src/extras/plugin_settings/tests.rs` covers the settings: schema parsing (what plugin-api writes, broken and odd schemas), validation, defaults, persistence with keyring and file fallback, a native plugin notified on every change and before start, buttons, the search, and the built-in GIF-Extras schema. `os_keyring_roundtrip` (`--ignored`) checks the real OS keyring. The repository tests run against an in-process HTTP server on 127.0.0.1, which a
+update, tamper check and uninstall of the example plugin. `src/extras/plugin_settings/tests.rs` covers the settings: schema parsing (what plugin-api writes, broken and odd schemas), validation, defaults, persistence with keyring and file fallback, a native plugin notified on every change and before start, buttons, the search, and the built-in GIF-Extras schema. `src/extras/plugins` covers the table gating (a 1.4 plugin loads and gets no events), events reaching subscribers only, `call` (unknown methods answer null, `host.capabilities` lists the registry), panics in events and host methods, `message.received` firing once per message id and only to subscribers, and `space.send` / `space.history`. `os_keyring_roundtrip` (`--ignored`) checks the real OS keyring. The repository tests run against an in-process HTTP server on 127.0.0.1, which a
 test-only policy allows. The app itself never allows plain HTTP.

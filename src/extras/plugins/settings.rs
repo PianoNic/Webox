@@ -5,10 +5,13 @@ use crate::extras::plugin_settings::{self as ps, Kind, SecretAt};
 use collabhost_plugin_api::cs;
 use serde_json::Value;
 
-/// Hands the current values to a native plugin (`settings_changed`; before every start and after every change).
+/// Hands the current values to a native plugin (`settings_changed` and the 1.6 `settings.changed` event; before every start
+/// and after every change).
 pub(super) fn push_settings(l: &Loaded, st: &ps::State) {
     if st.schema.is_none() { return; }
-    if let Some(f) = l.c.changed { let j = cs(&st.json()); f(l.inst, j.as_ptr()) }
+    let json = st.json();
+    if let Some(f) = l.c.changed { let j = cs(&json); f(l.inst, j.as_ptr()) }
+    l.event("settings.changed", &json);
 }
 
 /// One hit of the settings search inside a plugin's settings.

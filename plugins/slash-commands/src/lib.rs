@@ -1,4 +1,4 @@
-use collabhost_plugin_api::{export_plugin, Host, Plugin, Schema, Values};
+use collabhost_plugin_api::{export_plugin, json_str, Host, Plugin, Schema, Values};
 
 const SHRUG: &str = "\u{af}\\_(\u{30c4})_/\u{af}";
 
@@ -53,7 +53,15 @@ impl Plugin for SlashCommands {
         match name {
             "shrug" => Some(format!("{tail}{}", self.shrug)),
             "tableflip" => Some(format!("{tail}(\u{256f}\u{b0}\u{25a1}\u{b0})\u{256f}\u{fe35} \u{253b}\u{2501}\u{253b}")),
-            "count" => { if let Some(h) = self.host { h.toast(&format!("You sent {} messages", self.sent)) } None }
+            "count" => {
+                if let Some(h) = self.host {
+                    let t = format!("You sent {} messages", self.sent);
+                    // Since 1.6 host services are called by name. The pattern for methods newer than the plugin's contract:
+                    // ask `has` first and degrade (here to the 1.0 toast hook) when the host lacks it.
+                    if h.has("ui.toast") { h.call("ui.toast", &format!("{{\"text\":{}}}", json_str(&t))); } else { h.toast(&t) }
+                }
+                None
+            }
             _ => None,
         }
     }

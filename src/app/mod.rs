@@ -97,6 +97,7 @@ impl App {
                     crate::ui::messages::prepare_arrived(&mut m); // local date / time once, layout revision
                     let open = self.selected.as_deref() == Some(id.as_str());
                     if let Some(h) = self.photos.history.get_mut(&id) { h.first_failed = false; }
+                    if self.plugins.subscribed("message.received") { self.plugins.note_space(&id, &m); }
                     self.messages.insert(id.clone(), m);
                     if open { self.acknowledge(&id); }
                 }
@@ -120,8 +121,17 @@ impl App {
                     // A send reloads the whole list (`Resp::Messages`, which already holds the new message) and the live event of the
                     // same activity arrives as well: the same id must not be added twice.
                     let open = self.selected.as_deref() == Some(id.as_str()); // read receipt for a live message in the open chat
+                    // Plugins: `message.received` with its space, once per id (`message_received` drops repeats).
+                    let hook = (self.plugins.subscribed("message.received") && m.notice.is_empty()).then(|| {
+                        let direct = self.spaces.iter().any(|s| s.id == id && s.direct);
+                        (m.id.clone(), m.author.clone(), m.text.clone(), direct, !mine && mentions_me(&m, &self.me))
+                    });
                     let list = self.messages.entry(id.clone()).or_default();
                     if !list.iter().any(|x| x.id == m.id) { list.push(m); }
+                    if let Some((mid, author, text, direct, mentioned)) = hook {
+                        self.plugins.note_space(&id, list);
+                        self.plugins.message_received(&id, &mid, &author, &text, mine, direct, mentioned);
+                    }
                     if open && !mine { self.acknowledge(&id); }
                 }
                 Resp::Error(e) => { self.call_failed(); self.toast(e, now) }
@@ -145,6 +155,7 @@ impl App {
                     crate::ui::messages::prepare_arrived(&mut list);
                     let h = self.photos.history.entry(space.clone()).or_default();
                     h.requested = None; h.reached_start = reached; h.last_prepended = prepended; h.generation += 1;
+                    if self.plugins.subscribed("message.received") { self.plugins.note_space(&space, &list); }
                     self.messages.insert(space, list);
                 }
                 // End time + custom/out-of-office text of a person's presence line (see presence.rs).
@@ -166,6 +177,7 @@ impl App {
         let out = std::mem::take(&mut *self.plugins.out.lock().unwrap());
         for t in out.toasts { self.toast(t, now); }
         for t in out.sends { self.send_text(t, now); }
+        for (space, t) in out.sends_to { self.post_to(space, t); }
         self.ack_on_activation(); // the window came to the front with an unread chat open
         self.plugin_log.extend(out.logs);
         self.toasts.retain(|t| t.1 > now);
@@ -313,3 +325,10 @@ mod signin;
 mod live_list;
 pub mod actions;
 pub mod files; // upload / download state shared by the UI and the cloud thread
+
+/// Whether `m` @-mentions me: a person mention with my id in its rich text, else (plain text only) my name in the text, as
+/// `App::mentions` reads it.
+fn mentions_me(m: &crate::cloud::Message, me: &crate::cloud::Person) -> bool {
+    if !m.html.is_empty() { return !me.id.is_empty() && m.html.contains(&format!("data-object-id=\"{}\"", me.id)); }
+    !me.name.is_empty() && m.text.to_lowercase().contains(&me.name.to_lowercase())
+}
