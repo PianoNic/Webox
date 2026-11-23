@@ -17,13 +17,13 @@ fn temp_dir() -> PathBuf {
     d
 }
 
-/// Returns from the test with the reason when there is one.
+/// Returns from the test with the reason when there is one (the tests that use it are Windows-only).
+#[cfg(windows)]
 macro_rules! skip_if {
     ($reason:expr) => { if let Some(r) = $reason { eprintln!("SKIPPED: {r}"); return; } };
 }
 
-/// A CI runner (GitHub Actions and the like): no interactive desktop to capture, often no GPU and no media codecs.
-fn ci() -> bool { std::env::var_os("CI").is_some() || std::env::var_os("GITHUB_ACTIONS").is_some() }
+use crate::media::ci;
 
 /// Why the live desktop cannot be captured right now, None when it can.
 fn no_desktop() -> Option<String> {

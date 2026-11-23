@@ -30,7 +30,7 @@ impl App {
         let mut act = Act::None;
         let painter = ui.painter().clone();
         vquad(&painter, r, t.tk("theme-gradient-primary-0-background"), t.tk("theme-gradient-primary-1-background"));
-        painter.rect_stroke(r, 8.0, Stroke::new(1.0, t.tk("wx-searchInputBox-border")), egui::StrokeKind::Inside);
+        painter.rect_stroke(r, 8.0, Stroke::new(1.0f32, t.tk("wx-searchInputBox-border")), egui::StrokeKind::Inside);
         // title bar
         let bar = Rect::from_min_size(r.min, Vec2::new(r.width(), TITLE_H));
         let drag = ui.interact(bar, ui.id().with("share-title"), Sense::click_and_drag());
@@ -40,8 +40,8 @@ impl App {
         let xr = ui.interact(x, ui.id().with("share-close"), Sense::click());
         if xr.hovered() { painter.rect_filled(x, 14.0, t.tk("listItem-primary:hovered")); }
         let (c, d) = (x.center(), 5.0);
-        painter.line_segment([c - Vec2::splat(d), c + Vec2::splat(d)], Stroke::new(1.3, t.text1));
-        painter.line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.3, t.text1));
+        painter.line_segment([c - Vec2::splat(d), c + Vec2::splat(d)], Stroke::new(1.3f32, t.text1));
+        painter.line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.3f32, t.text1));
         if xr.clicked() || ctx.input(|i| i.key_pressed(Key::Escape)) { act = Act::Close; }
         // body: grid | splitter | options
         let body = Rect::from_min_max(pos2(r.left(), bar.bottom() + 8.0), pos2(r.right() - 1.0, r.bottom() - BOTTOM_H));
@@ -106,7 +106,7 @@ impl App {
         let selected = p.sel == Some(k);
         let painter = ui.painter().clone();
         let border = if selected { Some(t.tk("sharewindow-viewwindow-selected")) } else if resp.hovered() { Some(t.tk("sharewindow-viewwindow-hovered")) } else { None };
-        if let Some(c) = border { painter.rect_stroke(cell, 12.0, Stroke::new(2.0, c), egui::StrokeKind::Inside); }
+        if let Some(c) = border { painter.rect_stroke(cell, 12.0, Stroke::new(2.0f32, c), egui::StrokeKind::Inside); }
         let app = is_app(s);
         let name_h = if app { 40.0 } else { 32.0 };
         let prev = Rect::from_min_max(pos2(cell.left() + 18.0, cell.top() + 18.0), pos2(cell.right() - 18.0, cell.bottom() - name_h));

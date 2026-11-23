@@ -20,7 +20,7 @@ pub(super) fn start(sh: Arc<Shared>, speaker: &str, rate: u32, ch: u16) -> bool 
 
 /// The saved device if it is still there, else the default (as `media::audio::pick`).
 fn device(name: &str) -> Option<cpal::Device> {
-    let h = cpal::default_host();
+    let h = crate::media::audio::host();
     if !name.is_empty() {
         if let Some(d) = h.output_devices().ok().and_then(|mut it| it.find(|d| d.name().ok().as_deref() == Some(name))) { return Some(d); }
     }

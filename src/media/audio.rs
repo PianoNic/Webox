@@ -45,19 +45,26 @@ impl Choice {
     }
 }
 
+/// The audio host. Every cpal use goes through here: cpal keeps one WASAPI device enumerator for the whole process, made
+/// in the apartment of the first thread that asks, so COM has to stay loaded after that thread ends (`keep_com_loaded`).
+pub fn host() -> cpal::Host {
+    super::keep_com_loaded();
+    cpal::default_host()
+}
+
 pub fn inputs() -> Vec<Dev> {
-    let h = cpal::default_host();
+    let h = host();
     let def = h.default_input_device().and_then(|d| d.name().ok());
     h.input_devices().map(|it| it.filter_map(|d| d.name().ok()).map(|n| Dev { default: Some(&n) == def.as_ref(), name: n }).collect()).unwrap_or_default()
 }
 pub fn outputs() -> Vec<Dev> {
-    let h = cpal::default_host();
+    let h = host();
     let def = h.default_output_device().and_then(|d| d.name().ok());
     h.output_devices().map(|it| it.filter_map(|d| d.name().ok()).map(|n| Dev { default: Some(&n) == def.as_ref(), name: n }).collect()).unwrap_or_default()
 }
 /// The saved device if it is still plugged in, else the system default (hot-plug safe).
 fn pick(name: &str, input: bool) -> Option<cpal::Device> {
-    let h = cpal::default_host();
+    let h = host();
     if !name.is_empty() {
         let mut it = if input { h.input_devices().ok()? } else { h.output_devices().ok()? };
         if let Some(d) = it.find(|d| d.name().ok().as_deref() == Some(name)) { return Some(d); }
@@ -346,16 +353,30 @@ mod tests {
         let _ = (inputs(), outputs());
     }
 
-    /// A real speaker-only engine at volume 0 (silent): it opens no microphone and plays its queue out. Skips on machines
-    /// without an output device (CI).
+    /// Regression (Windows CI, 0xc0000005 in `IMMDeviceEnumerator::GetDefaultAudioEndpoint`): cpal makes its device
+    /// enumerator once per process in the apartment of the first thread that lists devices. That thread ending used to take
+    /// COM down with it, and the next lookup from another thread (the engine's) called into an unloaded DLL. Needs no
+    /// device and opens none: with nothing plugged in the lookups just come back empty.
+    #[test]
+    fn devices_listed_on_a_thread_that_ended_stay_usable() {
+        for _ in 0..3 {
+            std::thread::spawn(|| { let _ = (inputs(), outputs(), pick("", false), pick("", true)); }).join().unwrap();
+        }
+        let _ = (inputs(), outputs());
+    }
+
+    /// A real speaker-only engine at volume 0 (silent): it opens no microphone and plays its queue out. Skips on CI runners
+    /// and on machines without an output device.
     #[test]
     fn output_only_engine_plays_out_silently() {
+        if crate::media::ci() { eprintln!("SKIPPED: CI runner, no speaker to open"); return; }
+        if outputs().is_empty() { eprintln!("SKIPPED: no audio output device"); return; }
         let e = Engine::new();
         e.io.set_volume(0.0);
         e.io.play_long(&tone(440.0, 300, 0.5));
         let info = match e.open_output_async("").recv_timeout(std::time::Duration::from_secs(10)) {
             Ok(Ok(i)) => i,
-            other => { eprintln!("no output device, skipped: {other:?}"); return; }
+            other => { eprintln!("SKIPPED: the output device did not open: {other:?}"); return; }
         };
         assert!(info.starts_with("Out: ") && !info.contains("In: "), "{info}");
         let t0 = std::time::Instant::now();
