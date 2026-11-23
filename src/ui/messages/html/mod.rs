@@ -341,11 +341,12 @@ pub(super) fn html_job(html: &str, c: &Mc, me: &str, wrap: f32, sys: bool) -> Op
     b.job.wrap.max_width = wrap;
     let mut d = Doc { b, c, me, stack: Vec::new(), color: None, nls: 0, lists: Vec::new(), bullet: None, quote_depth: 0, quote_start: Vec::new(), quotes: Vec::new(), pre: 0, link: None, links: Vec::new(), author_pending: false, reply_depth: 0, reply_text: String::new(), reply_seen: false, absorb_br: false };
     let events = tokenize(html);
+    let mut author_checked = false; // the rest is scanned for an author line once, for the first candidate only
     for (i, ev) in events.iter().enumerate() {
         match ev {
             Ev::Open(n, a) => {
                 // The first <blockquote>, at the very start and with an author line before the quoted text, is a reply's quote.
-                if n == "blockquote" && !d.reply_seen && d.b.job.text.is_empty() && d.quote_depth == 0 && d.stack.len() < MAX_DEPTH && has_author_line(&events[i + 1..]) {
+                if n == "blockquote" && !d.reply_seen && d.b.job.text.is_empty() && d.quote_depth == 0 && d.stack.len() < MAX_DEPTH && !std::mem::replace(&mut author_checked, true) && has_author_line(&events[i + 1..]) {
                     d.reply_seen = true;
                     d.author_pending = true;
                     d.open(n, a);
