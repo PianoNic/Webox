@@ -44,10 +44,11 @@ fn pct_decode(s: &str) -> String {
     String::from_utf8_lossy(&o).into_owned()
 }
 
-/// `[scheme://][user:pass@]host[:port]` of an HTTP proxy (any scheme but socks is spoken as plain HTTP CONNECT).
+/// `[http://][user:pass@]host[:port]` of an HTTP proxy, spoken as plain HTTP CONNECT. Other schemes (https://, socks) are not
+/// supported: never send a CONNECT and credentials in the clear to a proxy that expects TLS.
 pub fn parse_proxy(s: &str) -> Option<Proxy> {
     let s = s.trim();
-    if s.is_empty() || s.to_ascii_lowercase().starts_with("socks") { return None }
+    if s.is_empty() || (s.contains("://") && !s.to_ascii_lowercase().starts_with("http://")) { return None }
     let u = url::Url::parse(&if s.contains("://") { s.to_string() } else { format!("http://{s}") }).ok()?;
     let host = u.host_str()?.trim_matches(['[', ']']).to_string();
     let auth = (!u.username().is_empty()).then(|| format!("Basic {}", STANDARD.encode(format!("{}:{}", pct_decode(u.username()), pct_decode(u.password().unwrap_or(""))))));
@@ -142,6 +143,7 @@ mod tests {
         let p = parse_proxy("http://us%40er:p%3Aw@10.0.0.1:3128/").unwrap();
         assert_eq!(p.auth.as_deref(), Some(format!("Basic {}", STANDARD.encode("us@er:p:w")).as_str()));
         assert_eq!(parse_proxy("socks5://x:1"), None);
+        assert_eq!(parse_proxy("https://proxy.corp:3128"), None);
         assert_eq!(parse_proxy(" "), None);
     }
 }

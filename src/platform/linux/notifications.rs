@@ -18,21 +18,22 @@ pub(crate) type Sent = Arc<OnceLock<Option<u32>>>;
 
 async fn listen(bus: zbus::Connection) {
     use futures_util::StreamExt;
-    let Ok(p) = zbus::Proxy::new(&bus, DEST, PATH, DEST).await else { return };
-    let (Ok(mut act), Ok(mut closed)) = (p.receive_signal("ActionInvoked").await, p.receive_signal("NotificationClosed").await) else { return };
-    // Sent just before ActionInvoked by servers that support it (KDE, GNOME 46+): the token that lets the window come to the front.
-    let mut token = p.receive_signal("ActivationToken").await.ok();
-    loop {
-        tokio::select! {
-            Some(m) = act.next() => if let Ok((id, key)) = m.body().deserialize::<(u32, String)>() { INVOKED.lock().unwrap().push((id, key)); }
+    // One stream for all three signals, so they arrive in bus order. ActivationToken (KDE, GNOME 46+) comes just before its
+    // ActionInvoked: the token that lets the window come to the front, offered when that same notification's action lands.
+    let Ok(rule) = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).interface(DEST).and_then(|b| b.path(PATH)).map(|b| b.build()) else { return };
+    let Ok(mut s) = zbus::MessageStream::for_match_rule(rule, &bus, None).await else { return };
+    let mut tokens: HashMap<u32, String> = HashMap::new();
+    while let Some(Ok(m)) = s.next().await {
+        let h = m.header();
+        match h.member().map(|m| m.as_str()) {
+            Some("ActivationToken") => { if let Ok((id, t)) = m.body().deserialize::<(u32, String)>() { tokens.insert(id, t); } continue }
+            Some("ActionInvoked") => if let Ok((id, key)) = m.body().deserialize::<(u32, String)>() {
+                if let Some(t) = tokens.remove(&id) { super::activation::offer(t); }
+                INVOKED.lock().unwrap().push((id, key));
+            } else { continue },
+            Some("NotificationClosed") => if let Ok((id, _reason)) = m.body().deserialize::<(u32, u32)>() { tokens.remove(&id); CLOSED.lock().unwrap().push(id); }
                 else { continue },
-            Some(m) = closed.next() => if let Ok((id, _reason)) = m.body().deserialize::<(u32, u32)>() { CLOSED.lock().unwrap().push(id); }
-                else { continue },
-            Some(m) = async { match &mut token { Some(t) => t.next().await, None => std::future::pending().await } } => {
-                if let Ok((_id, t)) = m.body().deserialize::<(u32, String)>() { super::activation::offer(t); }
-                continue
-            }
-            else => break,
+            _ => continue,
         }
         if let Some(c) = CTX.get() { c.request_repaint(); }
     }

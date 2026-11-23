@@ -198,11 +198,12 @@ impl App {
         }
         // Wayland can't hide a window (winit ignores Visible(false)): there the X minimizes instead (the tray / a notification
         // brings it back through xdg-activation), so a running call goes on. Strg+Q / "Verlassen" (quitting) still quit.
+        // Without xdg-activation nothing could bring a minimized window back from the tray: the X quits there.
         #[cfg(target_os = "linux")]
-        let can_hide = crate::platform::linux::session() != crate::platform::linux::Session::Wayland;
+        let (can_hide, can_restore) = (crate::platform::linux::session() != crate::platform::linux::Session::Wayland, crate::platform::linux::activation::available());
         #[cfg(not(target_os = "linux"))]
-        let can_hide = true;
-        if ctx.input(|i| i.viewport().close_requested()) && !self.notify.quitting && self.notify.tray.is_some() && self.nb("close_to_tray", true) {
+        let (can_hide, can_restore) = (true, true);
+        if ctx.input(|i| i.viewport().close_requested()) && !self.notify.quitting && self.notify.tray.is_some() && self.nb("close_to_tray", true) && (can_hide || can_restore) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             if can_hide { self.hide_main(ctx); } else { ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)); }
         }
@@ -370,7 +371,7 @@ impl App {
                 Some(None) => { ts.native_failed = true; ts.born = clock; ts.deadline = clock + DURATION; hub.toasts.push(ts); }
             }
         }
-        for id in n::closed() { hub.native.remove(&id); }
+        let closed = n::closed(); // applied after the actions: a click and its close can land in the same frame
         for (id, key) in n::invoked() {
             if crate::ui::call_toast::call_note_invoked(id, &key) { continue; } // the incoming-call notification's Annehmen / Ablehnen
             let Some(ts) = hub.native.remove(&id) else { continue };
@@ -380,6 +381,7 @@ impl App {
                 None => hub.out.push(Out::Open(ts.space.clone())),
             }
         }
+        for id in closed { hub.native.remove(&id); }
     }
 
     /// The tray's context menu: the black balloon of `ui/menu/` in a small borderless window at the cursor (closes on a pick, Esc, focus loss).

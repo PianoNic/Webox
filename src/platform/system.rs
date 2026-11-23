@@ -381,7 +381,9 @@ pub fn set_autostart(on: bool) -> Result<(), String> {
             // A system entry (/etc/xdg/autostart) or a store symlink can't be deleted: a user file with Hidden=true overrides it.
             let system = autostart_dirs().iter().skip(1).any(|d| std::fs::read_to_string(d.join(AUTOSTART_FILE)).is_ok_and(|t| !desktop_hidden(&t)));
             if !system && !is_link { let _ = std::fs::remove_file(&file); return Ok(()); }
-            if is_link { std::fs::remove_file(&file).map_err(|e| e.to_string())?; }
+            // A live symlink is home-manager's: replacing it would block its next activation, so it stays in charge.
+            if is_link && file.exists() { return Err("Autostart wird von Home Manager verwaltet (programs.webox.autostart)".into()); }
+            if is_link { let _ = std::fs::remove_file(&file); } // dangling link (garbage-collected store path)
             std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
             return std::fs::write(&file, "[Desktop Entry]\nType=Application\nName=Webox\nHidden=true\n").map_err(|e| e.to_string());
         }

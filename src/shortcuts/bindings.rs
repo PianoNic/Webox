@@ -111,7 +111,7 @@ impl App {
             let hit = (0..reg.cmds.len()).find(|&i| pred(i, false)).or_else(|| (0..reg.cmds.len()).find(|&i| pred(i, true)));
             if let Some(i) = hit {
                 ctx.input_mut(|inp| {
-                    let pos = inp.events.iter().position(|e| if clip { key == Key::V && matches!(e, egui::Event::Paste(_)) } else {
+                    let pos = inp.events.iter().position(|e| if clip { matches!((key, e), (Key::V, egui::Event::Paste(_)) | (Key::C, egui::Event::Copy) | (Key::X, egui::Event::Cut)) } else {
                         matches!(e, egui::Event::Key { key: k2, physical_key: p2, pressed: true, modifiers: m2, .. } if *k2 == key && *p2 == phys && *m2 == mods) });
                     if let Some(p) = pos { take_key(&mut inp.events, p); } // a matched Ctrl+Shift+V does not paste
                 });
