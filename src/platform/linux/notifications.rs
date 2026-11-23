@@ -9,7 +9,7 @@ use zbus::zvariant::Value;
 const DEST: &str = "org.freedesktop.Notifications";
 const PATH: &str = "/org/freedesktop/Notifications";
 
-static INVOKED: Mutex<Vec<(u32, String)>> = Mutex::new(Vec::new());
+static INVOKED: Mutex<Vec<(u32, String, Option<String>)>> = Mutex::new(Vec::new());
 static CLOSED: Mutex<Vec<u32>> = Mutex::new(Vec::new());
 static CTX: OnceLock<eframe::egui::Context> = OnceLock::new();
 
@@ -19,17 +19,18 @@ pub(crate) type Sent = Arc<OnceLock<Option<u32>>>;
 async fn listen(bus: zbus::Connection) {
     use futures_util::StreamExt;
     // One stream for all three signals, so they arrive in bus order. ActivationToken (KDE, GNOME 46+) comes just before its
-    // ActionInvoked: the token that lets the window come to the front, offered when that same notification's action lands.
-    let Ok(rule) = zbus::MatchRule::builder().msg_type(zbus::message::Type::Signal).interface(DEST).and_then(|b| b.path(PATH)).map(|b| b.build()) else { return };
-    let Ok(mut s) = zbus::MessageStream::for_match_rule(rule, &bus, None).await else { return };
+    // ActionInvoked: the token that lets the window come to the front, carried with that same notification's action.
+    // The proxy only passes signals from the current owner of org.freedesktop.Notifications (no other session-bus peer can
+    // answer a call through a fake ActionInvoked).
+    let Ok(p) = zbus::Proxy::new(&bus, DEST, PATH, DEST).await else { return };
+    let Ok(mut s) = p.receive_all_signals().await else { return };
     let mut tokens: HashMap<u32, String> = HashMap::new();
-    while let Some(Ok(m)) = s.next().await {
+    while let Some(m) = s.next().await {
         let h = m.header();
         match h.member().map(|m| m.as_str()) {
             Some("ActivationToken") => { if let Ok((id, t)) = m.body().deserialize::<(u32, String)>() { tokens.insert(id, t); } continue }
             Some("ActionInvoked") => if let Ok((id, key)) = m.body().deserialize::<(u32, String)>() {
-                if let Some(t) = tokens.remove(&id) { super::activation::offer(t); }
-                INVOKED.lock().unwrap().push((id, key));
+                INVOKED.lock().unwrap().push((id, key, tokens.remove(&id)));
             } else { continue },
             Some("NotificationClosed") => if let Ok((id, _reason)) = m.body().deserialize::<(u32, u32)>() { tokens.remove(&id); CLOSED.lock().unwrap().push(id); }
                 else { continue },
@@ -74,7 +75,7 @@ pub(crate) fn close(id: u32) {
     });
 }
 
-/// (notification id, action key) pairs clicked since the last call.
-pub(crate) fn invoked() -> Vec<(u32, String)> { std::mem::take(&mut *INVOKED.lock().unwrap()) }
+/// (notification id, action key, activation token) clicked since the last call.
+pub(crate) fn invoked() -> Vec<(u32, String, Option<String>)> { std::mem::take(&mut *INVOKED.lock().unwrap()) }
 /// Notification ids the server closed (expired, dismissed, or after an action).
 pub(crate) fn closed() -> Vec<u32> { std::mem::take(&mut *CLOSED.lock().unwrap()) }

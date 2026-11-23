@@ -372,7 +372,8 @@ impl App {
             }
         }
         let closed = n::closed(); // applied after the actions: a click and its close can land in the same frame
-        for (id, key) in n::invoked() {
+        for (id, key, token) in n::invoked() {
+            if let Some(t) = token { crate::platform::linux::activation::offer(t); } // raises the window for this very action (show_main)
             if crate::ui::call_toast::call_note_invoked(id, &key) { continue; } // the incoming-call notification's Annehmen / Ablehnen
             let Some(ts) = hub.native.remove(&id) else { continue };
             n::close(id);
