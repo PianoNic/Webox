@@ -43,16 +43,12 @@ pub fn write(root: &Path, list: &[Installed]) -> Result<(), String> {
     write_atomic(&root.join(INSTALLED), serde_json::to_string_pretty(&v).unwrap_or_default().as_bytes())
 }
 
+/// Write + rename. Owner-only on unix from creation (0700 new folders, 0600 file): plugin secrets may fall back to these files.
 pub fn write_atomic(p: &Path, bytes: &[u8]) -> Result<(), String> {
-    if let Some(d) = p.parent() { std::fs::create_dir_all(d).map_err(|e| e.to_string())?; }
+    if let Some(d) = p.parent() { crate::system::create_private_dir(d).map_err(|e| e.to_string())?; }
     let tmp = p.with_extension(format!("tmp{}", std::process::id()));
-    // Unix: private from the first byte (the plugin-settings file may hold secrets when there is no keyring).
-    #[cfg(unix)]
-    let written = { use std::io::Write; use std::os::unix::fs::OpenOptionsExt;
-        std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp).and_then(|mut f| f.write_all(bytes)) };
-    #[cfg(not(unix))]
-    let written = std::fs::write(&tmp, bytes);
-    written.map_err(|e| { let _ = std::fs::remove_file(&tmp); e.to_string() })?;
+    // Unix: private (0600) from the first byte (the plugin-settings file may hold secrets when there is no keyring).
+    crate::system::write_private(&tmp, bytes).map_err(|e| { let _ = std::fs::remove_file(&tmp); e.to_string() })?;
     std::fs::rename(&tmp, p).map_err(|e| { let _ = std::fs::remove_file(&tmp); e.to_string() })
 }
 

@@ -240,7 +240,8 @@ impl App {
 
     /// A pasted image / screen capture: written to the app's staging folder under its own name, then staged like a file.
     pub(super) fn stage_bytes(&mut self, chips: &mut Vec<Chip>, name: &str, bytes: &[u8], edit: bool, now: f64) {
-        let dir = std::env::temp_dir().join("webox-staged").join(crate::jose::uuid()); // a temporary file, removed after sending
+        // a temporary file in this user's private folder, removed after sending
+        let Ok(dir) = fs_::private_tmp("staged").map(|d| d.join(crate::jose::uuid())) else { return };
         if std::fs::create_dir_all(&dir).is_err() { return; }
         let p = dir.join(fs_::safe_name(name));
         if std::fs::write(&p, bytes).is_ok() { self.stage_paths(chips, vec![p], edit, now); }

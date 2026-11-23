@@ -53,9 +53,13 @@ pub fn decrypt_dir(key: &[u8], jwe: &str) -> Result<Vec<u8>, String> {
     let p: Vec<&str> = jwe.split('.').collect();
     if p.len() != 5 { return Err("not a JWE".into()); }
     let c = Aes256Gcm::new_from_slice(key).map_err(|e| e.to_string())?;
+    // remote data: `Nonce::from_slice` panics unless the IV is exactly 12 bytes
+    let (iv, tag) = (unb64(p[2])?, unb64(p[4])?);
+    if iv.len() != 12 { return Err("bad iv length".into()); }
+    if tag.len() != 16 { return Err("bad tag length".into()); }
     let mut ct = unb64(p[3])?;
-    ct.extend(unb64(p[4])?);
-    c.decrypt(Nonce::from_slice(&unb64(p[2])?), Payload { msg: &ct, aad: p[0].as_bytes() }).map_err(|_| "decryption failed".into())
+    ct.extend(tag);
+    c.decrypt(Nonce::from_slice(&iv), Payload { msg: &ct, aad: p[0].as_bytes() }).map_err(|_| "decryption failed".into())
 }
 
 /// AES-256-GCM open for file content (SCR): `tag` separate, or appended to `ct` when empty.
@@ -156,5 +160,18 @@ mod tests {
         let t = super::encrypt_dir(&k, "kms://x/keys/1", b"hello").unwrap();
         assert_eq!(super::decrypt_dir(&k, &t).unwrap(), b"hello");
         assert_eq!(super::header(&t)["kid"], "kms://x/keys/1");
+    }
+
+    /// A crafted message / space title with a short IV or tag is an error, not a panic of the cloud thread.
+    #[test]
+    fn bad_iv_or_tag_length_is_an_error() {
+        let k = [7u8; 32];
+        let t = super::encrypt_dir(&k, "kms://x/keys/1", b"hello").unwrap();
+        let p: Vec<&str> = t.split('.').collect();
+        let with = |i: usize, v: &str| p.iter().enumerate().map(|(j, s)| if j == i { v.to_string() } else { s.to_string() }).collect::<Vec<_>>().join(".");
+        for iv in [String::new(), "AAAA".into(), super::b64(&[0u8; 11]), super::b64(&[0u8; 13])] { assert!(super::decrypt_dir(&k, &with(2, &iv)).is_err(), "iv {iv:?}"); }
+        for tag in [String::new(), super::b64(&[0u8; 15])] { assert!(super::decrypt_dir(&k, &with(4, &tag)).is_err(), "tag {tag:?}"); }
+        assert!(super::decrypt_dir(&k, &format!("{}....", p[0])).is_err());
+        assert!(super::gcm_open(&k, &[0u8; 5], b"", b"x", b"").is_err());
     }
 }

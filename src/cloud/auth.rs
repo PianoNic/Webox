@@ -144,16 +144,6 @@ pub fn token_url(base: &str) -> String {
     format!("{base}{TOKEN_PATH}?self_contained_token=true&token_version=2")
 }
 
-/// Parses an access/refresh token out of an idbroker token-endpoint response body. `None` if there's
-/// no `access_token` (e.g. an `invalid_request` error body). Used by the in-webview `fetch` path, whose
-/// raw response text the webview hands back as `webox-token:<json>`.
-pub fn token_from_json(body: &str) -> Option<Token> {
-    let v: Value = serde_json::from_str(body).ok()?;
-    let access = v["access_token"].as_str().filter(|s| !s.is_empty())?.to_string();
-    let issued = now();
-    Some(Token { access, refresh: v["refresh_token"].as_str().unwrap_or("").into(), expires_at: issued + v["expires_in"].as_u64().unwrap_or(3600), issued_at: issued })
-}
-
 fn token_call(base: &str, form: &[(&str, &str)]) -> Result<Token, String> {
     // Basic client auth, the native sparkwindows User-Agent, a fresh CLIENT_<uuid> TrackingID, form-urlencoded
     // with charset - and no client_id in the body (the credentials are the Authorization header).
@@ -171,7 +161,7 @@ fn token_call(base: &str, form: &[(&str, &str)]) -> Result<Token, String> {
         .set("TrackingID", &format!("CLIENT_{}", crate::jose::uuid()))
         .set("Content-Type", "application/x-www-form-urlencoded; charset=utf-8");
     let v: Value = match req.send_string(&body) {
-        Ok(r) => { let t = r.into_string().unwrap_or_default(); dbg_auth(format!("  OK: {}", t.chars().take(80).collect::<String>())); serde_json::from_str(&t).map_err(|e| e.to_string())? }
+        Ok(r) => { let t = r.into_string().unwrap_or_default(); dbg_auth(format!("  OK: {} bytes", t.len())); /* never the body: it carries the tokens */ serde_json::from_str(&t).map_err(|e| e.to_string())? }
         Err(ureq::Error::Status(c, r)) => { let t = r.into_string().unwrap_or_default(); dbg_auth(format!("  ERR {c}: {t}")); return Err(format!("login service said {c}: {}", t.chars().take(200).collect::<String>())); }
         Err(e) => { dbg_auth(format!("  NET ERR: {e}")); return Err(e.to_string()); }
     };

@@ -1,6 +1,9 @@
 //! The session's HTTP calls, token renewal, device registration, own profile and the private setup.
 use super::*;
 
+/// Where `http()` may send the bearer: the token hosts plus the public REST API (`meetcall::HYDRA`, webexapis.com).
+pub(super) fn bearer_host(url: &str) -> bool { images::token_host(url) || url_host(url, &["https"]).is_some_and(|h| h == HYDRA_HOST) }
+
 impl Session {
     /// Participant ids in the conversation list are email-style (not the device's user uuid), so "me" is
     /// recognised by either the uuid or the account email.
@@ -29,6 +32,8 @@ impl Session {
     /// One request. A host that answered 429 / 503 gets nothing until its wait is over (`backoff.rs`): the request then fails
     /// at once with "… → 429 …", like the throttled answer.
     pub(super) fn http_once(&self, method: &str, url: &str, body: Option<Value>, bearer: Option<&str>) -> Result<Value, String> {
+        // Defence in depth: the bearer never leaves Webex, whatever URL an answer or a live event handed us.
+        if !bearer_host(url) { return Err(format!("{method} refused: {} is not a Webex host", url_host(url, &["https", "http"]).unwrap_or_else(|| "?".into()))); }
         let host = backoff::host_of(url).to_string();
         if let Some(w) = backoff::BACKOFF.wait(&host, Instant::now()) { return Err(format!("{method} {url} → 429 (waiting {} s more)", w.as_secs() + 1)); }
         let tok = bearer.unwrap_or(if url.contains("/kms/messages") { &self.kms_token } else { &self.token });
@@ -189,5 +194,23 @@ impl Session {
             match self.ecdhe() { Ok(()) => { last.clear(); break } Err(e) => { last = e; std::thread::sleep(Duration::from_secs(2)) } }
         }
         if last.is_empty() { Ok(()) } else { Err(last) }
+    }
+}
+
+#[cfg(test)]
+mod bearer_tests {
+    use super::bearer_host;
+
+    /// `http()` refuses every URL outside the token hosts and the REST API, so a look-alike never gets the bearer.
+    #[test]
+    fn the_bearer_only_goes_to_webex() {
+        for u in [crate::cloud::U2C_CATALOG, crate::cloud::IDENTITY_ME, "https://idbroker-eu.webex.com/idb/oauth2/v1/access_token", "https://encryption-a.wbx2.com/encryption/api/v1/kms/messages",
+            "https://webexapis.com/v1/meetings", "https://avatar-prod-us-east-2.webexcontent.com/x"] {
+            assert!(bearer_host(u), "{u}");
+        }
+        for u in ["https://evil.tld?.webex.com", "https://evil.tld#.wbx2.com", "https://evil.tld\\.webex.com", "https://a.webex.com@evil.tld/",
+            "https://a.webex.com:8443/", "http://conv-a.wbx2.com/", "https://x.webexapis.com.evil.tld/", "https://webexapis.com:444/", "https://example.com/"] {
+            assert!(!bearer_host(u), "{u}");
+        }
     }
 }

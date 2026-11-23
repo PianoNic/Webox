@@ -43,7 +43,9 @@ async fn listen(bus: zbus::Connection) {
 /// Shows a notification; `actions` are (key, label) pairs, "default" = click on the body; `urgency` 0 low, 1 normal, 2 critical.
 pub(crate) fn send(ctx: &eframe::egui::Context, summary: &str, body: &str, actions: &[(&str, &str)], urgency: u8) -> Sent {
     let _ = CTX.set(ctx.clone());
-    let (summary, body) = (summary.to_string(), body.to_string());
+    // The body is markup on servers with the "body-markup" capability: the sender's text must not become <a>, <img> or <b> there.
+    // (The summary is plain text by the spec.)
+    let (summary, body) = (summary.to_string(), escape_markup(body));
     let actions: Vec<String> = actions.iter().flat_map(|(k, l)| [k.to_string(), l.to_string()]).collect();
     let (slot, ctx) = (Sent::default(), ctx.clone());
     let s2 = slot.clone();
@@ -68,6 +70,9 @@ pub(crate) fn send(ctx: &eframe::egui::Context, summary: &str, body: &str, actio
     slot
 }
 
+/// `&`, `<` and `>` as entities: shown literally by servers that parse body markup, and by those that don't (they strip / decode it).
+fn escape_markup(s: &str) -> String { s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;") }
+
 /// Removes a notification (e.g. the toast was handled in the app).
 pub(crate) fn close(id: u32) {
     super::rt().spawn(async move {
@@ -79,3 +84,12 @@ pub(crate) fn close(id: u32) {
 pub(crate) fn invoked() -> Vec<(u32, String, Option<String>)> { std::mem::take(&mut *INVOKED.lock().unwrap()) }
 /// Notification ids the server closed (expired, dismissed, or after an action).
 pub(crate) fn closed() -> Vec<u32> { std::mem::take(&mut *CLOSED.lock().unwrap()) }
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn body_markup_is_escaped() {
+        assert_eq!(super::escape_markup("<a href=\"https://evil\">bank</a> & <b>x</b>"), "&lt;a href=\"https://evil\"&gt;bank&lt;/a&gt; &amp; &lt;b&gt;x&lt;/b&gt;");
+        assert_eq!(super::escape_markup("&amp; ok"), "&amp;amp; ok");
+    }
+}

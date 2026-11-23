@@ -116,3 +116,33 @@ fn broken_or_empty_html_falls_back() {
     // Unbalanced / unknown markup still shows its text.
     assert_eq!(parse("<foo>a<b>b</foo> c < d").job.text, "ab c < d");
 }
+
+#[test]
+fn many_unterminated_tags_stay_text() {
+    // Every `<` without a `>` after it used to rescan to the end of the message.
+    let s = "x <y".repeat(50_000);
+    assert_eq!(parse(&s).job.text, s);
+    // A `>` at the very end that no `<` can use as its tag end (an invalid tag name): still all text.
+    let s = format!("{}>", "<1".repeat(20_000));
+    assert_eq!(parse(&s).job.text, s);
+    // Quotes hide a `>` from the `<` before them, not from a later one.
+    assert_eq!(parse("a < \" <b>b</b>").job.text, "a < \" b");
+    assert_eq!(fmt_of(&parse("a < \" <b>bold</b>"), "bold").font_id.family, egui::FontFamily::Name("semibold".into()));
+}
+
+#[test]
+fn deep_nesting_is_capped() {
+    let n = 2_000;
+    let q = parse(&format!("{}x{}after", "<blockquote>".repeat(n), "</blockquote>".repeat(n)));
+    let first = q.job.text.lines().next().unwrap();
+    assert!(first.ends_with('x') && first.chars().filter(|&c| c == '\u{2002}').count() <= MAX_DEPTH, "{} indents", first.chars().count());
+    assert!(q.job.text.ends_with("after"));
+    let l = parse(&format!("{}<li>x</li>{}", "<ul>".repeat(n), "</ul>".repeat(n)));
+    assert!(l.job.text.ends_with('x') && l.job.text.chars().filter(|&c| c == '\u{2003}').count() <= MAX_DEPTH, "{:?}", l.job.text.len());
+    // Unclosed paragraphs beyond the cap still start new lines.
+    let p = parse(&"<p>z".repeat(100));
+    assert_eq!(p.job.text.lines().count(), 100);
+    // Formatting below the cap still works.
+    let b = parse(&format!("{}<b>fett</b>", "<span>".repeat(10)));
+    assert_eq!(fmt_of(&b, "fett").font_id.family, egui::FontFamily::Name("semibold".into()));
+}

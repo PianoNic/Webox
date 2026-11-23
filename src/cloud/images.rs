@@ -41,13 +41,15 @@ fn fetch_one(agent: &ureq::Agent, token: &str, scr: &Scr, fallback: Option<&Scr>
 }
 
 /// Hosts that may receive the bearer token (content downloads included).
-pub(super) fn token_host(url: &str) -> bool {
-    webex_host(url) || url.strip_prefix("https://").and_then(|r| r.split('/').next()).map_or(false, |h| h.ends_with(".webexcontent.com"))
+pub(super) fn token_host(url: &str) -> bool { token_host_of(url).is_some() }
+/// The parsed host of a `token_host` URL (requests built from it, like `/v1/download/endpoints`, go where the check looked).
+pub(super) fn token_host_of(url: &str) -> Option<String> {
+    url_host(url, &["https"]).filter(|h| WEBEX_DOMAINS.iter().chain(["webexcontent.com"].iter()).any(|d| subdomain_of(h, d)))
 }
 
 /// Public media CDNs whose files are fetched with a plain GET and never get the token (GIF shares).
 pub(super) fn giphy_host(url: &str) -> bool {
-    url.strip_prefix("https://").or_else(|| url.strip_prefix("http://")).and_then(|r| r.split('/').next()).map_or(false, |h| h == "giphy.com" || h.ends_with(".giphy.com"))
+    url_host(url, &["https", "http"]).is_some_and(|h| h == "giphy.com" || subdomain_of(&h, "giphy.com"))
 }
 
 fn parse_scr(plain: &[u8]) -> Result<Scr, String> {
@@ -165,10 +167,9 @@ fn download(agent: &ureq::Agent, token: &str, scr: &Scr, cap: u64) -> Result<Vec
         if blob.len() as u64 > cap { return Err("image larger than the size cap".into()); }
         return Ok(blob);
     }
-    if !scr.loc.starts_with("https://") || !token_host(&scr.loc) {
-        return Err(format!("content location is not a Webex host ({})", scr.loc.split('/').nth(2).unwrap_or("?")));
-    }
-    let host = scr.loc["https://".len()..].split('/').next().unwrap_or("");
+    let Some(host) = token_host_of(&scr.loc) else {
+        return Err(format!("content location is not a Webex host ({})", url_host(&scr.loc, &["https", "http"]).unwrap_or_else(|| "?".into())));
+    };
     let ep = agent.post(&format!("https://{host}/v1/download/endpoints")).set("Authorization", &format!("Bearer {token}"))
         .send_json(json!({"endpoints": [scr.loc]})).map_err(|e| format!("endpoints {}", short(&e)))?;
     let ep: Value = ep.into_json().map_err(|e| e.to_string())?;
@@ -202,6 +203,30 @@ mod giphy_id_tests {
         assert_eq!(id("https://media.giphy.com/media/v1.tok/"), None);
         assert_eq!(id("https://example.com/files/abc/giphy.gif"), None); // not a media path
         assert_eq!(id(""), None);
+    }
+}
+
+#[cfg(test)]
+mod host_tests {
+    use super::{giphy_host, token_host, token_host_of};
+
+    #[test]
+    fn token_hosts_are_parsed_hosts() {
+        assert!(token_host("https://files-api-a.wbx2.com/v1/spaces/x"));
+        assert!(token_host("https://boxes.WEBEXCONTENT.com/blob"));
+        assert_eq!(token_host_of("https://files-api-a.wbx2.com:443/v1/x").as_deref(), Some("files-api-a.wbx2.com"));
+        for u in ["https://evil.tld?.webexcontent.com", "https://evil.tld#.wbx2.com", "https://evil.tld\\.webex.com/x", "https://a.wbx2.com@evil.tld/",
+            "https://a.wbx2.com:8443/", "http://a.webexcontent.com/", "https://webexcontent.com/", "https://u@a.wbx2.com/"] {
+            assert!(!token_host(u), "{u}");
+        }
+    }
+
+    #[test]
+    fn giphy_hosts() {
+        for u in ["https://media3.giphy.com/media/x/giphy.gif", "http://giphy.com/x", "https://MEDIA.GIPHY.COM/x"] { assert!(giphy_host(u), "{u}"); }
+        for u in ["https://evil.tld?.giphy.com", "https://evil.tld#giphy.com", "https://media.giphy.com@evil.tld/", "https://notgiphy.com/", "ftp://giphy.com/", "https://giphy.com:444/"] {
+            assert!(!giphy_host(u), "{u}");
+        }
     }
 }
 

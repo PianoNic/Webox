@@ -58,21 +58,22 @@ fn open(url: String, profile: std::path::PathBuf, tx: Sender<super::Captured>, c
     let context = webkit2gtk::WebContext::with_website_data_manager(&dm);
     context.set_cache_model(webkit2gtk::CacheModel::DocumentViewer);
 
-    // The SCRAPER (shared with WebView2) posts to window.webkit.messageHandlers.webox: code, token and diagnostics.
+    // The SCRAPER (shared with WebView2) posts to window.webkit.messageHandlers.webox: the code and diagnostics.
     let ucm = webkit2gtk::UserContentManager::new();
     ucm.add_script(&webkit2gtk::UserScript::new(super::SCRAPER, webkit2gtk::UserContentInjectedFrames::AllFrames,
         webkit2gtk::UserScriptInjectionTime::Start, &[], &[]));
     ucm.register_script_message_handler("webox");
-    let tx_msg = tx.clone();
-    ucm.connect_script_message_received(Some("webox"), move |_, r| {
-        let Some(s) = r.js_value().map(|v| v.to_string()) else { return };
-        if let Some(rest) = s.strip_prefix("webox-log:") { log(rest.chars().take(2000).collect()); }
-        if let Some(c) = super::classify(&s) { let _ = tx_msg.send(c); }
-    });
 
     let webview = webkit2gtk::WebView::builder().web_context(&context).user_content_manager(&ucm).build();
     if let Some(st) = WebViewExt::settings(&webview) { st.set_enable_developer_extras(false); st.set_javascript_can_open_windows_automatically(false); }
     window.add(&webview);
+
+    let tx_msg = tx.clone();
+    ucm.connect_script_message_received(Some("webox"), move |_, r| {
+        let Some(s) = r.js_value().map(|v| v.to_string()) else { return };
+        if let Some(rest) = s.strip_prefix("webox-log:") { log(super::redact(rest).chars().take(2000).collect()); }
+        if let Some(c) = super::classify(&s) { let _ = tx_msg.send(c); }
+    });
 
     // The user closed the window (title bar, Alt+F4): the sign-in page goes back to the email step.
     let tx_closed = tx.clone();
@@ -86,7 +87,7 @@ fn open(url: String, profile: std::path::PathBuf, tx: Sender<super::Captured>, c
             if let Some(c) = super::classify(&dec).or_else(|| super::capture(&dec).map(super::Captured::Code)) { let _ = tx_uri.send(c); }
         }
     });
-    webview.connect_load_failed(|_, _, uri, err| { log(format!("load failed {uri}: {err}")); false });
+    webview.connect_load_failed(|_, _, uri, err| { log(format!("load failed {}: {err}", super::log_url(uri))); false });
     webview.load_uri(&url);
     window.show_all();
 

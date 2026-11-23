@@ -105,19 +105,20 @@ fn poster_failed(path: &Path) -> bool { POSTERS.lock().ok().is_some_and(|g| g.as
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Src { File(PathBuf), Fetching(u32), Remote, Failed(String), Preparing }
 
-/// Folder of the playback cache.
-fn cache_dir() -> PathBuf { crate::system::cache_dir("webox-video-cache", "video-cache") }
+/// Folder of the playback cache (decrypted videos): this user's private temporary folder (`files::private_tmp`); None when it
+/// cannot be made private (then nothing is cached or played from the cache).
+fn cache_dir() -> Option<PathBuf> { fs_::private_tmp("video-cache").ok() }
 /// The cached file of a share: one folder per attachment key (hashed), the file under its own (safe) name so the framework sees
 /// its extension.
-pub(super) fn cache_path(key: &str, name: &str) -> PathBuf {
+pub(super) fn cache_path(key: &str, name: &str) -> Option<PathBuf> {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     key.hash(&mut h);
-    cache_dir().join(format!("{:016x}", h.finish())).join(fs_::safe_name(name))
+    Some(cache_dir()?.join(format!("{:016x}", h.finish())).join(fs_::safe_name(name)))
 }
 /// Removes the oldest cached videos until the cache is under `CACHE_MAX` (and everything older than a day).
 fn trim_cache(keep: &Path) {
-    let Ok(rd) = std::fs::read_dir(cache_dir()) else { return };
+    let Some(Ok(rd)) = cache_dir().map(std::fs::read_dir) else { return };
     let mut items: Vec<(std::time::SystemTime, u64, PathBuf)> = rd.flatten().filter_map(|e| {
         let p = e.path();
         let (size, at) = std::fs::read_dir(&p).ok()?.flatten().filter_map(|f| f.metadata().ok()).fold((0u64, std::time::UNIX_EPOCH), |(s, t), m| (s + m.len(), t.max(m.modified().unwrap_or(t))));
@@ -156,13 +157,11 @@ fn sample_src(ctx: &egui::Context) -> Src {
 pub(super) fn source(ctx: &egui::Context, a: &Attachment) -> Src {
     if a.key == SAMPLE_KEY { return sample_src(ctx); }
     if let Some(p) = super::super::attach::local_path(&a.key) { return Src::File(p); }
-    let cached = cache_path(&a.key, &a.name);
     match fs_::download(&a.key) {
         Some(d) if d.phase == Phase::Done && d.path.exists() => Src::File(d.path),
         Some(d) if matches!(d.phase, Phase::Preparing | Phase::Uploading) => Src::Fetching(super::super::attach::percent(d.got, d.total)),
         Some(d) if d.then == Then::Play => match d.phase { Phase::Failed(e) => Src::Failed(e), _ => Src::Remote },
-        _ if cached.exists() => Src::File(cached),
-        _ => Src::Remote,
+        _ => match cache_path(&a.key, &a.name) { Some(c) if c.exists() => Src::File(c), _ => Src::Remote },
     }
 }
 
@@ -175,7 +174,8 @@ impl App {
         if resumed { return; }
         match source(ctx, a) {
             Src::File(p) => {
-                if let Some(c) = format::detect(&head(&p), &a.name, &a.mime) { if !format::playable(c) { self.toast(crate::trq!("Can't play video inline").into_owned(), now); return; } }
+                // an unknown container is not handed to the framework (GStreamer would also follow playlists such as HLS / DASH)
+                if !format::detect(&head(&p), &a.name, &a.mime).is_some_and(format::playable) { self.toast(crate::trq!("Can't play video inline").into_owned(), now); return; }
                 let player = Player::open(&p, Some(&speaker(&self.settings)), Some(ctx.clone()));
                 player.set_volume(bar::last_volume());
                 player.play();
@@ -185,7 +185,10 @@ impl App {
                     viewer: false, restore_windowed: false, volume_open: false, bar: 1.0, moved_at: now, scrub: None }));
             }
             Src::Remote | Src::Failed(_) => {
-                let path = cache_path(&a.key, &a.name);
+                let Some(path) = cache_path(&a.key, &a.name) else {
+                    self.toast(crate::trq!("We ran into an issue while trying to play the video. Try again in a bit.").into_owned(), now);
+                    return;
+                };
                 if let Some(d) = path.parent() { let _ = std::fs::create_dir_all(d); }
                 trim_cache(&path);
                 WANTED.with(|w| *w.borrow_mut() = Some(a.key.clone()));
@@ -207,6 +210,8 @@ impl App {
             Src::File(p) => {
                 let dest = fs_::unique_path(&fs_::download_dir(&self.settings), &a.name);
                 self.file_write_local(&a.key, &a.name, &p, &dest, now);
+                // a copy of the playback cache came from the chat: Mark-of-the-Web like a download (not for files of this computer)
+                if super::super::attach::local_path(&a.key).is_none() && a.key != SAMPLE_KEY { fs_::mark_downloaded(&dest); }
                 self.toast(format!("{} – Download beendet", a.name), now);
             }
             _ => self.file_fetch(&a.key, &a.name, Then::Nothing, now),
@@ -217,7 +222,7 @@ impl App {
 /// The copy in the download folder (or the local file) that "In Ordner anzeigen" can show; never the playback cache.
 pub(super) fn shown_file(a: &Attachment) -> Option<PathBuf> {
     if let Some(p) = super::super::attach::local_path(&a.key) { return Some(p); }
-    fs_::download(&a.key).filter(|d| d.phase == Phase::Done && d.then != Then::Play && d.path.exists() && !d.path.starts_with(cache_dir())).map(|d| d.path)
+    fs_::download(&a.key).filter(|d| d.phase == Phase::Done && d.then != Then::Play && d.path.exists() && !cache_dir().is_some_and(|c| d.path.starts_with(c))).map(|d| d.path)
 }
 
 fn head(p: &Path) -> Vec<u8> {

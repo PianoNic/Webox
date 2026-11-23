@@ -296,6 +296,10 @@ impl App {
                     ctx.set_cursor_icon(if link_here.is_some() { egui::CursorIcon::PointingHand } else { egui::CursorIcon::Text });
                     if ui.input(|i| i.pointer.primary_pressed()) { ctx.data_mut(|d| d.insert_temp(Id::new("msg-sel-consumed"), true)); }
                 }
+                // A web link shows where it really goes: its text may name another address (<a href="https://evil">https://bank</a>).
+                if let Some(u) = link_here.as_deref().and_then(link_hint) {
+                    let _ = resp.clone().on_hover_text_at_pointer(u.to_string());
+                }
                 let set_sel = |a: usize, b: usize| ctx.data_mut(|d| d.insert_temp(k_sel, (m.id.clone(), a, b)));
                 if resp.drag_started() {
                     if let Some(pp) = ui.input(|i| i.pointer.press_origin()) { let a = char_at(pp); set_sel(a, a); }
