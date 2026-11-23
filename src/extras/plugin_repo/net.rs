@@ -52,14 +52,14 @@ pub fn redirect_ok(origin_host: &str, to: &Url) -> bool {
 
 pub struct Got { pub status: u16, pub etag: Option<String>, pub last_modified: Option<String>, pub body: Vec<u8>, pub len: Option<u64> }
 
-fn agent(timeout: Duration) -> ureq::Agent {
-    crate::cloud::tls::agent().redirects(0).timeout_connect(Duration::from_secs(10)).timeout(timeout)
+fn agent(url: &Url, timeout: Duration) -> ureq::Agent {
+    crate::cloud::tls::agent_for(url.as_str()).redirects(0).timeout_connect(Duration::from_secs(10)).timeout(timeout)
         .user_agent(concat!("Webox/", env!("CARGO_PKG_VERSION"), " plugin-repo")).build()
 }
 
 /// GET with hand-followed redirects. Calls `sink` with the body reader of the final 2xx response (or returns 304 / errors).
 fn get(url: &Url, headers: &[(&str, String)], p: Policy, timeout: Duration, mut sink: impl FnMut(ureq::Response) -> Result<Got, String>) -> Result<Got, String> {
-    let a = agent(timeout);
+    let a = agent(url, timeout);
     let origin = url.host_str().unwrap_or_default().to_string();
     let mut cur = url.clone();
     for _ in 0..=MAX_HOPS {

@@ -133,7 +133,7 @@ pub fn media_host_ok(url: &str) -> bool {
 
 fn agent() -> &'static ureq::Agent {
     static A: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
-    A.get_or_init(|| crate::cloud::tls::agent().timeout_connect(std::time::Duration::from_secs(8)).timeout(std::time::Duration::from_secs(20)).build())
+    A.get_or_init(|| crate::cloud::tls::agent_for(API_BASE).timeout_connect(std::time::Duration::from_secs(8)).timeout(std::time::Duration::from_secs(20)).build())
 }
 
 /// Loads one page on a worker thread; the answer arrives as `Event::Page` with the same `ticket`.
