@@ -78,6 +78,12 @@ fn values_and_secrets_persist() {
     assert_eq!(st.save_secret("dev.webox.x", "p", "other").unwrap(), SecretAt::File);
     let l = st.load("dev.webox.x", &s);
     assert_eq!((l.secrets["p"].as_str(), l.in_file.clone()), (Some("other"), vec!["p".to_string()]));
+    // A secret in the file: owner-only (folder and file) on unix.
+    #[cfg(unix)] {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: PathBuf| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        assert_eq!((mode(d.join("plugin-settings")), mode(d.join("plugin-settings/dev.webox.x.json"))), (0o700, 0o600));
+    }
     assert_eq!(st.save_secret("dev.webox.x", "p", "").unwrap(), SecretAt::Unset);
     assert!(st.load("dev.webox.x", &s).secrets.is_empty());
     // Odd keys still make a safe file name.
@@ -107,10 +113,10 @@ fn native_plugin_gets_its_settings() {
     std::fs::copy(&built, d.join("plugins").join(&name)).unwrap();
     let open = || { let mut p = crate::extras::plugins::Plugins::with_root(&d, d.join("data")); p.use_memory_secrets(); p };
     let mut p = open();
-    let i = p.list.iter().position(|e| e.name == "Slash Commands").expect("listed");
+    let i = p.list.iter().position(|e| e.key == "collabhost_slash_commands").expect("listed");
+    p.set_enabled(i, true); // a plugin that is off is not loaded, so its schema is only known from here on
     let s = p.list[i].settings.schema.clone().expect("the plugin declares settings");
     assert!(s.field("smiley").is_some() && s.field("shrug_text").is_some());
-    p.set_enabled(i, true);
     assert_eq!(p.on_send("ok :)").as_deref(), Some("ok \u{1f642}"));
     // A change reaches the running plugin at once.
     p.set_setting(i, "smiley", json!(false)).unwrap();
@@ -140,11 +146,11 @@ fn accent_theme_plugin_follows_theme_and_settings() {
     std::fs::create_dir_all(d.join("plugins")).unwrap();
     std::fs::copy(&built, d.join("plugins").join(&name)).unwrap();
     let mut p = crate::extras::plugins::Plugins::with_root(&d, d.join("data"));
-    let i = p.list.iter().position(|e| e.name == "Pride Theme").expect("listed");
-    assert!(p.is_design(i), "an accent theme counts as a design plugin");
+    let i = p.list.iter().position(|e| e.key == "collabhost_pride_theme").expect("listed");
     let (dark, light) = (Th::of(ThemeId::Dark), Th::of(ThemeId::Light));
     assert!(p.accents(&accents::info(&dark)).is_none(), "off: no accents");
     p.set_enabled(i, true);
+    assert!(p.is_design(i), "an accent theme counts as a design plugin");
     let a = p.accents(&accents::info(&dark)).expect("on: accents");
     let b = p.accents(&accents::info(&light)).unwrap();
     assert_ne!(a.link, b.link, "lightness follows the base theme");
@@ -172,7 +178,7 @@ fn pride_decorations_keep_text_readable_on_every_theme() {
     std::fs::create_dir_all(d.join("plugins")).unwrap();
     std::fs::copy(&built, d.join("plugins").join(&name)).unwrap();
     let mut p = crate::extras::plugins::Plugins::with_root(&d, d.join("data"));
-    let i = p.list.iter().position(|e| e.name == "Pride Theme").expect("listed");
+    let i = p.list.iter().position(|e| e.key == "collabhost_pride_theme").expect("listed");
     assert!(p.decor(&accents::info(&Th::of(ThemeId::Dark))).is_none(), "off: nothing");
     p.set_enabled(i, true);
     let pack = |c: eframe::egui::Color32| u32::from_be_bytes([c.r(), c.g(), c.b(), 0xFF]);

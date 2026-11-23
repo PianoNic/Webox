@@ -26,9 +26,7 @@ impl App {
         if self.window_active() { return false; }
         if self.dnd() { return true; }
         let (title, direct) = self.spaces.iter().find(|s| s.id == space).map(|s| (s.title.clone(), s.direct)).unwrap_or_default();
-        let low = m.text.to_lowercase();
-        let first = self.me.name.split_whitespace().next().unwrap_or("").to_lowercase();
-        let mention = !self.me.name.is_empty() && (low.contains(&format!("@{}", self.me.name.to_lowercase())) || (!first.is_empty() && low.contains(&format!("@{first}"))) || low.contains("@all"));
+        let mention = mentions_me(&m.text, &m.html, &self.me.name);
         if self.nb("notif_mentions_only", false) && !direct && !mention { return true; }
         if self.nb("notif_taskbar_flash", true) { self.notify.want_flash = true; }
         if !self.nb("notif_desktop", true) { return true; }
@@ -393,5 +391,45 @@ impl App {
         }
         if done || picked.is_some() { hub.menu = None; ui::menu::menu_close(ctx, "tray"); }
         if let Some(id) = picked { self.pick_tray(&id, ctx, now); }
+    }
+}
+
+/// Whether `low` (lower case) has `@word` as a whole word: not inside an address (x@allianz.com) or a longer name (@allison).
+fn at_word(low: &str, word: &str) -> bool {
+    let pat = format!("@{word}");
+    !word.is_empty() && low.match_indices(&pat).any(|(i, _)| {
+        !low[..i].chars().next_back().is_some_and(char::is_alphanumeric) && !low[i + pat.len()..].chars().next().is_some_and(char::is_alphanumeric)
+    })
+}
+
+/// Whether a message mentions me (`name` = my display name) or everybody: an @all mention in its rich text
+/// (`<spark-mention data-object-type="groupMention">`; a `<` in the sender's text always arrives escaped), else `@<name>`,
+/// `@<first name>`, `@all` (`@alle`) as whole words in the plain text.
+fn mentions_me(text: &str, html: &str, name: &str) -> bool {
+    if name.is_empty() { return false; }
+    let tags = html.to_lowercase();
+    let all = tags.split("<spark-mention").skip(1).any(|t| { let tag = &t[..t.find('>').unwrap_or(t.len())]; tag.contains("groupmention") || tag.contains("data-group-type=\"all\"") });
+    let (low, name) = (text.to_lowercase(), name.to_lowercase());
+    let first = name.split_whitespace().next().unwrap_or("");
+    all || [name.as_str(), first, "all", "alle"].iter().any(|w| at_word(&low, w))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mentions_me;
+
+    #[test]
+    fn mentions_are_whole_words() {
+        let me = "Alex Muster";
+        assert!(mentions_me("@all bitte lesen", "", me) && mentions_me("(@Alex) schau mal", "", me));
+        assert!(mentions_me("danke @alex muster.", "", me) && mentions_me("@alle: Meeting", "", me));
+        // An e-mail address or a longer word is no mention.
+        assert!(!mentions_me("schreib an x@allianz.com", "", me));
+        assert!(!mentions_me("max@all.example und @allison", "", me));
+        assert!(!mentions_me("kontakt: info@alex.ch", "", me));
+        assert!(!mentions_me("@all", "", ""), "no name known: nothing counts (as before)");
+        // The rich text's @all mention counts, even when the plain text shows the name without "@".
+        assert!(mentions_me("All bitte lesen", "<spark-mention data-object-type=\"groupMention\" data-group-type=\"all\">All</spark-mention> bitte lesen", me));
+        assert!(!mentions_me("data-object-type=\"groupMention\"", "data-object-type=\"groupMention\"", me), "only inside a mention tag");
     }
 }

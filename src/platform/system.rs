@@ -40,19 +40,96 @@ pub fn space_from_uri(uri: &str) -> Option<String> {
     rest.strip_prefix("space/").map(|s| s.trim_end_matches('/').to_string())
 }
 
+/// The settings folder (tokens, plugin settings, the webview profile). Owner-only (0700) on unix. Worked out once per run:
+/// the last-resort fallback is a fresh folder, which every caller must share.
 pub fn config_dir() -> PathBuf {
-    let base = if cfg!(windows) {
-        std::env::var_os("APPDATA").map(PathBuf::from)
-    } else {
-        std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-    };
-    let base = base.unwrap_or_else(std::env::temp_dir);
-    let d = base.join(if cfg!(windows) { "WebOx" } else { "webox" });
-    // The app was called CollabHost before: carry its settings, sign-in and plugins over once.
-    let old = base.join(if cfg!(windows) { "CollabHost" } else { "collabhost" });
-    if !d.exists() && old.is_dir() { let _ = std::fs::rename(&old, &d); }
-    let _ = std::fs::create_dir_all(&d);
-    d
+    static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    DIR.get_or_init(|| {
+        let base = if cfg!(windows) {
+            std::env::var_os("APPDATA").map(PathBuf::from)
+        } else {
+            std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        };
+        let Some(base) = base else { return fallback_config_dir() };
+        let d = base.join(if cfg!(windows) { "WebOx" } else { "webox" });
+        // The app was called CollabHost before: carry its settings, sign-in and plugins over once.
+        let old = base.join(if cfg!(windows) { "CollabHost" } else { "collabhost" });
+        if !d.exists() && old.is_dir() { let _ = std::fs::rename(&old, &d); }
+        let _ = create_private_dir(&d);
+        // An existing folder (older versions made it 0755) is tightened; a symlinked one (dotfiles) is followed.
+        #[cfg(unix)] {
+            use std::os::unix::fs::{MetadataExt, PermissionsExt};
+            if let Ok(m) = std::fs::metadata(&d) { if m.is_dir() && m.mode() & 0o077 != 0 && my_uid().is_none_or(|u| m.uid() == u) { let _ = std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o700)); } }
+        }
+        d
+    }).clone()
+}
+
+/// No APPDATA / XDG_CONFIG_HOME / HOME. Unix: never a predictable shared path another user could prepare; first
+/// `$XDG_RUNTIME_DIR/webox`, then `<tmp>/webox-<uid>`, each only when it is a real folder of ours, else a fresh random one.
+fn fallback_config_dir() -> PathBuf {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        let tmp = std::env::temp_dir();
+        let named = std::env::var_os("XDG_RUNTIME_DIR").map(|r| PathBuf::from(r).join("webox")).into_iter()
+            .chain(my_uid().map(|u| tmp.join(format!("webox-{u}"))));
+        for d in named {
+            let _ = create_private_dir(&d);
+            if owned_private_dir(&d) { return d; }
+        }
+        let fresh = || tmp.join(format!("webox-{:016x}", rand::random::<u64>()));
+        for _ in 0..8 {
+            // create (not recursive) fails on anything already there, so the folder is new and ours
+            let d = fresh();
+            if std::fs::DirBuilder::new().mode(0o700).create(&d).is_ok() { return d; }
+        }
+        fresh() // eight collisions in a row: an unguessable name all the same
+    }
+    #[cfg(not(unix))]
+    {
+        let d = std::env::temp_dir().join("WebOx");
+        let _ = std::fs::create_dir_all(&d);
+        d
+    }
+}
+
+/// This process' user id (Linux; other unixes have no libc dependency here and skip the owner checks that need it).
+#[cfg(unix)]
+fn my_uid() -> Option<u32> {
+    #[cfg(target_os = "linux")] { Some(unsafe { libc::getuid() }) }
+    #[cfg(not(target_os = "linux"))] { None }
+}
+
+/// True when `d` is a real folder (not a symlink), owned by us and closed to others (tightened to 0700 if needed).
+/// Without a known uid only a folder that is already owner-only counts.
+#[cfg(unix)]
+fn owned_private_dir(d: &std::path::Path) -> bool {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let Ok(m) = std::fs::symlink_metadata(d) else { return false };
+    if !m.file_type().is_dir() { return false; }
+    match my_uid() {
+        Some(u) if m.uid() == u => m.mode() & 0o077 == 0 || std::fs::set_permissions(d, std::fs::Permissions::from_mode(0o700)).is_ok(),
+        Some(_) => false,
+        None => m.mode() & 0o077 == 0,
+    }
+}
+
+/// `create_dir_all`, with new folders owner-only (0700) on unix.
+pub fn create_private_dir(d: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)] { use std::os::unix::fs::DirBuilderExt; std::fs::DirBuilder::new().recursive(true).mode(0o700).create(d) }
+    #[cfg(not(unix))] { std::fs::create_dir_all(d) }
+}
+
+/// Writes (create / truncate) a file that is owner-only (0600) on unix from the moment it exists; an existing file is tightened too.
+pub fn write_private(p: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut o = std::fs::OpenOptions::new();
+    o.write(true).create(true).truncate(true);
+    #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; o.mode(0o600); }
+    let mut f = o.open(p)?;
+    #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; f.set_permissions(std::fs::Permissions::from_mode(0o600))?; }
+    f.write_all(bytes)
 }
 
 /// Writes the host log on every start: command line and start mode.
@@ -173,9 +250,7 @@ pub fn load_settings(dir: &std::path::Path) -> Value {
 }
 
 pub fn save_settings(dir: &std::path::Path, v: &Value) {
-    let p = dir.join("settings.json");
-    let _ = std::fs::write(&p, serde_json::to_string_pretty(v).unwrap_or_default());
-    #[cfg(unix)] { use std::os::unix::fs::PermissionsExt; let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)); }
+    let _ = write_private(&dir.join("settings.json"), serde_json::to_string_pretty(v).unwrap_or_default().as_bytes());
 }
 
 pub fn open(url: &str) {
@@ -271,10 +346,24 @@ pub fn set_autostart(on: bool) -> Result<(), String> {
         if !on { let _ = std::fs::remove_file(&file); return Ok(()); }
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         // A Nix store path changes with every update: start through PATH then (the Nix profile / NixOS system put `webox` there).
-        let exec = match launcher_exe() { p if p.starts_with("/nix/store") => "webox".to_string(), p => format!("\"{}\"", p.display()) };
+        let exec = match launcher_exe() { p if p.starts_with("/nix/store") => "webox".to_string(), p => desktop_exec_arg(&p.to_string_lossy()) };
         std::fs::write(&file, format!("[Desktop Entry]\nType=Application\nName=Webox\nIcon=webox\nExec={exec} --minimized --autostarted\nX-GNOME-Autostart-enabled=true\n"))
             .map_err(|e| e.to_string())
     }
+}
+
+/// One quoted `Exec=` argument per the Desktop Entry spec: `"`, `` ` ``, `$` and `\` get a backslash inside the quotes, then the
+/// value's own string escaping doubles every backslash, and `%` (a field code) becomes `%%`. A path with a line break or other
+/// control character can't be written safely: `webox` (from PATH) then.
+#[cfg_attr(windows, allow(dead_code))]
+fn desktop_exec_arg(p: &str) -> String {
+    if p.chars().any(char::is_control) { return "webox".into(); }
+    let mut s = String::from("\"");
+    for c in p.chars() {
+        match c { '"' | '`' | '$' => { s.push_str("\\\\"); s.push(c); } '\\' => s.push_str("\\\\\\\\"), '%' => s.push_str("%%"), c => s.push(c) }
+    }
+    s.push('"');
+    s
 }
 
 /// The program to start for autostart / browser helpers: the Nix wrapper script when there is one (`WEBOX_WRAPPER`, set by the
@@ -295,5 +384,33 @@ mod tests {
         let l = super::log_line(r"Loaded C:\Users\you\AppData\Local\x", t, &[r"C:\Users\you\AppData\Local".into()]);
         assert_eq!(l, "2026-11-09 06:58:55.957 Loaded **************************\\x\r\n");
         assert_eq!(super::log_line("", t, &[]), "\r\n");
+    }
+
+    #[test]
+    fn desktop_exec_quoting() {
+        assert_eq!(super::desktop_exec_arg("/opt/webox/webox"), "\"/opt/webox/webox\"");
+        // On disk `\\"` / `\\$` / `\\\\` (string escaping over the quoting rule), `%%` for a literal percent.
+        assert_eq!(super::desktop_exec_arg(r#"/a "b"/$x`y`\z%"#), r#""/a \\"b\\"/\\$x\\`y\\`\\\\z%%""#);
+        assert_eq!(super::desktop_exec_arg("/a\nExec=evil"), "webox");
+    }
+
+    #[test]
+    fn private_files() {
+        let d = std::env::temp_dir().join(format!("webox-test-private-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        super::create_private_dir(&d.join("sub")).unwrap();
+        super::write_private(&d.join("sub").join("f.json"), b"{}").unwrap();
+        assert_eq!(std::fs::read(d.join("sub").join("f.json")).unwrap(), b"{}");
+        #[cfg(unix)] {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&d).unwrap().permissions().mode() & 0o777, 0o700);
+            assert_eq!(std::fs::metadata(d.join("sub").join("f.json")).unwrap().permissions().mode() & 0o777, 0o600);
+            assert!(super::owned_private_dir(&d) || super::my_uid().is_none());
+            // a symlink to a folder is not taken as the fallback folder
+            std::os::unix::fs::symlink(&d, d.with_extension("link")).unwrap();
+            assert!(!super::owned_private_dir(&d.with_extension("link")));
+            let _ = std::fs::remove_file(d.with_extension("link"));
+        }
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

@@ -99,24 +99,15 @@ impl App {
         }
     }
 
-    /// Polls the embedded webview. A `Token` means the in-webview cookie'd exchange already succeeded —
-    /// sign in directly. A `Code` is the fallback (the fetch failed) — run the out-of-process `ureq`
-    /// exchange (which `poll_login` then finishes).
+    /// Polls the embedded webview. Once it hands back the code, run the out-of-process PKCE exchange
+    /// (which `poll_login` then finishes).
     pub(crate) fn poll_webview(&mut self) {
-        let Some(cap) = self.webview.as_ref().and_then(|w| w.poll()) else { return };
+        let Some(platform::webview::Captured::Code(code)) = self.webview.as_ref().and_then(|w| w.poll()) else { return };
         self.webview = None;
         self.login_error.clear();
-        match cap {
-            platform::webview::Captured::Token(json) => match auth::token_from_json(&json) {
-                Some(t) => { self.save_token(&t); self.need_login = false; self.refreshed = false; self.sign_in(t.access); }
-                None => { self.login_page = LoginPage::Code; self.need_login = true; self.login_error = "The sign-in response couldn't be read.".into(); }
-            },
-            platform::webview::Captured::Code(code) => {
-                self.login_page = LoginPage::Code;
-                let (base, dev) = (self.idbroker_base(), self.oauth_device_id());
-                self.pending = Some(auth::exchange_async(code, self.pkce_verifier.clone(), base, dev));
-            }
-        }
+        self.login_page = LoginPage::Code;
+        let (base, dev) = (self.idbroker_base(), self.oauth_device_id());
+        self.pending = Some(auth::exchange_async(code, self.pkce_verifier.clone(), base, dev));
     }
 
     pub(crate) fn sign_in(&mut self, token: String) {

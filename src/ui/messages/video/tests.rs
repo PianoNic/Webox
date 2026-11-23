@@ -24,12 +24,12 @@ fn pictures_are_contain_fit() {
 
 #[test]
 fn cache_paths_keep_the_name_and_split_by_key() {
-    let a = cache_path("activity:1", "Urlaub 2026.mp4");
-    let b = cache_path("activity:2", "Urlaub 2026.mp4");
+    let a = cache_path("activity:1", "Urlaub 2026.mp4").unwrap();
+    let b = cache_path("activity:2", "Urlaub 2026.mp4").unwrap();
     assert_ne!(a.parent(), b.parent());
     assert_eq!(a.file_name().unwrap(), "Urlaub 2026.mp4");
-    assert!(a.starts_with(cache_dir()));
-    assert_eq!(cache_path("x", "..\\..\\evil.mp4").file_name().unwrap(), "evil.mp4"); // no path parts from the share's name
+    assert!(a.starts_with(cache_dir().unwrap()));
+    assert_eq!(cache_path("x", "..\\..\\evil.mp4").unwrap().file_name().unwrap(), "evil.mp4"); // no path parts from the share's name
 }
 
 #[test]
@@ -37,7 +37,7 @@ fn local_files_and_downloads_are_found() {
     let ctx = egui::Context::default();
     let a = Attachment { key: "video-src-test:1".into(), name: "x.mp4".into(), ..Default::default() };
     assert_eq!(source(&ctx, &a), Src::Remote);
-    fs_::download_begin(&a.key, &a.name, &cache_path(&a.key, &a.name), Then::Play);
+    fs_::download_begin(&a.key, &a.name, &cache_path(&a.key, &a.name).unwrap(), Then::Play);
     fs_::download_progress(&a.key, 50, 100);
     assert_eq!(source(&ctx, &a), Src::Fetching(50));
     fs_::download_phase(&a.key, Phase::Failed("http 500".into()));

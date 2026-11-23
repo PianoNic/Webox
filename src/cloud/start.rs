@@ -200,8 +200,51 @@ pub(super) fn force_refresh(old: &str) -> Option<String> {
 }
 
 /// The sign-in token is only ever sent to Webex's own servers.
-pub fn webex_host(url: &str) -> bool {
-    let host = url.strip_prefix("https://").and_then(|r| r.split('/').next()).unwrap_or("");
-    host.ends_with(".wbx2.com") || host.ends_with(".webex.com") || host.ends_with(".ciscospark.com")
+pub fn webex_host(url: &str) -> bool { url_host(url, &["https"]).is_some_and(|h| WEBEX_DOMAINS.iter().any(|d| subdomain_of(&h, d))) }
+/// Webex's own domains (only hosts below them count, not the bare domain).
+pub(super) const WEBEX_DOMAINS: [&str; 3] = ["wbx2.com", "webex.com", "ciscospark.com"];
+/// The public REST API (`meetcall::HYDRA`): the one bare host outside `WEBEX_DOMAINS` that gets the bearer.
+pub(super) const HYDRA_HOST: &str = "webexapis.com";
+
+/// The lower-case host a URL really connects to, parsed the way the HTTP client (ureq, url crate) parses it; `None` unless
+/// the scheme is one of `schemes`, there is no user name / password and the port is the scheme's default. Cutting the text
+/// at the first `/` is not enough: `https://evil.tld?.webex.com`, `…#.webex.com`, `…\.webex.com` and
+/// `https://a.webex.com@evil.tld/` all connect to evil.tld.
+pub(super) fn url_host(url: &str, schemes: &[&str]) -> Option<String> {
+    let u = url::Url::parse(url).ok()?;
+    if !schemes.contains(&u.scheme()) || !u.username().is_empty() || u.password().is_some() || u.port().is_some() { return None }
+    u.host_str().map(str::to_ascii_lowercase).filter(|h| !h.is_empty())
 }
+/// `host` lies below `domain` (dot boundary, the bare domain itself doesn't count).
+pub(super) fn subdomain_of(host: &str, domain: &str) -> bool { host.strip_suffix(domain).is_some_and(|p| p.len() > 1 && p.ends_with('.')) }
 pub(super) fn hhmm(iso: &str) -> String { iso.get(11..16).unwrap_or(iso).to_string() }
+
+#[cfg(test)]
+mod host_tests {
+    use super::{url_host, webex_host};
+
+    #[test]
+    fn real_webex_hosts_pass() {
+        for u in ["https://conv-a.wbx2.com/conversation/api/v1", "https://idbroker-eu.webex.com/idb", "https://x.ciscospark.com", "https://LOCUS-A.WBX2.COM/locus", "https://conv-a.wbx2.com:443/x"] {
+            assert!(webex_host(u), "{u}");
+        }
+    }
+
+    /// The text after `https://` up to the first `/` is not the host the client connects to.
+    #[test]
+    fn look_alike_urls_are_refused() {
+        for u in ["https://evil.tld?.webex.com", "https://evil.tld#.webex.com", "https://evil.tld\\.webex.com", "https://a.webex.com@evil.tld/",
+            "https://u:p@a.webex.com/", "https://a.webex.com:8443/", "http://a.webex.com/", "https://webex.com/", "https://evilwebex.com/",
+            "https://a.webex.com.evil.tld/", "webex.com", "", "https://[::1]/"] {
+            assert!(!webex_host(u), "{u}");
+        }
+    }
+
+    #[test]
+    fn url_host_is_the_connected_host() {
+        assert_eq!(url_host("https://evil.tld?.webex.com", &["https"]).as_deref(), Some("evil.tld"));
+        assert_eq!(url_host("https://A.Webex.COM/x", &["https"]).as_deref(), Some("a.webex.com"));
+        assert_eq!(url_host("http://media.giphy.com:80/x", &["http"]).as_deref(), Some("media.giphy.com"));
+        assert_eq!(url_host("ftp://a.webex.com/", &["https"]), None);
+    }
+}

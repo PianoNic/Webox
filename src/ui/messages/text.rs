@@ -12,11 +12,14 @@ pub(crate) fn url_spans(text: &str) -> Vec<(usize, usize)> {
         if is_start && (rest.starts_with("http://") || rest.starts_with("https://") || rest.starts_with("www.")) {
             let mut end = rest.find(char::is_whitespace).map_or(text.len(), |e| i + e);
             // Trailing punctuation belongs to the sentence, not the link; a closing bracket only when it isn't matched inside.
+            // The brackets are counted once (n = counts of "()[]{}"), then kept current while the end moves left: linear.
+            let mut n = [0usize; 6];
+            for ch in text[i..end].chars() { if let Some(k) = "()[]{}".find(ch) { n[k] += 1; } }
             while end > i {
-                let url = &text[i..end];
-                let last = url.chars().next_back().unwrap_or(' ');
-                let unmatched = |o: char| url.matches(last).count() > url.matches(o).count();
-                if matches!(last, '.' | ',' | ';' | ':' | '!' | '?' | '\'' | '"' | '»' | '…') || (last == ')' && unmatched('(')) || (last == ']' && unmatched('[')) || (last == '}' && unmatched('{')) {
+                let last = text[i..end].chars().next_back().unwrap_or(' ');
+                let close = match last { ')' => Some(1), ']' => Some(3), '}' => Some(5), _ => None }; // its index in n (the opener is k - 1)
+                if matches!(last, '.' | ',' | ';' | ':' | '!' | '?' | '\'' | '"' | '»' | '…') || close.is_some_and(|k| n[k] > n[k - 1]) {
+                    if let Some(k) = close { n[k] -= 1; }
                     end -= last.len_utf8();
                 } else { break; }
             }
@@ -161,6 +164,9 @@ pub(super) fn link_at(g: &Galley, links: &[(std::ops::Range<usize>, String)], po
     links.iter().find(|(r, _)| byte >= r.start && byte < r.end).map(|(_, u)| u.clone())
 }
 
+/// The hover text of a link: a web link's real target (its text may name another address than it opens); None for the jump
+/// link and mentions, which open nothing outside the app.
+pub(super) fn link_hint(u: &str) -> Option<&str> { (u != html::JUMP && !u.starts_with(html::MENTION)).then_some(u) }
 
 /// Middle elision for a file name.
 pub(super) fn elide_middle(ui: &egui::Ui, s: &str, font: FontId, max: f32) -> String {
@@ -180,4 +186,26 @@ pub(super) fn elide_middle_by(s: &str, max: f32, w: &dyn Fn(&str) -> f32) -> Str
         best = cand;
     }
     best
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{link_hint, url_spans};
+    fn urls(t: &str) -> Vec<&str> { url_spans(t).into_iter().map(|(a, b)| &t[a..b]).collect() }
+
+    #[test]
+    fn trailing_brackets_are_balanced_in_one_pass() {
+        assert_eq!(urls("(siehe https://x.example/(a)(b)))."), ["https://x.example/(a)(b)"]);
+        assert_eq!(urls("https://x.example/[1]], (https://y.example/{k}})"),["https://x.example/[1]", "https://y.example/{k}"]);
+        // Thousands of unmatched closing brackets: all of them stay outside the link (each step used to recount the whole URL).
+        let t = format!("https://x.example/{}", ")".repeat(50_000));
+        assert_eq!(urls(&t), ["https://x.example/"]);
+    }
+
+    #[test]
+    fn link_tooltip_is_the_real_target() {
+        assert_eq!(link_hint("https://evil.example/login"), Some("https://evil.example/login"));
+        assert_eq!(link_hint(super::html::JUMP), None);
+        assert_eq!(link_hint(&format!("{}p1\u{1}Mara", super::html::MENTION)), None);
+    }
 }

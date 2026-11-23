@@ -138,3 +138,14 @@ fn player_plays_seeks_and_ends() {
     assert!(wait(&|| p.ended()), "ends after the last frame");
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }
+
+/// A received "video" that is really a playlist (HLS here, named like an MP4) never reaches playbin: it would fetch the URLs in it.
+#[cfg(target_os = "linux")]
+#[test]
+fn playlists_are_not_played() {
+    let path = temp("mp4");
+    std::fs::write(&path, b"#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10,\nhttp://example.invalid/a.ts\n#EXT-X-ENDLIST\n").unwrap();
+    let e = first_frame(&path).err().expect("refused");
+    assert!(e.contains("not a known video container"), "{e}");
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}

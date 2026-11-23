@@ -38,7 +38,18 @@ fn bus_error(p: &gst::Element) -> Option<String> {
     None
 }
 
+/// The file's bytes are a container `format::sniff` knows. playbin plays whatever its typefinders recognise, playlists (HLS,
+/// DASH, SMIL, ...) that fetch other URLs included, so a received "video" of any other kind is refused before it gets there.
+fn known_container(path: &Path) -> Result<(), String> {
+    use std::io::Read;
+    let mut head = vec![0u8; 4096];
+    let n = std::fs::File::open(path).and_then(|mut f| f.read(&mut head)).map_err(|e| e.to_string())?;
+    head.truncate(n);
+    super::format::sniff(&head).map(|_| ()).ok_or_else(|| "not a known video container".to_string())
+}
+
 pub(super) fn open(path: &Path, max: (u32, u32), with_audio: bool) -> Result<(Box<dyn Source>, Info), String> {
+    known_container(path)?;
     gst::init().map_err(|e| format!("GStreamer: {e}"))?;
     let abs = std::fs::canonicalize(path).map_err(|e| e.to_string())?;
     let uri = crate::app::files::file_uri(&abs);
