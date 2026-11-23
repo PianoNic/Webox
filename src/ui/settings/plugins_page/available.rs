@@ -9,7 +9,7 @@ impl App {
     pub(super) fn available_tab(&mut self, ui: &mut egui::Ui, t: &Th, s: &mut PUi, now: f64) {
         let blocked = crate::system::side_loading_protection();
         let loading = self.repos.states.iter().any(|r| r.loading);
-        kit::section(ui, t, "Verfügbare Plugins", "Plugins aus den eingetragenen Repositories. Die Liste wird beim Öffnen dieser Seite aktualisiert.", true, |ui| {
+        kit::section(ui, t, "Verfügbare Plugins", "", true, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 if kit::pill(ui, t, "Aktualisieren", true, !loading && !self.repos.sample).clicked() { self.repos.refresh(); }
@@ -52,11 +52,12 @@ impl App {
                                 ui.label(RichText::new(&p.name).font(semibold(15.0)).color(t.text1));
                                 let authors = if p.authors.is_empty() { String::new() } else { format!(" · {}", p.authors.join(", ")) };
                                 ui.label(RichText::new(format!("v{}{authors}", p.version)).size(kit::SECOND).color(t.text2));
-                                if let Some(h) = &have { ui.label(RichText::new(format!("(installiert: v{h})")).size(kit::SECOND).color(t.text2)); }
+                                // the button already says "Installiert"; the installed version only matters next to an update
+                                if let Some(h) = have.as_ref().filter(|h| index::newer(&p.version, h)) { ui.label(RichText::new(format!("(installiert: v{h})")).size(kit::SECOND).color(t.text2)); }
                             });
                             if !p.description.is_empty() { kit::text_block(ui, &p.description, kit::BODY, t.text2, 0.0); }
-                            let origin = if a.official { format!("{} (offiziell)", a.repo_title) } else { format!("{} (nicht offiziell)", a.repo_title) };
-                            ui.label(RichText::new(format!("{origin} · Schnittstelle {}", p.contract)).size(kit::SECOND).color(t.text2));
+                            // the source line is the trust signal, so it only shows for plugins from unofficial repositories
+                            if !a.official { ui.label(RichText::new(format!("{} (nicht offiziell)", a.repo_title)).size(kit::SECOND).color(t.tk("listitem-textmissed"))); }
                             if let Err(why) = &a.compat { kit::text_block(ui, &format!("Nicht kompatibel: {why}"), kit::SECOND, t.text2, 0.0); }
                         });
                     });
@@ -64,6 +65,11 @@ impl App {
             });
         }
         if let Some(a) = clicked { self.request_install(s, a, now); }
+        // Split the page into two zones: the plugin catalogue above, repository sources and the daily check below. The divider
+        // keeps the two lower section headers from reading as peers of "Verfügbare Plugins".
+        ui.add_space(24.0);
+        let sep = ui.available_rect_before_wrap();
+        ui.painter().hline(sep.x_range(), sep.top(), Stroke::new(1.0_f32, k.border));
         self.repos_section(ui, t, s);
     }
 
@@ -71,7 +77,7 @@ impl App {
         let k = kit::tok(t);
         let mut remove = None;
         if self.shot.is_some() && std::env::var("WEBOX_SHOT_PLUGIN_TAB").is_ok_and(|v| v == "repos") { ui.scroll_to_cursor(Some(egui::Align::Min)); }
-        kit::section(ui, t, "Repositories", "Ein Repository ist eine Index-Datei (index.min.json) mit Plugins und ihren Prüfsummen. Fremde Repositories können beliebigen nativen Code ausliefern: Fügen Sie nur Repositories hinzu, denen Sie vertrauen.", false, |ui| {
+        kit::section(ui, t, "Repositories", "Fügen Sie nur Repositories hinzu, denen Sie vertrauen: Sie können beliebigen Code ausliefern.", false, |ui| {
             for st in self.repos.states.clone() {
                 ui.add_space(8.0);
                 // Each row is as high as its three lines. The badge / remove button sits in a child at the row's top right: a
@@ -112,7 +118,7 @@ impl App {
         kit::section(ui, t, "Updates", "", false, |ui| {
             let mut on = self.repos.cfg.auto_update;
             if kit::check(ui, &mut self.icons, t, "Automatisch nach Updates suchen", &mut on, true, false) { self.repos.set_auto_update(on); }
-            kit::check_desc(ui, t, "Einmal am Tag, solange Plugins aus Repositories installiert sind. Updates werden angezeigt, nicht ohne Nachfrage installiert.");
+            kit::check_desc(ui, t, "Einmal am Tag. Updates werden nur angezeigt, nicht automatisch installiert.");
         });
     }
 }
