@@ -108,7 +108,9 @@ jobs:
           if (-not $iscc) { choco install innosetup -y --no-progress; if ($LASTEXITCODE) { exit 1 }; $iscc = Find-Iscc }
           if (-not $iscc) { Write-Error 'ISCC.exe not found'; exit 1 }
           pwsh packaging/windows/make-ico.ps1 -Out dist/webox.ico
-          & $iscc /Qp "/DAppVersion=$env:VERSION" "/DSourceDir=dist\webox-$env:VERSION-windows-x64" "/DIconFile=dist\webox.ico" /Odist packaging\windows\webox.iss
+          # ISCC resolves relative paths from the .iss file's folder, so pass absolute ones.
+          $dist = (Resolve-Path dist).Path
+          & $iscc /Qp "/DAppVersion=$env:VERSION" "/DSourceDir=$dist\webox-$env:VERSION-windows-x64" "/DIconFile=$dist\webox.ico" "/O$dist" packaging\windows\webox.iss
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Checksums and upload
