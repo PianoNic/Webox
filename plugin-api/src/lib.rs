@@ -14,12 +14,15 @@
 //! - The [`CONTRACT`] version is exported as its own symbol ([`CONTRACT_SYMBOL`]). The host refuses a plugin built for
 //!   another major version or a newer minor version than its own.
 //! - A plugin must not keep threads running after [`Plugin::stop`] returns: the host may unload the library afterwards.
+//!
+//! Since 1.6 new capabilities need no ABI change: events reach [`Plugin::on_event`] (only those named in
+//! [`Plugin::EVENTS`]) and host services are called by name through [`Host::call`], both with JSON payloads.
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 pub mod color;
 pub mod settings;
-pub use settings::{Schema, Values};
+pub use settings::{json_str, Schema, Values};
 
 /// Layout version of [`PluginVTable`] / [`HostApi`], stored in [`PluginVTable::abi`]. Equals [`CONTRACT_MAJOR`].
 pub const ABI_VERSION: u32 = CONTRACT_MAJOR as u32;
@@ -33,9 +36,11 @@ pub const CONTRACT_MAJOR: u16 = 1;
 /// computed by the plugin for the active base theme ([`ThemeInfo`]).
 /// 1.4: decorations ([`Plugin::decor`], `decor` at the end of [`PluginVTable`], `text_secondary` at the end of [`ThemeInfo`]):
 /// background washes, host-drawn decorations and effects.
-pub const CONTRACT_MINOR: u16 = 4;
+/// 1.6: named events and methods (`events` / `on_event` at the end of [`PluginVTable`], `call` at the end of [`HostApi`]):
+/// later capabilities are added as names, not as table entries.
+pub const CONTRACT_MINOR: u16 = 6;
 /// "major.minor", as written into a plugin repository index (`contract`).
-pub const CONTRACT: &str = "1.4";
+pub const CONTRACT: &str = "1.6";
 /// `(major << 16) | minor`, returned by the [`CONTRACT_SYMBOL`] function.
 pub const CONTRACT_PACKED: u32 = ((CONTRACT_MAJOR as u32) << 16) | CONTRACT_MINOR as u32;
 pub const ENTRY_SYMBOL: &[u8] = b"collabhost_plugin\0";
@@ -195,6 +200,10 @@ pub struct HostApi {
     pub free_str: Option<extern "C" fn(*mut c_char)>,
     /// 1.2: the plugin's current setting values as a flat JSON object (freed with `free_str`).
     pub settings_get: Option<extern "C" fn(*mut c_void) -> *mut c_char>,
+    // 1.6
+    /// 1.6: calls a host method by name with a JSON argument; the JSON result (freed with `free_str`), or null for an
+    /// unknown method. `host.capabilities` lists every method and event with its version.
+    pub call: Option<extern "C" fn(*mut c_void, *const c_char, *const c_char) -> *mut c_char>,
 }
 
 /// What a plugin offers the host. Returned strings are freed with the plugin's `free_str`;
@@ -231,6 +240,11 @@ pub struct PluginVTable {
     pub accents: Option<extern "C" fn(*mut c_void, *const ThemeInfo, *mut Accents) -> i32>,
     /// 1.4: fills the decorations (backgrounds, host-drawn decorations, effects) for the given base theme; 1 = it has some.
     pub decor: Option<extern "C" fn(*mut c_void, *const ThemeInfo, *mut Decor) -> i32>,
+    // 1.6
+    /// 1.6: space-separated events this plugin subscribes to. The host sends only these to `on_event`.
+    pub events: *const c_char,
+    /// 1.6: an event (name, JSON payload): its JSON answer (freed with `free_str`), or null = not handled / no answer.
+    pub on_event: Option<extern "C" fn(*mut c_void, *const c_char, *const c_char) -> *mut c_char>,
 }
 
 /// Safe handle to the host, given to [`Plugin::start`]. Valid until [`Plugin::stop`] returns.
@@ -240,12 +254,30 @@ unsafe impl Send for Host {}
 
 impl Host {
     fn api(&self) -> Option<&HostApi> { unsafe { self.0.as_ref() } }
-    fn call(&self, f: impl Fn(&HostApi) -> StrFn, text: &str) {
+    fn str_fn(&self, f: impl Fn(&HostApi) -> StrFn, text: &str) {
         if let Some(a) = self.api() { if let Some(f) = f(a) { let c = cs(text); f(a.ctx, c.as_ptr()) } }
     }
-    pub fn toast(&self, text: &str) { self.call(|a| a.toast, text) }
-    pub fn send(&self, text: &str) { self.call(|a| a.send, text) }
-    pub fn log(&self, text: &str) { self.call(|a| a.log, text) }
+    pub fn toast(&self, text: &str) { self.str_fn(|a| a.toast, text) }
+    pub fn send(&self, text: &str) { self.str_fn(|a| a.send, text) }
+    pub fn log(&self, text: &str) { self.str_fn(|a| a.log, text) }
+    /// 1.6: calls host method `method` with a JSON argument (`"{}"` for none). None = the host has no such method.
+    /// A method that fails answers `{"error": "..."}`.
+    pub fn call(&self, method: &str, json: &str) -> Option<String> {
+        let a = self.api()?;
+        let (call, free) = (a.call?, a.free_str?);
+        let (m, j) = (cs(method), cs(json));
+        let p = call(a.ctx, m.as_ptr(), j.as_ptr());
+        if p.is_null() { return None; }
+        let s = unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned();
+        free(p);
+        Some(s)
+    }
+    /// 1.6: the version of a host method or event (`host.capabilities`), None when this host does not offer it.
+    pub fn version(&self, name: &str) -> Option<u32> {
+        Values::parse(&self.call("host.capabilities", "{}")?).number(name).map(|v| v as u32)
+    }
+    /// 1.6: whether the host offers method or event `name`.
+    pub fn has(&self, name: &str) -> bool { self.version(name).is_some() }
     pub fn get(&self, key: &str) -> Option<String> {
         let a = self.api()?;
         let (get, free) = (a.data_get?, a.free_str?);
@@ -295,6 +327,10 @@ pub trait Plugin: Default + 'static {
     fn accents(&mut self, _theme: &ThemeInfo) -> Option<Accents> { None }
     /// For design plugins: backgrounds, decorations and effects Webox draws for this base theme (contract 1.4).
     fn decor(&mut self, _theme: &ThemeInfo) -> Option<Decor> { None }
+    /// 1.6: space-separated events to receive in [`Plugin::on_event`] (e.g. `"settings.changed"`).
+    const EVENTS: &'static str = "";
+    /// 1.6: one of [`Plugin::EVENTS`] fired, with its JSON payload. The answer (JSON) if the event takes one; None = not handled.
+    fn on_event(&mut self, _name: &str, _payload: &str) -> Option<String> { None }
 }
 
 /// A C string from any `&str` (interior NULs are dropped).
@@ -362,6 +398,9 @@ extern "C" fn accents_shim<T: Plugin>(p: *mut c_void, th: *const ThemeInfo, o: *
         None => 0,
     })
 }
+extern "C" fn event_shim<T: Plugin>(p: *mut c_void, n: *const c_char, j: *const c_char) -> *mut c_char {
+    with::<T, _>(p, std::ptr::null_mut(), |me| out(me.on_event(&unsafe { arg(n) }, &unsafe { arg(j) })))
+}
 extern "C" fn free_shim(s: *mut c_char) { if !s.is_null() { drop(unsafe { CString::from_raw(s) }) } }
 extern "C" fn destroy_shim<T: Plugin>(p: *mut c_void) {
     if !p.is_null() { let _ = catch_unwind(AssertUnwindSafe(|| drop(unsafe { Box::from_raw(p as *mut T) }))); }
@@ -381,6 +420,7 @@ pub fn vtable<T: Plugin>() -> *const PluginVTable {
             command: Some(cmd_shim::<T>), palette: Some(pal_shim::<T>), free_str: Some(free_shim), destroy: Some(destroy_shim::<T>),
             settings_schema: Some(schema_shim::<T>), settings_changed: Some(changed_shim::<T>), settings_action: Some(action_shim::<T>),
             accents: Some(accents_shim::<T>), decor: Some(decor_shim::<T>),
+            events: leak(T::EVENTS), on_event: Some(event_shim::<T>),
         })) as *const PluginVTable
     }).unwrap_or(std::ptr::null())
 }
@@ -409,6 +449,8 @@ mod tests {
         const DESCRIPTION: &'static str = "";
         fn on_send(&mut self, _t: &str) -> Option<String> { panic!("boom") }
         fn command(&mut self, n: &str, a: &str) -> Option<String> { Some(format!("{n}|{a}")) }
+        const EVENTS: &'static str = "a.b";
+        fn on_event(&mut self, n: &str, j: &str) -> Option<String> { if n == "boom" { panic!("boom") } Some(format!("{n}:{j}")) }
     }
 
     #[test]
@@ -434,6 +476,15 @@ mod tests {
         assert_eq!(unsafe { CStr::from_ptr(r) }.to_str().unwrap(), "|hi");
         (vt.free_str.unwrap())(r);
         assert_eq!((vt.palette.unwrap())(vt.instance, std::ptr::null_mut()), 0);
+        let (n, j) = (cs("a.b"), cs("{}"));
+        let r = (vt.on_event.unwrap())(vt.instance, n.as_ptr(), j.as_ptr());
+        assert_eq!(unsafe { CStr::from_ptr(r) }.to_str().unwrap(), "a.b:{}");
+        (vt.free_str.unwrap())(r);
+        assert_eq!(unsafe { CStr::from_ptr(vt.events) }.to_str().unwrap(), "a.b");
+        let n = cs("boom");
+        std::panic::set_hook(Box::new(|_| {}));
+        assert!((vt.on_event.unwrap())(vt.instance, n.as_ptr(), j.as_ptr()).is_null());
+        let _ = std::panic::take_hook();
         // No settings: a null schema.
         assert!((vt.settings_schema.unwrap())(vt.instance).is_null());
         (vt.destroy.unwrap())(vt.instance);

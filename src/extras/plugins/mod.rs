@@ -10,14 +10,28 @@ use settings::push_settings;
 use collabhost_plugin_api::{cs, unpack_contract, Accents, Decor, HostApi, Palette, PluginVTable, ThemeInfo, ABI_VERSION, CONTRACT_SYMBOL, ENTRY_SYMBOL};
 use serde_json::{Map, Value};
 use std::ffi::{c_char, c_void, CStr, CString};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 /// What plugins asked the host to do; the window drains it every frame.
 #[derive(Default)]
-pub struct Outbox { pub toasts: Vec<String>, pub sends: Vec<String>, pub logs: Vec<String> }
+pub struct Outbox { pub toasts: Vec<String>, pub sends: Vec<String>, pub logs: Vec<String>,
+    /// `space.send`: (space id, text).
+    pub sends_to: Vec<(String, String)> }
 
-struct Ctx { plugin: String, out: Arc<Mutex<Outbox>>, data: Arc<Mutex<Map<String, Value>>>, data_file: PathBuf, settings: Arc<Mutex<Map<String, Value>>> }
+/// One message of a space as `space.history` hands it out.
+struct Recent { author: String, mine: bool, text: String }
+/// The newest messages per space, copied from the window's loaded lists while a plugin subscribes to `message.received`, so
+/// plugin threads can read them (`space.history`) without touching the UI's data.
+type Recents = Arc<Mutex<HashMap<String, Vec<Recent>>>>;
+/// How many messages per space `space.history` can return.
+const RECENT_MAX: usize = 200;
+/// How many message ids `message_received` remembers to fire once per id.
+const SEEN_MAX: usize = 4096;
+
+struct Ctx { plugin: String, out: Arc<Mutex<Outbox>>, data: Arc<Mutex<Map<String, Value>>>, data_file: PathBuf, settings: Arc<Mutex<Map<String, Value>>>,
+    recent: Recents }
 
 type Ptr = *mut c_void;
 /// The plugin's function table after checking that no entry is null.
@@ -35,13 +49,22 @@ struct Calls {
     accents: Option<extern "C" fn(Ptr, *const ThemeInfo, *mut Accents) -> i32>,
     /// Contract 1.4 (decorations).
     decor: Option<extern "C" fn(Ptr, *const ThemeInfo, *mut Decor) -> i32>,
+    // 1.6
+    /// Contract 1.6 (named events).
+    on_event: Option<extern "C" fn(Ptr, *const c_char, *const c_char) -> *mut c_char>,
 }
 fn calls(v: &PluginVTable, minor: u16) -> Option<Calls> {
     let (schema, changed, action) = if minor >= 2 { (v.settings_schema, v.settings_changed, v.settings_action) } else { (None, None, None) };
     let accents = if minor >= 3 { v.accents } else { None };
     let decor = if minor >= 4 { v.decor } else { None };
+    // 1.6
+    let on_event = if minor >= 6 { v.on_event } else { None };
     Some(Calls { start: v.start?, stop: v.stop?, on_send: v.on_send?, on_message: v.on_message?, command: v.command?,
-        palette: v.palette?, free_str: v.free_str?, destroy: v.destroy?, schema, changed, action, accents, decor })
+        palette: v.palette?, free_str: v.free_str?, destroy: v.destroy?, schema, changed, action, accents, decor, on_event })
+}
+/// The events a plugin subscribed to (`PluginVTable::events`, 1.6; older tables end before it, so it is not read there).
+fn events(v: &PluginVTable, minor: u16) -> Vec<String> {
+    if minor >= 6 && v.on_event.is_some() { s(v.events).split_whitespace().map(String::from).collect() } else { vec![] }
 }
 /// The plugin's decorations for `th`, if it has any.
 fn decor_of(l: &Loaded, th: &ThemeInfo) -> Option<Decor> {
@@ -57,10 +80,17 @@ fn accents_of(l: &Loaded, th: &ThemeInfo) -> Option<Accents> {
 }
 
 // Field order is drop order: the library is unloaded last.
-pub struct Loaded { inst: Ptr, c: Calls, host: Box<HostApi>, _ctx: Box<Ctx>, _lib: libloading::Library }
+pub struct Loaded { inst: Ptr, c: Calls, events: Vec<String>, host: Box<HostApi>, _ctx: Box<Ctx>, _lib: libloading::Library }
 impl Loaded {
     /// Takes a string the plugin returned (null = None) and hands it back to the plugin's allocator.
     fn take(&self, r: *mut c_char) -> Option<String> { if r.is_null() { None } else { let t = s(r); (self.c.free_str)(r); Some(t) } }
+    /// Sends event `name` (one of `EVENTS`) to this plugin if it subscribed to it: its answer, if any.
+    fn event(&self, name: &str, json: &str) -> Option<String> {
+        let f = self.c.on_event?;
+        if !self.events.iter().any(|e| e == name) { return None; }
+        let (n, j) = (cs(name), cs(json));
+        self.take(f(self.inst, n.as_ptr(), j.as_ptr()))
+    }
 }
 
 pub struct Entry {
@@ -84,6 +114,9 @@ pub struct Plugins {
     data: Arc<Mutex<Map<String, Value>>>, state_file: PathBuf, data_file: PathBuf,
     /// Saved setting values of every plugin (`<config>/plugin-settings/`, secrets in the OS keyring).
     pub(crate) settings_store: ps::Store,
+    recent: Recents,
+    /// Message ids `message.received` already fired for (the set, and the same ids oldest first to forget them).
+    seen: (HashSet<String>, VecDeque<String>),
 }
 
 fn s(p: *const c_char) -> String { if p.is_null() { String::new() } else { unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned() } }
@@ -113,6 +146,56 @@ extern "C" fn h_set(c: Ptr, k: *const c_char, v: *const c_char) {
 extern "C" fn h_settings(c: Ptr) -> *mut c_char { guard(c, std::ptr::null_mut(), |c| cs(&Value::Object(lock(&c.settings).clone()).to_string()).into_raw()) }
 extern "C" fn h_free(p: *mut c_char) { if !p.is_null() { drop(unsafe { CString::from_raw(p) }) } }
 
+// Contract 1.6: named methods and events (docs/plugins.md, "Events and methods"). New capabilities are added here, not to the
+// tables. Names: `<area>.<verb>` for methods, `<area>.<past participle>` for events. The number is the payload version: it
+// goes up when a payload gains an optional field; anything incompatible gets a new name.
+
+/// A host method: the parsed JSON argument (Null when missing or not JSON) -> its JSON result.
+type Method = fn(&Ctx, &Value) -> Value;
+/// What `HostApi::call` answers: (name, version, handler).
+const METHODS: &[(&str, u32, Method)] = &[
+    ("host.capabilities", 1, |_, _| capabilities()),
+    ("ui.toast", 1, |c, a| with_text(a, |t| lock(&c.out).toasts.push(format!("{}: {t}", c.plugin)))),
+    ("log.write", 1, |c, a| with_text(a, |t| lock(&c.out).logs.push(format!("[{}] {t}", c.plugin)))),
+    ("settings.get", 1, |c, _| Value::Object(lock(&c.settings).clone())),
+    // `{"space","text"}`: posted as a new plain-text message on the next frame (through the plugins' send hooks; dropped for a
+    // space I cannot write in). The composer is not touched.
+    ("space.send", 1, |c, a| match (a.get("space").and_then(Value::as_str), a.get("text").and_then(Value::as_str)) {
+        (Some(sp), Some(t)) => { lock(&c.out).sends_to.push((sp.to_string(), t.to_string())); Value::Object(Map::new()) }
+        _ => serde_json::json!({ "error": "space und text erforderlich" }),
+    }),
+    // `{"space","limit"}`: the last `limit` loaded messages, oldest first, without system lines. No network request.
+    ("space.history", 1, |c, a| {
+        let Some(sp) = a.get("space").and_then(Value::as_str) else { return serde_json::json!({ "error": "space fehlt" }) };
+        let n = a.get("limit").and_then(Value::as_u64).unwrap_or(RECENT_MAX as u64) as usize;
+        let r = lock(&c.recent);
+        let l = r.get(sp).map_or(&[][..], |l| &l[l.len().saturating_sub(n)..]);
+        serde_json::json!({ "messages": l.iter().map(|m| serde_json::json!({ "author": m.author, "mine": m.mine, "text": m.text })).collect::<Vec<_>>() })
+    }),
+];
+/// The events Webox fires: (name, version). A plugin receives those it lists in `Plugin::EVENTS`.
+const EVENTS: &[(&str, u32)] = &[
+    // The plugin's setting values changed (and once before every start). Payload: all values, as `settings.get` returns them.
+    ("settings.changed", 1),
+    // A message arrived live, once per message id, also my own. Payload: `{"space","id","author","text","mine","direct",
+    // "mentioned"}` (`direct` = 1:1 space, `mentioned` = it @-mentions me). Fired on the UI thread: return at once.
+    ("message.received", 1),
+];
+/// `host.capabilities`: every method and event with its version, as one flat object.
+fn capabilities() -> Value {
+    Value::Object(METHODS.iter().map(|m| (m.0, m.1)).chain(EVENTS.iter().copied()).map(|(n, v)| (n.to_string(), v.into())).collect())
+}
+/// Runs `f` with the argument's `text`: `{}` on success, `{"error": ...}` without one.
+fn with_text(a: &Value, f: impl FnOnce(&str)) -> Value {
+    match a.get("text").and_then(Value::as_str) { Some(t) => { f(t); Value::Object(Map::new()) } None => serde_json::json!({ "error": "text fehlt" }) }
+}
+/// Runs `method` from `table`; null for an unknown method.
+fn dispatch(table: &[(&str, u32, Method)], c: &Ctx, method: &str, json: &str) -> *mut c_char {
+    let Some(m) = table.iter().find(|m| m.0 == method) else { return std::ptr::null_mut() };
+    cs(&(m.2)(c, &serde_json::from_str(json).unwrap_or(Value::Null)).to_string()).into_raw()
+}
+extern "C" fn h_call(c: Ptr, m: *const c_char, j: *const c_char) -> *mut c_char { guard(c, std::ptr::null_mut(), |c| dispatch(METHODS, c, &s(m), &s(j))) }
+
 fn read_json(p: &Path) -> Map<String, Value> {
     std::fs::read_to_string(p).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
 }
@@ -135,7 +218,7 @@ impl Plugins {
         let _ = std::fs::create_dir_all(&dirs[0]);
         let data_file = config.join("plugin-data.json");
         let mut p = Plugins { dirs, list: vec![], out: Default::default(), install_root, data: Arc::new(Mutex::new(read_json(&data_file))),
-            state_file: config.join("plugins.json"), data_file, settings_store: ps::Store::new(config) };
+            state_file: config.join("plugins.json"), data_file, settings_store: ps::Store::new(config), recent: Default::default(), seen: Default::default() };
         store::clean(&p.install_root);
         p.rescan();
         p
@@ -211,17 +294,7 @@ impl Plugins {
             let (major, minor) = unpack_contract(contract);
             check_contract(major, minor)?;
             let vt = entry();
-            if vt.is_null() || unsafe { (*vt).abi } != ABI_VERSION { return Err("für eine andere Plugin-Schnittstelle gebaut".into()); }
-            let v = unsafe { &*vt };
-            let c = calls(v, minor).ok_or("unvollständige Funktionstabelle")?;
-            if v.instance.is_null() { return Err("Plugin hat keine Instanz angelegt".into()); }
-            e.name = s(v.name); e.author = s(v.author); e.version = s(v.version); e.description = s(v.description);
-            e.commands = s(v.commands).split_whitespace().map(String::from).collect();
-            let ctx = Box::new(Ctx { plugin: key.to_string(), out: self.out.clone(), data: self.data.clone(), data_file: self.data_file.clone(),
-                settings: e.settings.values.clone() });
-            let host = Box::new(HostApi { ctx: &*ctx as *const Ctx as Ptr, toast: Some(h_toast), send: Some(h_send), log: Some(h_log),
-                data_get: Some(h_get), data_set: Some(h_set), free_str: Some(h_free), settings_get: Some(h_settings) });
-            Ok(Loaded { inst: v.instance, c, host, _ctx: ctx, _lib: lib })
+            self.attach(e, key, vt, minor, lib)
         })();
         match res {
             Ok(l) => {
@@ -233,6 +306,23 @@ impl Plugins {
             }
             Err(x) => { e.error = Some(x); e.enabled = false; }
         }
+    }
+
+    /// Checks a plugin's table (read only as far as contract `minor` has it) and gives the plugin its host context.
+    fn attach(&self, e: &mut Entry, key: &str, vt: *const PluginVTable, minor: u16, lib: libloading::Library) -> Result<Loaded, String> {
+        if vt.is_null() || unsafe { (*vt).abi } != ABI_VERSION { return Err("für eine andere Plugin-Schnittstelle gebaut".into()); }
+        let v = unsafe { &*vt };
+        let c = calls(v, minor).ok_or("unvollständige Funktionstabelle")?;
+        if v.instance.is_null() { return Err("Plugin hat keine Instanz angelegt".into()); }
+        e.name = s(v.name); e.author = s(v.author); e.version = s(v.version); e.description = s(v.description);
+        e.commands = s(v.commands).split_whitespace().map(String::from).collect();
+        let ctx = Box::new(Ctx { plugin: key.to_string(), out: self.out.clone(), data: self.data.clone(), data_file: self.data_file.clone(),
+            settings: e.settings.values.clone(), recent: self.recent.clone() });
+        let host = Box::new(HostApi { ctx: &*ctx as *const Ctx as Ptr, toast: Some(h_toast), send: Some(h_send), log: Some(h_log),
+            data_get: Some(h_get), data_set: Some(h_set), free_str: Some(h_free), settings_get: Some(h_settings),
+            // 1.6
+            call: Some(h_call) });
+        Ok(Loaded { inst: v.instance, c, events: events(v, minor), host, _ctx: ctx, _lib: lib })
     }
 
     pub fn set_enabled(&mut self, i: usize, on: bool) {
@@ -319,6 +409,30 @@ impl Plugins {
         Some(t)
     }
 
+    /// Fires event `name` (one of `EVENTS`) at every enabled plugin that subscribed to it: their answers.
+    pub fn emit(&self, name: &str, json: &str) -> Vec<String> { self.active().filter_map(|l| l.event(name, json)).collect() }
+
+    /// Whether an enabled plugin subscribed to event `name`.
+    pub fn subscribed(&self, name: &str) -> bool { self.active().any(|l| l.c.on_event.is_some() && l.events.iter().any(|e| e == name)) }
+
+    /// Copies the newest messages of `space` (system lines left out) for `space.history`. The window calls it only while a
+    /// plugin subscribes to `message.received`.
+    pub fn note_space(&self, space: &str, list: &[crate::cloud::Message]) {
+        let l = list.iter().filter(|m| m.notice.is_empty()).rev().take(RECENT_MAX).collect::<Vec<_>>();
+        let l = l.into_iter().rev().map(|m| Recent { author: m.author.clone(), mine: m.mine, text: m.text.clone() }).collect();
+        lock(&self.recent).insert(space.to_string(), l);
+    }
+
+    /// Fires `message.received` once per message id (a message can arrive twice, as a live event and in a reloaded list).
+    #[allow(clippy::too_many_arguments)]
+    pub fn message_received(&mut self, space: &str, id: &str, author: &str, text: &str, mine: bool, direct: bool, mentioned: bool) {
+        if !self.seen.0.insert(id.to_string()) { return; }
+        self.seen.1.push_back(id.to_string());
+        if self.seen.1.len() > SEEN_MAX { if let Some(old) = self.seen.1.pop_front() { self.seen.0.remove(&old); } }
+        let p = serde_json::json!({ "space": space, "id": id, "author": author, "text": text, "mine": mine, "direct": direct, "mentioned": mentioned });
+        self.emit("message.received", &p.to_string());
+    }
+
     /// Whether any loaded, enabled plugin can rewrite messages (`on_message` is the identity otherwise).
     pub fn rewrites_messages(&self) -> bool { self.active().next().is_some() }
 
@@ -403,6 +517,179 @@ mod tests {
         let c = super::calls(v, 2).unwrap();
         assert!(c.schema.is_some() && c.changed.is_some() && c.action.is_some());
         (c.destroy)(v.instance);
+    }
+
+    /// A 1.6 plugin that subscribes to two events, answers them with what it saw, panics on `test.boom` and calls the host on start.
+    #[derive(Default)]
+    struct Ev { seen: Vec<String>, caps: Option<String>, toast: Option<String>, nope: Option<String> }
+    impl collabhost_plugin_api::Plugin for Ev {
+        const NAME: &'static str = "Ev"; const AUTHOR: &'static str = ""; const VERSION: &'static str = ""; const DESCRIPTION: &'static str = "";
+        const EVENTS: &'static str = "settings.changed test.boom";
+        fn start(&mut self, h: collabhost_plugin_api::Host) {
+            self.caps = h.call("host.capabilities", "{}");
+            self.toast = h.call("ui.toast", r#"{"text":"hi"}"#);
+            self.nope = h.call("no.such", "{}");
+            assert!(h.has("ui.toast") && h.version("settings.changed") == Some(1) && !h.has("no.such"));
+        }
+        fn on_event(&mut self, name: &str, payload: &str) -> Option<String> {
+            if name == "test.boom" { panic!("boom") }
+            self.seen.push(name.into());
+            Some(format!("{}:{payload}", self.seen.len()))
+        }
+    }
+
+    /// Loads plugin `T` from this test binary as if it were a library reporting contract 1.`minor`.
+    fn load_in_process<T: collabhost_plugin_api::Plugin>(minor: u16) -> (super::Plugins, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("collabhost-ev-{minor}-{}-{}", T::NAME, std::process::id()));
+        let mut p = super::Plugins::with_root(&dir, dir.join("installed"));
+        #[cfg(windows)] let lib: libloading::Library = libloading::os::windows::Library::this().unwrap().into();
+        #[cfg(unix)] let lib: libloading::Library = libloading::os::unix::Library::this().into();
+        let mut e = super::Plugins::entry(dir.join("ev"), "ev", &Default::default(), None);
+        let l = p.attach(&mut e, "ev", collabhost_plugin_api::vtable::<T>(), minor, lib).unwrap();
+        e.loaded = Some(l);
+        p.list.push(e);
+        let i = p.list.len() - 1;
+        p.set_enabled(i, true);
+        (p, dir)
+    }
+
+    #[test]
+    fn a_1_4_plugin_still_loads_and_gets_no_events() {
+        let v = unsafe { &*collabhost_plugin_api::vtable::<Ev>() };
+        // A 1.4 table ends before `events` / `on_event`: neither is read.
+        assert!(super::calls(v, 4).unwrap().on_event.is_none() && super::events(v, 4).is_empty());
+        (v.destroy.unwrap())(v.instance);
+        let (p, dir) = load_in_process::<Ev>(4);
+        assert!(p.list.last().unwrap().error.is_none());
+        assert!(p.emit("settings.changed", "{}").is_empty());
+        drop(p);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn events_reach_subscribers_only_and_panics_stay_inside() {
+        let (p, dir) = load_in_process::<Ev>(6);
+        assert_eq!(p.emit("settings.changed", r#"{"a":1}"#), vec![r#"1:{"a":1}"#.to_string()]);
+        // Not subscribed: never called (the counter in the answer stays at 2 below).
+        assert!(p.emit("test.other", "{}").is_empty());
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        assert!(p.emit("test.boom", "{}").is_empty());
+        std::panic::set_hook(prev);
+        assert_eq!(p.emit("settings.changed", "{}"), vec!["2:{}".to_string()]);
+        // What the plugin got from `call` on start.
+        let l = p.list.last().unwrap().loaded.as_ref().unwrap();
+        let ev = unsafe { &*(l.inst as *const Ev) };
+        let caps: serde_json::Value = serde_json::from_str(ev.caps.as_deref().unwrap()).unwrap();
+        for (n, v) in super::METHODS.iter().map(|m| (m.0, m.1)).chain(super::EVENTS.iter().copied()) { assert_eq!(caps[n], v); }
+        assert_eq!(caps.as_object().unwrap().len(), super::METHODS.len() + super::EVENTS.len());
+        assert_eq!(ev.toast.as_deref(), Some("{}"));
+        assert_eq!(ev.nope, None);
+        assert_eq!(p.out.lock().unwrap().toasts, vec!["ev: hi".to_string()]);
+        drop(p);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn host_methods_answer_and_never_unwind() {
+        use std::ffi::CStr;
+        let ctx = super::Ctx { plugin: "k".into(), out: Default::default(), data: Default::default(), data_file: Default::default(),
+            settings: std::sync::Arc::new(std::sync::Mutex::new(serde_json::json!({ "x": true }).as_object().unwrap().clone())), recent: Default::default() };
+        let c = &ctx as *const super::Ctx as super::Ptr;
+        let call = |m: &str, j: &str| {
+            let (m, j) = (collabhost_plugin_api::cs(m), collabhost_plugin_api::cs(j));
+            let r = super::h_call(c, m.as_ptr(), j.as_ptr());
+            if r.is_null() { return None; }
+            let t = unsafe { CStr::from_ptr(r) }.to_string_lossy().into_owned();
+            super::h_free(r);
+            Some(t)
+        };
+        assert_eq!(call("nope", "{}"), None);
+        assert_eq!(call("settings.get", "").as_deref(), Some(r#"{"x":true}"#));
+        assert_eq!(call("ui.toast", "not json").as_deref(), Some(r#"{"error":"text fehlt"}"#));
+        assert_eq!(call("log.write", r#"{"text":"t"}"#).as_deref(), Some("{}"));
+        assert_eq!(ctx.out.lock().unwrap().logs, vec!["[k] t".to_string()]);
+        // A null context and a panicking handler both answer null instead of unwinding into the plugin.
+        assert!(super::h_call(std::ptr::null_mut(), std::ptr::null(), std::ptr::null()).is_null());
+        let boom: &[(&str, u32, super::Method)] = &[("boom", 1, |_, _| panic!("boom"))];
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        assert!(super::guard(c, std::ptr::null_mut(), |c| super::dispatch(boom, c, "boom", "{}")).is_null());
+        std::panic::set_hook(prev);
+    }
+
+    /// Records every `message.received` payload.
+    static RECEIVED: std::sync::Mutex<Vec<serde_json::Value>> = std::sync::Mutex::new(vec![]);
+    #[derive(Default)]
+    struct Listener;
+    impl collabhost_plugin_api::Plugin for Listener {
+        const NAME: &'static str = "L"; const AUTHOR: &'static str = ""; const VERSION: &'static str = ""; const DESCRIPTION: &'static str = "";
+        const EVENTS: &'static str = "message.received";
+        fn on_event(&mut self, _: &str, payload: &str) -> Option<String> { RECEIVED.lock().unwrap().push(serde_json::from_str(payload).unwrap()); None }
+    }
+
+    #[test]
+    fn message_received_fires_once_per_id_and_only_to_subscribers() {
+        // Ev subscribes to other events: nothing collects messages for it and it gets none (its counter stays at 0).
+        let (mut p, dir) = load_in_process::<Ev>(6);
+        assert!(!p.subscribed("message.received"));
+        p.message_received("s", "x", "A", "t", false, true, false);
+        assert_eq!(p.emit("settings.changed", "{}"), vec!["1:{}".to_string()]);
+        drop(p);
+        let _ = std::fs::remove_dir_all(dir);
+
+        let (mut p, dir) = load_in_process::<Listener>(6);
+        assert!(p.subscribed("message.received"));
+        p.message_received("s1", "m1", "Anna", "Hallo", false, true, false);
+        // The same activity again (live event + reloaded list): not a second time.
+        p.message_received("s1", "m1", "Anna", "Hallo", false, true, false);
+        p.message_received("s2", "m2", "Ich", "ok", true, false, true);
+        // Events it did not subscribe to never reach it.
+        assert!(p.emit("test.other", "{}").is_empty());
+        assert_eq!(*RECEIVED.lock().unwrap(), [
+            serde_json::json!({ "space": "s1", "id": "m1", "author": "Anna", "text": "Hallo", "mine": false, "direct": true, "mentioned": false }),
+            serde_json::json!({ "space": "s2", "id": "m2", "author": "Ich", "text": "ok", "mine": true, "direct": false, "mentioned": true }),
+        ]);
+        // Switched off: not subscribed any more, nothing fires.
+        let i = p.list.len() - 1;
+        p.set_enabled(i, false);
+        assert!(!p.subscribed("message.received"));
+        p.message_received("s1", "m3", "Anna", "x", false, true, false);
+        assert_eq!(RECEIVED.lock().unwrap().len(), 2);
+        drop(p);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn space_history_and_space_send_through_call() {
+        use std::ffi::CStr;
+        let dir = std::env::temp_dir().join(format!("collabhost-space-{}", std::process::id()));
+        let p = super::Plugins::with_root(&dir, dir.join("installed"));
+        let msg = |author: &str, mine: bool, text: &str| crate::cloud::Message { author: author.into(), mine, text: text.into(), ..Default::default() };
+        let notice = crate::cloud::Message { notice: "Anna ist beigetreten".into(), ..Default::default() };
+        p.note_space("s1", &[msg("Anna", false, "eins"), notice, msg("Ich", true, "zwei"), msg("Anna", false, "drei")]);
+        let ctx = super::Ctx { plugin: "k".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(), recent: p.recent.clone() };
+        let c = &ctx as *const super::Ctx as super::Ptr;
+        let call = |m: &str, j: serde_json::Value| {
+            let (m, j) = (collabhost_plugin_api::cs(m), collabhost_plugin_api::cs(&j.to_string()));
+            let r = super::h_call(c, m.as_ptr(), j.as_ptr());
+            let t: serde_json::Value = serde_json::from_str(&unsafe { CStr::from_ptr(r) }.to_string_lossy()).unwrap();
+            super::h_free(r);
+            t
+        };
+        // The last `limit`, oldest first, system lines left out; an unknown space has none.
+        assert_eq!(call("space.history", serde_json::json!({ "space": "s1", "limit": 2 })),
+            serde_json::json!({ "messages": [{ "author": "Ich", "mine": true, "text": "zwei" }, { "author": "Anna", "mine": false, "text": "drei" }] }));
+        assert_eq!(call("space.history", serde_json::json!({ "space": "s1" }))["messages"].as_array().unwrap().len(), 3);
+        assert_eq!(call("space.history", serde_json::json!({ "space": "nope", "limit": 5 })), serde_json::json!({ "messages": [] }));
+        assert!(call("space.history", serde_json::json!({})).get("error").is_some());
+        assert_eq!(call("space.send", serde_json::json!({ "space": "s1", "text": "Bis gleich!" })), serde_json::json!({}));
+        assert!(call("space.send", serde_json::json!({ "text": "wohin?" })).get("error").is_some());
+        let out = std::mem::take(&mut *p.out.lock().unwrap());
+        assert_eq!(out.sends_to, [("s1".to_string(), "Bis gleich!".to_string())]);
+        assert!(out.sends.is_empty(), "never the open space");
+        drop(p);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
