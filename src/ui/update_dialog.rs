@@ -24,7 +24,7 @@ impl App {
                 if v != "available" { menu::menu_open(ctx, KEY); }
             }
         }
-        if updater::NO_AUTO_CHECK.load(std::sync::atomic::Ordering::Relaxed) || std::env::var_os("WEBOX_NO_UPDATE_CHECK").is_some() { return; }
+        if updater::NO_AUTO_CHECK.load(std::sync::atomic::Ordering::Relaxed) || std::env::var_os("WEBOX_NO_UPDATE_CHECK").is_some() || updater::from_nix_store() { return; }
         let n = crate::ui::chrome::now_ms();
         let last = self.settings["update_checked"].as_i64().unwrap_or(0);
         if self.settings["auto_update_check"].as_bool().unwrap_or(true) && !in_call && (n - last >= updater::AUTO_INTERVAL_MS || n < last) {

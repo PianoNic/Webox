@@ -172,6 +172,7 @@ impl App {
                     let a = self.share_picker_ui(ui, vctx, t, &mut p, r, true);
                     if !matches!(a, Act::None) { act = a; }
                 });
+                crate::ui::chrome::edge_overlay(vctx); // Linux: no server-side border to resize by
                 vctx.request_repaint_after(std::time::Duration::from_millis(500));
             });
         }

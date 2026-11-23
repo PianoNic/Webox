@@ -59,6 +59,9 @@ fn fail_text(f: &Fail) -> (String, String, bool) {
     match f {
         Fail::NoCamera => ("Keine Kamera gefunden".into(), "Stellen Sie sicher, dass Ihre Kamera an Ihren Computer angeschlossen ist.".into(), false),
         Fail::InUse(n) => ("Ihre Kamera kann nicht gestartet werden".into(), format!("Stellen Sie sicher, dass Ihr Kameragerät {n} derzeit nicht von einer anderen Anwendung verwendet wird."), false),
+        #[cfg(target_os = "linux")]
+        Fail::Denied => ("Kein Zugriff auf die Kamera".into(), "Kein Zugriff auf die Kamera (/dev/video*). Ist dein Benutzer in der Gruppe „video“?".into(), false),
+        #[cfg(not(target_os = "linux"))]
         Fail::Denied => ("Webex den Zugriff auf Ihre Kamera erlauben".into(), "Erlauben Sie in Ihren Systemeinstellungen den Zugriff auf Ihre Kamera, damit andere Sie in Meetings sehen können.".into(), cfg!(windows)),
         Fail::Unplugged(n) => ("Ihre Kamera ist nicht angeschlossen".into(), format!("Stellen Sie sicher, dass Ihr Kameragerät {n} verbunden ist und funktioniert."), false),
         // invented (clone text): opened, but no frame for 5 s

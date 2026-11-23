@@ -111,6 +111,7 @@ impl App {
                 Some(t) => { self.save_token(&t); self.need_login = false; self.refreshed = false; self.sign_in(t.access); }
                 None => { self.login_page = LoginPage::Code; self.need_login = true; self.login_error = "The sign-in response couldn't be read.".into(); }
             },
+            platform::webview::Captured::Closed => self.login_page = LoginPage::Email,
             platform::webview::Captured::Code(code) => {
                 self.login_page = LoginPage::Code;
                 let (base, dev) = (self.idbroker_base(), self.oauth_device_id());

@@ -364,9 +364,4 @@ pub(crate) fn paint_preview(p: &egui::Painter, r: Rect, id: ThemeId, a: f32) {
 pub(crate) fn msg_font_scale_of(k: &str) -> f32 { match k { "small" => 0.875, "medium" => 1.125, "large" => 1.25, _ => 1.0 } }
 
 /// The OS download folder (default of "Standardmäßiger Dateispeicherort").
-pub(super) fn dirs_download() -> String {
-    #[cfg(windows)]
-    if let Ok(p) = std::env::var("USERPROFILE") { return format!("{p}\\Downloads"); }
-    if let Ok(p) = std::env::var("HOME") { return format!("{p}/Downloads"); }
-    "Downloads".into()
-}
+pub(super) fn dirs_download() -> String { system::default_download_dir().to_string_lossy().into_owned() }

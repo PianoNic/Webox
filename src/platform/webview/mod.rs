@@ -156,7 +156,8 @@ mod tests;
 
 /// What the webview hands back: either a ready **token** (the in-webview cookie'd `fetch` already
 /// redeemed the code — preferred), or just the **code** for the out-of-process `ureq` fallback.
-pub enum Captured { Token(String), Code(String) }
+pub enum Captured { Token(String), Code(String), /// the user closed the sign-in window (Linux window of its own)
+    Closed }
 
 /// Classify a message the SCRAPER posted back: a redeemed token (from a future in-page exchange),
 /// or the code for the native out-of-process exchange. Today only the code path is produced.

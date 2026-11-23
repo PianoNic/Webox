@@ -17,21 +17,32 @@ use std::time::Instant;
 /// Encoders in order of preference: (element, bitrate unit divisor from bit/s, key frame interval property).
 const ENCODERS: [(&str, u32, &str); 4] = [("x264enc", 1000, "key-int-max"), ("openh264enc", 1, "gop-size"), ("vah264enc", 1000, "key-int-max"), ("vaapih264enc", 1000, "keyframe-period")];
 
-fn use_portal() -> bool {
-    let wayland = match crate::platform::linux::session() {
+fn wayland() -> bool {
+    match crate::platform::linux::session() {
         crate::platform::linux::Session::Wayland => true,
         crate::platform::linux::Session::X11 => false,
         crate::platform::linux::Session::Unknown => std::env::var_os("WAYLAND_DISPLAY").is_some(),
-    };
-    (wayland || std::env::var_os("WEBOX_SHARE_X11").is_none()) && portal::available()
+    }
 }
+/// `WEBOX_SHARE_X11`: X11 capture (`ximagesrc`) on X11 even with a portal, and on Wayland where the portal is missing
+/// (it only sees XWayland windows). Without it Wayland never falls back to X11 capture (black screens).
+fn x11_wanted() -> bool { std::env::var_os("WEBOX_SHARE_X11").is_some() }
 
 pub(super) fn sources() -> Vec<ShareSource> {
-    if use_portal() {
+    // the portal check never blocks: while it runs (None) nothing is listed yet, the picker lists again every second
+    let portal = if wayland() || !x11_wanted() { portal::available() } else { Some(false) };
+    if portal == Some(true) {
         let p = |handle, name: String| ShareSource { kind: Kind::Portal, handle, index: 0, name, app: String::new(), size: (0, 0), primary: handle == 1, minimized: false };
         return vec![p(1, crate::trq!("Screen").into()), p(2, crate::tr!("ScreenAndAppTab", "Application").into())];
     }
+    if portal.is_none() || (wayland() && !x11_wanted()) { return vec![]; }
     if x11::present() { x11::sources() } else { vec![] }
+}
+
+/// Why nothing can be shared, for the picker: on Wayland without a ScreenCast portal (and no `WEBOX_SHARE_X11`).
+pub(super) fn unavailable() -> Option<String> {
+    (wayland() && !x11_wanted() && portal::available() == Some(false))
+        .then(|| "Bildschirmfreigabe nicht verfügbar: xdg-desktop-portal fehlt (oder bietet keine Bildschirmaufnahme)".into())
 }
 
 pub(super) fn thumbnail(s: &ShareSource, max: (u32, u32)) -> Option<(u32, u32, Vec<u8>)> {
@@ -54,6 +65,8 @@ fn raw_caps(size: Option<(u32, u32)>, fps: u32) -> gst::Caps {
 pub(super) fn run(src: &ShareSource, opts: Opts, out: &Out) -> Result<(), String> {
     gst::init().map_err(|e| format!("GStreamer: {e}"))?;
     let ctl = &out.ctl;
+    // the encoder first, so a missing plugin fails before the desktop's share dialog comes up
+    let encoder = pick_encoder()?;
     // the source element, and the source size where known
     let mut cast = None;
     let (source, size) = match src.kind {
@@ -74,8 +87,8 @@ pub(super) fn run(src: &ShareSource, opts: Opts, out: &Out) -> Result<(), String
             (s, Some(src.size))
         }
         Kind::Portal => {
+            let s = make("pipewiresrc")?; // before the dialog, like the encoder
             let Some(c) = portal::open(src.handle == 2, opts.cursor, &|| ctl.stopped())? else { return Ok(()) };
-            let s = make("pipewiresrc")?;
             prop(&s, "fd", &std::os::fd::AsRawFd::as_raw_fd(&c.fd).to_string());
             prop(&s, "path", &c.node.to_string());
             prop(&s, "do-timestamp", "true");
@@ -87,17 +100,21 @@ pub(super) fn run(src: &ShareSource, opts: Opts, out: &Out) -> Result<(), String
         }
     };
     let size = size.filter(|s| s.0 > 0 && s.1 > 0).map(|(w, h)| convert::fit(w, h, opts.max_size));
-    let r = encode(src, source, size, opts, out);
+    let r = encode(src, source, size, opts, out, encoder);
     drop(cast);
     r
 }
 
-fn encode(src: &ShareSource, source: gst::Element, size: Option<(u32, u32)>, opts: Opts, out: &Out) -> Result<(), String> {
-    let ctl = &out.ctl;
+/// The H.264 encoder to use (`ENCODERS` order, or `WEBOX_SHARE_ENCODER`).
+fn pick_encoder() -> Result<(&'static str, u32, &'static str), String> {
     let wanted = std::env::var("WEBOX_SHARE_ENCODER").ok();
-    let (enc_name, unit, gop_prop) = ENCODERS.iter().copied()
+    ENCODERS.iter().copied()
         .find(|(n, ..)| wanted.as_deref().map_or(true, |w| w == *n) && gst::ElementFactory::find(n).is_some())
-        .ok_or("no H.264 encoder for GStreamer is installed (x264enc, openh264enc or VA-API; see docs/LINUX.md)")?;
+        .ok_or_else(|| "no H.264 encoder for GStreamer is installed (x264enc, openh264enc or VA-API; see docs/LINUX.md)".into())
+}
+
+fn encode(src: &ShareSource, source: gst::Element, size: Option<(u32, u32)>, opts: Opts, out: &Out, (enc_name, unit, gop_prop): (&str, u32, &str)) -> Result<(), String> {
+    let ctl = &out.ctl;
     let enc = make(enc_name)?;
     let fps = ctl.fps();
     match enc_name {

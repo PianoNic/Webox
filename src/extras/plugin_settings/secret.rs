@@ -46,21 +46,21 @@ impl Secrets for OsSecrets {
 #[cfg(all(unix, not(target_os = "macos")))]
 impl Secrets for OsSecrets {
     fn get(&self, plugin: &str, id: &str) -> Option<String> {
-        let o = std::process::Command::new("secret-tool").args(["lookup", "application", "webox", "plugin", plugin, "setting", id])
+        let o = crate::system::restore_env(std::process::Command::new("secret-tool").args(["lookup", "application", "webox", "plugin", plugin, "setting", id]))
             .stderr(std::process::Stdio::null()).output().ok()?;
         (o.status.success() && !o.stdout.is_empty()).then(|| String::from_utf8_lossy(&o.stdout).into_owned())
     }
     fn set(&mut self, plugin: &str, id: &str, value: &str) -> Result<(), String> {
         use std::io::Write;
         let label = format!("Webox: {}", target(plugin, id));
-        let mut c = std::process::Command::new("secret-tool").args(["store", "--label", &label, "application", "webox", "plugin", plugin, "setting", id])
+        let mut c = crate::system::restore_env(std::process::Command::new("secret-tool").args(["store", "--label", &label, "application", "webox", "plugin", plugin, "setting", id]))
             .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
             .spawn().map_err(|_| "secret-tool nicht gefunden (libsecret-tools)".to_string())?;
         c.stdin.take().ok_or("secret-tool")?.write_all(value.as_bytes()).map_err(|e| e.to_string())?;
         if c.wait().map_err(|e| e.to_string())?.success() { Ok(()) } else { Err("Schlüsselbund nicht erreichbar".into()) }
     }
     fn delete(&mut self, plugin: &str, id: &str) {
-        let _ = std::process::Command::new("secret-tool").args(["clear", "application", "webox", "plugin", plugin, "setting", id])
+        let _ = crate::system::restore_env(std::process::Command::new("secret-tool").args(["clear", "application", "webox", "plugin", plugin, "setting", id]))
             .stderr(std::process::Stdio::null()).status();
     }
 }

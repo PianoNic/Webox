@@ -27,6 +27,9 @@
   # glyph fallback behind the bundled Selawik font; xdg-open for links
   dejavu_fonts,
   xdg-utils,
+  libsecret,
+  pipewire,
+  noto-fonts-cjk-sans,
   makeShellWrapper,
   mesa,
   # Outside NixOS, programs from Nix can't load the distribution's OpenGL drivers. With this on, the wrapper points libglvnd
@@ -134,6 +137,7 @@ stdenvNoCC.mkDerivation {
     gst_all_1.gst-plugins-base
     gst_all_1.gst-plugins-good
     gst_all_1.gst-plugins-bad
+    pipewire # libgstpipewire.so (pipewiresrc) for screen share
   ] ++ lib.optional withLibav gst_all_1.gst-libav;
 
   installPhase = ''
@@ -148,10 +152,12 @@ stdenvNoCC.mkDerivation {
   dontWrapGApps = true;
   postFixup = ''
     makeShellWrapper ${unwrapped}/bin/webox $out/bin/webox "''${gappsWrapperArgs[@]}" \
+      --run 'export WEBOX_ORIG_LD_LIBRARY_PATH="''${LD_LIBRARY_PATH-}"' \
       --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath runtimeLibs}" \
       --set-default WEBOX_FALLBACK_FONT "${dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf" \
+      --set-default WEBOX_FALLBACK_FONTS "${noto-fonts-cjk-sans}/share/fonts/opentype/noto-cjk/NotoSansCJK-VF.otf.ttc" \
       --set WEBOX_WRAPPER "$out/bin/webox" \
-      --suffix PATH : "${lib.makeBinPath [ xdg-utils ]}" ${lib.optionalString withMesaFallback ''\
+      --suffix PATH : "${lib.makeBinPath [ xdg-utils libsecret glib.bin ]}" ${lib.optionalString withMesaFallback ''\
       --run 'if [ ! -e /run/opengl-driver/lib ] && [ -z "''${WEBOX_HOST_GL:-}" ]; then
         export __EGL_VENDOR_LIBRARY_DIRS="''${__EGL_VENDOR_LIBRARY_DIRS:-${mesa}/share/glvnd/egl_vendor.d}"
         export __GLX_VENDOR_LIBRARY_NAME="''${__GLX_VENDOR_LIBRARY_NAME:-mesa}"

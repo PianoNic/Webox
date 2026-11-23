@@ -67,7 +67,7 @@ pub fn stage_copy(g: &Gif) -> Option<PathBuf> {
     if !src.is_file() { return None; }
     let mut name = crate::app::files::safe_name(&g.title);
     if !name.to_lowercase().ends_with(".gif") { name.push_str(".gif"); }
-    let dir = std::env::temp_dir().join("webox-staged").join(crate::jose::uuid());
+    let dir = crate::system::cache_dir("webox-staged", "staged").join(crate::jose::uuid());
     std::fs::create_dir_all(&dir).ok()?;
     let dst = dir.join(name);
     std::fs::copy(src, &dst).ok()?;

@@ -74,6 +74,10 @@ fn open(url: String, profile: std::path::PathBuf, tx: Sender<super::Captured>, c
     if let Some(st) = WebViewExt::settings(&webview) { st.set_enable_developer_extras(false); st.set_javascript_can_open_windows_automatically(false); }
     window.add(&webview);
 
+    // The user closed the window (title bar, Alt+F4): the sign-in page goes back to the email step.
+    let tx_closed = tx.clone();
+    window.connect_destroy(move |_| { let _ = tx_closed.send(super::Captured::Closed); });
+
     // Every committed URI: the SCRAPER's location.hash fallback and any `code=`-carrying navigation.
     let tx_uri = tx;
     webview.connect_uri_notify(move |wv| {

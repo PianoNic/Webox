@@ -37,3 +37,26 @@ fn icons_by_extension() {
     assert_eq!(file_icon("x.docx"), "file-word-regular");
     assert_eq!(file_icon("noext"), "file-text-regular");
 }
+#[test]
+fn image_paste_is_a_v_release_without_its_press() {
+    let ctrl = egui::Modifiers::COMMAND;
+    let v = |pressed, modifiers| egui::Event::Key { key: Key::V, physical_key: Some(Key::V), pressed, repeat: false, modifiers };
+    // Ctrl+V with an image only: egui-winit drops the press, the release arrives.
+    let mut s = PasteKeys::default();
+    assert!(!s.frame(&[], true, false));
+    assert!(s.frame(&[v(false, ctrl)], true, false));
+    // Ctrl let go first: Ctrl was held since the last V release.
+    let mut s = PasteKeys::default();
+    assert!(!s.frame(&[], true, false));
+    assert!(!s.frame(&[], false, false));
+    assert!(s.frame(&[v(false, Default::default())], false, false));
+    // A text paste: the press became Event::Paste.
+    let mut s = PasteKeys::default();
+    assert!(!s.frame(&[egui::Event::Paste("x".into())], true, false));
+    assert!(!s.frame(&[v(false, ctrl)], true, false));
+    // Typing v: press seen (same frame or the frame before), no Ctrl.
+    let mut s = PasteKeys::default();
+    assert!(!s.frame(&[v(true, Default::default())], false, true));
+    assert!(!s.frame(&[v(false, Default::default())], false, false));
+    assert!(!s.frame(&[v(true, Default::default()), v(false, Default::default())], false, false));
+}

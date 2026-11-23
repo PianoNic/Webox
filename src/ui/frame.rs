@@ -44,7 +44,13 @@ impl eframe::App for App {
                 if email.contains('@') { self.kick_signin(&email); }
             }
         }
-        if self.minimize { self.minimize = false; ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)); }
+        // Wayland: a minimized window only comes back through xdg-activation (platform/linux/activation.rs); a compositor without
+        // it gets the window shown instead.
+        #[cfg(target_os = "linux")]
+        let can_restore = crate::platform::linux::session() != crate::platform::linux::Session::Wayland || crate::platform::linux::activation::available();
+        #[cfg(not(target_os = "linux"))]
+        let can_restore = true;
+        if self.minimize { self.minimize = false; if can_restore { ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)); } }
         self.poll(now);
         self.typing_frame(ctx); // my typing → the service (throttled), typers' overlay animation (ui/typing.rs)
         self.poll_webview();

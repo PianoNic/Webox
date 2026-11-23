@@ -94,7 +94,7 @@ impl WebView {
                         // webox-token:<json> (redeemed) or webox-code:<code> (fetch failed → ureq fallback).
                         let msg = if !as_str.is_empty() { &as_str } else { &as_json };
                         if let Some(c) = super::classify(msg) {
-                            log(match &c { super::Captured::Token(_) => "RECV token from webview".into(), super::Captured::Code(code) => format!("RECV code (ureq fallback) len={}", code.len()) });
+                            log(match &c { super::Captured::Token(_) => "RECV token from webview".into(), super::Captured::Code(code) => format!("RECV code (ureq fallback) len={}", code.len()), super::Captured::Closed => "RECV closed".into() });
                             let _ = tx_msg.send(c);
                         }
                     }

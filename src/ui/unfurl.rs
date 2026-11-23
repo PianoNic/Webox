@@ -159,7 +159,7 @@ fn read_capped(r: ureq::Response, cap: u64) -> Option<Vec<u8>> {
 
 fn agent() -> ureq::Agent {
     // A browser user agent, as some sites serve their meta tags only to browsers.
-    ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(6)).redirects(MAX_REDIRECTS)
+    crate::cloud::tls::agent().timeout(std::time::Duration::from_secs(6)).redirects(MAX_REDIRECTS)
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36").build()
 }
 

@@ -12,6 +12,13 @@ impl App {
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+        // Wayland ignores all three: only an xdg-activation token brings the window to the front (the panel's, the notification's,
+        // the second start's; else one of its own). Without a handed-in token the taskbar entry asks for attention as well.
+        #[cfg(target_os = "linux")]
+        if crate::platform::linux::session() == crate::platform::linux::Session::Wayland && !crate::platform::linux::activation::activate(None) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::RequestUserAttention(egui::UserAttentionType::Informational));
+            self.notify.flashing = true;
+        }
     }
 
     /// Hides the main window into the tray (off-screen without a taskbar button on Windows, so the app keeps updating and can raise toasts).
@@ -128,7 +135,11 @@ impl App {
         // First frame: tray, test hooks.
         if !self.notify.started {
             self.notify.started = true;
+            #[cfg(not(target_os = "linux"))]
             if !screenshot && std::env::var_os("WEBOX_NO_TRAY").is_none() { self.notify.tray = tray::Tray::new(ctx); }
+            // Linux: registered off the UI thread, and only once the panel's watcher is up (autostart may beat the panel).
+            #[cfg(target_os = "linux")]
+            if !screenshot && std::env::var_os("WEBOX_NO_TRAY").is_none() { tray::Tray::start(ctx); }
             self.notify.tray_tried = true;
             if self.shot.is_some() { self.notify.quitting = true; }
             if let Ok(w) = std::env::var("WEBOX_SAMPLE_TOAST") {
@@ -168,6 +179,8 @@ impl App {
             // The avatar menu's header card (never in the tray menu): its name as a disabled row.
             ui::menu::Entry::Profile(p) => tray::MenuRow { label: p.name.clone(), enabled: false, sep: false },
         }).collect();
+        #[cfg(target_os = "linux")]
+        if self.notify.tray.is_none() { self.notify.tray = tray::Tray::ready(); }
         if let Some(tr) = &mut self.notify.tray {
             tr.set_unread(unread);
             #[cfg(target_os = "linux")]
@@ -183,14 +196,15 @@ impl App {
                 }
             }
         }
-        // Wayland can't hide a window (winit ignores Visible(false)), so there the X quits instead of leaving the window stuck open.
+        // Wayland can't hide a window (winit ignores Visible(false)): there the X minimizes instead (the tray / a notification
+        // brings it back through xdg-activation), so a running call goes on. Strg+Q / "Verlassen" (quitting) still quit.
         #[cfg(target_os = "linux")]
         let can_hide = crate::platform::linux::session() != crate::platform::linux::Session::Wayland;
         #[cfg(not(target_os = "linux"))]
         let can_hide = true;
-        if can_hide && ctx.input(|i| i.viewport().close_requested()) && !self.notify.quitting && self.notify.tray.is_some() && self.nb("close_to_tray", true) {
+        if ctx.input(|i| i.viewport().close_requested()) && !self.notify.quitting && self.notify.tray.is_some() && self.nb("close_to_tray", true) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.hide_main(ctx);
+            if can_hide { self.hide_main(ctx); } else { ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)); }
         }
 
         // Taskbar: flash while the window is behind, unread badge overlay.
@@ -228,7 +242,7 @@ impl App {
         }
         self.notify.toasts.retain(|ts| clock < ts.deadline + FADE);
         #[cfg(target_os = "linux")]
-        self.native_toasts(ctx);
+        { self.native_toasts(ctx); crate::ui::call_toast::call_note_frame(ctx); }
 
         if !self.notify.toasts.is_empty() && ctx.embed_viewports() {
             // No multi-viewport support: fall back to the in-window toast.
@@ -328,29 +342,37 @@ impl App {
     }
     /// Wayland: a client can't place its own window at the bottom right, so the toasts go to the desktop's notification server
     /// (same title, text and buttons; a click opens the space). `WEBOX_NATIVE_TOASTS=1/0` forces it on / off (X11 default: off,
-    /// the app's own toast windows as on Windows). Without a notification server the toast window stays.
+    /// the app's own toast windows as on Windows). The server is asked off the UI thread; a toast it fails (no server, an error, no
+    /// answer within 3 s) comes back once as the app's own toast window and isn't sent again.
     #[cfg(target_os = "linux")]
     pub(super) fn native_toasts(&mut self, ctx: &egui::Context) {
         use crate::platform::linux::notifications as n;
         let on = match std::env::var("WEBOX_NATIVE_TOASTS").ok().as_deref() { Some("1") => true, Some("0") => false, _ => crate::platform::linux::session() == crate::platform::linux::Session::Wayland };
+        let clock = self.notify.clock();
         let hub = &mut self.notify;
         if on && self.shot.is_none() {
             let mut keep = vec![];
             for ts in std::mem::take(&mut hub.toasts) {
+                if ts.native_failed { keep.push(ts); continue; }
                 if ts.dismissed { continue; }
                 let lead = ts.lead.as_ref().map(|l| l.0.as_str()).unwrap_or("");
                 let body = [ts.kicker.as_str(), lead, ts.body.as_str()].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join("\n");
                 let mut actions: Vec<(&str, &str)> = vec![("default", "Öffnen")];
                 actions.extend(ts.buttons.iter().map(|(id, l, _)| (*id, l.as_str())));
-                match n::send(ctx, &ts.title, &body, &actions, matches!(ts.kind, Kind::Mention)) {
-                    Some(id) => { hub.native.insert(id, ts); }
-                    None => keep.push(ts),
-                }
+                hub.native_wait.push((n::send(ctx, &ts.title, &body, &actions, 1), ts)); // urgency normal; 2 (critical) is for incoming calls
             }
             hub.toasts = keep;
         }
+        for (sent, mut ts) in std::mem::take(&mut hub.native_wait) {
+            match sent.get() {
+                None => hub.native_wait.push((sent, ts)), // still asking
+                Some(Some(id)) => { hub.native.insert(*id, ts); }
+                Some(None) => { ts.native_failed = true; ts.born = clock; ts.deadline = clock + DURATION; hub.toasts.push(ts); }
+            }
+        }
         for id in n::closed() { hub.native.remove(&id); }
         for (id, key) in n::invoked() {
+            if crate::ui::call_toast::call_note_invoked(id, &key) { continue; } // the incoming-call notification's Annehmen / Ablehnen
             let Some(ts) = hub.native.remove(&id) else { continue };
             n::close(id);
             match ts.buttons.iter().find(|b| b.0 == key).map(|b| b.0) {

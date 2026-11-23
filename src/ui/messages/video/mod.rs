@@ -106,7 +106,7 @@ fn poster_failed(path: &Path) -> bool { POSTERS.lock().ok().is_some_and(|g| g.as
 pub(super) enum Src { File(PathBuf), Fetching(u32), Remote, Failed(String), Preparing }
 
 /// Folder of the playback cache.
-fn cache_dir() -> PathBuf { std::env::temp_dir().join("webox-video-cache") }
+fn cache_dir() -> PathBuf { crate::system::cache_dir("webox-video-cache", "video-cache") }
 /// The cached file of a share: one folder per attachment key (hashed), the file under its own (safe) name so the framework sees
 /// its extension.
 pub(super) fn cache_path(key: &str, name: &str) -> PathBuf {

@@ -2,7 +2,7 @@
 //! sounds use), through cpal on its own thread (cpal streams are not `Send`). The callback takes sample frames from the player's
 //! queue, which advances the audio clock, resamples from the file's rate to the device's (linear) and maps the channels.
 use super::Shared;
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::traits::{DeviceTrait, StreamTrait};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -16,15 +16,6 @@ pub(super) fn start(sh: Arc<Shared>, speaker: &str, rate: u32, ch: u16) -> bool 
         drop(stream);
     });
     spawned.is_ok() && rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap_or(false)
-}
-
-/// The saved device if it is still there, else the default (as `media::audio::pick`).
-fn device(name: &str) -> Option<cpal::Device> {
-    let h = crate::media::audio::host();
-    if !name.is_empty() {
-        if let Some(d) = h.output_devices().ok().and_then(|mut it| it.find(|d| d.name().ok().as_deref() == Some(name))) { return Some(d); }
-    }
-    h.default_output_device()
 }
 
 /// Linear interpolation between whole sample frames, all channels at once.
@@ -61,32 +52,35 @@ pub(super) fn map_channels(src: &[f32], dst: &mut [f32]) {
 }
 
 fn open(sh: &Arc<Shared>, speaker: &str, rate: u32, ch: u16) -> Result<cpal::Stream, String> {
-    let dev = device(speaker).ok_or("no output device")?;
-    let cfg = dev.default_output_config().map_err(|e| e.to_string())?;
-    let (dst_rate, dst_ch, fmt) = (cfg.sample_rate().0, cfg.channels() as usize, cfg.sample_format());
-    let sh2 = sh.clone();
-    let mut rs = Resample::new(rate, dst_rate, ch as usize);
-    let (mut src_frame, mut dst_frame) = (vec![0.0f32; ch as usize], vec![0.0f32; dst_ch]);
-    let mut fill = move |len: usize, put: &mut dyn FnMut(usize, f32)| {
-        let (gain, playing) = (sh2.gain(), sh2.playing());
-        let mut q = sh2.lock();
-        for i in 0..len / dst_ch {
-            let ok = playing && rs.next(&mut src_frame, &mut |f| q.pop_audio_frame(f));
-            if ok { map_channels(&src_frame, &mut dst_frame) } else { dst_frame.iter_mut().for_each(|x| *x = 0.0) }
-            for (c, v) in dst_frame.iter().enumerate() { put(i * dst_ch + c, v * gain); }
-        }
-        if q.audio.is_empty() { rs.reset(); }
-        drop(q);
-        sh2.cv.notify_all();
+    let dev = crate::media::audio::pick(speaker, false).ok_or("no output device")?;
+    // 48 kHz on Linux where the device allows it (see `audio::stream_configs`); cpal's buffer size (latency is not an issue here)
+    let cfgs = crate::media::audio::stream_configs(&dev, false, None)?;
+    let build = |cfg: &cpal::StreamConfig, fmt: cpal::SampleFormat| -> Result<cpal::Stream, String> {
+        let (dst_rate, dst_ch) = (cfg.sample_rate.0, cfg.channels as usize);
+        let sh2 = sh.clone();
+        let mut rs = Resample::new(rate, dst_rate, ch as usize);
+        let (mut src_frame, mut dst_frame) = (vec![0.0f32; ch as usize], vec![0.0f32; dst_ch]);
+        let mut fill = move |len: usize, put: &mut dyn FnMut(usize, f32)| {
+            let (gain, playing) = (sh2.gain(), sh2.playing());
+            let mut q = sh2.lock();
+            for i in 0..len / dst_ch {
+                let ok = playing && rs.next(&mut src_frame, &mut |f| q.pop_audio_frame(f));
+                if ok { map_channels(&src_frame, &mut dst_frame) } else { dst_frame.iter_mut().for_each(|x| *x = 0.0) }
+                for (c, v) in dst_frame.iter().enumerate() { put(i * dst_ch + c, v * gain); }
+            }
+            if q.audio.is_empty() { rs.reset(); }
+            drop(q);
+            sh2.cv.notify_all();
+        };
+        let err = |e| eprintln!("video audio: {e}");
+        match fmt {
+            cpal::SampleFormat::F32 => dev.build_output_stream(cfg, move |d: &mut [f32], _| { let n = d.len(); fill(n, &mut |i, v| d[i] = v) }, err, None),
+            cpal::SampleFormat::I16 => dev.build_output_stream(cfg, move |d: &mut [i16], _| { let n = d.len(); fill(n, &mut |i, v| d[i] = (v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16) }, err, None),
+            cpal::SampleFormat::U16 => dev.build_output_stream(cfg, move |d: &mut [u16], _| { let n = d.len(); fill(n, &mut |i, v| d[i] = ((v.clamp(-1.0, 1.0) * 0.5 + 0.5) * u16::MAX as f32) as u16) }, err, None),
+            f => return Err(format!("sample format {f:?}")),
+        }.map_err(|e| e.to_string())
     };
-    let err = |e| eprintln!("video audio: {e}");
-    let cfg: cpal::StreamConfig = cfg.into();
-    let st = match fmt {
-        cpal::SampleFormat::F32 => dev.build_output_stream(&cfg, move |d: &mut [f32], _| { let n = d.len(); fill(n, &mut |i, v| d[i] = v) }, err, None),
-        cpal::SampleFormat::I16 => dev.build_output_stream(&cfg, move |d: &mut [i16], _| { let n = d.len(); fill(n, &mut |i, v| d[i] = (v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16) }, err, None),
-        cpal::SampleFormat::U16 => dev.build_output_stream(&cfg, move |d: &mut [u16], _| { let n = d.len(); fill(n, &mut |i, v| d[i] = ((v.clamp(-1.0, 1.0) * 0.5 + 0.5) * u16::MAX as f32) as u16) }, err, None),
-        f => return Err(format!("sample format {f:?}")),
-    }.map_err(|e| e.to_string())?;
+    let st = crate::media::audio::first_ok(&cfgs, build)?;
     st.play().map_err(|e| e.to_string())?;
     Ok(st)
 }

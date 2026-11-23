@@ -177,7 +177,7 @@ impl App {
         egui::Area::new(egui::Id::new("splash-area")).order(egui::Order::Foreground).fixed_pos(area.min).interactable(true).show(ctx, |ui| {
             let (r, resp) = ui.allocate_exact_size(area.size(), Sense::click_and_drag());
             // No header while loading: the window can still be moved by dragging the splash.
-            if resp.drag_started() { ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); }
+            if resp.drag_started() { crate::ui::chrome::note_os_grab(ctx); ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); }
             let p = ui.painter();
             p.rect_filled(r, 0.0, if light { Color32::WHITE } else { Color32::BLACK }.gamma_multiply(a));
             if let Some((id, [w, h])) = asset(if light { "wallpaper-splash.png" } else { "wallpaper-splash-dark.png" })

@@ -41,10 +41,11 @@ pub(crate) fn ghost_at(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th, id: &st
 impl App {
     /// Shows (or fades out) the toast window; returns what the user pressed. Called once per frame while a call rings.
     pub(crate) fn incoming_toast_window(&mut self, ctx: &egui::Context, t: &Th, now: f64, v: &CallView) -> CallActions {
-        let mut actions = CallActions::default();
+        let mut actions = self.call_note(ctx, v);
         let w = &mut self.call.win;
         let fade = w.toast_closed.map(|s| 1.0 - ((now - s) / FADE_SECS) as f32);
         if fade.is_some_and(|f| f <= 0.0) { return actions; } // faded out: window gone, the call keeps ringing (sound) until answered
+        let note = std::mem::take(&mut actions);
         // Exactly the card: no shadow, so no shadow padding.
         let size = Vec2::new(CONTENT_W, CONTENT_H);
         let pos = *w.toast_pos.get_or_insert_with(|| toast_anchor(ctx, size, 0));
@@ -67,7 +68,34 @@ impl App {
         }
         if fade.is_some() { ctx.request_repaint(); }
         if actions.dismiss { self.call.win.toast_closed = Some(now); }
+        actions.answer |= note.answer; actions.hang |= note.hang;
         actions
+    }
+
+    /// The call notification (Wayland only, see `CallNote`): sent once per ringing; its buttons act like the toast's.
+    pub(crate) fn call_note(&mut self, ctx: &egui::Context, v: &CallView) -> CallActions {
+        let mut a = CallActions::default();
+        #[cfg(target_os = "linux")]
+        if crate::platform::linux::session() == crate::platform::linux::Session::Wayland && self.shot.is_none() {
+            let pass = ctx.cumulative_pass_nr();
+            let action = {
+                let mut g = CALL_NOTE.lock().unwrap();
+                let n = g.get_or_insert_with(|| {
+                    let body = [state_text(&CallState::Incoming, 0), v.email.clone()].iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join("\n");
+                    let acts = [("default", "Öffnen"), ("answer", "Annehmen"), ("decline", "Ablehnen")];
+                    CallNote { sent: crate::platform::linux::notifications::send(ctx, &v.name, &body, &acts, 2), seen: pass, action: None }
+                });
+                n.seen = pass;
+                n.action.take()
+            };
+            match action.as_deref() {
+                Some("decline") => a.hang = true,
+                Some(k) => { a.answer = k == "answer"; self.show_main(ctx); } // the notification's activation token raises the window
+                None => {}
+            }
+        }
+        let _ = (ctx, v);
+        a
     }
 
     fn toast_content(&mut self, vctx: &egui::Context, t: &Th, v: &CallView, opacity: f32) -> CallActions {
@@ -128,5 +156,32 @@ impl App {
         });
         vctx.request_repaint_after(std::time::Duration::from_millis(100));
         a
+    }
+}
+
+/// Wayland: the incoming call also goes to the desktop's notification server (critical, "Annehmen" / "Ablehnen"), since the toast
+/// window can neither be placed nor kept on top there. One notification per ringing; it closes when the ringing stops.
+#[cfg(target_os = "linux")]
+struct CallNote { sent: crate::platform::linux::notifications::Sent, seen: u64, action: Option<String> }
+#[cfg(target_os = "linux")]
+static CALL_NOTE: std::sync::Mutex<Option<CallNote>> = std::sync::Mutex::new(None);
+
+/// An action of the call notification (from `native_toasts`): true when `id` is that notification.
+#[cfg(target_os = "linux")]
+pub(crate) fn call_note_invoked(id: u32, key: &str) -> bool {
+    let mut g = CALL_NOTE.lock().unwrap();
+    let Some(n) = g.as_mut().filter(|n| n.sent.get() == Some(&Some(id))) else { return false };
+    n.action = Some(key.to_string());
+    true
+}
+
+/// Once per frame after the call windows: the ringing stopped (no `incoming_toast_window` this pass) -> the notification goes.
+#[cfg(target_os = "linux")]
+pub(crate) fn call_note_frame(ctx: &egui::Context) {
+    let mut g = CALL_NOTE.lock().unwrap();
+    let Some(n) = g.as_ref().filter(|n| n.seen < ctx.cumulative_pass_nr()) else { return };
+    match n.sent.get() {
+        None => ctx.request_repaint_after(std::time::Duration::from_millis(100)), // still being sent: close it once it has an id
+        Some(id) => { if let Some(id) = id { crate::platform::linux::notifications::close(*id); } *g = None; }
     }
 }

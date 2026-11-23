@@ -77,11 +77,19 @@ fn local_format_keys(i: &mut egui::InputState) -> Option<KeyAct> {
         (Modifiers::COMMAND, Key::U, KeyAct::Fmt(Format::Underline)), (Modifiers::COMMAND, Key::K, KeyAct::Fmt(Format::Link)),
         (as_, Key::M, KeyAct::ToggleMarkdown), (as_, Key::O, KeyAct::Fmt(Format::NumberList)), (as_, Key::U, KeyAct::Fmt(Format::BulletList)),
         (as_, Key::Num0, KeyAct::Fmt(Format::CodeBlock)), (as_, Key::Num1, KeyAct::Fmt(Format::Heading(1))), (as_, Key::Num2, KeyAct::Fmt(Format::Heading(2))),
-        (as_, Key::Num3, KeyAct::Fmt(Format::Heading(3))), (Modifiers::ALT, Key::K, KeyAct::Fmt(Format::Strike)), (as_, Key::K, KeyAct::Fmt(Format::InlineCode)),
-        (Modifiers::COMMAND, Key::Equals, KeyAct::Fmt(Format::Sub)), (cs, Key::Equals, KeyAct::Fmt(Format::Sup)), (cs, Key::Plus, KeyAct::Fmt(Format::Sup)),
+        (as_, Key::Num3, KeyAct::Fmt(Format::Heading(3))), (as_, Key::K, KeyAct::Fmt(Format::InlineCode)), (Modifiers::ALT, Key::K, KeyAct::Fmt(Format::Strike)),
+        (cs, Key::Equals, KeyAct::Fmt(Format::Sup)), (cs, Key::Plus, KeyAct::Fmt(Format::Sup)), (Modifiers::COMMAND, Key::Equals, KeyAct::Fmt(Format::Sub)),
         (Modifiers::COMMAND, Key::Plus, KeyAct::Fmt(Format::Sup)), (Modifiers::COMMAND, Key::G, KeyAct::Gif),
     ];
-    table.iter().find(|(m, k, _)| i.consume_key(*m, *k)).map(|(_, _, a)| *a)
+    // As `consume_key` (extra Shift / Alt ignored, so the more specific entry comes first), plus: digits by their physical key
+    // (Alt+Shift+1 is "!" on DE/CH) and the text an Alt key typed goes too.
+    let digit = |k: Key| matches!(k, Key::Num0 | Key::Num1 | Key::Num2 | Key::Num3);
+    table.iter().find_map(|&(m, k, a)| {
+        let pos = i.events.iter().position(|e| matches!(e, egui::Event::Key { key, physical_key, pressed: true, modifiers, .. }
+            if (*key == k || digit(k) && *physical_key == Some(k)) && modifiers.matches_logically(m)))?;
+        crate::shortcuts::take_key(&mut i.events, pos);
+        Some(a)
+    })
 }
 
 fn mention_colour(t: &Th) -> Color32 { t.tk("message-bodyText-mention-all-text") }

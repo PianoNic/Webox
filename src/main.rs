@@ -235,15 +235,57 @@ fn linux_fonts(fonts: &mut egui::FontDefinitions) {
     }
     // Last resort for what neither Selawik nor egui's fonts have (typographic spaces such as the quote indent U+2002, more scripts):
     // the system's DejaVu / Noto / Liberation Sans. `WEBOX_FALLBACK_FONT` (set by the Nix wrapper) names the file directly.
-    if let Some(bytes) = system_fallback_font() {
-        fonts.font_data.insert("sysfallback".into(), Arc::new(egui::FontData::from_owned(bytes)));
-        for fam in [prop, sb] { fonts.families.get_mut(&fam).unwrap().push("sysfallback".into()); }
+    // Behind it the CJK fonts (`WEBOX_FALLBACK_FONTS`, colon-separated files, else fontconfig's Noto Sans CJK), else Chinese / Japanese /
+    // Korean text is boxes.
+    let extra = system_fallback_font().into_iter().chain(cjk_fallback_fonts());
+    for (n, bytes) in extra.enumerate() {
+        let key = format!("sysfallback{n}");
+        fonts.font_data.insert(key.clone(), Arc::new(egui::FontData::from_owned(bytes))); // a .ttc collection loads its first font (index 0)
+        for fam in [&prop, &sb] { fonts.families.get_mut(fam).unwrap().push(key.clone()); }
     }
+}
+
+/// Looks like an OpenType / TrueType font or collection (egui panics on a file it can't parse).
+#[cfg(not(windows))]
+fn is_font(b: &[u8]) -> bool { matches!(b.get(..4), Some([0, 1, 0, 0] | b"OTTO" | b"ttcf" | b"true")) }
+
+/// `fc-match` of `pattern`: (family list, file); `None` when fontconfig isn't there, answers an error or is not done by `deadline`.
+#[cfg(not(windows))]
+fn fc_match(pattern: &str, deadline: std::time::Instant) -> Option<(String, PathBuf)> {
+    use std::io::Read;
+    use std::process::{Command, Stdio};
+    let mut cmd = Command::new("fc-match");
+    system::restore_env(cmd.args(["-f", "%{family}\n%{file}", pattern]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()));
+    let mut c = cmd.spawn().ok()?; // not on PATH: no fontconfig
+    loop {
+        match c.try_wait().ok()? {
+            Some(st) if st.success() => break,
+            Some(_) => return None,
+            None if std::time::Instant::now() < deadline => std::thread::sleep(std::time::Duration::from_millis(5)),
+            None => { let _ = c.kill(); let _ = c.wait(); return None; }
+        }
+    }
+    let mut out = String::new();
+    c.stdout.take()?.read_to_string(&mut out).ok()?;
+    let (family, file) = out.split_once('\n')?;
+    Some((family.to_string(), PathBuf::from(file.trim())))
+}
+
+/// The CJK fallback fonts: the files of `WEBOX_FALLBACK_FONTS`, else (without that variable) fontconfig's "Noto Sans CJK SC".
+#[cfg(not(windows))]
+fn cjk_fallback_fonts() -> Vec<Vec<u8>> {
+    let read = |p: &std::path::Path| std::fs::read(p).ok().filter(|b| is_font(b));
+    if let Some(list) = std::env::var_os("WEBOX_FALLBACK_FONTS") { return std::env::split_paths(&list).filter_map(|p| read(&p)).collect(); }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);
+    fc_match("Noto Sans CJK SC", deadline).filter(|(family, _)| family.to_lowercase().contains("cjk")).and_then(|(_, p)| read(&p)).into_iter().collect()
 }
 
 #[cfg(not(windows))]
 fn system_fallback_font() -> Option<Vec<u8>> {
     if let Some(b) = std::env::var_os("WEBOX_FALLBACK_FONT").and_then(|p| std::fs::read(p).ok()) { return Some(b); }
+    // Whatever fontconfig picks for DejaVu Sans (NixOS and others keep fonts in places the folder walk below doesn't know).
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);
+    if let Some(b) = fc_match("DejaVu Sans", deadline).and_then(|(_, p)| std::fs::read(p).ok()).filter(|b| is_font(b)) { return Some(b); }
     const NAMES: [&str; 4] = ["DejaVuSans.ttf", "NotoSans-Regular.ttf", "LiberationSans-Regular.ttf", "FreeSans.ttf"];
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
     let mut dirs: Vec<PathBuf> = std::env::var_os("XDG_DATA_DIRS").map(|v| std::env::split_paths(&v).map(|p| p.join("fonts")).collect()).unwrap_or_default();

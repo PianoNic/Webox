@@ -120,7 +120,7 @@ impl App {
             let hh = 44.0;
             let head = Rect::from_min_size(full.min, Vec2::new(full.width(), hh));
             let drag = ui.interact(head, ui.id().with("dock-head"), Sense::click_and_drag());
-            if drag.drag_started() { vctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); self.call.win.dock_dragging = true; self.call.win.dock_last_move = now; self.call.win.set_dock_last_pos(outer.map_or(pos2(0.0, 0.0), |o| o.min)); }
+            if drag.drag_started() { crate::ui::chrome::note_os_grab(vctx); vctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); self.call.win.dock_dragging = outer.is_some(); self.call.win.dock_last_move = now; self.call.win.set_dock_last_pos(outer.map_or(pos2(0.0, 0.0), |o| o.min)); }
             let y = head.center().y;
             let mut x = head.right() - 12.0 - 16.0;
             let side = match mode { DockMode::Hovered(s) => Some(s), _ => None };
@@ -137,7 +137,7 @@ impl App {
             let sett = ghost_at(ui, &mut self.icons, t, "dock-settings", pos2(x, y), 32.0, "settings-bold", t.text1).on_hover_text("Einstellungen");
             if sett.clicked() { menu_toggle(vctx, "dock-settings"); }
             x -= 36.0;
-            if ghost_at(ui, &mut self.icons, t, "dock-pin", pos2(x, y), 32.0, if pin { "pin-muted-bold" } else { "pin-bold" }, t.text1).on_hover_text(if pin { "Lösen" } else { "Anheften" }).clicked() {
+            if !crate::ui::chrome::wayland() && ghost_at(ui, &mut self.icons, t, "dock-pin", pos2(x, y), 32.0, if pin { "pin-muted-bold" } else { "pin-bold" }, t.text1).on_hover_text(if pin { "Lösen" } else { "Anheften" }).clicked() {
                 self.settings["dock_keep_in_front"] = json!(!pin);
                 if self.persist_ok() { system::save_settings(&self.cfg, &self.settings); }
             }
@@ -196,6 +196,7 @@ impl App {
                 });
             }
         });
+        if !matches!(mode, DockMode::Docked(_)) { crate::ui::chrome::edge_overlay(vctx); } // resizable except as the fixed-size thumbnail
         vctx.request_repaint_after(std::time::Duration::from_millis(200));
         a
     }

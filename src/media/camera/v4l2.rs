@@ -67,8 +67,22 @@ pub fn list() -> Vec<CamDev> {
     }).collect();
     nodes.sort();
     let mut seen_bus = std::collections::HashSet::new();
-    for (_, path) in nodes {
-        let Ok(fd) = open_node(&path) else { continue };
+    for (k, path) in nodes {
+        let fd = match open_node(&path) {
+            Ok(fd) => fd,
+            // No access (not in the `video` group, no uaccess ACL): listed anyway, so the picker says why instead of showing
+            // no camera; picking it fails with `Fail::Denied`. Only a device's first node (`index` 0; the others are
+            // metadata nodes), named from sysfs (readable without access to the node).
+            Err(libc::EACCES | libc::EPERM) => {
+                let sys = |f: &str| std::fs::read_to_string(format!("/sys/class/video4linux/video{k}/{f}")).map(|s| s.trim().to_string()).unwrap_or_default();
+                if sys("index").parse::<u32>().unwrap_or(0) == 0 {
+                    let name = sys("name");
+                    v.push(CamDev { name: if name.is_empty() { denied_name(&path) } else { format!("{name} ({})", denied_name(&path)) }, id: path });
+                }
+                continue;
+            }
+            Err(_) => continue,
+        };
         let Some(c) = cap(fd.as_raw_fd()) else { continue };
         if !c.is_camera() || enum_modes(fd.as_raw_fd()).is_empty() { continue; }
         if !c.bus.is_empty() && !seen_bus.insert(c.bus.clone()) { continue; } // one entry per physical camera
@@ -77,7 +91,10 @@ pub fn list() -> Vec<CamDev> {
     v
 }
 
-struct Map { ptr: *mut libc::c_void, len: usize }
+/// The device list's note for a node Webox may not open.
+fn denied_name(path: &str) -> String { format!("Kein Zugriff auf {path}") }
+
+struct Map { ptr:*mut libc::c_void, len: usize }
 impl Drop for Map {
     // SAFETY: unmaps exactly what mmap returned.
     fn drop(&mut self) { unsafe { libc::munmap(self.ptr, self.len); } }

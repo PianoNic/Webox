@@ -43,7 +43,7 @@ fn host_ok(url: &str) -> bool {
 
 fn get(url: &str, accept: &str, timeout: Duration) -> Result<ureq::Response, Fail> {
     if !host_ok(url) { return Err(Fail::Other("Adresse außerhalb von GitHub abgelehnt".into())); }
-    let agent = ureq::AgentBuilder::new().user_agent(USER_AGENT).timeout_connect(Duration::from_secs(10)).timeout(timeout).redirects(5).build();
+    let agent = crate::cloud::tls::agent().user_agent(USER_AGENT).timeout_connect(Duration::from_secs(10)).timeout(timeout).redirects(5).build();
     let resp = match agent.get(url).set("Accept", accept).call() {
         Ok(r) => r,
         Err(ureq::Error::Status(code, r)) => return Err(status_fail(code, r.header("x-ratelimit-remaining"))),

@@ -72,7 +72,7 @@ pub fn history(config: &Path) -> Vec<(String, String)> {
 }
 
 fn manifest(firefox: bool, origins: &[&str]) -> Value {
-    let exe = crate::system::launcher_exe().display().to_string();
+    let exe = crate::system::launcher_path().display().to_string(); // by its profile path on Nix: the store path changes with every update
     let mut m = json!({"name": HOST_NAME, "description": "WebOx meeting helper", "path": exe, "type": "stdio"});
     if firefox { m["allowed_extensions"] = json!(FIREFOX_IDS) } else { m["allowed_origins"] = json!(origins) }
     m
@@ -99,7 +99,7 @@ pub fn register(config: &Path, on: bool) -> Result<(), String> {
         let _ = config;
         use std::path::PathBuf;
         let home = PathBuf::from(std::env::var_os("HOME").ok_or("no home folder")?);
-        let cfg = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
+        let cfg = crate::system::xdg_config_home().unwrap_or_else(|| home.join(".config"));
         let dirs: Vec<(PathBuf, bool, &[&str])> = vec![
             (cfg.join("google-chrome/NativeMessagingHosts"), false, &set[0].2[..]), (cfg.join("chromium/NativeMessagingHosts"), false, &set[0].2[..]),
             (cfg.join("microsoft-edge/NativeMessagingHosts"), false, &set[1].2[..]), (home.join(".mozilla/native-messaging-hosts"), true, &[][..]),
@@ -113,6 +113,17 @@ pub fn register(config: &Path, on: bool) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Linux/Nix, at every start: rewrites the manifests when the helper is switched on, so they follow the launcher (a store path goes
+/// stale after an update or a garbage collection). Only from a Nix build, so a development binary never takes the registration.
+pub fn refresh(config: &Path) {
+    #[cfg(not(windows))]
+    if crate::system::launcher_exe().starts_with("/nix/store") && crate::system::load_settings(config)["browser_helper"].as_bool() == Some(true) {
+        let _ = register(config, true);
+    }
+    #[cfg(windows)]
+    let _ = config;
 }
 
 #[cfg(test)]

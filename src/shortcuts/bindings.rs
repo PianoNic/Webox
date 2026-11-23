@@ -1,6 +1,9 @@
 //! The app side of shortcuts: loading, matching keys, running commands and global hotkeys.
 use super::*;
 
+/// Settings key (Linux): register the commands marked "Global" with the desktop (X11 grab / GlobalShortcuts portal). Default off.
+pub(crate) const GLOBAL_KEY: &str = "linux_global_shortcuts";
+
 impl App {
     pub(crate) fn sc_load(&mut self) { if !self.sc.loaded { let s = self.settings.clone(); self.sc.load(&s); } }
     pub(crate) fn sc_save(&mut self) {
@@ -82,14 +85,20 @@ impl App {
 
         // The settings page is recording a key (it stamps the pass number every pass while in edit mode).
         if ctx.data(|d| d.get_temp::<u64>(egui::Id::new("sc-capture"))).is_some_and(|n| ctx.cumulative_pass_nr().saturating_sub(n) <= 1) { return; }
-        let events: Vec<(Key, Modifiers, bool)> = ctx.input(|i| i.events.iter().filter_map(|e| match e {
-            egui::Event::Key { key, pressed: true, repeat, modifiers, .. } => Some((*key, *modifiers, *repeat)), _ => None }).collect());
+        // egui-winit turns Ctrl+C / X / V into Copy / Cut / Paste even with Shift and drops the key: with Shift they count as the key
+        // (for commands Webox implements, so Ctrl+Shift+V still pastes while ToggleVideoMute is a stub).
+        let events: Vec<(Key, Option<Key>, Modifiers, bool, bool)> = ctx.input(|i| i.events.iter().filter_map(|e| match e {
+            egui::Event::Key { key, physical_key, pressed: true, repeat, modifiers } => Some((*key, *physical_key, *modifiers, *repeat, false)),
+            egui::Event::Copy | egui::Event::Cut | egui::Event::Paste(_) if i.modifiers.shift && i.modifiers.command =>
+                Some((match e { egui::Event::Copy => Key::C, egui::Event::Cut => Key::X, _ => Key::V }, None, i.modifiers, false, true)),
+            _ => None }).collect());
         let text_focus = ctx.wants_keyboard_input();
-        for (key, mods, repeat) in events {
-            let hit = (0..reg.cmds.len()).find(|&i| {
+        for (key, phys, mods, repeat, clip) in events {
+            let pred = |i: usize, loose: bool| {
                 let (c, r) = (&reg.cmds[i], &self.sc.res[i]);
                 let Some(k) = r.key else { return false };
-                if !k.matches(key, &mods) || c.kind_native() { return false; }
+                if !k.matches_at(key, phys, &mods, loose) || c.kind_native() { return false; }
+                if clip && !matches!(c.kind, Kind::Run(_) | Kind::Cmd | Kind::Composer) { return false; }
                 #[cfg(any(windows, target_os = "linux"))]
                 if self.sc.global.is_registered(i) { return false; } // delivered by the hotkey thread
                 if repeat && !matches!(c.id, "ZoomIn" | "ZoomOut" | "PreviousSpace" | "NextSpace") { return false; }
@@ -97,9 +106,15 @@ impl App {
                 if k.plain_modifier_free() && !matches!(key, Key::F1 | Key::F2 | Key::F3 | Key::F4 | Key::F5 | Key::F6 | Key::F7 | Key::F8 | Key::F9 | Key::F10 | Key::F11 | Key::F12) { return false; }
                 if text_focus && k.plain_modifier_free() { return false; }
                 true
-            });
+            };
+            // Exact Shift first: Ctrl+Shift+= (Superscript) before Ctrl+= (Subscript, a symbol that also matches with Shift).
+            let hit = (0..reg.cmds.len()).find(|&i| pred(i, false)).or_else(|| (0..reg.cmds.len()).find(|&i| pred(i, true)));
             if let Some(i) = hit {
-                ctx.input_mut(|inp| inp.events.retain(|e| !matches!(e, egui::Event::Key { key: k2, pressed: true, modifiers: m2, .. } if *k2 == key && *m2 == mods)));
+                ctx.input_mut(|inp| {
+                    let pos = inp.events.iter().position(|e| if clip { key == Key::V && matches!(e, egui::Event::Paste(_)) } else {
+                        matches!(e, egui::Event::Key { key: k2, physical_key: p2, pressed: true, modifiers: m2, .. } if *k2 == key && *p2 == phys && *m2 == mods) });
+                    if let Some(p) = pos { take_key(&mut inp.events, p); } // a matched Ctrl+Shift+V does not paste
+                });
                 self.run_command(i, ctx);
             }
         }
@@ -108,9 +123,13 @@ impl App {
     /// Keeps the OS-level hotkeys in line with the settings (and with a call being on screen for call commands).
     pub(super) fn sc_sync_global(&mut self, _ctx: &egui::Context) {
         let reg = registry();
-        let call_on = self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none());
+        // Linux: opt-in (Ctrl+Shift+X / C, Ctrl+D are everyday keys in other apps), and the call commands stay bound for the whole
+        // run, because every change rebuilds the portal session and the desktop may ask again.
+        let linux = cfg!(target_os = "linux");
+        let call_on = linux || self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none());
         let mut want: Vec<(usize, Combo)> = Vec::new();
         for (i, c) in reg.cmds.iter().enumerate() {
+            if linux && !self.settings[GLOBAL_KEY].as_bool().unwrap_or(false) { break; }
             let r = &self.sc.res[i];
             let (Some(k), true) = (r.key, r.global) else { continue };
             // Only commands Webox implements are worth taking a key away from the whole system for; call commands only while a call is on screen.
@@ -118,9 +137,11 @@ impl App {
             want.push((i, k));
         }
         if want != self.sc.global_sig {
-            self.sc.global_sig = want.clone();
-            #[cfg(any(windows, target_os = "linux"))]
-            self.sc.global.set(_ctx, want);
+            #[cfg(windows)]
+            self.sc.global.set(_ctx, want.clone());
+            #[cfg(target_os = "linux")]
+            if !self.sc.global.set(_ctx, want.clone()) { return; } // no session type known yet: try again next frame
+            self.sc.global_sig = want;
         }
     }
 }

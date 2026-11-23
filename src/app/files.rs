@@ -121,6 +121,7 @@ pub fn download_cancel(key: &str) { with(|s| if let Some(d) = s.downloads.iter_m
 pub fn pick_files_async(space: &str) {
     let space = space.to_string();
     std::thread::spawn(move || {
+        let _rt = crate::system::enter_dbus_rt(); // the portal backend (ashpd / zbus) needs a tokio runtime context
         let r = rfd::FileDialog::new().set_title("Datei zum Hochladen auswählen").add_filter("Alle (*)", &["*"])
             .add_filter("Bilder", &["png", "jpg", "jpeg", "gif", "bmp", "webp"]).pick_files();
         if let Some(v) = r { with(|s| s.picks.push((space, v))); repaint(); }
@@ -135,6 +136,7 @@ pub fn take_picks(space: &str) -> Vec<PathBuf> {
 pub fn save_as_async(key: &str, name: &str, dir: &Path) {
     let (key, name, dir) = (key.to_string(), name.to_string(), dir.to_path_buf());
     std::thread::spawn(move || {
+        let _rt = crate::system::enter_dbus_rt();
         let r = rfd::FileDialog::new().set_title("Speichern unter").set_directory(&dir).set_file_name(&name).save_file();
         if let Some(p) = r { with(|s| s.saves.push((key, p))); repaint(); }
     });
@@ -145,18 +147,24 @@ pub fn take_saves() -> Vec<(String, PathBuf)> { with(|s| std::mem::take(&mut s.s
 /// Settings "Standardmäßiger Dateispeicherort" (`download_dir`), else the OS download folder (as the settings page shows it).
 pub fn download_dir(settings: &serde_json::Value) -> PathBuf {
     if let Some(d) = settings["download_dir"].as_str().filter(|d| !d.is_empty()) { return PathBuf::from(d); }
-    #[cfg(windows)]
-    if let Ok(p) = std::env::var("USERPROFILE") { return PathBuf::from(p).join("Downloads"); }
-    if let Ok(p) = std::env::var("HOME") { return PathBuf::from(p).join("Downloads"); }
-    PathBuf::from("Downloads")
+    crate::system::default_download_dir()
 }
 
-/// A file name that is safe on disk (no path parts, no reserved characters).
+/// Longest file name most file systems take (bytes).
+const MAX_NAME: usize = 255;
+
+/// A file name that is safe on disk (no path parts, no reserved characters, at most 255 bytes).
 pub fn safe_name(name: &str) -> String {
     let base = name.rsplit(['/', '\\']).next().unwrap_or("");
     let s: String = base.chars().map(|c| if "<>:\"/\\|?*".contains(c) || c.is_control() { '_' } else { c }).collect();
     let s = s.trim().trim_end_matches('.').to_string();
-    if s.is_empty() || s == "." || s == ".." { "Datei".into() } else { s }
+    if s.is_empty() || s == "." || s == ".." { return "Datei".into(); }
+    if s.len() <= MAX_NAME { return s; }
+    // Too long: shorten the stem at a character boundary, the extension stays.
+    let (stem, ext) = match s.rfind('.') { Some(i) if i > 0 && s.len() - i <= 32 => (&s[..i], &s[i..]), _ => (s.as_str(), "") };
+    let mut end = MAX_NAME - ext.len();
+    while !stem.is_char_boundary(end) { end -= 1; }
+    format!("{}{ext}", &stem[..end])
 }
 
 /// `dir/name`, or `dir/name (1).ext`, `(2)`, ... when that exists (Windows' own naming for copies).
@@ -190,20 +198,35 @@ pub fn mime_of(name: &str, head: &[u8]) -> String {
 
 /// Files that would run code when "opened": these are only shown in their folder, never started from the chat.
 pub fn runs_code(name: &str) -> bool {
-    let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
-    ["exe", "com", "bat", "cmd", "msi", "msp", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "scr", "pif", "lnk", "hta", "cpl", "jar", "reg", "appx", "msix"].contains(&ext.as_str())
+    let file = name.rsplit(['/', '\\']).next().unwrap_or("");
+    let ext = file.rsplit_once('.').map_or("", |(_, e)| e).to_lowercase();
+    ["exe", "com", "bat", "cmd", "msi", "msp", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "scr", "pif", "lnk", "hta", "cpl", "jar", "reg", "appx", "msix",
+        "desktop", "sh", "bash", "zsh", "appimage", "run", "bin", "py", "pl"].contains(&ext.as_str())
+}
+
+/// `runs_code`, and on Linux also a file without an extension that has an execute bit (a script or program).
+fn runs_code_at(p: &Path) -> bool {
+    if runs_code(&p.to_string_lossy()) { return true; }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let bare = p.file_name().is_some_and(|n| !n.to_string_lossy().contains('.'));
+        return bare && std::fs::metadata(p).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0);
+    }
+    #[cfg(not(unix))]
+    false
 }
 
 /// Opens a downloaded file with its default program (Windows: the shell's open verb via explorer).
 pub fn open_file(p: &Path) {
-    if runs_code(&p.to_string_lossy()) { show_in_folder(p); return; }
-    #[cfg(windows)] let _ = std::process::Command::new("explorer").arg(p).spawn();
-    #[cfg(not(windows))] let _ = std::process::Command::new("xdg-open").arg(p).spawn();
+    if runs_code_at(p) { show_in_folder(p); return; }
+    #[cfg(windows)] crate::system::spawn_detached(std::process::Command::new("explorer").arg(p));
+    #[cfg(not(windows))] crate::system::spawn_detached(std::process::Command::new("xdg-open").arg(p));
 }
 /// "In Ordner anzeigen": the file's folder with the file selected.
 /// Windows: `SHOpenFolderAndSelectItems` (reuses an Explorer window that already shows the folder), on its own thread with COM
 /// initialised; if that fails, `explorer.exe /select,"<path>"`. Linux: org.freedesktop.FileManager1.ShowItems over D-Bus
-/// (gdbus), else the folder via xdg-open.
+/// (zbus), else the folder via xdg-open.
 pub fn show_in_folder(p: &Path) {
     let p = p.to_path_buf();
     std::thread::spawn(move || {
@@ -213,12 +236,23 @@ pub fn show_in_folder(p: &Path) {
         }
         #[cfg(not(windows))]
         {
-            let ok = std::process::Command::new("gdbus").args(["call", "--session", "--dest", "org.freedesktop.FileManager1", "--object-path", "/org/freedesktop/FileManager1",
-                "--method", "org.freedesktop.FileManager1.ShowItems", &gvariant_uris(&[file_uri(&p)]), ""]).status().is_ok_and(|s| s.success());
-            if !ok { let _ = std::process::Command::new("xdg-open").arg(p.parent().unwrap_or(&p)).spawn(); }
+            if !show_items(&p) { crate::system::spawn_detached(std::process::Command::new("xdg-open").arg(p.parent().unwrap_or(&p))); }
         }
     });
 }
+
+/// `org.freedesktop.FileManager1.ShowItems` on the session bus; false when no file manager answers within 5 s.
+#[cfg(target_os = "linux")]
+fn show_items(p: &Path) -> bool {
+    let uri = file_uri(p);
+    crate::platform::linux::block(5000, async move {
+        let bus = crate::platform::linux::bus().await?;
+        const N: &str = "org.freedesktop.FileManager1";
+        bus.call_method(Some(N), "/org/freedesktop/FileManager1", Some(N), "ShowItems", &(vec![uri], "")).await.ok()
+    }).flatten().is_some()
+}
+#[cfg(all(not(windows), not(target_os = "linux")))]
+fn show_items(_: &Path) -> bool { false }
 
 /// `SHOpenFolderAndSelectItems` with the file's own ITEMIDLIST (an absolute pidl selects that item in its parent folder).
 #[cfg(windows)]
@@ -255,7 +289,7 @@ fn explorer_select(p: &Path) {
 pub(crate) fn explorer_select_arg(p: &Path) -> String { format!("/select,\"{}\"", p.display().to_string().replace('"', "")) }
 
 /// `file://` URI of an absolute path, every byte outside the unreserved set and `/` percent-encoded.
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(crate) fn file_uri(p: &Path) -> String {
     let s = p.to_string_lossy().replace('\\', "/");
     let mut out = String::from("file://");
@@ -264,12 +298,6 @@ pub(crate) fn file_uri(p: &Path) -> String {
         if b.is_ascii_alphanumeric() || b"-._~/:".contains(&b) { out.push(b as char) } else { out.push_str(&format!("%{b:02X}")) }
     }
     out
-}
-
-/// The `as` (array of strings) argument of `gdbus call`: `['uri', ...]` with `'` and `\` escaped.
-#[cfg_attr(windows, allow(dead_code))]
-pub(crate) fn gvariant_uris(uris: &[String]) -> String {
-    format!("[{}]", uris.iter().map(|u| format!("'{}'", u.replace('\\', "\\\\").replace('\'', "\\'"))).collect::<Vec<_>>().join(", "))
 }
 
 /// Size text under a file, as Webex writes it: below 1024 "%1 bytes" (de "%1 Byte"); below 1024² whole KB, truncated
@@ -313,6 +341,9 @@ mod tests {
         assert_eq!(safe_name("..\\..\\evil.exe"), "evil.exe");
         assert_eq!(safe_name("a:b?.txt"), "a_b_.txt");
         assert_eq!(safe_name(""), "Datei");
+        let long = safe_name(&format!("{}.pdf", "ä".repeat(300)));
+        assert!(long.len() <= 255 && long.ends_with("ä.pdf"), "{}", long.len());
+        assert_eq!(safe_name(&"a".repeat(400)).len(), 255);
         let dir = std::env::temp_dir().join(format!("webox-files-test-{}", crate::jose::uuid()));
         std::fs::create_dir_all(&dir).unwrap();
         assert_eq!(unique_path(&dir, "x.pdf"), dir.join("x.pdf"));
@@ -346,8 +377,8 @@ mod tests {
         assert_eq!(explorer_select_arg(p), "/select,\"C:\\Users\\A B\\Downloads\\Spesen, final (1).xltx\"");
         assert_eq!(file_uri(std::path::Path::new("/home/a b/x,y'z.txt")), "file:///home/a%20b/x%2Cy%27z.txt");
         assert_eq!(file_uri(std::path::Path::new(r"C:\a b\c.txt")), "file:///C:/a%20b/c.txt");
-        assert_eq!(gvariant_uris(&["file:///a".into(), "file:///b'c".into()]), "['file:///a', 'file:///b\\'c']");
         assert!(runs_code("setup.EXE") && !runs_code("a.pdf"));
+        assert!(runs_code("/tmp/x/Start.SH") && runs_code("a.AppImage") && !runs_code("/home/a.b/sh") && !runs_code("notes"));
     }
     #[test]
     fn capture_names_use_the_originals_pattern() {

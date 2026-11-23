@@ -24,17 +24,19 @@ struct Shared {
 pub(crate) struct Handle { shared: Arc<Mutex<Shared>>, started: bool, wake: Arc<tokio::sync::Notify> }
 
 impl Handle {
-    pub(crate) fn set(&mut self, ctx: &egui::Context, want: Vec<(usize, Combo)>) {
+    /// Hands over the wanted hotkeys; false: not started (session type unknown), call again later.
+    pub(crate) fn set(&mut self, ctx: &egui::Context, want: Vec<(usize, Combo)>) -> bool {
         { let mut s = self.shared.lock().unwrap(); s.wanted = want.clone(); s.dirty = true; s.ctx = Some(ctx.clone()); }
         self.wake.notify_one();
-        if self.started || want.is_empty() { return; }
+        if self.started || want.is_empty() { return true; }
         let shared = self.shared.clone();
         match crate::platform::linux::session() {
             crate::platform::linux::Session::X11 => { std::thread::Builder::new().name("webox-hotkeys".into()).spawn(move || run_x11(shared)).ok(); }
             crate::platform::linux::Session::Wayland => { crate::platform::linux::rt().spawn(run_portal(shared, self.wake.clone())); }
-            crate::platform::linux::Session::Unknown => return,
+            crate::platform::linux::Session::Unknown => return false,
         }
         self.started = true;
+        true
     }
     pub(crate) fn drain(&mut self) -> Vec<usize> { std::mem::take(&mut self.shared.lock().unwrap().fired) }
     pub(crate) fn is_registered(&self, idx: usize) -> bool { self.shared.lock().unwrap().registered.contains(&idx) }
@@ -150,7 +152,8 @@ async fn run_portal(shared: Arc<Mutex<Shared>>, wake: Arc<tokio::sync::Notify>) 
                     NewShortcut::new(cmd.id, if cmd.label.is_empty() { cmd.id } else { cmd.label }).preferred_trigger(t.as_deref())
                 }).collect();
                 if let Ok(req) = gs.bind_shortcuts(&s, &list, None).await {
-                    if let Ok(resp) = req.response() { for sc in resp.shortcuts() { if let Some(i) = reg.index(sc.id()) { ok.insert(i); } } }
+                    // A shortcut the user left without a key (empty trigger) stays in-app.
+                    if let Ok(resp) = req.response() { for sc in resp.shortcuts().iter().filter(|sc| !sc.trigger_description().is_empty()) { if let Some(i) = reg.index(sc.id()) { ok.insert(i); } } }
                 }
                 session = Some(s);
             }

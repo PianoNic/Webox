@@ -22,6 +22,7 @@ impl App {
         let picked = crate::app::files::take_picks(&id);
         if !picked.is_empty() { self.stage_paths(&mut st.chips, picked, edit, now); }
         if let Some(png) = super::super::screen_capture::take_capture(&id) { self.stage_bytes(&mut st.chips, &crate::app::files::capture_name(), &png, edit, now); }
+        if let Some(png) = super::super::attach::take_pasted(&id) { self.stage_bytes(&mut st.chips, &crate::app::files::pasted_image_name(), &png, edit, now); }
         let file_cmds = |e: &&str| matches!(*e, "AttachFile" | "ScreenCapture" | "ScreenCaptureNoMini");
         let cmds: Vec<&'static str> = self.sc.composer_events.iter().copied().filter(file_cmds).collect();
         self.sc.composer_events.retain(|e| !file_cmds(e));
@@ -134,7 +135,7 @@ impl App {
         }
         // Ctrl+V with an image (and no text) on the clipboard stages it as a PNG named "<guid>.PNG" (see files::pasted_image_name).
         if focused_prev && super::super::attach::paste_key_edge(&ctx) && !ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Paste(_)))) {
-            if let Some(png) = super::super::attach::clipboard_png() { self.stage_bytes(&mut st.chips, &crate::app::files::pasted_image_name(), &png, edit, now); }
+            super::super::attach::clipboard_png_async(&ctx, &id); // staged when it arrives (above)
         }
         if paste_too_long { self.toast("Der Inhalt der Zwischenablage überschreitet die maximale Anzahl an Zeichen für eine einzelne Nachricht.", now); }
         // Esc priority: emoji / mention popups first, then the GIF picker (it closes itself), then edit / reply.

@@ -142,16 +142,27 @@ impl App {
     /// Remembers position / size of the call window or dock in the settings (not in sample / screenshot runs).
     pub(super) fn remember_rect(&mut self, vctx: &egui::Context, call: bool) {
         if !self.persist_ok() { return; }
-        let (outer, inner, maxed, mini, down) = vctx.input(|i| (i.viewport().outer_rect, i.viewport().inner_rect, i.viewport().maximized.unwrap_or(false), i.viewport().minimized.unwrap_or(false), i.pointer.any_down()));
-        let (Some(o), Some(inn)) = (outer, inner) else { return };
+        let (outer, inner, maxed, mini, time) = vctx.input(|i| (i.viewport().outer_rect, i.viewport().inner_rect, i.viewport().maximized.unwrap_or(false), i.viewport().minimized.unwrap_or(false), i.time));
+        let down = crate::ui::chrome::pointer_down(vctx);
         if maxed || mini || down { return; }
-        let r = [o.min.x.round(), o.min.y.round(), inn.width().round(), inn.height().round()];
+        let key = if call { "call_win_rect" } else { "dock_rect" };
+        let r = match (outer, inner) {
+            (Some(o), Some(inn)) => [o.min.x.round(), o.min.y.round(), inn.width().round(), inn.height().round()],
+            // Wayland: no window position. Keep the previous one, remember only the size (screen_rect is in zoomed points).
+            _ if crate::ui::chrome::wayland() => {
+                let s = inner.map_or_else(|| vctx.screen_rect().size() * vctx.zoom_factor(), |r| r.size());
+                let [x, y, ..] = rect_setting(&self.settings, key).unwrap_or([0.0, 0.0, 0.0, 0.0]);
+                [x, y, s.x.round(), s.y.round()]
+            }
+            _ => return,
+        };
         let slot = if call { &mut self.call.win.call_saved } else { &mut self.call.win.dock_saved };
-        if *slot == Some(r) { return; }
+        if *slot == Some(r) || (outer.is_none() && time - self.call.win.save_t < 0.5) { return; } // Wayland: no release event to wait for, so rate-limit instead
         let first = slot.is_none();
         *slot = Some(r);
         if first { return; } // the first reading is the window as created
-        self.settings[if call { "call_win_rect" } else { "dock_rect" }] = json!(r);
+        self.call.win.save_t = time;
+        self.settings[key] = json!(r);
         system::save_settings(&self.cfg, &self.settings);
     }
 
@@ -185,7 +196,7 @@ impl App {
         let (maxed, focused) = vctx.input(|i| (i.viewport().maximized.unwrap_or(false), i.viewport().focused.unwrap_or(false)));
         self.call.win.focus_call = focused;
         if vctx.input(|i| i.viewport().close_requested()) { vctx.send_viewport_cmd(egui::ViewportCommand::CancelClose); if v.ended { a.dismiss = true } else { a.hang = true } }
-        if vctx.input(|i| i.pointer.delta() != Vec2::ZERO || i.pointer.any_down() || i.events.iter().any(|e| matches!(e, egui::Event::Key { .. }))) { self.call.win.last_move = now; }
+        if crate::ui::chrome::pointer_down(vctx) || vctx.input(|i| i.pointer.delta() != Vec2::ZERO || i.events.iter().any(|e| matches!(e, egui::Event::Key { .. }))) { self.call.win.last_move = now; }
         let connected = v.state == CallState::Connected;
         let autohide = self.settings["call_autohide_controls"].as_bool().unwrap_or(true);
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(vctx, |ui| {
@@ -198,7 +209,7 @@ impl App {
             // Title bar (40 px).
             let bar = Rect::from_min_size(full.min + Vec2::new(0.0, top), Vec2::new(full.width(), TITLE_BAR_H));
             let drag = ui.interact(bar, ui.id().with("titlebar"), Sense::click_and_drag());
-            if drag.drag_started() { vctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); }
+            if drag.drag_started() { crate::ui::chrome::note_os_grab(vctx); vctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); }
             if drag.double_clicked() { vctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maxed)); }
             crate::ui::chrome::fit_text(ui.painter(), bar.left() + 8.0 + 8.0, bar.center().y, &v.name, semibold(14.0), t.text1, bar.width() - 3.0 * WIN_BTN_W - 40.0);
             let (mn, mx, cl) = Self::win_buttons(ui, t, bar.right_top(), TITLE_BAR_H, maxed);
@@ -270,6 +281,7 @@ impl App {
                 self.call_keypad_ui(ui, t, area);
             }
         });
+        crate::ui::chrome::edge_overlay(vctx); // Linux: no server-side border to resize by (no-op while maximised)
         vctx.request_repaint_after(std::time::Duration::from_millis(200));
         a
     }

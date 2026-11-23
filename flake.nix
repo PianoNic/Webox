@@ -67,6 +67,8 @@
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath pkgs.webox.runtimeLibs;
           GIO_EXTRA_MODULES = "${pkgs.glib-networking}/lib/gio/modules";
           WEBOX_FALLBACK_FONT = "${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans.ttf";
+          WEBOX_FALLBACK_FONTS = "${pkgs.noto-fonts-cjk-sans}/share/fonts/opentype/noto-cjk/NotoSansCJK-VF.otf.ttc";
+          GST_PLUGIN_SYSTEM_PATH_1_0 = pkgs.lib.makeSearchPath "lib/gstreamer-1.0" (with pkgs.gst_all_1; [ gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad pkgs.pipewire ]);
           shellHook = ''
             export XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:''${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
           '';

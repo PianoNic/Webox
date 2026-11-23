@@ -22,6 +22,9 @@ url = "2"
 semver = "1"
 tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+# One TLS trust store for ureq + the websocket (src/cloud/tls.rs): bundled Mozilla roots plus the system store, so a company TLS-inspecting proxy works.
+webpki-roots = "0.26"
+rustls-native-certs = "0.8"
 libloading = "0.8"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 base64 = "0.22"
@@ -118,6 +121,11 @@ x11rb = { version = "0.13", features = ["shape"] }
 # V4L2 cameras (raw ioctls / mmap / poll for Settings > Video); already in the tree.
 libc = "0.2"
 raw-window-handle = "0.6"
+# Raising the window on Wayland (xdg-activation-v1, src/platform/linux/activation.rs) on winit's own wl_display: the versions and
+# features winit / ashpd already build (libwayland through client_system, the staging protocols).
+wayland-client = "0.31"
+wayland-backend = { version = "0.3", features = ["client_system"] }
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 # Video playback (src/media/video/gst.rs): the system's GStreamer (playbin -> appsinks). 0.21 is the line built on glib 0.18, the
 # glib the gtk / webkit2gtk bindings already pull, so no second glib. Needs libgstreamer1.0-dev + -plugins-base1.0-dev to build.
 gstreamer = "0.21"

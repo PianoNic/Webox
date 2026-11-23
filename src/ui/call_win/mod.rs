@@ -24,7 +24,8 @@ const BAR_H: f32 = 56.0; // floating control bar height
 const BAR_SIDE: f32 = 4.0; // control bar side margin
 const BAR_GAP: f32 = 8.0; // control bar bottom gap
 const BAR_OPACITY: f32 = 0.8; // control bar opacity
-const MAX_OVERFLOW: f32 = 10.0; // a maximised frameless window overflows the screen by 10 px top / right
+#[cfg(windows)] const MAX_OVERFLOW: f32 = 10.0; // a maximised frameless window overflows the screen by 10 px top / right (Windows only)
+#[cfg(not(windows))] const MAX_OVERFLOW: f32 = 0.0;
 const MAX_BAR_INSET: f32 = 5.0; // control bar inset while maximised
 const INTERSTITIAL: Vec2 = Vec2::new(788.0, 560.0); // pre-join page size
 const AUTOHIDE_SECS: f64 = 3.0; // control bar auto-hide delay
@@ -58,7 +59,7 @@ pub(crate) struct WinState {
     dock_hover_out: Option<f64>, dock_confirm: bool, dock_chk: bool, dock_saved: Option<[f32; 4]>,
     // Focus of our windows in the previous frame (main, call window, dock), for "covered by other apps".
     focus_call: bool, focus_dock: bool,
-    pub sample_done: bool, rounded: u8,
+    pub sample_done: bool, rounded: u8, save_t: f64,
 }
 
 fn rect_setting(s: &serde_json::Value, key: &str) -> Option<[f32; 4]> {

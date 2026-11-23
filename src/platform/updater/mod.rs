@@ -68,6 +68,12 @@ pub fn sample(downloading: bool) {
 /// Windows replaces its own program file; elsewhere the system's package manager does.
 pub const fn self_update() -> bool { cfg!(windows) }
 
+/// Running from the Nix store: the flake / NixOS module decides the version, so no release nag in the background.
+pub fn from_nix_store() -> bool {
+    static R: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *R.get_or_init(|| std::env::current_exe().is_ok_and(|e| e.starts_with("/nix/store")))
+}
+
 /// The running program, for the swap.
 fn exe() -> Result<PathBuf, String> { std::env::current_exe().map_err(|e| format!("Programmdatei nicht gefunden: {e}")) }
 
@@ -156,6 +162,8 @@ pub fn restart() -> Result<(), String> {
 /// At every start: removes what an update left (the old program may still be closing, so it retries for a few seconds) and
 /// on Windows keeps the installer's version entry in "Apps" in step with this program.
 pub fn after_start() {
+    #[cfg(not(windows))]
+    { let cfg = crate::system::config_dir(); std::thread::spawn(move || crate::platform::nmhost::refresh(&cfg)); } // browser helper manifests follow the launcher path
     let Ok(exe) = exe() else { return };
     #[cfg(windows)]
     registry::sync_display_version(&exe, VERSION);

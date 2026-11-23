@@ -53,7 +53,7 @@ pub fn redirect_ok(origin_host: &str, to: &Url) -> bool {
 pub struct Got { pub status: u16, pub etag: Option<String>, pub last_modified: Option<String>, pub body: Vec<u8>, pub len: Option<u64> }
 
 fn agent(timeout: Duration) -> ureq::Agent {
-    ureq::AgentBuilder::new().redirects(0).timeout_connect(Duration::from_secs(10)).timeout(timeout)
+    crate::cloud::tls::agent().redirects(0).timeout_connect(Duration::from_secs(10)).timeout(timeout)
         .user_agent(concat!("Webox/", env!("CARGO_PKG_VERSION"), " plugin-repo")).build()
 }
 

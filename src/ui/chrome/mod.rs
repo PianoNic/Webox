@@ -14,10 +14,51 @@ pub(crate) const RAIL_NARROW: f32 = 60.8;
 pub(crate) const EDGE_INSET: f32 = 6.0;
 pub(crate) use header_layout::MIN_WINDOW;
 
-/// The current content inset: [`EDGE_INSET`] while the window is neither maximised nor fullscreen, else 0.
+/// The current content inset: [`EDGE_INSET`] while the window is neither maximised nor fullscreen, else 0. Divided by the app
+/// zoom so the grab border keeps its on-screen size.
 pub(crate) fn edge_inset(ctx: &egui::Context) -> f32 {
     let (max, full) = ctx.input(|i| (i.viewport().maximized.unwrap_or(false), i.viewport().fullscreen.unwrap_or(false)));
-    if max || full { 0.0 } else { EDGE_INSET }
+    if max || full { 0.0 } else { EDGE_INSET / ctx.zoom_factor().max(0.1) }
+}
+
+/// Running on a Wayland session (no window positions, no always-on-top, no `set_visible`).
+pub(crate) fn wayland() -> bool {
+    #[cfg(target_os = "linux")]
+    { crate::platform::linux::session() == crate::platform::linux::Session::Wayland }
+    #[cfg(not(target_os = "linux"))]
+    { false }
+}
+
+/// After `StartDrag` / `BeginResize` the Wayland compositor eats the button release, so egui keeps `any_down` set until the next
+/// press. Call when sending either command.
+pub(crate) fn note_os_grab(ctx: &egui::Context) { if wayland() { ctx.data_mut(|d| d.insert_temp(egui::Id::new("os-grab"), true)); } }
+
+/// `pointer.any_down()`, but false after [`note_os_grab`] until a fresh button press arrives.
+pub(crate) fn pointer_down(ctx: &egui::Context) -> bool {
+    let id = egui::Id::new("os-grab");
+    if ctx.input(|i| i.raw.events.iter().any(|e| matches!(e, egui::Event::PointerButton { pressed: true, .. }))) { ctx.data_mut(|d| d.remove::<bool>(id)); }
+    ctx.input(|i| i.pointer.any_down()) && !ctx.data(|d| d.get_temp::<bool>(id)).unwrap_or(false)
+}
+
+/// One resize strip over `r` (`side`: 0 top, 1 bottom, 2 left, 3 right): cursor and `BeginResize`; within 12 on-screen pt of a
+/// window corner it resizes diagonally.
+fn edge_zone(ui: &mut egui::Ui, r: Rect, id: &str, side: u8) {
+    use egui::ResizeDirection as D;
+    let resp = ui.interact(r, egui::Id::new(("edge-strip", id)), Sense::drag());
+    let screen = ui.ctx().screen_rect();
+    let c = 12.0 / ui.ctx().zoom_factor().max(0.1);
+    let dir = resp.hover_pos().or(resp.interact_pointer_pos()).map(|p| {
+        let (l, rt, t, b) = (p.x < screen.left() + c, p.x > screen.right() - c, p.y < screen.top() + c, p.y > screen.bottom() - c);
+        match (side, l, rt, t, b) {
+            (_, true, _, true, _) => D::NorthWest, (_, _, true, true, _) => D::NorthEast, (_, true, _, _, true) => D::SouthWest, (_, _, true, _, true) => D::SouthEast,
+            (0, ..) => D::North, (1, ..) => D::South, (2, ..) => D::West, _ => D::East,
+        }
+    });
+    if let Some(d) = dir {
+        ui.ctx().set_cursor_icon(match d { D::North | D::South => egui::CursorIcon::ResizeVertical, D::West | D::East => egui::CursorIcon::ResizeHorizontal,
+            D::NorthWest | D::SouthEast => egui::CursorIcon::ResizeNwSe, _ => egui::CursorIcon::ResizeNeSw });
+        if resp.drag_started() { note_os_grab(ui.ctx()); ui.ctx().send_viewport_cmd(egui::ViewportCommand::BeginResize(d)); }
+    }
 }
 
 /// The inset strips (call before every other panel): window background, and dragging them resizes the window; within 12 pt
@@ -25,29 +66,31 @@ pub(crate) fn edge_inset(ctx: &egui::Context) -> f32 {
 pub(crate) fn edge_strips(ctx: &egui::Context) {
     let e = edge_inset(ctx);
     if e <= 0.0 { return; }
-    use egui::ResizeDirection as D;
-    let strip = |ui: &mut egui::Ui, id: &str, side: u8| {
-        let r = ui.max_rect();
-        let resp = ui.interact(r, egui::Id::new(("edge-strip", id)), Sense::drag());
-        let screen = ui.ctx().screen_rect();
-        let dir = resp.hover_pos().or(resp.interact_pointer_pos()).map(|p| {
-            let (l, rt, t, b) = (p.x < screen.left() + 12.0, p.x > screen.right() - 12.0, p.y < screen.top() + 12.0, p.y > screen.bottom() - 12.0);
-            match (side, l, rt, t, b) {
-                (_, true, _, true, _) => D::NorthWest, (_, _, true, true, _) => D::NorthEast, (_, true, _, _, true) => D::SouthWest, (_, _, true, _, true) => D::SouthEast,
-                (0, ..) => D::North, (1, ..) => D::South, (2, ..) => D::West, _ => D::East,
-            }
-        });
-        if let Some(d) = dir {
-            ui.ctx().set_cursor_icon(match d { D::North | D::South => egui::CursorIcon::ResizeVertical, D::West | D::East => egui::CursorIcon::ResizeHorizontal,
-                D::NorthWest | D::SouthEast => egui::CursorIcon::ResizeNwSe, _ => egui::CursorIcon::ResizeNeSw });
-            if resp.drag_started() { ui.ctx().send_viewport_cmd(egui::ViewportCommand::BeginResize(d)); }
-        }
-    };
     let f = egui::Frame::NONE;
-    egui::TopBottomPanel::top("edge-top").exact_height(e).show_separator_line(false).frame(f).show(ctx, |ui| strip(ui, "top", 0));
-    egui::TopBottomPanel::bottom("edge-bottom").exact_height(e).show_separator_line(false).frame(f).show(ctx, |ui| strip(ui, "bottom", 1));
-    egui::SidePanel::left("edge-left").exact_width(e).resizable(false).show_separator_line(false).frame(f).show(ctx, |ui| strip(ui, "left", 2));
-    egui::SidePanel::right("edge-right").exact_width(e).resizable(false).show_separator_line(false).frame(f).show(ctx, |ui| strip(ui, "right", 3));
+    egui::TopBottomPanel::top("edge-top").exact_height(e).show_separator_line(false).frame(f).show(ctx, |ui| edge_zone(ui, ui.max_rect(), "top", 0));
+    egui::TopBottomPanel::bottom("edge-bottom").exact_height(e).show_separator_line(false).frame(f).show(ctx, |ui| edge_zone(ui, ui.max_rect(), "bottom", 1));
+    egui::SidePanel::left("edge-left").exact_width(e).resizable(false).show_separator_line(false).frame(f).show(ctx, |ui| edge_zone(ui, ui.max_rect(), "left", 2));
+    egui::SidePanel::right("edge-right").exact_width(e).resizable(false).show_separator_line(false).frame(f).show(ctx, |ui| edge_zone(ui, ui.max_rect(), "right", 3));
+}
+
+/// Resize strips laid over the content of a frameless secondary viewport (call window, dock, share picker; they take no layout
+/// space): Linux has no server-side borders to grab. Not while maximised / fullscreen; callers skip fixed-size windows.
+pub(crate) fn edge_overlay(ctx: &egui::Context) {
+    #[cfg(target_os = "linux")]
+    {
+        let e = edge_inset(ctx);
+        if e <= 0.0 { return; }
+        let s = ctx.screen_rect();
+        egui::Area::new(egui::Id::new("edge-overlay")).order(egui::Order::Foreground).fixed_pos(s.min).interactable(false).show(ctx, |ui| {
+            ui.set_clip_rect(s);
+            edge_zone(ui, Rect::from_min_max(s.min, pos2(s.right(), s.top() + e)), "top", 0);
+            edge_zone(ui, Rect::from_min_max(pos2(s.left(), s.bottom() - e), s.max), "bottom", 1);
+            edge_zone(ui, Rect::from_min_max(s.min, pos2(s.left() + e, s.bottom())), "left", 2);
+            edge_zone(ui, Rect::from_min_max(pos2(s.right() - e, s.top()), s.max), "right", 3);
+        });
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = ctx;
 }
 const HEADER_CY: f32 = 18.4;
 
@@ -158,7 +201,7 @@ impl App {
             let forced = std::env::var("WEBOX_SHOT_HOVER").unwrap_or_default();
             // Drag / double-click on the empty header area: a custom title bar.
             let drag = ui.interact(full, ui.id().with("titlebar"), Sense::click_and_drag());
-            if drag.drag_started() { ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); }
+            if drag.drag_started() { note_os_grab(ctx); ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); }
             if drag.double_clicked() {
                 let max = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!max));

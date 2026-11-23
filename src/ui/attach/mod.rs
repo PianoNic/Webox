@@ -127,24 +127,58 @@ pub(crate) fn sample_progress(started: f64, now: f64) -> f32 {
 /// while the window is not focused does not count).
 pub(super) fn paste_key_edge(ctx: &egui::Context) -> bool { ctx.data(|d| d.get_temp::<u64>(egui::Id::new("paste-key-edge"))) == Some(ctx.cumulative_pass_nr()) }
 pub(crate) fn paste_key_poll(ctx: &egui::Context, window_focused: bool) -> bool {
-    let (edge, pass) = (paste_key_down_edge() && window_focused, ctx.cumulative_pass_nr());
+    let (edge, pass) = (paste_key_down_edge(ctx) && window_focused, ctx.cumulative_pass_nr());
     if edge { ctx.data_mut(|d| d.insert_temp(egui::Id::new("paste-key-edge"), pass)); }
     edge
 }
 /// egui-winit swallows Ctrl+V when the clipboard has no text (no `Event::Paste`, no key event), so the key state is read from
 /// Windows directly (edge-detected).
-fn paste_key_down_edge() -> bool {
-    #[cfg(windows)]
-    {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL};
-        static WAS: AtomicBool = AtomicBool::new(false);
-        let down = |k: i32| unsafe { (GetAsyncKeyState(k) as u16 & 0x8000) != 0 };
-        let now = down(VK_CONTROL.0 as i32) && down(0x56); // 'V'
-        !WAS.swap(now, Ordering::SeqCst) && now
+#[cfg(windows)]
+fn paste_key_down_edge(_ctx: &egui::Context) -> bool {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_CONTROL};
+    static WAS: AtomicBool = AtomicBool::new(false);
+    let down = |k: i32| unsafe { (GetAsyncKeyState(k) as u16 & 0x8000) != 0 };
+    let now = down(VK_CONTROL.0 as i32) && down(0x56); // 'V'
+    !WAS.swap(now, Ordering::SeqCst) && now
+}
+/// Elsewhere egui-winit drops the press the same way, but the release of V still arrives (see `PasteKeys`).
+#[cfg(not(windows))]
+fn paste_key_down_edge(ctx: &egui::Context) -> bool {
+    let id = egui::Id::new("paste-keys");
+    let mut s = ctx.data(|d| d.get_temp::<PasteKeys>(id)).unwrap_or_default();
+    let edge = ctx.input(|i| s.frame(&i.events, i.modifiers.command, i.key_down(Key::V)));
+    ctx.data_mut(|d| d.insert_temp(id, s));
+    edge
+}
+
+/// Image paste without a key press: a release of V whose press egui never saw (egui-winit dropped it as a paste command), with
+/// Ctrl held since the last V release and no text paste since then (that press was a text paste). Fed once per frame.
+#[derive(Clone, Copy, Default, Debug)]
+#[cfg_attr(windows, allow(dead_code))]
+pub(super) struct PasteKeys { v_down: bool, cmd: bool, text_paste: bool }
+impl PasteKeys {
+    /// `cmd_now` / `v_down_now`: Ctrl and V held at the end of this frame.
+    pub(super) fn frame(&mut self, events: &[egui::Event], cmd_now: bool, v_down_now: bool) -> bool {
+        let is_v = |k: &Key, p: &Option<Key>| *k == Key::V || *p == Some(Key::V);
+        let (mut edge, mut pressed) = (false, self.v_down);
+        for e in events {
+            match e {
+                egui::Event::Paste(_) => self.text_paste = true,
+                egui::Event::Key { key, physical_key, pressed: down, modifiers, .. } => {
+                    self.cmd |= modifiers.command;
+                    if !is_v(key, physical_key) { continue; }
+                    if *down { pressed = true; continue; }
+                    if !pressed && self.cmd && !self.text_paste { edge = true; }
+                    (pressed, self.cmd, self.text_paste) = (false, false, false);
+                }
+                _ => {}
+            }
+        }
+        self.cmd |= cmd_now;
+        self.v_down = v_down_now;
+        edge
     }
-    #[cfg(not(windows))]
-    { false }
 }
 
 /// The clipboard's image as PNG (arboard reads CF_DIBV5 / PNG on Windows).
@@ -155,6 +189,22 @@ pub(super) fn clipboard_png() -> Option<Vec<u8>> {
     let mut out = std::io::Cursor::new(Vec::new());
     image::DynamicImage::ImageRgba8(rgba).write_to(&mut out, image::ImageFormat::Png).ok()?;
     Some(out.into_inner())
+}
+/// Pasted images, per space, read off the UI thread (the X11 / XWayland clipboard can take seconds to answer).
+static PASTED: Mutex<Vec<(String, Vec<u8>)>> = Mutex::new(Vec::new());
+/// Reads the clipboard's image for `space` on a thread; `take_pasted` hands it over.
+pub(super) fn clipboard_png_async(ctx: &egui::Context, space: &str) {
+    let (ctx, space) = (ctx.clone(), space.to_string());
+    std::thread::Builder::new().name("webox-paste".into()).spawn(move || {
+        let Some(png) = clipboard_png() else { return };
+        PASTED.lock().unwrap_or_else(|e| e.into_inner()).push((space, png));
+        ctx.request_repaint();
+    }).ok();
+}
+pub(super) fn take_pasted(space: &str) -> Option<Vec<u8>> {
+    let mut d = PASTED.lock().unwrap_or_else(|e| e.into_inner());
+    let i = d.iter().position(|(s, _)| s == space)?;
+    Some(d.remove(i).1)
 }
 
 impl App {

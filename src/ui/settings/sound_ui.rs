@@ -15,6 +15,7 @@ static PICKS: Mutex<Vec<(String, Option<PathBuf>)>> = Mutex::new(Vec::new());
 pub(super) fn pick_async(key: &str, folder: bool) {
     let key = key.to_string();
     std::thread::spawn(move || {
+        let _rt = system::enter_dbus_rt(); // rfd's portal backend needs the D-Bus tokio runtime
         let r = if folder { rfd::FileDialog::new().pick_folder() } else { rfd::FileDialog::new().add_filter("Audiodateien", &["wav", "mp3", "ogg", "flac"]).pick_file() };
         if let Ok(mut v) = PICKS.lock() { v.push((key, r)); }
         crate::ui::wake();

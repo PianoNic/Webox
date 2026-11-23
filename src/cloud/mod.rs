@@ -5,6 +5,7 @@
 pub mod auth; // native sign-in (OAuth) and token refresh
 pub mod jose;
 pub mod secrets;
+pub mod tls; // shared rustls config (bundled + system roots) and proxy handling for every HTTP agent and the websocket
 pub mod richtext; // markdown → the HTML Webex sends (`object.content`)
 
 mod activities;
