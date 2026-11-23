@@ -1,5 +1,5 @@
-//! Embeds every icon in assets/icons (Momentum, MIT) and assets/cisco/icons (Webex client icons, kept
-//! locally only), every emoji in assets/emoji (Twemoji), all other files of the git-ignored assets/cisco/
+//! Embeds every icon in assets/icons (Momentum, MIT) and assets/cisco/icons (Webex client icons),
+//! every emoji in assets/emoji (Twemoji), all other files of assets/cisco/
 //! (docs/cisco-assets.md) and the optional secrets.toml, as sorted tables.
 use std::{env, fs, path::{Path, PathBuf}};
 
@@ -29,7 +29,7 @@ fn table(dirs: &[&str], var: &str, out: &mut String) {
     out.push_str("];\n");
 }
 
-/// Every file under the git-ignored `assets/cisco/` except its icons (those join `ICON_TABLE`), keyed by the path
+/// Every file under `assets/cisco/` except its icons (those join `ICON_TABLE`), keyed by the path
 /// relative to that folder with `/` separators. Empty when the folder is missing: the app then falls back.
 /// `assets/` itself is watched (it always exists), so creating or deleting `assets/cisco/` reruns this script.
 fn cisco(out: &mut String) {
@@ -69,7 +69,7 @@ const SECRETS: &[(&str, &str, &str)] = &[
     ("giphy_api_key", "WEBOX_GIPHY_API_KEY", "GIPHY_API_KEY"),
 ];
 
-/// Reads `key = "value"` lines from the git-ignored `secrets.toml` at the repo root (if present) and writes
+/// Reads `key = "value"` lines from `secrets.toml` at the repo root (if present) and writes
 /// `Option<&str>` constants; a non-empty build-time env var wins over the file. Nothing is required: a build
 /// without secrets runs and shows the "not configured" states.
 fn secrets(out: &mut String) {

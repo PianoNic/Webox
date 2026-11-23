@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-  Fills the git-ignored assets/cisco/ with the official Webex app's files (list: scripts/cisco-assets.txt).
+  Fills or refreshes assets/cisco/ with the official Webex app's files (list: scripts/cisco-assets.txt).
 
 .DESCRIPTION
-  These files are not part of the repository (docs/cisco-assets.md). Three sources, use any combination:
+  These files are in the repository (docs/cisco-assets.md); use this to refresh them. Three sources, use any combination:
     -FromCommit <rev>   a commit of a private checkout that still had them at their old paths under assets/
     -FromFolder <dir>   another assets/cisco folder (e.g. from a different checkout or a backup)
     -FromInstall        the sounds from the installed official app (Windows, %LOCALAPPDATA%\CiscoSparkLauncher)

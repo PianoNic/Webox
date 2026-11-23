@@ -1,6 +1,6 @@
 # Assets from the official Webex app
 
-Webox looks and sounds like the official Webex desktop app because it can use that app's own icons, sounds, pictures and translations. Some of them are published under an open licence and are in this repository. The rest belong to Cisco: they live only on your machine, in the git-ignored `assets/cisco/`, and Webox falls back when they are missing.
+Webox looks and sounds like the official Webex desktop app because it can use that app's own icons, sounds, pictures and translations. Some of them are published under an open licence and are in this repository. The rest belong to Cisco and are in `assets/cisco/`; Webox falls back when one is missing.
 
 ## What is where
 
@@ -13,13 +13,13 @@ Webox looks and sounds like the official Webex desktop app because it can use th
 | `assets/keyboard-shortcuts.json` | 1 | command ids, default keys and flags of the official shortcuts, without their descriptions | MIT | yes |
 | `assets/sounds/manifest.json`, `assets/test_sounds/tone*` | 5 | written and generated for Webox | MIT | yes |
 | `assets/icon/`, `assets/logo-*.png`, `assets/branding/` | | Webox's own artwork | MIT | yes |
-| `assets/cisco/icons/*.svg` | 619 | the app's own icons: animation frames, reaction pictures, presence, recording and layout art, illustrations, the AI assistant mark | Cisco | no |
-| `assets/cisco/i18n/` | 35 | the 34 translation packs made from the app's `.qm` files, and `index_en_de.tsv` | Cisco | no |
-| `assets/cisco/sounds/*.wav` | 14 | ringtones, message sounds and call tones | Cisco | no |
-| `assets/cisco/images/` | 8 | the splash spinner and wallpapers, the login background, the Giphy marks shipped with the app, the message list's loading animation (`Loading.gif`; fallback: three drawn dots) | Cisco / Giphy | no |
-| `assets/cisco/keyboardShortcuts.json` | 1 | the app's own shortcut table, with descriptions | Cisco | no |
-| `assets/cisco/emoji_shortcodes.tsv` | 1 | the app's English emoji names (`EmojiLocalisation`) | Cisco | no |
-| `assets/cisco/test_sounds/dtmf_orig.mp3` | 1 | the app's DTMF tone, re-encoded, for one test | Cisco | no |
+| `assets/cisco/icons/*.svg` | 619 | the app's own icons: animation frames, reaction pictures, presence, recording and layout art, illustrations, the AI assistant mark | Cisco | yes |
+| `assets/cisco/i18n/` | 35 | the 34 translation packs made from the app's `.qm` files, and `index_en_de.tsv` | Cisco | yes |
+| `assets/cisco/sounds/*.wav` | 14 | ringtones, message sounds and call tones | Cisco | yes |
+| `assets/cisco/images/` | 8 | the splash spinner and wallpapers, the login background, the Giphy marks shipped with the app, the message list's loading animation (`Loading.gif`; fallback: three drawn dots) | Cisco / Giphy | yes |
+| `assets/cisco/keyboardShortcuts.json` | 1 | the app's own shortcut table, with descriptions | Cisco | yes |
+| `assets/cisco/emoji_shortcodes.tsv` | 1 | the app's English emoji names (`EmojiLocalisation`) | Cisco | yes |
+| `assets/cisco/test_sounds/dtmf_orig.mp3` | 1 | the app's DTMF tone, re-encoded, for one test | Cisco | yes |
 
 The full list of the local files is `scripts/cisco-assets.txt` (names only).
 
@@ -43,9 +43,11 @@ Webex and Cisco are trademarks of Cisco Systems, Inc.; Webox is not affiliated w
 | `keyboardShortcuts.json` | uses `assets/keyboard-shortcuts.json` |
 | `emoji_shortcodes.tsv` | uses the CLDR names |
 
-Tests that compare against these files (German pack strings, sound durations) return early when they are missing, so `cargo test` passes in CI.
+Tests that compare against these files (German pack strings, sound durations) return early when they are missing, so `cargo test` also passes in a checkout without them.
 
-## Getting the files
+## Refreshing the files
+
+They are in the repository. To replace them, for example after a Webex update:
 
 ```powershell
 pwsh scripts/restore-cisco-assets.ps1 -FromCommit <rev>   # from a private checkout's history, where they were under assets/

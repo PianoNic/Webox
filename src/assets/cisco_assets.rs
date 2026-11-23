@@ -1,7 +1,7 @@
-//! Webex client files that are not part of the repository: translations, sounds, the splash and login
+//! Webex client files in `assets/cisco/`: translations, sounds, the splash and login
 //! pictures, the Giphy marks and the shortcut and emoji tables (list: docs/cisco-assets.md).
 //!
-//! Order: embedded at build time from the git-ignored `assets/cisco/` (see `build.rs`), else the loose file of an
+//! Order: embedded at build time from `assets/cisco/` (see `build.rs`), else the loose file of an
 //! installed Webex app (Windows: `%LOCALAPPDATA%\CiscoSparkLauncher\dynamic_dependencies`, sounds only), else
 //! `None`, and the caller falls back (English, silence, a plain background, the Webox tables).
 use std::collections::HashMap;

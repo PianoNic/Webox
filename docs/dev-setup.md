@@ -8,26 +8,22 @@
 
 ## Secrets
 
-Sign-in needs the OAuth client of the Webex desktop app and the GIF picker a Giphy API key. They are not in the repository.
-
-```bash
-cp secrets.example.toml secrets.toml     # git-ignored, then fill in the three values
-```
+Sign-in needs the OAuth client of the Webex desktop app and the GIF picker a Giphy API key. They are in `secrets.toml` at the repo root (the layout is in `secrets.example.toml`).
 
 `build.rs` embeds the file at compile time. The variables `WEBOX_CLIENT_ID`, `WEBOX_CLIENT_SECRET` and `WEBOX_GIPHY_API_KEY` override it, both when building and when running. After creating or deleting `secrets.toml`, run `cargo clean -p webox` once so the build script runs again; edits to an existing file are picked up on their own.
 
-Without secrets the app builds and runs: the sign-in screen says sign-in is not configured, and the GIF picker shows its error state.
+Without the file the app builds and runs: the sign-in screen says sign-in is not configured, and the GIF picker shows its error state.
 
 ## Files from the official app
 
-Translations, sounds, some icons and pictures belong to Cisco and are not in the repository. Put them into the git-ignored `assets/cisco/` and the next `cargo build` embeds them:
+Translations, sounds, some icons and pictures belong to Cisco. They are in `assets/cisco/`, and `cargo build` embeds them. To refresh them:
 
 ```powershell
 pwsh scripts/restore-cisco-assets.ps1 -FromInstall        # the sounds from an installed official app (Windows)
 pwsh scripts/restore-cisco-assets.ps1 -FromFolder <dir>   # everything, from another assets/cisco
 ```
 
-Without them Webox runs in English and silent, and draws Momentum icons where the app has its own. Details: [cisco-assets](cisco-assets.md).
+Without the folder Webox runs in English and silent, and draws Momentum icons where the app has its own. Details: [cisco-assets](cisco-assets.md).
 
 ## Run it
 
