@@ -158,7 +158,7 @@ impl App {
             let forced = std::env::var("WEBOX_SHOT_HOVER").unwrap_or_default();
             // Drag / double-click on the empty header area: a custom title bar.
             let drag = ui.interact(full, ui.id().with("titlebar"), Sense::click_and_drag());
-            if drag.dragged() { ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); }
+            if drag.drag_started() { ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); }
             if drag.double_clicked() {
                 let max = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!max));

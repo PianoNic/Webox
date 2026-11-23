@@ -25,7 +25,7 @@ impl App {
         // Title strip (custom decorations): mark + name left, minimize / close right.
         let tb = Rect::from_min_size(full.min, Vec2::new(full.width(), 32.0));
         let tresp = ui.interact(tb, ui.id().with("login-titlebar"), Sense::click_and_drag());
-        if tresp.dragged() { ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag); }
+        if tresp.drag_started() { ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag); }
         if tresp.double_clicked() {
             let max = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!max));

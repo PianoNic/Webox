@@ -183,7 +183,12 @@ impl App {
                 }
             }
         }
-        if ctx.input(|i| i.viewport().close_requested()) && !self.notify.quitting && self.notify.tray.is_some() && self.nb("close_to_tray", true) {
+        // Wayland can't hide a window (winit ignores Visible(false)), so there the X quits instead of leaving the window stuck open.
+        #[cfg(target_os = "linux")]
+        let can_hide = crate::platform::linux::session() != crate::platform::linux::Session::Wayland;
+        #[cfg(not(target_os = "linux"))]
+        let can_hide = true;
+        if can_hide && ctx.input(|i| i.viewport().close_requested()) && !self.notify.quitting && self.notify.tray.is_some() && self.nb("close_to_tray", true) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.hide_main(ctx);
         }
