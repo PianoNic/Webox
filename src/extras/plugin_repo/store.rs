@@ -43,10 +43,11 @@ pub fn write(root: &Path, list: &[Installed]) -> Result<(), String> {
     write_atomic(&root.join(INSTALLED), serde_json::to_string_pretty(&v).unwrap_or_default().as_bytes())
 }
 
+/// Write + rename. Owner-only on unix from creation (0700 new folders, 0600 file): plugin secrets may fall back to these files.
 pub fn write_atomic(p: &Path, bytes: &[u8]) -> Result<(), String> {
-    if let Some(d) = p.parent() { std::fs::create_dir_all(d).map_err(|e| e.to_string())?; }
+    if let Some(d) = p.parent() { crate::system::create_private_dir(d).map_err(|e| e.to_string())?; }
     let tmp = p.with_extension(format!("tmp{}", std::process::id()));
-    std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
+    crate::system::write_private(&tmp, bytes).map_err(|e| e.to_string())?;
     std::fs::rename(&tmp, p).map_err(|e| { let _ = std::fs::remove_file(&tmp); e.to_string() })
 }
 

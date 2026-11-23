@@ -58,31 +58,37 @@ fn open(url: String, profile: std::path::PathBuf, tx: Sender<super::Captured>, c
     let context = webkit2gtk::WebContext::with_website_data_manager(&dm);
     context.set_cache_model(webkit2gtk::CacheModel::DocumentViewer);
 
-    // The SCRAPER (shared with WebView2) posts to window.webkit.messageHandlers.webox: code, token and diagnostics.
+    // The SCRAPER (shared with WebView2) posts to window.webkit.messageHandlers.webox: the code and diagnostics.
     let ucm = webkit2gtk::UserContentManager::new();
     ucm.add_script(&webkit2gtk::UserScript::new(super::SCRAPER, webkit2gtk::UserContentInjectedFrames::AllFrames,
         webkit2gtk::UserScriptInjectionTime::Start, &[], &[]));
     ucm.register_script_message_handler("webox");
-    let tx_msg = tx.clone();
-    ucm.connect_script_message_received(Some("webox"), move |_, r| {
-        let Some(s) = r.js_value().map(|v| v.to_string()) else { return };
-        if let Some(rest) = s.strip_prefix("webox-log:") { log(rest.chars().take(2000).collect()); }
-        if let Some(c) = super::classify(&s) { let _ = tx_msg.send(c); }
-    });
 
     let webview = webkit2gtk::WebView::builder().web_context(&context).user_content_manager(&ucm).build();
     if let Some(st) = WebViewExt::settings(&webview) { st.set_enable_developer_extras(false); st.set_javascript_can_open_windows_automatically(false); }
     window.add(&webview);
 
-    // Every committed URI: the SCRAPER's location.hash fallback and any `code=`-carrying navigation.
-    let tx_uri = tx;
+    // A message carries no sender, so the page shown decides: a code counts only while idbroker's own page is loaded.
+    let (tx_msg, wv_msg, auth_msg) = (tx.clone(), webview.downgrade(), url.clone());
+    ucm.connect_script_message_received(Some("webox"), move |_, r| {
+        let Some(s) = r.js_value().map(|v| v.to_string()) else { return };
+        if let Some(rest) = s.strip_prefix("webox-log:") { log(super::redact(rest).chars().take(2000).collect()); }
+        if let Some(c) = super::classify(&s) {
+            let page = wv_msg.upgrade().and_then(|w| w.uri()).map(|u| u.to_string()).unwrap_or_default();
+            if super::trusted_source(&page, &auth_msg) { let _ = tx_msg.send(c); } else { log(format!("IGNORED code from untrusted page {:?}", super::log_url(&page))); }
+        }
+    });
+
+    // Every committed URI: the SCRAPER's location.hash fallback and any `code=`-carrying navigation (idbroker's pages only).
+    let (tx_uri, auth_uri) = (tx, url.clone());
     webview.connect_uri_notify(move |wv| {
         if let Some(u) = wv.uri() {
+            if !super::trusted_source(u.as_str(), &auth_uri) { return; }
             let dec = super::percent_decode(u.as_str());
             if let Some(c) = super::classify(&dec).or_else(|| super::capture(&dec).map(super::Captured::Code)) { let _ = tx_uri.send(c); }
         }
     });
-    webview.connect_load_failed(|_, _, uri, err| { log(format!("load failed {uri}: {err}")); false });
+    webview.connect_load_failed(|_, _, uri, err| { log(format!("load failed {}: {err}", super::log_url(uri))); false });
     webview.load_uri(&url);
     window.show_all();
 

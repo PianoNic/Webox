@@ -4,7 +4,7 @@ The development history of Webox holds secrets, personal data and files from the
 
 ## What has to be true first
 
-- `secrets.toml` exists only locally (it is in `.gitignore`); the source has no client id, client secret or API key.
+- `secrets.toml` holds only the public build values (the Webex desktop app's OAuth client and a Giphy key), which the release binaries contain as well; no other credential is in the source.
 - `assets/cisco/` holds the files from the official app and is ignored; nothing else under `assets/` comes from Cisco ([cisco-assets](cisco-assets.md)).
 - Sample data, tests, comments and screenshots use made-up people and places.
 - `cargo build` and `cargo test` pass.

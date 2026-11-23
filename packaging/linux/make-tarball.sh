@@ -9,7 +9,7 @@ VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 ARCH=$(uname -m)
 NAME="webox-$VERSION-linux-$ARCH"
 TARGET=${CARGO_TARGET_DIR:-target}
-cargo build --release -p webox --bin webox
+cargo build --release --locked -p webox --bin webox
 STAGE="dist/$NAME"
 rm -rf "$STAGE"; mkdir -p "$STAGE/bin" "$STAGE/share/applications"
 install -m755 "$TARGET/release/webox" "$STAGE/bin/webox"

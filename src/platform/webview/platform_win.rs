@@ -77,9 +77,10 @@ impl WebView {
         let mut toks = [EventRegistrationToken::default(); 5];
         unsafe {
             // 1) Host-bridge / postMessage delivery (idbroker.authorize.response, or the SCRAPER's
-            //    webox-code:/webox-log: posts). Log BOTH forms fully: idbroker may post a JSON object,
-            //    for which the string form is empty but WebMessageAsJson carries it. Never truncated.
+            //    webox-code:/webox-log: posts). Log BOTH forms: idbroker may post a JSON object,
+            //    for which the string form is empty but WebMessageAsJson carries it. Codes are redacted.
             let tx_msg = tx.clone();
+            let auth_url = url.to_string();
             webview.add_WebMessageReceived(
                 &WebMessageReceivedEventHandler::create(Box::new(move |_wv, args: Option<ICoreWebView2WebMessageReceivedEventArgs>| {
                     if let Some(args) = args {
@@ -87,14 +88,16 @@ impl WebView {
                         let as_str = if args.TryGetWebMessageAsString(&mut sp).is_ok() { take_pwstr(sp) } else { String::new() };
                         let mut jp = PWSTR::null();
                         let as_json = if args.WebMessageAsJson(&mut jp).is_ok() { take_pwstr(jp) } else { String::new() };
-                        // Full, untruncated — this is where idbroker's raw delivery AND the SCRAPER's
-                        // exchange-req/exchange-resp diagnostics land.
-                        log(format!("webmsg str={as_str:?} json={as_json:?}"));
-                        // Act only on the SCRAPER's explicit signals (it drives the cookie'd exchange):
-                        // webox-token:<json> (redeemed) or webox-code:<code> (fetch failed → ureq fallback).
+                        // The document that posted it (WebMessageReceived on the webview fires for the top-level document only).
+                        let mut srcp = PWSTR::null();
+                        let source = if args.Source(&mut srcp).is_ok() { take_pwstr(srcp) } else { String::new() };
+                        log(format!("webmsg from={:?} str={:?} json={:?}", super::log_url(&source), super::redact(&as_str), super::redact(&as_json)));
+                        // Act only on the SCRAPER's explicit webox-code:<code>, and only from idbroker's own pages.
                         let msg = if !as_str.is_empty() { &as_str } else { &as_json };
                         if let Some(c) = super::classify(msg) {
-                            log(match &c { super::Captured::Token(_) => "RECV token from webview".into(), super::Captured::Code(code) => format!("RECV code (ureq fallback) len={}", code.len()) });
+                            if !super::trusted_source(&source, &auth_url) { log(format!("IGNORED code from untrusted page {:?}", super::log_url(&source))); return Ok(()); }
+                            let super::Captured::Code(code) = &c;
+                            log(format!("RECV code len={}", code.len()));
                             let _ = tx_msg.send(c);
                         }
                     }
@@ -112,7 +115,7 @@ impl WebView {
                         if a.Uri(&mut pw).is_ok() {
                             let uri = take_pwstr(pw);
                             let cap = super::capture(&uri);
-                            log(format!("nav-start hasCode={} uri={uri:?}", cap.is_some()));
+                            log(format!("nav-start hasCode={} uri={:?}", cap.is_some(), super::log_url(&uri)));
                             if uri.starts_with("urn:ietf:wg:oauth:2.0:oob") {
                                 if let Some(code) = cap {
                                     let _ = a.SetCancel(true);
@@ -136,7 +139,7 @@ impl WebView {
                         let _ = a.WebErrorStatus(&mut err);
                         let mut sp = PWSTR::null();
                         let src = if wv_nc.Source(&mut sp).is_ok() { take_pwstr(sp) } else { String::new() };
-                        log(format!("nav-done success={} webErrorStatus={} source={src:?}", ok.as_bool(), err.0));
+                        log(format!("nav-done success={} webErrorStatus={} source={:?}", ok.as_bool(), err.0, super::log_url(&src)));
                     }
                     Ok(())
                 })),

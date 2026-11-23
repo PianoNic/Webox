@@ -36,7 +36,7 @@ const SCRAPER: &str = r#"(function(){try{
   function send(s){
     try{ var p=window.__webox_post; if(p){ p(s); return; } var b=bridge(); if(b&&b.postMessage){ b.postMessage(s); return; } }catch(e){}
     try{ window.webkit.messageHandlers.webox.postMessage(s); return; }catch(e){}
-    try{ if(/^webox-(code|token):/.test(s)) location.hash=s; }catch(e){}
+    try{ if(/^webox-code:/.test(s)) location.hash=s; }catch(e){}
   }
   function raw(x){ try{ return (typeof x==='string')?x:JSON.stringify(x); }catch(e){ try{ return String(x); }catch(e2){ return '[unstringifiable]'; } } }
   function log(tag,x){ try{ var r=raw(x); send('webox-log:'+tag+':'+(r.length>8000?r.slice(0,8000)+'…<'+r.length+'>':r)); }catch(e){} }
@@ -68,17 +68,17 @@ const SCRAPER: &str = r#"(function(){try{
       var im=/([A-Za-z0-9._~+/-]{20,}_[A-Za-z0-9]{2,10}_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/.exec(x); if(im) return im[1];
     }
   }catch(e){} return null; }
-  function handle(tag,x){ try{ log(tag,x); var c=scan(x); if(c){ log('CODE-via-'+tag,c); post(c); } }catch(e){ log('scan-threw',tag+' '+e); } }
+  function handle(tag,x){ try{ log(tag,x); var c=scan(x); if(c){ log('CODE-via-'+tag,c.length+'chars'); post(c); } }catch(e){ log('scan-threw',tag+' '+e); } }
   // Hook the WebView2 host bridge idbroker posts the code to; keep a clean handle for our own sends.
   try{ var b=bridge(); if(b&&b.postMessage&&!window.__webox_post){ var ob=b.postMessage.bind(b); window.__webox_post=ob; try{ b.postMessage=function(m){ try{ handle('bridge.postMessage',m); }catch(e){} return ob(m); }; }catch(e){ log('bridge-unwritable',''+e); } } }catch(e){ log('hook-bridge',''+e); }
   try{ var ow=window.postMessage.bind(window); window.postMessage=function(m,t,x){ try{ handle('window.postMessage',m); }catch(e){} return ow(m,t,x); }; }catch(e){ log('hook-wpm',''+e); }
   try{ window.addEventListener('message',function(ev){ try{ handle('message-event',ev&&ev.data); }catch(e){} },true); }catch(e){ log('hook-msgev',''+e); }
   // Page-state probes: blank-because-empty vs blank-because-crashed (bodyLen, htmlLen, url, title).
-  function probe(n){ try{ var bl=(document.body&&document.body.innerText||'').length, hl=(document.documentElement&&document.documentElement.innerHTML||'').length; log('page','{"at":"'+n+'","url":"'+(location.href||'').slice(0,300)+'","title":"'+(document.title||'').slice(0,160)+'","bodyLen":'+bl+',"htmlLen":'+hl+'}');
+  function probe(n){ try{ var bl=(document.body&&document.body.innerText||'').length, hl=(document.documentElement&&document.documentElement.innerHTML||'').length; log('page','{"at":"'+n+'","url":"'+((location.origin||'')+(location.pathname||'')).slice(0,300)+'","title":"'+(document.title||'').slice(0,160)+'","bodyLen":'+bl+',"htmlLen":'+hl+'}');
     // The isHideAuthzCode=true response ("Authorization Code Page") is a tiny page with the code in the
     // markup (hidden input / inline script), not the visible body. Dump the whole small page once so we
     // can see exactly where the code lives, and scan the full markup for it.
-    try{ var oh=document.documentElement.outerHTML||''; if(oh.length<4000){ log('html@'+n, oh); var c=scan(oh); if(c){ log('CODE-via-html',c); post(c); } } }catch(e){}
+    try{ var oh=document.documentElement.outerHTML||''; if(oh.length<4000){ log('html@'+n, oh); var c=scan(oh); if(c){ log('CODE-via-html',c.length+'chars'); post(c); } } }catch(e){}
   }catch(e){} }
   try{ document.addEventListener('DOMContentLoaded',function(){ probe('DOMContentLoaded'); }); }catch(e){}
   try{ window.addEventListener('load',function(){ probe('load'); setTimeout(function(){probe('load+500');},500); setTimeout(function(){probe('load+2000');},2000); setTimeout(function(){probe('load+5000');},5000); }); }catch(e){}
@@ -154,19 +154,47 @@ fn percent_decode(s: &str) -> String {
 #[cfg(test)]
 mod tests;
 
-/// What the webview hands back: either a ready **token** (the in-webview cookie'd `fetch` already
-/// redeemed the code — preferred), or just the **code** for the out-of-process `ureq` fallback.
-pub enum Captured { Token(String), Code(String) }
+/// What the webview hands back: the authorization **code** for the native PKCE exchange. A ready-made token is never
+/// accepted from a page: any page could post one, while a foreign code fails the exchange (it lacks our PKCE verifier).
+pub enum Captured { Code(String) }
 
-/// Classify a message the SCRAPER posted back: a redeemed token (from a future in-page exchange),
-/// or the code for the native out-of-process exchange. Today only the code path is produced.
+/// Classify a message the SCRAPER posted back: the code for the native out-of-process exchange.
 fn classify(s: &str) -> Option<Captured> {
-    if let Some(i) = s.find("webox-token:") { return Some(Captured::Token(s[i + 12..].to_string())); }
     if let Some(i) = s.find("webox-code:") {
         let code = s[i + 11..].split(['"', '&', ' ', '#']).next().unwrap_or("").trim().to_string();
         if !code.is_empty() { return Some(Captured::Code(code)); }
     }
     None
+}
+
+/// The pages a code is taken from: https idbroker (any `*.webex.com` host, or the authorize URL's own host, the discovered
+/// home cluster) and the OOB redirect. `authorize` is the URL the sign-in started on.
+fn trusted_source(uri: &str, authorize: &str) -> bool {
+    if uri.starts_with(crate::cloud::auth::REDIRECT_OOB) { return true; }
+    let host = |s: &str| url::Url::parse(s).ok().filter(|u| u.scheme() == "https").and_then(|u| u.host_str().map(str::to_ascii_lowercase));
+    host(uri).is_some_and(|h| h.ends_with(".webex.com") || host(authorize).is_some_and(|a| a == h))
+}
+
+/// A URL for the debug log: without query and fragment (they carry `code=…`).
+fn log_url(u: &str) -> &str { u.split(['?', '#']).next().unwrap_or("") }
+
+/// A page message for the debug log: every auth code in it (our marker, `code=…`, a JSON code key, any long token-like
+/// run) is replaced by its length.
+fn redact(s: &str) -> String {
+    let mut out = s.to_string();
+    for _ in 0..4 {
+        let Some(c) = capture(&out).filter(|c| c.len() >= 12 && c.chars().all(CODE_CHARS) && out.contains(c.as_str())) else { break };
+        out = out.replace(c.as_str(), &format!("<code {}>", c.len()));
+    }
+    // Percent-encoded or unlabelled codes: no run of 32+ token characters survives.
+    let (mut res, mut run) = (String::with_capacity(out.len()), String::new());
+    for ch in out.chars().chain(std::iter::once('\0')) {
+        if CODE_CHARS(ch) || ch == '%' { run.push(ch); continue; }
+        if run.chars().count() >= 32 { res.push_str(&format!("<{} chars>", run.chars().count())); } else { res.push_str(&run); }
+        run.clear();
+        if ch != '\0' { res.push(ch); }
+    }
+    res
 }
 
 // Windows.

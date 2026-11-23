@@ -50,6 +50,34 @@ fn upload(ctx: &egui::Context, name: String, img: &image::RgbaImage) -> egui::Te
 /// Hard stop for pathological GIFs (decoding is sequential and costs time even for frames we drop).
 const MAX_RAW_FRAMES: usize = 2000;
 
+/// Largest GIF canvas (logical screen) we decode: ten header bytes can claim 65535 x 65535, and the decoder allocates the whole
+/// canvas (RGBA) before the first frame (~17 GB).
+const GIF_MAX_SIDE: u32 = 4096;
+const GIF_MAX_PIXELS: u64 = 16 * 1024 * 1024;
+/// What the GIF decoder may allocate at once (canvas + one frame buffer at the largest allowed canvas).
+const GIF_MAX_ALLOC: u64 = 256 * 1024 * 1024;
+
+/// The logical screen size in the GIF header (bytes 6..10, little-endian) is within `GIF_MAX_SIDE` / `GIF_MAX_PIXELS`.
+pub(crate) fn gif_canvas_ok(bytes: &[u8]) -> bool {
+    let Some(s) = bytes.get(6..10) else { return false };
+    let (w, h) = (u16::from_le_bytes([s[0], s[1]]) as u32, u16::from_le_bytes([s[2], s[3]]) as u32);
+    w <= GIF_MAX_SIDE && h <= GIF_MAX_SIDE && w as u64 * h as u64 <= GIF_MAX_PIXELS
+}
+
+/// A GIF decoder for bytes from the network: refused when the header's canvas is too large (before anything is decoded), and
+/// with allocation limits for whatever the frames claim later.
+pub(crate) fn gif_decoder(bytes: &[u8]) -> image::ImageResult<image::codecs::gif::GifDecoder<std::io::Cursor<&[u8]>>> {
+    use image::ImageDecoder;
+    if !gif_canvas_ok(bytes) { return Err(image::ImageError::Limits(image::error::LimitError::from_kind(image::error::LimitErrorKind::DimensionError))); }
+    let mut d = image::codecs::gif::GifDecoder::new(std::io::Cursor::new(bytes))?;
+    let mut l = image::Limits::default(); // non_exhaustive: set the fields one by one
+    l.max_image_width = Some(GIF_MAX_SIDE);
+    l.max_image_height = Some(GIF_MAX_SIDE);
+    l.max_alloc = Some(GIF_MAX_ALLOC);
+    d.set_limits(l)?;
+    Ok(d)
+}
+
 /// Keeps every second frame and gives it the delay of the pair, so the total duration is unchanged.
 pub(crate) fn halve_frames<T>(frames: Vec<(T, f32)>) -> Vec<(T, f32)> {
     let mut out: Vec<(T, f32)> = Vec::with_capacity(frames.len() / 2 + 1);
@@ -67,7 +95,7 @@ fn decode_anim(ctx: &egui::Context, key: &str, bytes: &[u8]) -> Option<Anim> {
     use image::AnimationDecoder;
     let fmt = image::guess_format(bytes).ok();
     if fmt == Some(image::ImageFormat::Gif) {
-        let frames = image::codecs::gif::GifDecoder::new(std::io::Cursor::new(bytes)).map(|d| d.into_frames());
+        let frames = gif_decoder(bytes).map(|d| d.into_frames());
         // Long GIFs: instead of cutting the loop short, keep every 2nd, 4th, … frame and add the dropped frames' delays to the
         // kept one, so the loop duration stays right with at most MAX_FRAMES frames in memory.
         let mut buf: Vec<(image::RgbaImage, f32)> = vec![];

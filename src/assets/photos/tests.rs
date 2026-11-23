@@ -44,3 +44,18 @@ fn broken_bytes_are_not_an_image() {
     p.add_images(vec![("x".into(), b"not an image".to_vec())]);
     assert!(p.image(&ctx, "x").is_none());
 }
+
+#[test]
+fn gif_with_a_huge_canvas_is_refused_before_decoding() {
+    // header + logical screen 65535 x 65535, no colour table, then the trailer: decoding it would allocate ~17 GB
+    let bomb = [b"GIF89a".as_slice(), &[0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00], &[0x3b]].concat();
+    assert!(!gif_canvas_ok(&bomb));
+    assert!(gif_decoder(&bomb).is_err());
+    let ctx = egui::Context::default();
+    let mut p = Photos::default();
+    p.add_images(vec![("bomb".into(), bomb)]);
+    assert!(p.image(&ctx, "bomb").is_none());
+    // a normal GIF still passes the check
+    assert!(gif_canvas_ok(&gif(&[[1, 2, 3, 255]])) && gif_decoder(&gif(&[[1, 2, 3, 255]])).is_ok());
+    assert!(!gif_canvas_ok(b"GIF89a")); // too short for a header
+}

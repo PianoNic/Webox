@@ -151,12 +151,26 @@ pub fn download_dir(settings: &serde_json::Value) -> PathBuf {
     PathBuf::from("Downloads")
 }
 
-/// A file name that is safe on disk (no path parts, no reserved characters).
+/// A file name that is safe on disk: no path parts, no reserved characters, no invisible bidi / format characters (U+202E
+/// would show "evil\u{202e}fdp.exe" as "evilexe.pdf"), no trailing dots or spaces (Windows drops them, so "evil.exe ." would open
+/// as evil.exe), and no Windows device name (CON, NUL, COM1, ... with any extension) without a leading `_`.
 pub fn safe_name(name: &str) -> String {
     let base = name.rsplit(['/', '\\']).next().unwrap_or("");
-    let s: String = base.chars().map(|c| if "<>:\"/\\|?*".contains(c) || c.is_control() { '_' } else { c }).collect();
-    let s = s.trim().trim_end_matches('.').to_string();
-    if s.is_empty() || s == "." || s == ".." { "Datei".into() } else { s }
+    let s: String = base.chars().map(|c| if "<>:\"/\\|?*".contains(c) || c.is_control() || invisible_format(c) { '_' } else { c }).collect();
+    let s = s.trim_start().trim_end_matches(|c: char| c == '.' || c.is_whitespace());
+    if s.is_empty() { "Datei".into() } else if device_name(s) { format!("_{s}") } else { s.to_string() }
+}
+
+/// Zero-width and bidi control characters (they change how a name reads, not what it is).
+fn invisible_format(c: char) -> bool {
+    matches!(c, '\u{061C}' | '\u{200B}'..='\u{200F}' | '\u{2028}'..='\u{202E}' | '\u{2060}'..='\u{2069}' | '\u{FEFF}')
+}
+
+/// A Windows device name, with or without extension ("nul.txt" and "COM1 .log" are the device too).
+fn device_name(s: &str) -> bool {
+    let stem = s.split('.').next().unwrap_or("").trim_end().to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$")
+        || ["COM", "LPT"].iter().any(|p| stem.strip_prefix(p).is_some_and(|d| matches!(d, "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³")))
 }
 
 /// `dir/name`, or `dir/name (1).ext`, `(2)`, ... when that exists (Windows' own naming for copies).
@@ -188,17 +202,81 @@ pub fn mime_of(name: &str, head: &[u8]) -> String {
     }.into()
 }
 
-/// Files that would run code when "opened": these are only shown in their folder, never started from the chat.
-pub fn runs_code(name: &str) -> bool {
-    let ext = name.rsplit('.').next().unwrap_or("").to_lowercase();
-    ["exe", "com", "bat", "cmd", "msi", "msp", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "scr", "pif", "lnk", "hta", "cpl", "jar", "reg", "appx", "msix"].contains(&ext.as_str())
+/// Types "Öffnen" starts with their default program: documents, pictures, sound, video, archives.
+const OPEN_DIRECT: &[&str] = &["pdf", "txt", "log", "csv", "md", "json", "xml", "png", "jpg", "jpeg", "gif", "webp", "bmp", "mp3", "wav", "m4a",
+    "ogg", "flac", "mp4", "mov", "webm", "mkv", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "zip", "7z", "gz", "tar"];
+
+/// Whether a file from the chat may be started with its default program. Everything not in `OPEN_DIRECT` (programs, scripts,
+/// shortcuts, macro documents, unknown types) is only shown in its folder. The extension is the one of the name as the disk
+/// keeps it (`safe_name`: trailing dots and spaces dropped like Windows does), in lower case.
+pub fn opens_directly(name: &str) -> bool {
+    safe_name(name).to_lowercase().rsplit_once('.').is_some_and(|(_, ext)| OPEN_DIRECT.contains(&ext))
 }
 
-/// Opens a downloaded file with its default program (Windows: the shell's open verb via explorer).
+/// Opens a downloaded file with its default program (Windows: the shell's open verb via explorer); other types only in their
+/// folder (`opens_directly`).
 pub fn open_file(p: &Path) {
-    if runs_code(&p.to_string_lossy()) { show_in_folder(p); return; }
+    if !opens_directly(&p.to_string_lossy()) { show_in_folder(p); return; }
     #[cfg(windows)] let _ = std::process::Command::new("explorer").arg(p).spawn();
     #[cfg(not(windows))] let _ = std::process::Command::new("xdg-open").arg(p).spawn();
+}
+
+/// Mark-of-the-Web on a file downloaded from a chat: the `Zone.Identifier` stream (Internet zone) that SmartScreen, Office's
+/// Protected View and the shell's "open file" warning look at. NTFS only; errors (FAT, some network shares) are ignored. Only
+/// for a file that exists (writing the stream of a missing file would create it). Elsewhere a no-op.
+pub fn mark_downloaded(p: &Path) {
+    #[cfg(windows)]
+    if p.is_file() {
+        let mut ads = p.as_os_str().to_os_string();
+        ads.push(":Zone.Identifier");
+        let _ = std::fs::write(PathBuf::from(ads), "[ZoneTransfer]\r\nZoneId=3\r\n");
+    }
+    #[cfg(not(windows))]
+    let _ = p;
+}
+
+/// A per-user private folder for temporary files (the decrypted video cache, staged pastes and GIFs), created when missing and
+/// checked on every call. Unix: `<temp>/webox-<uid>/<sub>`; both levels must be real
+/// folders (no symlinks) of this user without any group / other permission, so other local users can neither read the files
+/// nor plant folders, files or links in their place. Windows: `<temp>/webox-<sub>` (the temp folder is per user there).
+pub fn private_tmp(sub: &str) -> std::io::Result<PathBuf> {
+    #[cfg(unix)]
+    {
+        let uid = current_uid();
+        let base = std::env::temp_dir().join(format!("webox-{uid}")); // not XDG_RUNTIME_DIR: that is RAM, and the video cache holds up to 2 GB
+        private_dir(&base, uid)?;
+        let d = base.join(sub);
+        private_dir(&d, uid)?;
+        Ok(d)
+    }
+    #[cfg(not(unix))]
+    {
+        let d = std::env::temp_dir().join(format!("webox-{sub}"));
+        std::fs::create_dir_all(&d)?;
+        Ok(d)
+    }
+}
+
+/// Creates `d` with mode 0700 (if missing), then checks what is there: a folder, not a symlink, owned by `uid`, no group / other
+/// permission bits.
+#[cfg(unix)]
+fn private_dir(d: &Path, uid: u32) -> std::io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+    match std::fs::DirBuilder::new().mode(0o700).create(d) {
+        Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => return Err(e),
+        _ => {}
+    }
+    let m = std::fs::symlink_metadata(d)?;
+    if m.file_type().is_dir() && m.uid() == uid && m.mode() & 0o077 == 0 { return Ok(()); }
+    Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, format!("{} is not a private folder of this user", d.display())))
+}
+
+#[cfg(target_os = "linux")]
+fn current_uid() -> u32 { unsafe { libc::getuid() } }
+#[cfg(all(unix, not(target_os = "linux")))]
+fn current_uid() -> u32 {
+    extern "C" { fn getuid() -> u32; }
+    unsafe { getuid() }
 }
 /// "In Ordner anzeigen": the file's folder with the file selected.
 /// Windows: `SHOpenFolderAndSelectItems` (reuses an Explorer window that already shows the folder), on its own thread with COM
@@ -347,7 +425,69 @@ mod tests {
         assert_eq!(file_uri(std::path::Path::new("/home/a b/x,y'z.txt")), "file:///home/a%20b/x%2Cy%27z.txt");
         assert_eq!(file_uri(std::path::Path::new(r"C:\a b\c.txt")), "file:///C:/a%20b/c.txt");
         assert_eq!(gvariant_uris(&["file:///a".into(), "file:///b'c".into()]), "['file:///a', 'file:///b\\'c']");
-        assert!(runs_code("setup.EXE") && !runs_code("a.pdf"));
+    }
+    #[test]
+    fn names_windows_would_change_are_made_safe() {
+        // trailing dots and spaces in any order: Windows drops them and would start evil.exe
+        assert_eq!(safe_name("evil.exe ."), "evil.exe");
+        assert_eq!(safe_name("evil.exe . . "), "evil.exe");
+        assert_eq!(safe_name("  bericht.pdf\u{a0}"), "bericht.pdf");
+        assert_eq!(safe_name("..."), "Datei");
+        // bidi / zero-width characters
+        assert_eq!(safe_name("evil\u{202E}fdp.exe"), "evil_fdp.exe");
+        assert_eq!(safe_name("a\u{200B}b\u{FEFF}c\u{2066}d\u{061C}.txt"), "a_b_c_d_.txt");
+        // device names, with or without extension, any case
+        for (n, want) in [("CON", "_CON"), ("nul.txt", "_nul.txt"), ("Com1.log", "_Com1.log"), ("lpt9", "_lpt9"), ("aux.tar.gz", "_aux.tar.gz"), ("COM1 .txt", "_COM1 .txt")] {
+            assert_eq!(safe_name(n), want, "{n}");
+        }
+        for n in ["console.txt", "COM10", "COM0", "lpt", "nulx.pdf", "prn-liste.pdf"] { assert_eq!(safe_name(n), n, "{n}"); }
+    }
+    #[test]
+    fn only_known_document_types_are_opened() {
+        for n in ["a.pdf", "Bericht.DOCX", "x.tar", "clip.mp4", "foto.JPG", "notiz.txt", r"C:\Users\a\Downloads\b.xlsx", "/home/a/c.png"] { assert!(opens_directly(n), "{n}"); }
+        for n in ["setup.EXE", "evil.exe .", "evil.exe . ", "evil\u{202E}fdp.exe", "a.lnk", "a.js", "a.hta", "a.docm", "a.html", "a.svg", "a.desktop",
+            "a.unknown", "noext", "pdf", "a.pdf.exe", "a.scr", r"C:\x\evil.exe ."] { assert!(!opens_directly(n), "{n}"); }
+    }
+    #[test]
+    fn downloads_get_the_mark_of_the_web() {
+        let dir = std::env::temp_dir().join(format!("webox-motw-test-{}", crate::jose::uuid()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("a.pdf");
+        std::fs::write(&f, b"%PDF").unwrap();
+        mark_downloaded(&f);
+        #[cfg(windows)]
+        assert_eq!(std::fs::read_to_string(format!("{}:Zone.Identifier", f.display())).unwrap(), "[ZoneTransfer]\r\nZoneId=3\r\n");
+        assert_eq!(std::fs::read(&f).unwrap(), b"%PDF"); // the file itself is unchanged
+        mark_downloaded(&dir.join("missing.pdf"));
+        assert!(!dir.join("missing.pdf").exists()); // no empty file made for the stream
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn private_temp_folders_refuse_shared_or_linked_ones() {
+        use std::os::unix::fs::PermissionsExt;
+        let uid = current_uid();
+        let root = std::env::temp_dir().join(format!("webox-private-test-{}", crate::jose::uuid()));
+        std::fs::create_dir_all(&root).unwrap();
+        let fresh = root.join("fresh");
+        private_dir(&fresh, uid).unwrap();
+        assert_eq!(std::fs::metadata(&fresh).unwrap().permissions().mode() & 0o777, 0o700);
+        private_dir(&fresh, uid).unwrap(); // already there and private: fine
+        assert!(private_dir(&fresh, uid.wrapping_add(1)).is_err()); // another user's
+        let open = root.join("open");
+        std::fs::create_dir(&open).unwrap();
+        std::fs::set_permissions(&open, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(private_dir(&open, uid).is_err());
+        let link = root.join("link");
+        std::os::unix::fs::symlink(&fresh, &link).unwrap();
+        assert!(private_dir(&link, uid).is_err()); // a link to a private folder is still a link
+        let file = root.join("file");
+        std::fs::write(&file, b"x").unwrap();
+        assert!(private_dir(&file, uid).is_err());
+        let p = private_tmp("selftest").unwrap();
+        assert!(p.is_dir() && std::fs::metadata(&p).unwrap().permissions().mode() & 0o077 == 0);
+        let _ = std::fs::remove_dir(&p);
+        let _ = std::fs::remove_dir_all(&root);
     }
     #[test]
     fn capture_names_use_the_originals_pattern() {
