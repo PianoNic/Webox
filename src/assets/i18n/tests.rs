@@ -127,17 +127,14 @@ fn live_switching_and_plural() {
     set_language("de-CH");
     assert_eq!(generation(), g1);
     set_language("system");
-    assert_eq!(language_setting(), "system");
+    assert_eq!(state().read().unwrap().setting, "system");
     set_language("en");
 }
 
 #[test]
 fn settings_roundtrip() {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let mut s = serde_json::json!({});
-    store_language(&mut s, "fr");
-    assert_eq!(s["language"], "fr");
-    set_language(s["language"].as_str().unwrap());
+    set_language("fr");
     assert_eq!(active_code(), "fr");
     // Small packs only hold the shared strings; the rest stays English.
     assert_eq!(tr("NoCtx", "zzz"), "zzz");
@@ -171,7 +168,6 @@ fn date_formats() {
     // CET (+1) in November.
     assert_eq!(format_date_time_in(ts, 3600, DateStyle::DateTime, "de"), "13.11.2026, 16:48");
     assert_eq!(format_date_time_in(ts, 3600, DateStyle::Date, "de"), "13.11.2026");
-    assert_eq!(format_date_time_in(ts, 3600, DateStyle::Time, "de"), "16:48");
     assert_eq!(format_date_time_in(ts, 3600, DateStyle::DateTime, "en"), "11/13/2026, 4:48 PM");
     assert_eq!(format_date_time_in(ts, 3600, DateStyle::DateTime, "en_GB"), "13/11/2026, 16:48");
     assert_eq!(format_date_time_in(ts, 3600, DateStyle::DateTime, "fr"), "13/11/2026 16:48");
@@ -179,9 +175,9 @@ fn date_formats() {
     assert_eq!(format_date_time_in(ts, 3600, DateStyle::DateTime, "zh_TW"), "2026/11/13 下午4:48");
     // Midnight / noon in 12 h clocks.
     let mid = parse_iso_ms("2026-01-05T00:05:00Z").unwrap();
-    assert_eq!(format_date_time_in(mid, 0, DateStyle::Time, "en"), "12:05 AM");
+    assert!(format_date_time_in(mid, 0, DateStyle::DateTime, "en").ends_with(" 12:05 AM"));
     let noon = parse_iso_ms("2026-01-05T12:00:00Z").unwrap();
-    assert_eq!(format_date_time_in(noon, 0, DateStyle::Time, "en"), "12:00 PM");
+    assert!(format_date_time_in(noon, 0, DateStyle::DateTime, "en").ends_with(" 12:00 PM"));
     // Zone shifts the date too.
     let late = parse_iso_ms("2026-12-31T23:30:00Z").unwrap();
     assert_eq!(format_date_time_in(late, 3600, DateStyle::Date, "de"), "01.01.2027");
@@ -189,72 +185,6 @@ fn date_formats() {
     for l in LANGUAGES {
         assert!(format_date_time_in(ts, 0, DateStyle::DateTime, l.code).contains("2026"), "{}", l.code);
     }
-}
-
-#[test]
-fn numbers() {
-    assert_eq!(format_int_in(1234567, "de"), "1.234.567");
-    assert_eq!(format_int_in(-1234, "en"), "-1,234");
-    assert_eq!(format_int_in(999, "de"), "999");
-    assert_eq!(format_decimal_in(1234.5, 2, "de"), "1.234,50");
-    assert_eq!(format_decimal_in(1234.5, 1, "en"), "1,234.5");
-}
-
-#[test]
-fn local_time_helpers() {
-    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    set_language("de");
-    let off = local_offset_secs(parse_iso_ms("2026-11-13T15:48:00Z").unwrap() / 1000) as i64;
-    assert!(off.abs() <= 14 * 3600);
-    let expect = {
-        let p = parts(parse_iso_ms("2026-11-13T15:48:00Z").unwrap() / 1000 + off);
-        format!("{:02}:{:02}", p.hour, p.minute)
-    };
-    assert_eq!(local_hhmm("2026-11-13T15:48:00Z"), expect);
-    assert_eq!(local_hhmm("not a date"), "not a date");
-    assert!(local_date_time("2026-11-13T15:48:00Z").starts_with("13.11.2026, ") || local_date_time("2026-11-13T15:48:00Z").starts_with("14.11.2026, "));
-    set_language("en");
-}
-
-#[test]
-fn day_labels() {
-    if !crate::assets::cisco_assets::embedded() { return; } // needs the translation packs (docs/cisco-assets.md)
-    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    set_language("de");
-    let now = parse_iso_ms("2026-11-16T12:00:00Z").unwrap();
-    assert_eq!(day_label(now - 3_600_000, now), "Heute");
-    assert_eq!(day_label(now - 86_400_000, now), "Gestern");
-    assert!(day_label(now - 5 * 86_400_000, now).starts_with("11.11.2026"));
-    set_language("en");
-}
-
-#[test]
-fn relative_times_german() {
-    if !crate::assets::cisco_assets::embedded() { return; } // needs the translation packs (docs/cisco-assets.md)
-    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    set_language("de");
-    let h = 3_600_000;
-    assert_eq!(relative_time(10_000), "Vor Kurzem");
-    assert_eq!(relative_time(15 * 60_000), "Vor 15 Minuten");
-    assert_eq!(relative_time(h), "vor 1 Stunde");
-    assert_eq!(relative_time(3 * h), "Vor 3 Stunden");
-    assert_eq!(relative_time(24 * h), "vor 1 Tag");
-    assert_eq!(relative_time(5 * 24 * h), "Vor 5 Tagen");
-    assert_eq!(relative_time(45 * 24 * h), "vor 1 Monat");
-    assert_eq!(relative_time(800 * 24 * h), "Vor 2 Jahren");
-    assert_eq!(relative_kind(3 * h, RelKind::Active), "Vor 3 Stunden aktiv");
-    assert_eq!(relative_kind(h, RelKind::Active), "Vor 1 Stunde aktiv");
-    assert_eq!(relative_kind(5_000, RelKind::Active), "Jetzt aktiv");
-    assert_eq!(relative_kind(24 * h + 5, RelKind::Active), "Gestern aktiv");
-    assert_eq!(relative_kind(3 * 24 * h, RelKind::Created), "Vor 3 Tagen erstellt");
-    assert_eq!(relative_kind(24 * h, RelKind::Created), "Vor 1 Tag erstellt");
-    assert_eq!(relative_kind(2 * h, RelKind::Edited), "Vor 2 Stunden bearbeitet");
-    assert_eq!(relative_kind(h, RelKind::LatestActivity), "Letzte Aktivität vor 1 Stunde");
-    set_language("en");
-    assert_eq!(relative_time(3 * h), "3 hours ago");
-    assert_eq!(relative_time(h), "1 hour ago");
-    assert_eq!(relative_kind(24 * h, RelKind::Created), "Created 1 day ago");
-    assert_eq!(relative_kind(3 * h, RelKind::Active), "Active 3 hours ago");
 }
 
 // App name (naming.rs, docs/naming.md): the app is Webox, the service stays Webex.

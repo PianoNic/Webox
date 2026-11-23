@@ -53,7 +53,7 @@ impl App {
         // Search field with the search icon.
         let (fr, _) = ui.allocate_exact_size(Vec2::new(w, 36.0), Sense::hover());
         ui.painter().rect_filled(fr, 8.0, alpha(base, 0.07));
-        ui.painter().rect_stroke(fr, 8.0, Stroke::new(1.0, alpha(base, 0.5)), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(fr, 8.0, Stroke::new(1.0_f32, alpha(base, 0.5)), egui::StrokeKind::Inside);
         self.icons.paint(ui, "search-regular", Rect::from_center_size(pos2(fr.left() + 20.0, fr.center().y), Vec2::splat(16.0)), text2);
         let mut fui = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(pos2(fr.left() + 36.0, fr.top()), pos2(fr.right() - 12.0, fr.bottom()))).layout(egui::Layout::left_to_right(egui::Align::Center)));
         fui.add(egui::TextEdit::singleline(&mut self.sc.page.q).id(egui::Id::new("sc-page-search")).frame(false).margin(Vec2::ZERO).desired_width(f32::INFINITY)
@@ -71,7 +71,7 @@ impl App {
         let ir = Rect::from_center_size(pos2(gx + 38.0, hr.center().y), Vec2::splat(18.0));
         self.icons.paint(ui, "info_16", ir, text2);
         ui.interact(ir, egui::Id::new("sc-global-info"), Sense::hover()).on_hover_text(INFO);
-        ui.painter().hline(hr.x_range(), hr.bottom() + 1.0, Stroke::new(1.0, sep));
+        ui.painter().hline(hr.x_range(), hr.bottom() + 1.0, Stroke::new(1.0_f32, sep));
         ui.add_space(6.0);
 
         // List.
@@ -108,7 +108,7 @@ impl App {
         let (br, bresp) = ui.allocate_exact_size(Vec2::new(tw + 40.0, 32.0), Sense::click());
         if bresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
         ui.painter().rect_filled(br, 16.0, if bresp.hovered() { alpha(base, 0.12) } else { Color32::TRANSPARENT });
-        ui.painter().rect_stroke(br, 16.0, Stroke::new(1.0, alpha(base, 0.3)), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(br, 16.0, Stroke::new(1.0_f32, alpha(base, 0.3)), egui::StrokeKind::Inside);
         ui.painter().text(br.center(), egui::Align2::CENTER_CENTER, "Auf Standard zurücksetzen", semibold(14.0), text);
         if bresp.clicked() { todo.push(Do::ResetAll); }
         ui.add_space(16.0);
@@ -174,7 +174,7 @@ impl App {
             // checkbox-checked-background / -icon (see settings/kit.rs `ctl`).
             let kc = crate::ui::settings::kit::ctl(t);
             if r.global { ui.painter().rect_filled(cb, 4.0, if can { kc.checked_bg.pick(&cresp) } else { kc.checked_bg.normal }); self.icons.paint(ui, "check-bold", Rect::from_center_size(cb.center(), Vec2::splat(12.0)), kc.checked_icon); }
-            else { ui.painter().rect_stroke(cb, 4.0, Stroke::new(1.5, if can && cresp.hovered() { text } else { col }), egui::StrokeKind::Inside); }
+            else { ui.painter().rect_stroke(cb, 4.0, Stroke::new(1.5_f32, if can && cresp.hovered() { text } else { col }), egui::StrokeKind::Inside); }
             if can && cresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
             if !c.can_be_global { cresp.on_hover_text(NO_GLOBAL); } else if can && cresp.clicked() { todo.push(Do::Global(i, !r.global)); }
         }
@@ -210,7 +210,7 @@ impl App {
             let pr = Rect::from_min_size(pos2(right - (tw + 16.0 + 18.0 + 8.0), row.center().y - 12.0), Vec2::new(tw + 42.0, 24.0));
             let presp = ui.interact(pr, egui::Id::new(("sc-add", i)), Sense::click());
             if presp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); ui.painter().rect_filled(pr, 12.0, alpha(base, 0.11)); }
-            ui.painter().rect_stroke(pr, 12.0, Stroke::new(1.0, alpha(base, 0.3)), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(pr, 12.0, Stroke::new(1.0_f32, alpha(base, 0.3)), egui::StrokeKind::Inside);
             self.icons.paint(ui, "plus-bold", Rect::from_center_size(pos2(pr.left() + 16.0, pr.center().y), Vec2::splat(12.0)), text);
             ui.painter().text(pos2(pr.left() + 28.0, pr.center().y), egui::Align2::LEFT_CENTER, label, semibold(13.0), text);
             if presp.clicked() { todo.push(Do::Edit(i)); }
@@ -290,7 +290,7 @@ fn paint_pill(ui: &egui::Ui, r: Rect, look: Look, light: bool, hovered: bool, la
     };
     let p = ui.painter();
     p.rect_filled(r, 8.0, bg);
-    p.rect_stroke(r, 8.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+    p.rect_stroke(r, 8.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
     p.rect_filled(r.shrink(4.0), 4.0, inner);
     let _ = text;
     let mut x = r.left() + 8.0;

@@ -40,6 +40,7 @@ pub(crate) mod contacts_page;
 pub(crate) mod teams_page;
 pub(crate) mod composer;
 pub(crate) mod composer_text;
+pub(crate) mod type_focus; // typing with nothing focused goes to the composer
 pub(crate) mod emoji_autocomplete;
 pub(crate) mod mention_popup;
 pub(crate) mod space_tabs;
@@ -51,6 +52,7 @@ pub(crate) mod status_time;
 pub(crate) mod settings_effects;
 pub(crate) mod attach;
 pub(crate) mod screen_capture;
+pub(crate) mod share_picker; // "Inhalte freigeben": the screen / window picker of screen sharing
 pub(crate) mod msg_actions;
 pub(crate) mod schedule_send;
 pub(crate) mod unfurl;

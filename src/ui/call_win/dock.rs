@@ -106,7 +106,7 @@ impl App {
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(vctx, |ui| {
             let full = ui.max_rect();
             ui.painter().rect_filled(full, 0.0, bg);
-            ui.painter().rect_stroke(full, 0.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(full, 0.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
             if let DockMode::Docked(_) = mode {
                 // 60x60 thumbnail: the caller's avatar (or the handset when idle).
                 let ar = Rect::from_center_size(full.center(), Vec2::splat(44.0));
@@ -151,7 +151,7 @@ impl App {
                     _ => { self.set_tab(Tab::Settings); vctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Minimized(false)); vctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Focus); }
                 }
             }
-            ui.painter().line_segment([head.left_bottom(), head.right_bottom()], Stroke::new(1.0, border));
+            ui.painter().line_segment([head.left_bottom(), head.right_bottom()], Stroke::new(1.0_f32, border));
             // Body.
             let body = Rect::from_min_max(head.left_bottom() + Vec2::new(0.0, 1.0), full.right_bottom()).shrink(16.0);
             let mut bu = ui.new_child(egui::UiBuilder::new().max_rect(body).layout(egui::Layout::top_down(egui::Align::Center)));
@@ -175,7 +175,7 @@ impl App {
                 ui.painter().rect_filled(full, 0.0, Color32::from_black_alpha(120));
                 let w = 402.0_f32.min(full.width() - 24.0);
                 egui::Area::new(egui::Id::new("dock-confirm")).order(egui::Order::Foreground).fixed_pos(full.center() - Vec2::new(w / 2.0, 80.0)).show(vctx, |ui| {
-                    egui::Frame::default().fill(t.tk("modal-primary-background")).stroke(Stroke::new(1.0, border)).inner_margin(20).show(ui, |ui| {
+                    egui::Frame::default().fill(t.tk("modal-primary-background")).stroke(Stroke::new(1.0_f32, border)).inner_margin(20).show(ui, |ui| {
                         ui.set_width(w - 42.0);
                         ui.label(RichText::new("Anruf-Dock schließen?").font(semibold(16.0)).color(t.text1));
                         ui.add_space(8.0);

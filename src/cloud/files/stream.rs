@@ -85,7 +85,7 @@ impl GcmStream {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aes_gcm::aead::{Aead, KeyInit as _, Payload};
+    use aes_gcm::aead::{Aead, Payload};
 
     fn seal(key: &[u8; 32], iv: &[u8; 12], aad: &[u8], msg: &[u8]) -> Vec<u8> {
         aes_gcm::Aes256Gcm::new_from_slice(key).unwrap().encrypt(aes_gcm::Nonce::from_slice(iv), Payload { msg, aad }).unwrap()

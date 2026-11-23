@@ -67,7 +67,7 @@ impl App {
             let pill = Rect::from_center_size(r.center(), Vec2::new(g.size().x + 24.0, 28.0));
             let resp = ui.interact(pill, Id::new("msg-loading-retry"), Sense::click());
             if resp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); ui.painter().rect_filled(pill, 14.0, c.2); }
-            ui.painter().rect_stroke(pill, 14.0, Stroke::new(1.0, c.1), StrokeKind::Inside);
+            ui.painter().rect_stroke(pill, 14.0, Stroke::new(1.0_f32, c.1), StrokeKind::Inside);
             ui.painter().galley(pill.center() - g.size() / 2.0, g, c.0);
             return resp.clicked();
         }

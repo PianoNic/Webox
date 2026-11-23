@@ -142,7 +142,7 @@ pub(crate) fn paint(ctx: &egui::Context) {
 fn draw_anchor(p: &egui::Painter, c: Pos2, dir: f32) {
     let r = 14.0;
     p.circle_filled(c + Vec2::new(0.0, 1.0), r + 1.0, Color32::from_black_alpha(60)); // soft shadow
-    p.circle(c, r, Color32::from_rgba_unmultiplied(248, 248, 248, 240), Stroke::new(1.0, Color32::from_gray(70)));
+    p.circle(c, r, Color32::from_rgba_unmultiplied(248, 248, 248, 240), Stroke::new(1.0_f32, Color32::from_gray(70)));
     p.circle_filled(c, 2.0, Color32::from_gray(60));
     let chev = |sign: f32, on: bool| {
         let col = if on { Color32::from_gray(20) } else { Color32::from_gray(110) };
@@ -213,7 +213,7 @@ pub(crate) fn arrow_bar(ui: &mut Ui, id: Id, track: Rect, off: f32, max: f32, vi
     else { p.rect_filled(thumb, BAR_THUMB_W / 2.0, if hot { hot_c } else if dark { crate::hex(0x808080) } else { crate::hex(0x797979) }); }
     let chev = |r: Rect, dir: f32, on: bool| {
         let (cx, cy) = (r.center().x, r.center().y);
-        let s = Stroke::new(1.3, crate::alpha(fg, if on { 0.95 } else { 0.55 }));
+        let s = Stroke::new(1.3_f32, crate::alpha(fg, if on { 0.95 } else { 0.55 }));
         p.line_segment([Pos2::new(cx - 3.5, cy + dir * 1.8), Pos2::new(cx, cy - dir * 1.8)], s);
         p.line_segment([Pos2::new(cx, cy - dir * 1.8), Pos2::new(cx + 3.5, cy + dir * 1.8)], s);
     };

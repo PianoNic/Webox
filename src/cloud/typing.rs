@@ -14,8 +14,10 @@
 //!   conversation url + `/status/register`, sent when a conversation is shown.
 //! * Every `conversation.activity` event carries `data.conversation.registrationTTLMs`; the registration ends at
 //!   `now + ttl * rand(85..99) / 100`. A conversation is registered again when it is opened and that end has passed.
-//! * Expiry: a typer is kept until `status.stop_typing`, their message, or 10 s without a new start. Senders repeat the
-//!   start every 5 s, so a typer stays visible while typing.
+//! * Expiry: a typer is kept until `status.stop_typing`, their message, or 10 s without a new start (assumed; senders
+//!   repeat the start every 5 s, so a typer stays visible while typing).
+//! * Latency: the socket thread resolves the typer from `DIR` (published by the job loop for every shown conversation) and
+//!   sends the event to the window at once; only an unknown actor goes through the job loop, which may be busy with requests.
 use super::*;
 
 pub const SEND_EVERY_MS: i64 = 5000;
@@ -47,6 +49,35 @@ pub struct TypingState {
 }
 
 fn now_ms() -> i64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64) }
+
+/// Who a typing actor is, readable from the socket thread.
+#[derive(Default)]
+struct Dir {
+    /// My ids (device user uuid, account e-mail in lower case).
+    me: Vec<String>,
+    /// Conversation id → actor id (uuid or e-mail-style id) → participant.
+    spaces: HashMap<String, HashMap<String, Person>>,
+    /// Conversation id → its events still queued for the job loop; later ones queue too, so start / stop keep their order.
+    queued: HashMap<String, usize>,
+}
+static DIR: std::sync::LazyLock<std::sync::Mutex<Dir>> = std::sync::LazyLock::new(Default::default);
+fn dir<R>(f: impl FnOnce(&mut Dir) -> R) -> R { f(&mut DIR.lock().unwrap_or_else(|e| e.into_inner())) }
+
+/// Socket thread: a typing event straight to the window when its actor is known. `false` = unknown, the job loop resolves it.
+pub(super) fn fast(data: &Value, out: &Sender<Resp>) -> bool {
+    let Some((space, actor, on)) = parse_event(data) else { return true };
+    let person = dir(|d| {
+        if d.me.iter().any(|m| m.eq_ignore_ascii_case(&actor)) { return Some(None) } // my other devices
+        let known = d.spaces.get(&space).and_then(|m| m.get(&actor)).filter(|_| !d.queued.contains_key(&space)).map(|p| Some(p.clone()));
+        if known.is_none() { *d.queued.entry(space.clone()).or_default() += 1; }
+        known
+    });
+    match person {
+        Some(Some(person)) => { let _ = out.send(Resp::Typing { space, person, on }); true }
+        Some(None) => true,
+        None => false,
+    }
+}
 
 impl Session {
     /// The conversation's own url (the list's `url`), else the conversation service's.
@@ -82,9 +113,23 @@ impl Session {
         self.typing.registered_until.insert(space.to_string(), end);
     }
 
-    /// A Mercury typing event → the UI (someone else; my own other devices are ignored).
+    /// Publishes `space`'s participants (both id forms) and my ids for the socket thread's fast path.
+    pub(super) fn publish_typing(&self, space: &str) {
+        let Some(s) = self.spaces.get(space) else { return };
+        let mut m = HashMap::new();
+        for p in s.participants.iter().filter(|p| !self.actor_is_me(&json!({"id": p.id}))) {
+            if let Some(u) = self.uuids.get(&p.id) { m.insert(u.clone(), p.clone()); }
+            m.insert(p.id.clone(), p.clone());
+        }
+        let me: Vec<String> = [self.user.clone(), self.my_email.to_ascii_lowercase()].into_iter().filter(|s| !s.is_empty()).collect();
+        dir(|d| { d.me = me; d.spaces.insert(space.to_string(), m); });
+    }
+
+    /// A Mercury typing event the socket thread could not resolve → the UI (someone else; my own other devices are ignored).
     pub(super) fn typing_event(&mut self, data: &Value) {
         let Some((space, actor, on)) = parse_event(data) else { return };
+        dir(|d| if let Some(n) = d.queued.get_mut(&space) { *n -= 1; if *n == 0 { d.queued.remove(&space); } });
+        self.publish_typing(&space); // later events of this conversation take the fast path
         if actor == self.user || self.actor_is_me(&json!({"id": actor})) { return }
         // The participant behind the uuid (participants carry e-mail-style ids next to it).
         let person = self.spaces.get(&space).and_then(|s| s.participants.iter().find(|p| p.id == actor || self.uuids.get(&p.id).is_some_and(|u| *u == actor)).cloned())
@@ -115,6 +160,28 @@ mod tests {
     fn registration_end_is_85_to_99_percent_of_the_ttl() {
         assert_eq!(registration_end(1_000, 100_000, 85), 86_000);
         assert_eq!(registration_end(1_000, 100_000, 99), 100_000);
+    }
+
+    #[test]
+    fn unknown_typers_queue_and_keep_the_order() {
+        let (mut s, rx) = super::super::live_list::tests::session();
+        s.spaces.insert("ord-c".into(), Space { id: "ord-c".into(), participants: vec![Person { id: "u-ord".into(), name: "Max Muster".into(), ..Default::default() }], ..Default::default() });
+        let ev = |on: bool, who: &str| json!({"eventType": if on { START } else { STOP }, "conversationId": "ord-c", "actor": {"id": who}});
+        let (out, ui) = std::sync::mpsc::channel();
+        // Nothing published yet: the job loop resolves it.
+        assert!(!fast(&ev(true, "u-ord"), &out));
+        s.publish_typing("ord-c"); // e.g. the conversation's messages arrived meanwhile
+        assert!(!fast(&ev(false, "u-ord"), &out), "queued behind the earlier start");
+        s.typing_event(&ev(true, "u-ord"));
+        s.typing_event(&ev(false, "u-ord"));
+        let r: Vec<bool> = rx.try_iter().filter_map(|r| if let Resp::Typing { on, .. } = r { Some(on) } else { None }).collect();
+        assert_eq!(r, [true, false]);
+        // Drained: straight through now; my own other devices are dropped.
+        assert!(fast(&ev(true, "u-ord"), &out));
+        assert!(fast(&ev(true, "me"), &out));
+        let r: Vec<Resp> = ui.try_iter().collect();
+        assert_eq!(r.len(), 1);
+        assert!(matches!(&r[0], Resp::Typing { person, on: true, .. } if person.name == "Max Muster"));
     }
 
     #[test]

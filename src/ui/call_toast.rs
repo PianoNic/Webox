@@ -22,7 +22,7 @@ pub(crate) fn round_at(ui: &mut egui::Ui, ic: &mut icons::Icons, id: &str, cente
     let f = if resp.is_pointer_button_down_on() { fill.gamma_multiply(0.7) } else if resp.hovered() { fill.gamma_multiply(0.85) } else { fill };
     ui.painter().circle_filled(center, d / 2.0, f);
     ic.paint(ui, icon, Rect::from_center_size(center, Vec2::splat(d * 0.5)), icon_col);
-    if resp.has_focus() { ui.painter().circle_stroke(center, d / 2.0 + 1.5, Stroke::new(2.0, ring)); }
+    if resp.has_focus() { ui.painter().circle_stroke(center, d / 2.0 + 1.5, Stroke::new(2.0_f32, ring)); }
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp
 }
@@ -33,7 +33,7 @@ pub(crate) fn ghost_at(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th, id: &st
     let resp = ui.interact(r, ui.id().with(id), Sense::click());
     if resp.hovered() || resp.has_focus() { ui.painter().circle_filled(center, d / 2.0, if resp.is_pointer_button_down_on() { t.pill } else { t.hover }); }
     ic.paint(ui, icon, Rect::from_center_size(center, Vec2::splat(d * 0.55)), col);
-    if resp.has_focus() { ui.painter().circle_stroke(center, d / 2.0, Stroke::new(2.0, t.focus)); }
+    if resp.has_focus() { ui.painter().circle_stroke(center, d / 2.0, Stroke::new(2.0_f32, t.focus)); }
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp
 }
@@ -82,7 +82,7 @@ impl App {
             // modal-primary-background (#000000 dark / #FFFFFF light) with modal-primary-border (#FFFFFF33 / #00000033).
             let bg = t.tk("modal-primary-background");
             ui.painter().rect_filled(body, 0.0, bg);
-            ui.painter().rect_stroke(body, 0.0, Stroke::new(1.0, t.sep), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(body, 0.0, Stroke::new(1.0_f32, t.sep), egui::StrokeKind::Inside);
             let o = body.min;
             let at = |x: f32, y: f32| o + Vec2::new(x, y);
             let ring = t.focus;
@@ -98,7 +98,7 @@ impl App {
                 let fill = if resp.hovered() { t.pill } else { t.selected };
                 ui.painter().rect_filled(pill, 20.0, fill);
                 ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, "Auf meinem Computer annehmen", semibold(14.0), t.text1);
-                if resp.has_focus() { ui.painter().rect_stroke(pill.expand(1.5), 21.5, Stroke::new(2.0, ring), egui::StrokeKind::Inside); }
+                if resp.has_focus() { ui.painter().rect_stroke(pill.expand(1.5), 21.5, Stroke::new(2.0_f32, ring), egui::StrokeKind::Inside); }
                 if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 if resp.clicked() { a.answer = true; }
             }
@@ -112,7 +112,7 @@ impl App {
                 let resp = ui.interact(ar, ui.id().with("avatar"), Sense::click());
                 let mut c = ui.new_child(egui::UiBuilder::new().max_rect(ar));
                 avatar_photo(&mut c, &mut self.icons, t, &v.name, 32.0, false, None, None, v.photo);
-                if resp.has_focus() { ui.painter().circle_stroke(ar.center(), 17.5, Stroke::new(2.0, ring)); }
+                if resp.has_focus() { ui.painter().circle_stroke(ar.center(), 17.5, Stroke::new(2.0_f32, ring)); }
                 if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 if resp.on_hover_text("Visitenkarte anzeigen").clicked() { a.contact = true; }
             }

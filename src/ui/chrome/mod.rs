@@ -12,6 +12,7 @@ pub(crate) const RAIL_NARROW: f32 = 60.8;
 /// Margin around all content while the window is not maximised (pt): the window background shows through, it is the resize
 /// border. Every edge offset of the maximised layout grows by this much.
 pub(crate) const EDGE_INSET: f32 = 6.0;
+pub(crate) use header_layout::MIN_WINDOW;
 
 /// The current content inset: [`EDGE_INSET`] while the window is neither maximised nor fullscreen, else 0.
 pub(crate) fn edge_inset(ctx: &egui::Context) -> f32 {
@@ -150,6 +151,7 @@ impl App {
     }
 
     pub(crate) fn top_bar(&mut self, ctx: &egui::Context, t: &Th, now: f64) {
+        header_layout::keep_min_size(ctx);
         egui::TopBottomPanel::top("top").exact_height(header_h()).show_separator_line(false).frame(egui::Frame::default()).show(ctx, |ui| {
             let full = ui.max_rect();
             let cy = full.top() + HEADER_CY;
@@ -163,63 +165,68 @@ impl App {
             }
             // Own avatar (40) with presence badge, then "Status festlegen".
             let (me, st) = (self.me.name.clone(), self.me.status.clone());
+            let label = if self.client.is_some() || self.status.starts_with("Offline (sample") { self.status_label(ctx) } else { self.status.clone() };
+            let lw = ui.fonts(|f| f.layout_no_wrap(label.clone(), semibold(14.0), t.text1).size().x);
+            let dev_txt = tr("Connect to a device");
+            let gw = ui.fonts(|f| f.layout_no_wrap(dev_txt.to_string(), semibold(14.0), t.text1).size().x);
+            // Shared by all header items: narrow windows elide the status and device labels instead of overlapping.
+            let hl = header_layout::header_layout(full, cy, lw, gw);
             // Header avatar: 32 pt, photo 29 pt inside a thin light ring, presence dot 11.6 pt centred 0.356 / 0.28 of the diameter
             // right / below the centre; avatar centre 28 pt from the window's left edge.
-            let ar = Rect::from_center_size(pos2(full.left() + 28.0, cy), Vec2::splat(32.0));
+            let ar = hl.avatar;
             let mut ac = ui.new_child(egui::UiBuilder::new().max_rect(ar));
             let photo = [self.me.email.clone(), self.me.id.clone()].iter().find_map(|k| self.photo(ctx, k));
             // The badge's 1.2 pt ring is cut out of the photo (the header shows through), the dot drawn on the device-pixel grid.
             super::widgets::avatar_photo_with(&mut ac, &mut self.icons, t, &me, 32.0, false, None, Some(&st), photo, super::widgets::BadgeGeom::HEADER);
-            let label = if self.client.is_some() || self.status.starts_with("Offline (sample") { self.status_label(ctx) } else { self.status.clone() };
             // "Status festlegen": a pill button (hover #1C1C1C / pressed #121212 = appHeader-buttonStatus, dark theme): 28 high,
-            // radius 14, text padding 14 / 14, 14 px / 600, 16 after the avatar, 1 px border.
-            let lw = ui.fonts(|f| f.layout_no_wrap(label.clone(), semibold(14.0), t.text1).size().x);
-            let chip = Rect::from_min_max(pos2(ar.right() + 16.0, cy - 14.0), pos2(ar.right() + 16.0 + 1.0 + 14.0 + lw + 14.0 + 1.0, cy + 14.0));
-            let cresp = ui.interact(chip, egui::Id::new("status-chip"), Sense::click());
-            header_chip_fill(ui, t, &cresp, chip, forced == "status");
-            ui.painter().text(pos2(chip.left() + 15.0, cy), egui::Align2::LEFT_CENTER, &label, semibold(14.0), t.tk("globalHeader-buttonStatus-text"));
+            // radius 14, text padding 14 / 14, 14 px / 600, 16 after the avatar, 1 px border; the text elides when narrow.
+            if let Some(chip) = hl.status {
+                let cresp = ui.interact(chip, egui::Id::new("status-chip"), Sense::click());
+                header_chip_fill(ui, t, &cresp, chip, forced == "status");
+                let shown = fit_text(ui.painter(), chip.left() + 15.0, cy, &label, semibold(14.0), t.tk("globalHeader-buttonStatus-text"), chip.width() - 30.0);
+                let cresp = if shown.width() + 0.5 < lw { cresp.on_hover_text(&label) } else { cresp };
+                if cresp.clicked() { let cs = self.custom_status(ctx); super::profile_menu::open_status_dialog(ctx, &cs); }
+            }
             // The two do different things: the avatar opens the profile menu ("Profil und Einstellungen"), the status button opens the
             // custom-status dialog directly. Avatar tooltip from the pack (QObject).
             let aresp = ui.interact(ar, egui::Id::new("avatar-btn"), Sense::click()).on_hover_text("Klicken Sie auf Ihren Avatar, um Ihren Status festzulegen, die Benachrichtigungseinstellungen zu ändern und die mobile App herunterzuladen.");
             if aresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
             if aresp.clicked() { super::menu::menu_toggle(ctx, "status"); }
-            if cresp.clicked() { let cs = self.custom_status(ctx); super::profile_menu::open_status_dialog(ctx, &cs); }
             self.profile_menu(ctx, t, ar, now);
 
-            // Centre group: back / forward, search pill (354 x 30 at 45.5 % of the width), +.
-            let sw = (full.width() * 0.295).clamp(220.0, 354.0);
-            let sr = Rect::from_center_size(pos2(full.left() + full.width() * 0.455, cy), Vec2::new(sw, 28.0)); // 28 high
+            // Centre group: back / forward, search pill (fixed 354 x 28), +.
+            let sr = hl.search;
             let can_back = self.hpos > 0;
             let can_fwd = self.hpos + 1 < self.history.len();
-            let chev = |s: &mut Self, ui: &mut egui::Ui, id: &str, icon: &'static str, x: f32, on: bool| {
-                let rect = Rect::from_center_size(pos2(x, cy), Vec2::splat(30.0));
+            let chev = |s: &mut Self, ui: &mut egui::Ui, id: &str, icon: &'static str, rect: Rect, on: bool| {
                 let resp = ui.interact(rect, egui::Id::new(id), Sense::click());
                 if on { header_chip_fill(ui, t, &resp, Rect::from_center_size(rect.center(), Vec2::splat(28.0)), false); }
                 // globalHeader-buttonIcon-icon / :disabled.
                 s.icons.paint(ui, icon, Rect::from_center_size(rect.center(), Vec2::splat(14.0)), if on { t.tk("globalHeader-buttonIcon-icon") } else { t.tk("globalHeader-buttonIcon-icon:disabled") });
                 resp
             };
-            if chev(self, ui, "nav-back", "arrow-left-optical_10", sr.left() - 61.0, can_back).on_hover_text(tr("Back")).clicked() { self.act(Act::Back, ctx) }
-            if chev(self, ui, "nav-fwd", "arrow-right-optical_10", sr.left() - 31.0, can_fwd).on_hover_text(tr("Forward")).clicked() { self.act(Act::Forward, ctx) }
+            if chev(self, ui, "nav-back", "arrow-left-optical_10", hl.back, can_back).on_hover_text(tr("Back")).clicked() { self.act(Act::Back, ctx) }
+            if chev(self, ui, "nav-fwd", "arrow-right-optical_10", hl.fwd, can_fwd).on_hover_text(tr("Forward")).clicked() { self.act(Act::Forward, ctx) }
             // globalHeader-SearchEditField-background: #3B3B3B / #DEDEDE, hovered #545454 / #C9C9C9, pressed = checked; outline
             // appHeader-searchBar-outline-active #3B3B3B.
             let sfill = if ui.rect_contains_pointer(sr) { if ui.input(|i| i.pointer.primary_down()) { t.tk("globalHeader-SearchEditField-background:checked") } else { t.tk("globalHeader-SearchEditField-background:hovered") } } else { t.search };
             ui.painter().rect_filled(sr, 14.0, sfill);
-            ui.painter().rect_stroke(sr, 14.0, Stroke::new(1.0, t.tk("appHeader-searchBar-outline-active")), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(sr, 14.0, Stroke::new(1.0_f32, t.tk("appHeader-searchBar-outline-active")), egui::StrokeKind::Inside);
             self.icons.paint(ui, "search-regular", Rect::from_center_size(sr.left_center() + Vec2::new(24.0, 0.0), Vec2::splat(16.0)), t.tk("globalHeader-textfield-searchIcon"));
-            ui.painter().text(sr.right_center() - Vec2::new(11.0, 0.0), egui::Align2::RIGHT_CENTER, tr("Ctrl+F"), FontId::proportional(14.0), t.text2);
+            // The shortcut hint only while the field has its full width (a zoomed UI below the minimum window shrinks it).
+            let hint = if sr.width() >= header_layout::SEARCH_W { ui.painter().text(sr.right_center() - Vec2::new(11.0, 0.0), egui::Align2::RIGHT_CENTER, tr("Ctrl+F"), FontId::proportional(14.0), t.text2).width() + 19.0 } else { 12.0 };
             // The pill is a button; a click / Strg+F opens the global search popup (ui/global_search.rs).
-            ui.painter().text(sr.left_center() + Vec2::new(40.0, 0.0), egui::Align2::LEFT_CENTER, tr("Search, meet, and call"), FontId::proportional(14.5), t.text2);
+            fit_text(ui.painter(), sr.left() + 40.0, cy, tr("Search, meet, and call"), FontId::proportional(14.5), t.text2, sr.width() - 40.0 - hint);
             let sresp = ui.interact(sr, egui::Id::new("search-pill"), Sense::click());
             super::global_search::set_pill(ctx, sr);
             if sresp.clicked() { super::global_search::toggle(ctx); }
             if std::mem::take(&mut self.focus_search) { super::global_search::open(ctx); }
             // The + circle (26 px, light outline).
-            let pr = Rect::from_center_size(pos2(sr.right() + 32.0, cy), Vec2::splat(26.0));
+            let pr = hl.plus;
             let presp = ui.interact(pr, egui::Id::new("top-plus"), Sense::click());
             // globalHeader-buttonIcon-background: hovered 7 %, pressed 20 %. Ring #CFCFCF dark, #454545 light.
             if presp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); ui.painter().circle_filled(pr.center(), 13.0, if presp.is_pointer_button_down_on() { t.tk("globalHeader-buttonIcon-background:pressed") } else { t.tk("globalHeader-buttonIcon-background:hovered") }); }
-            ui.painter().circle_stroke(pr.center(), 12.4, Stroke::new(1.2, if t.light { hex(0x454545) } else { hex(0xCFCFCF) }));
+            ui.painter().circle_stroke(pr.center(), 12.4, Stroke::new(1.2_f32, if t.light { hex(0x454545) } else { hex(0xCFCFCF) }));
             self.icons.paint(ui, "plus-regular", Rect::from_center_size(pr.center(), Vec2::splat(14.0)), t.tk("globalHeader-buttonIcon-icon"));
             // The + opens the global menu (ui/header_plus.rs); tooltip "Eine Unterhaltung starten".
             let plus_open = super::menu::menu_is_open(ctx, super::header_plus::KEY);
@@ -248,33 +255,35 @@ impl App {
             if btn(ui, "win-close", wc(1.0), t.tk("globalHeader-closeButton-background:hovered"), &|p, c, hov| {
                 let d = 4.4;
                 let g = if hov { t.tk("globalHeader-closeButton-text:hovered") } else { t.tk("globalHeader-closeButton-text") };
-                p.line_segment([c - Vec2::new(d, d), c + Vec2::new(d, d)], Stroke::new(1.0, g));
-                p.line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.0, g));
+                p.line_segment([c - Vec2::new(d, d), c + Vec2::new(d, d)], Stroke::new(1.0_f32, g));
+                p.line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.0_f32, g));
             }) { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
             if btn(ui, "win-max", wc(2.0), mm_hover, &|p, c, _| {
-                p.rect_stroke(Rect::from_center_size(c - Vec2::new(0.0, 1.2), Vec2::splat(11.2)), 1.0, Stroke::new(1.0, mm_glyph), egui::StrokeKind::Inside);
+                p.rect_stroke(Rect::from_center_size(c - Vec2::new(0.0, 1.2), Vec2::splat(11.2)), 1.0, Stroke::new(1.0_f32, mm_glyph), egui::StrokeKind::Inside);
             }) {
                 let max = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!max));
             }
             if btn(ui, "win-min", wc(3.0), mm_hover, &|p, c, _| {
-                p.line_segment([c - Vec2::new(5.6, 0.0), c + Vec2::new(5.6, 0.0)], Stroke::new(1.0, mm_glyph));
+                p.line_segment([c - Vec2::new(5.6, 0.0), c + Vec2::new(5.6, 0.0)], Stroke::new(1.0_f32, mm_glyph));
             }) { ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)); }
 
-            // "Mit einem Gerät verbinden" with its device icon, then the browser-engine badge.
-            let txt = tr("Connect to a device");
-            let gw = ui.fonts(|f| f.layout_no_wrap(txt.to_string(), semibold(14.0), t.text1).size().x);
-            let right_edge = full.right() - 177.0;
-            let tr_rect = Rect::from_min_max(pos2(right_edge - gw - 32.0, cy - 16.0), pos2(right_edge + 12.0, cy + 16.0));
+            // "Mit einem Gerät verbinden" with its device icon (label elided when narrow, icon only at the narrowest, the label
+            // then as tooltip), then the AI assistant.
+            let tr_rect = hl.device;
             let resp = ui.interact(tr_rect, egui::Id::new("connect-device"), Sense::click());
             header_chip_fill(ui, t, &resp, tr_rect, forced == "device");
             let dev_ink = t.tk("globalHeader-buttonDevice-text-inactive");
-            ui.painter().text(pos2(right_edge, cy), egui::Align2::RIGHT_CENTER, txt, semibold(14.0), dev_ink);
-            self.icons.paint(ui, "device-connection-regular", Rect::from_center_size(pos2(right_edge - gw - 12.0, cy), Vec2::splat(16.0)), dev_ink);
+            let (icon_c, full_label) = if hl.device_label {
+                let shown = fit_text(ui.painter(), tr_rect.left() + 32.0, cy, dev_txt, semibold(14.0), dev_ink, tr_rect.width() - 44.0);
+                (pos2(tr_rect.left() + 20.0, cy), shown.width() + 0.5 >= gw)
+            } else { (tr_rect.center(), false) };
+            self.icons.paint(ui, "device-connection-regular", Rect::from_center_size(icon_c, Vec2::splat(16.0)), dev_ink);
+            let resp = if full_label { resp } else { resp.on_hover_text(dev_txt) };
             if resp.clicked() { super::menu::menu_toggle(ctx, super::app_dialogs::DEVICE) } // device list (ui/app_dialogs.rs)
             let _ = now;
             // The Webex AI assistant mark (cisco-ai-assistant-color-gradient.svg), 18 pt, its own colours.
-            let ai = Rect::from_center_size(pos2(full.right() - 140.0, cy), Vec2::splat(30.0));
+            let ai = hl.ai;
             let air = ui.interact(ai, egui::Id::new("ai-assistant"), Sense::click());
             header_chip_fill(ui, t, &air, ai, forced == "ai");
             self.icons.art(ui, "cisco-ai-assistant-color-gradient", Rect::from_center_size(ai.center(), Vec2::splat(18.0)));
@@ -389,4 +398,5 @@ impl App {
 }
 
 pub(crate) mod compact_list;
+mod header_layout;
 mod rail;

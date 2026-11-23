@@ -163,10 +163,15 @@ impl App {
             (None, mine) => {
                 let Some(m) = self.messages.get_mut(&id).and_then(|l| l.iter_mut().find(|m| m.id == msg)) else { return };
                 m.rev = 0; // edited in place: the list's layout cache hashes it again
+                let me = cloud::Reactor { id: self.me.id.clone(), published: String::new() };
                 match (m.reactions.iter().position(|r| r.name == name), mine.flatten()) {
-                    (Some(i), Some(_)) => { m.reactions[i].count -= 1; m.reactions[i].mine = None; if m.reactions[i].count == 0 { m.reactions.remove(i); } }
-                    (Some(i), None) => { m.reactions[i].count += 1; m.reactions[i].mine = Some("local".into()); }
-                    (None, _) => m.reactions.push(Reaction { name: name.into(), count: 1, mine: Some("local".into()) }),
+                    (Some(i), Some(_)) => {
+                        let r = &mut m.reactions[i];
+                        r.count -= 1; r.mine = None; r.users.retain(|u| u.id != me.id);
+                        if r.count == 0 { m.reactions.remove(i); }
+                    }
+                    (Some(i), None) => { let r = &mut m.reactions[i]; r.count += 1; r.mine = Some("local".into()); r.users.push(me); }
+                    (None, _) => m.reactions.push(Reaction { name: name.into(), count: 1, mine: Some("local".into()), users: vec![me] }),
                 }
             }
         }

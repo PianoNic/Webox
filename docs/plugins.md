@@ -7,7 +7,7 @@ Webox plugins are native libraries (`.dll` on Windows, `.so` on Linux) built aga
 |---|---|---|
 | Repository install | `%APPDATA%\WebOx\plugins\<pkg>\<version>\<file>` (Linux: `$XDG_DATA_HOME/webox/plugins/...`, default `~/.local/share/webox/plugins`) | "Aus Repository: ...", can be updated and uninstalled |
 | Plugin folder | `%APPDATA%\WebOx\plugins\*.dll` (Linux: `~/.config/webox/plugins/*.so`), `COLLABHOST_PLUGIN_PATH` | "Manuell installiert" |
-| Program folder | `plugins/` next to `webox.exe`, `../lib/collabhost/plugins` (Nix), `collabhost_*` next to the exe (cargo output) | "Mitgeliefert" |
+| Program folder | `plugins/` next to `webox.exe`, `../lib/collabhost/plugins` (Nix); during development use `COLLABHOST_PLUGIN_PATH` | "Mitgeliefert" |
 
 With the side-loading policy on (`enableDllSideLoadingProtection`, see `docs/architecture.md`) only the program folder loads,
 and installing from repositories is switched off.

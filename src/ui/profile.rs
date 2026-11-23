@@ -22,7 +22,7 @@ fn pill(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th, icon: &'static str, la
         Pill::Green => { ui.painter().rect_filled(r, 16.0, if down { hex(0x17422C) } else if resp.hovered() { hex(0x1C5E3D) } else { hex(0x248052) }); }
         Pill::Outline => {
             if resp.hovered() || down { ui.painter().rect_filled(r, 16.0, t.ink_a(if down { 0.14 } else { 0.08 })); }
-            ui.painter().rect_stroke(r, 16.0, Stroke::new(1.0, t.ink_a(0.3)), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(r, 16.0, Stroke::new(1.0_f32, t.ink_a(0.3)), egui::StrokeKind::Inside);
         }
     }
     let fg = if style == Pill::Green { Color32::WHITE } else { t.text1 };
@@ -145,7 +145,7 @@ impl App {
         let mut rect = Rect::NOTHING;
         let mut close = false;
         egui::Area::new(egui::Id::new("contact-card-area")).fixed_pos(pos).order(egui::Order::Foreground).show(ctx, |ui| {
-            let frame = egui::Frame::default().fill(bg).stroke(Stroke::new(1.0, border)).corner_radius(12.0).inner_margin(24)
+            let frame = egui::Frame::default().fill(bg).stroke(Stroke::new(1.0_f32, border)).corner_radius(12.0).inner_margin(24)
                 .shadow(egui::Shadow { offset: [0, 8], blur: 28, spread: 0, color: Color32::from_black_alpha(if light { 50 } else { 170 }) });
             let r = frame.show(ui, |ui| {
                 ui.set_width(w - 48.0);

@@ -84,13 +84,13 @@ impl App {
             let pt = ui.painter().clone();
             pt.add(egui::Shadow { offset: [0, 4], blur: 18, spread: 0, color: Color32::from_black_alpha(if dark { 140 } else { 40 }) }.as_shape(body, 12.0));
             pt.rect_filled(body, 12.0, bg);
-            pt.rect_stroke(body, 12.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+            pt.rect_stroke(body, 12.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
             // Caret: 45° sides, tip under the button centre.
             let cx = anchor.center().x;
             let (tip, base) = (pos2(cx, body.top() - CARET), body.top());
             pt.add(egui::Shape::convex_polygon(vec![pos2(cx - CARET, base + 1.0), pos2(cx + CARET, base + 1.0), tip], bg, Stroke::NONE));
-            pt.line_segment([pos2(cx - CARET, base), tip], Stroke::new(1.0, border));
-            pt.line_segment([pos2(cx + CARET, base), tip], Stroke::new(1.0, border));
+            pt.line_segment([pos2(cx - CARET, base), tip], Stroke::new(1.0_f32, border));
+            pt.line_segment([pos2(cx + CARET, base), tip], Stroke::new(1.0_f32, border));
             for (i, (id, icon, src)) in ENTRIES.iter().enumerate() {
                 let row = Rect::from_min_size(pos2(body.left() + PAD, body.top() + PAD + ROW * i as f32), Vec2::new(W - 2.0 * PAD, ROW));
                 let resp = ui.interact(row, egui::Id::new(("header-plus-item", i)), Sense::click());

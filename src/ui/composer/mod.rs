@@ -25,7 +25,7 @@ struct St {
     chips_w: f32,
     emoji_q: Option<(usize, String)>, emoji_sel: usize, emoji_cancel: Option<usize>,
     ment_q: Option<(usize, String)>, ment_sel: usize, ment_cancel: Option<usize>, ment_dir: Option<bool>,
-    rows: usize, confirm_all: bool, was_focused: bool, last_len: usize,
+    rows: usize, confirm_all: bool, was_focused: bool,
 }
 
 /// No extra row inside the composer while editing: the 56 pt title sits above the input box (ui/edit_overlay.rs).

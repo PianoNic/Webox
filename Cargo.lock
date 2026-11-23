@@ -6879,6 +6879,7 @@ dependencies = [
 name = "webox"
 version = "0.2.0"
 dependencies = [
+ "ab_glyph",
  "aes",
  "aes-gcm",
  "arboard",

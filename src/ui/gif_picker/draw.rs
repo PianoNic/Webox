@@ -117,11 +117,11 @@ impl App {
             // Drop shadow (blur 4, offset 0) in the 4 px margin, body + 1 px border, the caret pointing at the button.
             p.add(egui::Shadow { offset: [0, 0], blur: SHADOW_M as u8, spread: 0, color: pal.shadow }.as_shape(pl.body, BODY_R));
             p.rect_filled(pl.body, BODY_R, pal.body);
-            p.rect_stroke(pl.body, BODY_R, Stroke::new(1.0, pal.border), egui::StrokeKind::Inside);
+            p.rect_stroke(pl.body, BODY_R, Stroke::new(1.0_f32, pal.border), egui::StrokeKind::Inside);
             let [c0, tip, c1] = pl.caret();
             // The fill reaches 1 px into the body to cover the border under the caret's base.
             p.add(egui::Shape::convex_polygon(vec![pos2(c0.x, c0.y - 1.0), pos2(c1.x, c1.y - 1.0), tip], pal.body, Stroke::NONE));
-            for c in [c0, c1] { p.line_segment([pos2(c.x, c.y - 0.5), tip], Stroke::new(1.0, pal.border)); }
+            for c in [c0, c1] { p.line_segment([pos2(c.x, c.y - 0.5), tip], Stroke::new(1.0_f32, pal.border)); }
             // Search row: wx-headingColor-background with a 1 px bottom border of the same colour.
             let r = (BODY_R - 1.0) as u8;
             p.rect_filled(lay.search, egui::CornerRadius { nw: r, ne: r, sw: 0, se: 0 }, pal.head);
@@ -140,7 +140,7 @@ impl App {
             // Cancel-search button: shown while there is text; a ring in wx-giphyIntegrationWidgetCancelSearchButton-background.
             if !st.query.is_empty() {
                 let xresp = ui.interact(lay.cancel, egui::Id::new("gif-clear"), Sense::click());
-                p.circle_stroke(lay.cancel.center(), 8.5, Stroke::new(1.0, pal.cancel));
+                p.circle_stroke(lay.cancel.center(), 8.5, Stroke::new(1.0_f32, pal.cancel));
                 self.icons.paint(ui, "cancel-bold", Rect::from_center_size(lay.cancel.center(), Vec2::splat(8.0)), pal.cancel);
                 if xresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
                 if xresp.on_hover_text("Eintrag löschen").clicked() { clear_query = true; }
@@ -217,7 +217,7 @@ impl App {
             }
             let lresp = ui.interact(lr.expand(3.0), egui::Id::new("gif-terms"), Sense::click());
             if lresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
-            p.hline(lr.x_range(), lr.bottom() - 1.0, Stroke::new(1.0, pal.link));
+            p.hline(lr.x_range(), lr.bottom() - 1.0, Stroke::new(1.0_f32, pal.link));
             p.galley(lr.min, lg, pal.link);
             if lresp.on_hover_text("Giphy-Geschäftsbedingungen anzeigen").clicked() { open_terms = true; }
         });

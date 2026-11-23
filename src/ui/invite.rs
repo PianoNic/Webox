@@ -75,7 +75,7 @@ impl App {
         let field = Rect::from_min_size(pos2(cx - FIELD_W / 2.0, y(FIELD_TOP)), Vec2::new(FIELD_W, FIELD_H));
         let tid = egui::Id::new("invite-field");
         p.rect_filled(field, 8.0, t.tk("modal-primary-background")); // the dialog's own colour (#000000 dark)
-        p.rect_stroke(field, 8.0, Stroke::new(1.0, t.ink_a(0.9)), egui::StrokeKind::Inside); // ink 90 % (focused field)
+        p.rect_stroke(field, 8.0, Stroke::new(1.0_f32, t.ink_a(0.9)), egui::StrokeKind::Inside); // ink 90 % (focused field)
         self.icons.paint(ui, "search-regular", Rect::from_center_size(pos2(field.left() + 15.6, field.center().y), Vec2::splat(16.0)), t.text1);
         let clear_w = if s.email.is_empty() { 0.0 } else { 30.0 };
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(pos2(field.left() + 33.6, field.top()), pos2(field.right() - 10.0 - clear_w, field.bottom()))).layout(egui::Layout::left_to_right(egui::Align::Center)));
@@ -110,7 +110,7 @@ impl App {
         p.text(b1.center(), egui::Align2::CENTER_CENTER, &send_label, semibold(16.0), if ok { t.white_btn_text } else { t.tk("button-primary-text:disabled") });
         let r2 = ui.interact(b2, egui::Id::new("invite-close"), Sense::click());
         if r2.hovered() { p.rect_filled(b2, BTN_H / 2.0, t.hover); }
-        p.rect_stroke(b2, BTN_H / 2.0, Stroke::new(1.0, t.tk("button-secondary-border")), egui::StrokeKind::Inside);
+        p.rect_stroke(b2, BTN_H / 2.0, Stroke::new(1.0_f32, t.tk("button-secondary-border")), egui::StrokeKind::Inside);
         p.text(b2.center(), egui::Align2::CENTER_CENTER, &close_label, semibold(16.0), t.text1);
         if r1.hovered() || r2.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
 

@@ -131,9 +131,6 @@ impl Drop for Tray {
     fn drop(&mut self) { let _ = notify(NIM_DELETE, self.hwnd, 0, ""); }
 }
 
-/// Test hook: pretends the tray icon was right-clicked at (x, y) / left-clicked.
-pub fn inject(e: TrayEvent) { EVENTS.lock().unwrap().push(e); if let Some(c) = CTX.get() { c.request_repaint(); } }
-
 // Taskbar button of the main window.
 
 pub fn flash(main: isize, on: bool) {
@@ -261,8 +258,6 @@ pub fn place(h: isize, x: i32, y: i32, w: i32, hgt: i32) {
 }
 
 pub fn dpi_scale(h: isize) -> f32 { (unsafe { GetDpiForWindow(hwnd(h)) }.max(96)) as f32 / 96.0 }
-
-pub fn cursor() -> (i32, i32) { let mut p = POINT::default(); unsafe { let _ = GetCursorPos(&mut p); } (p.x, p.y) }
 
 pub fn window_rect(h: isize) -> Option<(i32, i32, i32, i32)> {
     let mut r = RECT::default();

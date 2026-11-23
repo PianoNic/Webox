@@ -155,7 +155,7 @@ impl App {
         for g in groups {
             let w = g.len() as f32 * 24.0 + 2.0;
             let pill = Rect::from_min_size(pos2(x, cy - 13.0), Vec2::new(w, 26.0));
-            ui.painter().rect_stroke(pill, 10.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(pill, 10.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
             for (i, (icon, tip, f)) in g.iter().enumerate() {
                 let r = Rect::from_min_size(pos2(pill.left() + 1.0 + i as f32 * 24.0, cy - 12.0), Vec2::splat(24.0));
                 let resp = ui.interact(r, ui.id().with(("rich", *icon)), Sense::click());
@@ -177,7 +177,7 @@ impl App {
         let more = single(self, ui, &mut x, "more-regular", "Weitere Formatierungsoptionen", 28.0);
         if more.clicked() { super::super::menu::menu_toggle(ui.ctx(), "composer-more"); }
         x += 5.0;
-        ui.painter().vline(x, (cy - 11.0)..=(cy + 11.0), Stroke::new(1.0, border)); // 1 x 22 separator, 5 / 6 px spacers
+        ui.painter().vline(x, (cy - 11.0)..=(cy + 11.0), Stroke::new(1.0_f32, border)); // 1 x 22 separator, 5 / 6 px spacers
         x += 6.0;
         if single(self, ui, &mut x, "markdown_16_em", if st.md { "Markdown deaktivieren (Alt+Umschalt+M)" } else { "Markdown einschalten (Alt+Umschalt+M)" }, 28.0).clicked() { st.legend = true; st.legend_anchor = Some(Rect::from_min_size(pos2(x - 33.0, cy - 14.0), Vec2::splat(28.0))); }
         // "Weitere" menu: Webox's own wording.
@@ -208,7 +208,7 @@ impl App {
         let anchor = st.legend_anchor.unwrap_or(Rect::NOTHING);
         let mut inside = Rect::NOTHING;
         let area = egui::Area::new(egui::Id::new("md-legend")).fixed_pos(pos2(anchor.left().max(8.0), anchor.top() - 8.0)).pivot(egui::Align2::LEFT_BOTTOM).order(egui::Order::Foreground).show(ctx, |ui| {
-            egui::Frame::default().fill(bg).stroke(Stroke::new(1.0, border)).corner_radius(8.0).show(ui, |ui| {
+            egui::Frame::default().fill(bg).stroke(Stroke::new(1.0_f32, border)).corner_radius(8.0).show(ui, |ui| {
                 ui.set_width(280.0);
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
                 let wrap = |ui: &mut egui::Ui, text: &str, font: FontId, top: f32, bottom: f32| {
@@ -218,7 +218,7 @@ impl App {
                 };
                 wrap(ui, "Markdown-Formate", semibold(16.0), 12.0, 0.0);
                 wrap(ui, "Sonderzeichen um den Text hinzufügen, um eine Formatierung anzuwenden", FontId::proportional(14.0), 4.0, 8.0);
-                ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top() + 0.5, Stroke::new(1.0, div));
+                ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top() + 0.5, Stroke::new(1.0_f32, div));
                 ui.add_space(1.0);
                 crate::ui::widgets::vscroll().id_salt("md-legend-scroll").max_height(200.0).auto_shrink([false, true]).show(ui, |ui| {
                     ui.spacing_mut().item_spacing = Vec2::ZERO;
@@ -239,7 +239,7 @@ impl App {
                         let _ = rt;
                     }
                 });
-                ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top() + 0.5, Stroke::new(1.0, div));
+                ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top() + 0.5, Stroke::new(1.0_f32, div));
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
                     ui.add_space(12.0);

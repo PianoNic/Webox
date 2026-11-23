@@ -93,7 +93,7 @@ impl App {
             let (r, _) = c.allocate_exact_size(Vec2::new(w, 34.0), Sense::hover());
             c.painter().text(r.left_center(), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.5), t.text2);
             c.painter().text(r.left_center() + Vec2::new(150.0, 0.0), egui::Align2::LEFT_CENTER, value, FontId::proportional(14.5), t.text1);
-            c.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0, t.ink_a(0.08)));
+            c.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0_f32, t.ink_a(0.08)));
         }
     }
 
@@ -133,7 +133,7 @@ impl App {
         let mut close = ctx.input(|i| i.key_pressed(Key::Escape));
         let mut chat = false; let mut call = false; let mut copy = false;
         let resp = egui::Area::new(egui::Id::new("contact-card")).fixed_pos(pos).order(egui::Order::Foreground).show(ctx, |ui| {
-            egui::Frame::default().fill(bg).stroke(Stroke::new(1.0, border)).corner_radius(12.0).inner_margin(16)
+            egui::Frame::default().fill(bg).stroke(Stroke::new(1.0_f32, border)).corner_radius(12.0).inner_margin(16)
                 .shadow(egui::Shadow { offset: [0, 4], blur: 18, spread: 0, color: Color32::from_black_alpha(if light { 40 } else { 140 }) }).show(ui, |ui| {
                 ui.set_width(w - 32.0);
                 self.person_header(ui, t, &name, "", p.as_ref(), 64.0);
@@ -156,10 +156,9 @@ impl App {
         // Click outside closes it.
         let outside = ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !resp.response.rect.contains(p)));
         if outside && ctx.input(|i| i.time) > 0.0 && !ctx.is_using_pointer() { close = true; }
-        let mut s = self.pst(ctx);
         if copy { ctx.copy_text(email.clone()); self.toast("E-Mail-Adresse kopiert!", now); }
         if chat { close = true; let who = p.clone().unwrap_or(Person { name: name.clone(), email: email.clone(), id: email.clone(), ..Default::default() }); self.open_or_create_direct(&who, now); }
         if call { close = true; self.start_call(&email, &name, now); }
-        if close { s = self.pst(ctx); s.contact_card = None; self.set_pst(ctx, s); }
+        if close { let mut s = self.pst(ctx); s.contact_card = None; self.set_pst(ctx, s); }
     }
 }

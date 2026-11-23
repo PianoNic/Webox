@@ -98,23 +98,6 @@ impl Session {
         }
     }
 
-    pub(super) fn create(&mut self, title: &str) -> Result<(), String> {
-        let v = self.kms_call(json!({"method": "create", "uri": "/keys", "count": 1}))?;
-        let k = &v["keys"][0];
-        let (uri, key) = (st(k, "uri"), jose::oct_key(&k["jwk"])?);
-        self.keys.insert(uri.clone(), key.clone());
-        let (kid, eph) = self.kms.as_ref().and_then(|k| k.eph.clone()).ok_or("no key-service session")?;
-        let resource = json!({"client": self.client(), "requestId": jose::uuid(), "method": "create", "uri": "/resources",
-            "userIds": [self.user], "keyUris": [uri]});
-        let me = json!({"id": self.user, "objectType": "person"});
-        let body = json!({"objectType": "conversation", "displayName": jose::encrypt_dir(&key, &uri, title.as_bytes())?,
-            "encryptionKeyUrl": uri, "defaultActivityEncryptionKeyUrl": uri,
-            "kmsMessage": jose::encrypt_dir(&eph, &kid, resource.to_string().as_bytes())?,
-            "participants": {"items": [me]},
-            "activities": {"items": [{"verb": "create", "actor": me}, {"verb": "add", "actor": me, "object": me}]}});
-        self.http("POST", &self.url("conversation", "/conversations"), Some(body)).map(|_| ())
-    }
-
     pub(super) fn meetings(&mut self) -> Result<(), String> {
         let v = self.http("GET", &self.url("locus", "/loci?startingSoon=true&includePMRs=true"), None)?;
         let list = v["loci"].as_array().cloned().unwrap_or_default().iter().map(|l| Meeting {

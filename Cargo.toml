@@ -34,9 +34,11 @@ aes-gcm = "0.10"
 hkdf = "0.12"
 hmac = "0.12"
 resvg = { version = "0.45", default-features = false }
+# glyph outlines for the taskbar unread badge (already in the tree through egui)
+ab_glyph = "0.2"
 # Calling media: WebRTC peer connection (ICE/DTLS-SRTP/RTP, pure Rust), audio devices, Opus (pure-Rust port). No Cisco media libs.
 webrtc = "0.14"
-tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "sync", "time", "macros"] }
+tokio = { version = "1", default-features = false, features = ["rt-multi-thread", "sync", "time", "macros", "net"] }
 cpal = "0.15"
 bytes = "1"
 ropus = "0.12"
@@ -79,7 +81,11 @@ windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_WinR
   "Win32_Security_Credentials",
   # cameras: Settings > Video preview; video playback (src/media/video/mf.rs): Media Foundation source reader / sink writer,
   # D3D11 + DXGI device manager for DXVA decoding
-  "Win32_Media_MediaFoundation", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_System_Com_StructuredStorage", "Win32_System_Variant"] } # Time+Globalization (i18n, local time), WindowsAndMessaging (call windows), KeyboardAndMouse+Threading (global hotkeys, shortcuts)
+  "Win32_Media_MediaFoundation", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_System_Com_StructuredStorage", "Win32_System_Variant",
+  # screen sharing (src/media/share/windows/): Windows.Graphics.Capture + its D3D11 interop, PrintWindow for the picker thumbnails
+  "Foundation", "Graphics", "Graphics_Capture", "Graphics_DirectX", "Graphics_DirectX_Direct3D11", "Win32_System_WinRT_Graphics_Capture", "Win32_System_WinRT_Direct3D11", "Win32_Storage_Xps",
+  # the share tests' locked-desktop probe (OpenInputDesktop)
+  "Win32_System_StationsAndDesktops"] } # Time+Globalization (i18n, local time), WindowsAndMessaging (call windows), KeyboardAndMouse+Threading (global hotkeys, shortcuts)
 raw-window-handle = "0.6"
 
 # Example-only (examples/webview_probe.rs): window creation + screenshot for verifying the WebView2

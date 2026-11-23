@@ -109,10 +109,6 @@ pub(crate) fn place(h: isize, px: i32, py: i32, w: i32, hh: i32) {
     });
 }
 
-pub(crate) fn cursor() -> Option<(i32, i32)> {
-    with(|x| { let r = x.c.query_pointer(x.root).ok()?.reply().ok()?; Some((r.root_x as i32, r.root_y as i32)) })
-}
-
 /// The window's rectangle on the screen (left, top, right, bottom), without the window manager's frame.
 pub(crate) fn window_rect(h: isize) -> Option<(i32, i32, i32, i32)> {
     with(|x| {

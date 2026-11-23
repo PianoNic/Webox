@@ -189,7 +189,7 @@ impl App {
         // attachment-file-default-sent-background (white 11 %, hovered 20 %), 2 pt border -sent-border (white 20 %), radius 8;
         // the fill stays inside the border.
         p.rect_filled(r.shrink(2.0), RADIUS - 2.0, if resp.hovered() { c.tile_hover } else { c.tile });
-        p.rect_stroke(r, RADIUS, Stroke::new(2.0, c.tile_border), StrokeKind::Inside);
+        p.rect_stroke(r, RADIUS, Stroke::new(2.0_f32, c.tile_border), StrokeKind::Inside);
         // Icon box: 64 wide, full height, radius 8, -previewBox-background #1170CF; glyph 21 pt high, -previewBox-icon (white 95 %).
         let icon = Rect::from_min_size(r.min, Vec2::new(64.0, r.height()));
         p.rect_filled(icon, RADIUS, c.file_icon_bg);
@@ -228,9 +228,9 @@ impl App {
             // Download progress: "NN%" (label-primary, right padding 6) + a 28 pt loading spinner.
             let pct = super::super::attach::percent(d.got, d.total);
             let sp = btn.center();
-            p.circle_stroke(sp, 12.0, Stroke::new(2.0, hex(0x8F8F8F))); // spinner-progress-track
+            p.circle_stroke(sp, 12.0, Stroke::new(2.0_f32, hex(0x8F8F8F))); // spinner-progress-track
             let pts: Vec<egui::Pos2> = (0..=48).map(|i| { let a = -std::f32::consts::FRAC_PI_2 + std::f32::consts::TAU * (pct as f32 / 100.0) * i as f32 / 48.0; sp + Vec2::new(a.cos(), a.sin()) * 12.0 }).collect();
-            if pct > 0 { p.add(egui::Shape::line(pts, Stroke::new(2.0, hex(0x64B4FA)))); } // spinner-progress-cursor
+            if pct > 0 { p.add(egui::Shape::line(pts, Stroke::new(2.0_f32, hex(0x64B4FA)))); } // spinner-progress-cursor
             p.text(pos2(btn.left() - 6.0, btn.center().y), Align2::RIGHT_CENTER, format!("{pct}%"), FontId::proportional(12.0), fg(0.95));
             let bs = ui.interact(btn, Id::new(("msg-file-btn", salt.0, salt.1, cur_seq(ui.ctx()))), Sense::click());
             if bs.on_hover_text("Abbrechen").clicked() { act = Some("file-cancel"); }
@@ -242,7 +242,7 @@ impl App {
             let bs = ui.interact(btn, Id::new(("msg-file-btn", salt.0, salt.1, cur_seq(ui.ctx()))), Sense::click());
             let fill = if bs.is_pointer_button_down_on() { 0.2 } else if bs.hovered() { 0.07 } else { 0.0 };
             if fill > 0.0 { p.circle_filled(btn.center(), 14.0, fg(fill)); }
-            p.circle_stroke(btn.center(), 13.5, Stroke::new(1.0, fg(0.5)));
+            p.circle_stroke(btn.center(), 13.5, Stroke::new(1.0_f32, fg(0.5)));
             let (ic, tip, a) = if done { ("open-in-folder_12", "In Ordner anzeigen", "file-folder") }
                 else if failed { (if bs.hovered() { "download_12" } else { "warning_12" }, "Fehlgeschlagen", "file-download") }
                 else { ("download_12", "Herunterladen", "file-download") };

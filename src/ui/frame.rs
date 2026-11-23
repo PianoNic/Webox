@@ -55,6 +55,7 @@ impl eframe::App for App {
         crate::ui::theme::density::set_from(&self.settings);
         let t = self.apply_theme(ctx);
         self.shortcuts_frame(ctx); // registry dispatch, global hotkeys
+        self.type_focus_frame(ctx); // typing with nothing focused goes to the composer (ui/type_focus.rs)
         self.settings_window(ctx, &t, now); // collects file-dialog results, screenshot hook (ui/settings/)
         self.appwide_frame(ctx); // settings that act app-wide (ui/settings_effects.rs)
         self.updates_frame(ctx, now); // daily update check, restart after an update (ui/update_dialog.rs)
@@ -95,6 +96,7 @@ impl eframe::App for App {
         // Global search popup + contact-card popup.
         if !self.need_login { self.nav_card_popup(ctx, &t, now); self.global_search_popup(ctx, &t, now); }
         self.call_overlay(ctx, &t, now);
+        self.share_picker_frame(ctx, &t); // the share dialog while it is open (ui/share_picker/)
         self.notify_update(ctx, &t, now); // toast windows, tray, taskbar
         self.decor_effects(ctx); // design-plugin effects (burst, ripple, June sparkle), drawn last, no input (ui/theme/fx.rs)
 

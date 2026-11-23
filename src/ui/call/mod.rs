@@ -121,7 +121,7 @@ impl App {
             let dev = if kind == 1 && !c.ringtone.is_empty() { c.ringtone } else { c.output };
             for d in Self::out_devices(&dev, kind == 1 && p.ring_all_devices) {
                 let e = audio::Engine::new();
-                if e.open("", &d).is_ok() { e.io.set_volume(p.ringer_volume); self.call.ring.push(e); }
+                if e.open_output(&d).is_ok() { e.io.set_volume(p.ringer_volume); self.call.ring.push(e); }
             }
             if self.call.ring.is_empty() { self.call.ring_fail_at = Some(std::time::Instant::now()); return; }
             self.call.ring_fail_at = None;
@@ -153,9 +153,11 @@ impl App {
         let Some(pcm) = sounds::pcm(id) else { return };
         for d in Self::out_devices(dev, all) {
             // The device opens on the engine's own thread, so an incoming message never makes the UI wait for it (tens of ms, up to
-            // 10 s for a stuck device). A failed open drops the engine (see `prune_once`).
+            // 10 s for a stuck device). A failed open drops the engine (see `prune_once`). Speaker only: opening the default
+            // microphone too failed the whole open when it was busy or blocked, and switched Bluetooth earbuds to hands-free
+            // mode, which mutes the stereo output the sound was sent to.
             let e = audio::Engine::new();
-            let opened = e.open_async("", &d);
+            let opened = e.open_output_async(&d);
             e.io.set_volume(vol); e.io.play_long(&pcm);
             self.call.once.push((e, Some(opened)));
         }
@@ -307,7 +309,7 @@ impl App {
                 .show(ctx, |ui| actions = self.incoming_toast_ui(ui, t, &v));
         } else {
             egui::Area::new(egui::Id::new("call-card")).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).order(egui::Order::Foreground).show(ctx, |ui| {
-                egui::Frame::default().fill(t.card).stroke(Stroke::new(1.0, t.sep)).corner_radius(12.0).inner_margin(28)
+                egui::Frame::default().fill(t.card).stroke(Stroke::new(1.0_f32, t.sep)).corner_radius(12.0).inner_margin(28)
                     .shadow(egui::Shadow { offset: [0, 6], blur: 24, spread: 0, color: Color32::from_black_alpha(140) })
                     .show(ui, |ui| actions = self.call_card_ui(ui, t, now, &v));
             });

@@ -181,7 +181,7 @@ impl App {
         let id = egui::Id::new("settings-search");
         ui.painter().rect_filled(sf, 8.0, k.input_bg);
         let focused = ui.memory(|m| m.has_focus(id));
-        ui.painter().rect_stroke(sf, 8.0, Stroke::new(if focused { 2.0 } else { 1.0 }, if focused { k.focus } else { k.outline }), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(sf, 8.0, Stroke::new(if focused { 2.0_f32 } else { 1.0_f32 }, if focused { k.focus } else { k.outline }), egui::StrokeKind::Inside);
         self.icons.paint(ui, "search-regular", Rect::from_center_size(sf.left_center() + Vec2::new(16.0, 0.0), Vec2::splat(16.0)), t.text2);
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(sf.min + Vec2::new(32.0, 0.0), sf.max - Vec2::new(28.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
         
@@ -211,7 +211,7 @@ impl App {
         let mut goto = None;
         egui::Area::new(egui::Id::new("settings-search-pop")).order(egui::Order::Tooltip).fixed_pos(pop.min).show(ui.ctx(), |ui| {
             ui.painter().rect_filled(pop, 12.0, k.popup_bg);
-            ui.painter().rect_stroke(pop, 12.0, Stroke::new(1.0, k.border), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(pop, 12.0, Stroke::new(1.0_f32, k.border), egui::StrokeKind::Inside);
             ui.allocate_rect(pop, Sense::hover());
             if res.is_empty() { ui.painter().text(pop.center(), egui::Align2::CENTER_CENTER, "Keine übereinstimmenden Einstellungen gefunden", FontId::proportional(14.0), t.text1); return; }
             let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(pop.shrink(8.0)));

@@ -31,7 +31,7 @@ impl App {
             let resp = ui.allocate_rect(area, Sense::click_and_drag());
             if resp.hovered() || resp.dragged() {
                 ctx.set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-                ui.painter().vline(x, (e + super::chrome::header_h() + 10.0)..=(screen.bottom() - e), Stroke::new(2.0, if resp.dragged() { t.focus } else { t.sep }));
+                ui.painter().vline(x, (e + super::chrome::header_h() + 10.0)..=(screen.bottom() - e), Stroke::new(2.0_f32, if resp.dragged() { t.focus } else { t.sep }));
             }
             if resp.dragged() {
                 if let Some(p) = ctx.input(|i| i.pointer.interact_pos()) {

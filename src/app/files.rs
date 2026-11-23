@@ -251,6 +251,7 @@ fn explorer_select(p: &Path) {
 
 /// `/select,"<path>"`: explorer's own syntax; the quotes keep spaces and commas in the path together (Windows paths cannot
 /// contain `"`).
+#[cfg(windows)]
 pub(crate) fn explorer_select_arg(p: &Path) -> String { format!("/select,\"{}\"", p.display().to_string().replace('"', "")) }
 
 /// `file://` URI of an absolute path, every byte outside the unreserved set and `/` percent-encoded.
@@ -339,7 +340,9 @@ mod tests {
     }
     #[test]
     fn show_in_folder_arguments() {
+        #[cfg(windows)]
         let p = std::path::Path::new(r"C:\Users\A B\Downloads\Spesen, final (1).xltx");
+        #[cfg(windows)]
         assert_eq!(explorer_select_arg(p), "/select,\"C:\\Users\\A B\\Downloads\\Spesen, final (1).xltx\"");
         assert_eq!(file_uri(std::path::Path::new("/home/a b/x,y'z.txt")), "file:///home/a%20b/x%2Cy%27z.txt");
         assert_eq!(file_uri(std::path::Path::new(r"C:\a b\c.txt")), "file:///C:/a%20b/c.txt");

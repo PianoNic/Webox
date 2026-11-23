@@ -52,7 +52,7 @@ impl App {
                 let buf = s.edits.entry(k.clone()).or_insert_with(|| cur.as_str().unwrap_or_default().to_string());
                 let r = if *multiline {
                     let k2 = kit::tok(t);
-                    egui::Frame::default().fill(k2.input_bg).stroke(Stroke::new(1.0, k2.outline)).corner_radius(8.0).inner_margin(egui::Margin::symmetric(12, 8)).show(ui, |ui| {
+                    egui::Frame::default().fill(k2.input_bg).stroke(Stroke::new(1.0_f32, k2.outline)).corner_radius(8.0).inner_margin(egui::Margin::symmetric(12, 8)).show(ui, |ui| {
                         ui.add(egui::TextEdit::multiline(buf).frame(false).desired_rows(4).desired_width(ui.available_width().min(FIELD_W + 200.0)).font(FontId::proportional(kit::BODY)))
                     }).inner
                 } else { kit::text_field(ui, t, buf, "", FIELD_W) };
@@ -132,6 +132,6 @@ fn secret_field(ui: &mut egui::Ui, t: &Th, text: &mut String, hint: &str) -> egu
     let mut c = ui.new_child(egui::UiBuilder::new().max_rect(r.shrink2(Vec2::new(12.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
     let resp = c.add(egui::TextEdit::singleline(text).password(true).frame(false).margin(Vec2::ZERO).hint_text(RichText::new(hint).color(t.text2).size(kit::BODY))
         .font(FontId::proportional(kit::BODY)).desired_width(r.width() - 24.0));
-    ui.painter().rect_stroke(r, 8.0, Stroke::new(if resp.has_focus() { 2.0 } else { 1.0 }, if resp.has_focus() { k.focus } else if resp.hovered() { k.outline_hover } else { k.outline }), egui::StrokeKind::Inside);
+    ui.painter().rect_stroke(r, 8.0, Stroke::new(if resp.has_focus() { 2.0_f32 } else { 1.0_f32 }, if resp.has_focus() { k.focus } else if resp.hovered() { k.outline_hover } else { k.outline }), egui::StrokeKind::Inside);
     resp
 }

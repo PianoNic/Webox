@@ -180,6 +180,15 @@ pub fn first_frame(path: &Path) -> Result<(Frame, Info), String> {
     Err("no picture".into())
 }
 
+/// Every picture of a file, without sound (tests of other modules, e.g. the screen share's encoder round trip).
+#[cfg(test)]
+pub(crate) fn decode_all(path: &Path) -> Result<(Info, Vec<Frame>), String> {
+    let (mut src, info) = backend::open(path, sync::MAX_SIZE, false)?;
+    let mut v = vec![];
+    while let Some(p) = src.read()? { if let Packet::Video(f) = p { v.push(f); } }
+    Ok((info, v))
+}
+
 fn decode_thread(sh: Arc<Shared>, path: &Path, speaker: String) {
     let (mut src, info) = match backend::open(path, sync::MAX_SIZE, true) {
         Ok(x) => x,

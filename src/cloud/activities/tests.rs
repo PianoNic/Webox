@@ -335,6 +335,18 @@ fn reaction_summaries() {
     assert_eq!((r[0].name.as_str(), r[0].count, r[0].mine.as_deref()), ("thumbsup", 2, Some("m1|thumbsup")));
     assert_eq!((r[1].name.as_str(), r[1].count, r[1].mine.as_deref()), ("👍🏽", 1, None));
     assert_eq!((r[2].name.as_str(), r[2].count), ("😀", 1)); // the \"yellow\" modifier is not part of the name
+    let ids: Vec<&str> = r[0].users.iter().map(|u| u.id.as_str()).collect();
+    assert_eq!(ids, ["u1", "me"]); // the reactors, in the summary's order
+    assert_eq!(r[0].users[0].published, "p");
+}
+
+#[test]
+fn summary_users_are_parsed_in_order_once() {
+    let e = json!({"displayName": "heart", "count": 3, "users": [{"id": "u2", "published": "2026-11-20T09:00:00.000Z"}, {"id": "u1"}, {"id": "u2"}, {"id": ""}]});
+    let r = super::fold::reactors(&e);
+    let got: Vec<(&str, &str)> = r.iter().map(|u| (u.id.as_str(), u.published.as_str())).collect();
+    assert_eq!(got, [("u2", "2026-11-20T09:00:00.000Z"), ("u1", "")]);
+    assert!(super::fold::reactors(&json!({"displayName": "heart"})).is_empty());
 }
     #[test]
 fn folding() {
@@ -356,4 +368,6 @@ fn folding() {
     assert_eq!((m[1].text.as_str(), m[1].edited), ("fixed", true));
     assert_eq!(m[2].parent, "a");
     assert_eq!((m[0].reactions[0].count, m[0].reactions[0].mine.as_deref()), (2, Some("x1")));
+    let who: Vec<&str> = m[0].reactions[0].users.iter().map(|u| u.id.as_str()).collect();
+    assert_eq!(who, ["me", "y"]); // live reactions name their actor
 }

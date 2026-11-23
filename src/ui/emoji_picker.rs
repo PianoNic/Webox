@@ -171,11 +171,11 @@ impl App {
             let edge = t.ink_a(0.15);
             if embed.is_none() {
                 p.rect_filled(rect, 6.0, body);
-                p.rect_stroke(rect, 6.0, Stroke::new(1.0, edge), egui::StrokeKind::Inside);
+                p.rect_stroke(rect, 6.0, Stroke::new(1.0_f32, edge), egui::StrokeKind::Inside);
                 let cx = anchor.center().x.clamp(rect.left() + 14.0, rect.right() - 14.0);
                 p.add(egui::Shape::convex_polygon(vec![pos2(cx - 8.0, rect.bottom() - 0.5), pos2(cx + 8.0, rect.bottom() - 0.5), pos2(cx, rect.bottom() + 8.0)], body, Stroke::NONE));
-                p.line_segment([pos2(cx - 8.0, rect.bottom()), pos2(cx, rect.bottom() + 8.0)], Stroke::new(1.0, edge));
-                p.line_segment([pos2(cx + 8.0, rect.bottom()), pos2(cx, rect.bottom() + 8.0)], Stroke::new(1.0, edge));
+                p.line_segment([pos2(cx - 8.0, rect.bottom()), pos2(cx, rect.bottom() + 8.0)], Stroke::new(1.0_f32, edge));
+                p.line_segment([pos2(cx + 8.0, rect.bottom()), pos2(cx, rect.bottom() + 8.0)], Stroke::new(1.0_f32, edge));
             }
 
             // Search pill (28 pt, radius 14, gray-80; blue-50 outline while focused) with the skin-tone dot at its right.
@@ -183,7 +183,7 @@ impl App {
             let search_id = egui::Id::new("emoji-search");
             let focused = ui.memory(|m| m.has_focus(search_id));
             p.rect_filled(sr, 14.0, if ui.rect_contains_pointer(sr) && !focused { t.tk("wx-emojiPickerSearch-background:hovered") } else { t.tk("wx-emojiPickerSearch-background") });
-            if focused { p.rect_stroke(sr, 14.0, Stroke::new(1.0, t.tk("wx-emojiPickerSearch-border:focused")), egui::StrokeKind::Inside); }
+            if focused { p.rect_stroke(sr, 14.0, Stroke::new(1.0_f32, t.tk("wx-emojiPickerSearch-border:focused")), egui::StrokeKind::Inside); }
             self.icons.paint(ui, "search-regular", Rect::from_center_size(sr.left_center() + Vec2::new(18.0, 0.0), Vec2::splat(15.0)), text2);
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(sr.min + Vec2::new(34.0, 0.0), sr.max - Vec2::new(54.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
             let r = c.add(egui::TextEdit::singleline(&mut st.query).id(search_id).hint_text(RichText::new("Suchen").color(text2).size(14.0)).frame(false).margin(Vec2::ZERO).font(FontId::proportional(14.0)).desired_width(sr.width() - 88.0));
@@ -198,7 +198,7 @@ impl App {
             let tr = Rect::from_center_size(pos2(sr.right() - 15.0, sr.center().y), Vec2::splat(20.0));
             let tresp = ui.interact(tr, egui::Id::new("emoji-tone"), Sense::click());
             p.circle_filled(tr.center(), 7.5, hex(TONES[tone]));
-            if tresp.hovered() { p.circle_stroke(tr.center(), 9.0, Stroke::new(1.0, t.tk("wx-emojiPickerSkin-background:pressed"))); }
+            if tresp.hovered() { p.circle_stroke(tr.center(), 9.0, Stroke::new(1.0_f32, t.tk("wx-emojiPickerSkin-background:pressed"))); }
             if tresp.clicked() { st.tone_open = !st.tone_open; }
 
             // Grid: virtualised (only the visible rows are drawn), headings in semibold.
@@ -263,7 +263,7 @@ impl App {
 
             // Category bar: 8 tabs, 1 px gray-80 top edge, the active one with a 4 px light segment (gray-05); disabled = gray-80.
             let bar = Rect::from_min_max(pos2(rect.left(), rect.bottom() - TAB_H), rect.right_bottom());
-            p.hline(bar.x_range(), bar.top(), Stroke::new(1.0, t.tk("wx-emojiPickerCategory-border-top")));
+            p.hline(bar.x_range(), bar.top(), Stroke::new(1.0_f32, t.tk("wx-emojiPickerCategory-border-top")));
             let active = head_y.iter().rev().find(|(_, y)| *y <= offset + 8.0).map(|(t, _)| *t).unwrap_or(0);
             // WEBOX_SHOT_EMOJI_TAB=<n> (screenshot runs only) scrolls to that category on the first frames.
             if self.shot.is_some() && self.frames > 2 && self.frames < 6 {
@@ -288,7 +288,7 @@ impl App {
             if st.tone_open {
                 let tb = Rect::from_min_size(pos2(sr.right() - 6.0 * 26.0 - 8.0, sr.bottom() + 4.0), Vec2::new(6.0 * 26.0 + 8.0, 30.0));
                 p.rect_filled(tb, 8.0, t.hover); // listItem-primary hovered (#292929 / #EDEDED)
-                p.rect_stroke(tb, 8.0, Stroke::new(1.0, edge), egui::StrokeKind::Inside);
+                p.rect_stroke(tb, 8.0, Stroke::new(1.0_f32, edge), egui::StrokeKind::Inside);
                 for (i, col) in TONES.iter().enumerate() {
                     let c = pos2(tb.left() + 17.0 + i as f32 * 26.0, tb.center().y);
                     let r = ui.interact(Rect::from_center_size(c, Vec2::splat(24.0)), egui::Id::new(("emoji-tone-pick", i)), Sense::click());

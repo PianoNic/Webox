@@ -130,9 +130,9 @@ impl App {
                     let had_previous = !day.is_empty();
                     day = m.date.clone();
                     prev.clear();
-                    if had_previous { self.day_line(ui, t, &c, &day_label(&day, &today, &yesterday), c.day); }
+                    if had_previous { self.day_line(ui, t, &day_label(&day, &today, &yesterday), c.day); }
                 }
-                if m.id == new_first { self.day_line(ui, t, &c, "Neue Nachrichten", c.accent); prev.clear(); } // chat-new-message-newMessageBanner-text
+                if m.id == new_first { self.day_line(ui, t, "Neue Nachrichten", c.accent); prev.clear(); } // chat-new-message-newMessageBanner-text
                 if !m.notice.is_empty() && !m.group.is_empty() { self.group_row(ui, &c, m); prev.clear(); prev_share = false; continue; }
                 if !m.notice.is_empty() { self.notice_row(ui, &c, m); prev.clear(); prev_share = false; continue; }
                 // Grouping: same sender, within a few minutes, and not right after a share.
@@ -253,6 +253,7 @@ impl App {
         self.lightbox(ui.ctx(), msgs);
         self.video_viewer(ui.ctx(), t);
         self.reaction_picker_draw(ui);
+        self.reactors_popover(ui, t, &c, msgs);
         self.forward_dialog(ui.ctx(), t, id);
         self.delete_dialog(ui.ctx(), t);
         self.quote_replace_dialog(ui.ctx(), t);

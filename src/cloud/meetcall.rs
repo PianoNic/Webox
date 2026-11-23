@@ -148,13 +148,14 @@ impl Session {
     pub(super) fn schedule(&mut self, r: &ScheduleReq) -> Result<(), String> {
         let res = self.http("POST", &format!("{HYDRA}/meetings"), Some(schedule_body(r)));
         dbg_conn(&format!("schedule meeting -> {}", if res.is_ok() { "ok" } else { "failed" }));
-        let _ = self.out.send(Resp::Scheduled(res.map(|v| st(&v, "webLink")).map_err(|e| e.split(" → ").nth(1).unwrap_or("").chars().take(120).collect())));
+        let _ = self.out.send(Resp::Scheduled(res.map(|v| st(&v, "webLink")).map_err(|e| super::report::friendly(&e))));
         Ok(())
     }
 
     pub(super) fn personal_room(&mut self) -> Result<(), String> {
         let res = self.http("GET", &format!("{HYDRA}/meetingPreferences/personalMeetingRoom"), None).map(|v| st(&v, "personalMeetingRoomLink"));
-        let _ = self.out.send(Resp::PersonalRoom(res.and_then(|l| if l.starts_with("https://") { Ok(l) } else { Err("no link".into()) })));
+        let res = res.map_err(|e| super::report::friendly(&e));
+        let _ = self.out.send(Resp::PersonalRoom(res.and_then(|l| if l.starts_with("https://") { Ok(l) } else { Err("Kein persönlicher Raum gefunden.".into()) })));
         Ok(())
     }
 }

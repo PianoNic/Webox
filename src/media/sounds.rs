@@ -217,6 +217,16 @@ mod tests {
         assert_eq!(Prefs::load(&v), p);
         assert_eq!(Prefs::load(&serde_json::json!({})).ringtone, "Delight");
     }
+    /// Settings as written by the sound pages: message sounds stay on, only the stored `snd_call_sounds` turns call sounds off.
+    #[test]
+    fn stored_sound_settings_gate_as_written() {
+        let v = serde_json::json!({"snd_call_sounds": false, "snd_msg_sounds": true, "snd_msg_dm": "Open", "snd_msg_space": "Open", "snd_msg_favorite": "Open",
+            "snd_msg_volume": 0.5, "snd_ringtone": "Delight", "snd_ringer_volume": 0.5, "snd_ring_all": false});
+        let p = Prefs::load(&v);
+        assert!(p.msg_sounds && !p.call_sounds && !p.ring_all_devices);
+        assert_eq!((p.msg_dm.as_str(), p.ringtone.as_str(), p.msg_volume), ("Open", "Delight", 0.5));
+        if have_sounds() { assert!(pcm(&p.msg_dm).is_some() && pcm(&p.ringtone).is_some()); }
+    }
     fn fixture(n: &str) -> std::path::PathBuf { std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/test_sounds").join(n) }
     #[test]
     fn decodes_wav_mp3_ogg_flac_and_24bit_wav() {

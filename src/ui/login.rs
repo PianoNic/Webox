@@ -42,11 +42,11 @@ impl App {
         let mr = Rect::from_min_size(pos2(full.right() - 92.0, full.top()), Vec2::new(46.0, 32.0));
         if ctl(ui, "login-close", cr, hex(0xA12512), &|p, r| {
             let c = r.center(); let d = 5.0;
-            p.line_segment([c - Vec2::new(d, d), c + Vec2::new(d, d)], Stroke::new(1.0, white));
-            p.line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.0, white));
+            p.line_segment([c - Vec2::new(d, d), c + Vec2::new(d, d)], Stroke::new(1.0_f32, white));
+            p.line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.0_f32, white));
         }) { ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close); }
         if ctl(ui, "login-min", mr, alpha(Color32::WHITE, 0.09), &|p, r| {
-            p.line_segment([r.center() - Vec2::new(5.0, 0.0), r.center() + Vec2::new(5.0, 0.0)], Stroke::new(1.0, white));
+            p.line_segment([r.center() - Vec2::new(5.0, 0.0), r.center() + Vec2::new(5.0, 0.0)], Stroke::new(1.0_f32, white));
         }) { ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true)); }
 
         // Mark + name + configuration chevron (a neutral mark: the Webex logo and wordmark are not used).
@@ -64,10 +64,10 @@ impl App {
             let p = ui.painter();
             if filled {
                 p.rect_filled(r, 16.0, if resp.hovered() { hex(0xDCDDDF) } else { hex(0xF3F3F4) });
-                p.rect_stroke(r.expand(2.5), 18.5, Stroke::new(2.0, ring), egui::StrokeKind::Middle);
+                p.rect_stroke(r.expand(2.5), 18.5, Stroke::new(2.0_f32, ring), egui::StrokeKind::Middle);
             } else {
                 if resp.hovered() { p.rect_filled(r, 16.0, alpha(Color32::WHITE, 0.08)); }
-                p.rect_stroke(r, 16.0, Stroke::new(1.0, hex(0x848A91)), egui::StrokeKind::Inside);
+                p.rect_stroke(r, 16.0, Stroke::new(1.0_f32, hex(0x848A91)), egui::StrokeKind::Inside);
             }
             let col = if filled { hex(0x0C0C0C) } else { white };
             for dx in [0.0, 0.45] { p.text(r.center() + Vec2::new(dx, 0.0), egui::Align2::CENTER_CENTER, label, FontId::proportional(14.5), col); } // drawn twice for a semibold look
@@ -192,7 +192,7 @@ impl App {
                 let col = if link.is_some() { ring } else { white };
                 ui.painter().text(r.left_center(), egui::Align2::LEFT_CENTER, *s, f.clone(), col);
                 if let Some(u) = link {
-                    ui.painter().hline(r.x_range(), r.bottom() - 1.0, Stroke::new(1.0, ring));
+                    ui.painter().hline(r.x_range(), r.bottom() - 1.0, Stroke::new(1.0_f32, ring));
                     if ui.interact(r, ui.id().with(*s), Sense::click()).clicked() { system::open(u) }
                 }
                 x += g.size().x;
@@ -204,7 +204,7 @@ impl App {
         // Round "…" button, bottom right.
         let dots = Rect::from_center_size(pos2(full.right() - 33.0, full.bottom() - 31.0), Vec2::splat(32.0));
         let dresp = ui.interact(dots, ui.id().with("dots"), Sense::click());
-        p.circle_stroke(dots.center(), 15.5, Stroke::new(1.0, hex(0x848A91)));
+        p.circle_stroke(dots.center(), 15.5, Stroke::new(1.0_f32, hex(0x848A91)));
         if dresp.hovered() { p.circle_filled(dots.center(), 15.0, alpha(Color32::WHITE, 0.08)); }
         self.icons.paint(ui, "more-regular", dots.shrink(8.0), white);
         let dresp = dresp.on_hover_text("Look around with sample data");
@@ -218,7 +218,7 @@ impl App {
         if self.config_open {
             let menu = Rect::from_min_size(pos2(cx - 176.0, full.top() + 94.0), Vec2::new(318.0, 197.0));
             egui::Area::new(egui::Id::new("cfgmenu")).fixed_pos(menu.min).order(egui::Order::Foreground).show(ui.ctx(), |ui| {
-                egui::Frame::default().fill(hex(0x000000)).stroke(Stroke::new(1.0, hex(0x303135))).corner_radius(10.0).inner_margin(egui::Margin { left: 10, right: 10, top: 16, bottom: 14 }).show(ui, |ui| {
+                egui::Frame::default().fill(hex(0x000000)).stroke(Stroke::new(1.0_f32, hex(0x303135))).corner_radius(10.0).inner_margin(egui::Margin { left: 10, right: 10, top: 16, bottom: 14 }).show(ui, |ui| {
                     ui.set_width(298.0);
                     ui.label(RichText::new("  App configuration").size(14.5).strong().color(white));
                     ui.add_space(8.0);

@@ -100,10 +100,6 @@ pub fn set_language(setting: &str) {
     GENERATION.fetch_add(1, Ordering::Relaxed);
 }
 
-/// The raw setting (`system` or code).
-pub fn language_setting() -> String {
-    state().read().unwrap().setting.clone()
-}
 /// The pack code actually in effect (`en` when English / no pack).
 pub fn active_code() -> &'static str {
     state().read().unwrap().code
@@ -116,10 +112,6 @@ pub fn is_source_language() -> bool {
 pub fn generation() -> u64 {
     let _ = state();
     GENERATION.load(Ordering::Relaxed)
-}
-/// Is the active language right-to-left (ar, he)?
-pub fn is_rtl() -> bool {
-    language_info(active_code()).map_or(false, |l| l.rtl)
 }
 
 /// [`set_language`] + egui repaint.
@@ -138,9 +130,4 @@ pub fn sync_from_settings(ctx: &eframe::egui::Context, settings: &serde_json::Va
     if want != cur && !(want.is_empty() && cur == "system") {
         set_language_ctx(ctx, want);
     }
-}
-
-/// Store the choice into the settings JSON (caller persists with `system::save_settings`).
-pub fn store_language(settings: &mut serde_json::Value, setting: &str) {
-    settings["language"] = serde_json::json!(setting);
 }

@@ -253,7 +253,7 @@ impl App {
         let (outer, _) = ui.allocate_exact_size(Vec2::new(w, head_h + rows_h), Sense::hover());
         let frame = Rect::from_min_max(pos2(outer.left() + 16.0, outer.top()), pos2(outer.right() - 21.0, outer.bottom()));
         ui.painter().rect_filled(frame, 8.0, bg);
-        ui.painter().rect_stroke(frame, 8.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(frame, 8.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
         let cy = frame.top() + head_h / 2.0;
         self.icons.paint(ui, "schedule-send-bold", Rect::from_center_size(pos2(frame.left() + 8.0 + 8.0, cy), Vec2::splat(16.0)), text);
         let tg = ui.painter().layout_no_wrap(title, FontId::proportional(16.0), text);
@@ -288,7 +288,7 @@ impl App {
             if hot {
                 let bar = Rect::from_min_size(pos2(r.right() - 24.0 - 3.0 * 32.0, r.top() - 12.0), Vec2::new(3.0 * 32.0, 24.0));
                 ui.painter().rect_filled(bar, 12.0, if light { Color32::WHITE } else { hex(0x121212) });
-                ui.painter().rect_stroke(bar, 12.0, Stroke::new(1.0, border), egui::StrokeKind::Inside);
+                ui.painter().rect_stroke(bar, 12.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
                 let mut any = false;
                 for (k, (icon, tip, a)) in [("send-regular", "Jetzt senden", "now"), ("schedule-send-regular", "Nachricht neu ansetzen", "re"), ("delete-regular", "Verwerfen", "del")].into_iter().enumerate() {
                     let br = Rect::from_min_size(pos2(bar.left() + k as f32 * 32.0, bar.top()), Vec2::new(32.0, 24.0));

@@ -8,10 +8,10 @@ pub(crate) const EDGE_GAP: f32 = 8.0;
 /// The primary monitor's work area (screen minus taskbar) in points. Windows: `SPI_GETWORKAREA`; elsewhere, or when that
 /// fails: the monitor size reported by the viewport minus an assumed 48 pt bar at the bottom.
 pub(crate) fn work_area(ctx: &egui::Context) -> Rect {
-    let ppp = ctx.input(|i| i.viewport().native_pixels_per_point).unwrap_or(1.0).max(0.5);
     #[cfg(windows)]
     {
         use windows::Win32::{Foundation::RECT, UI::WindowsAndMessaging::{SystemParametersInfoW, SPI_GETWORKAREA, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS}};
+        let ppp = ctx.input(|i| i.viewport().native_pixels_per_point).unwrap_or(1.0).max(0.5);
         let mut r = RECT::default();
         let ok = unsafe { SystemParametersInfoW(SPI_GETWORKAREA, 0, Some(&mut r as *mut RECT as *mut _), SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0)) }.is_ok();
         if ok && r.right > r.left { return Rect::from_min_max(pos2(r.left as f32 / ppp, r.top as f32 / ppp), pos2(r.right as f32 / ppp, r.bottom as f32 / ppp)); }

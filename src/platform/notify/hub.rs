@@ -176,6 +176,7 @@ impl App {
                 match e {
                     tray::TrayEvent::Left => { self.notify.menu = None; self.show_main(ctx); }
                     tray::TrayEvent::Menu(x, y) => { ui::menu::menu_open(ctx, "tray"); self.notify.menu = Some(TrayMenu { pos: (x, y), opened: clock, focused: false, hwnd: None, placed: None }); }
+                    #[cfg(target_os = "linux")]
                     tray::TrayEvent::Item(i) => if let Some(ui::menu::Entry::Item(it)) = self.tray_entries().get(i as usize) {
                         if it.enabled { self.notify.out.push(Out::Menu(it.id.clone())); }
                     },
@@ -243,6 +244,7 @@ impl App {
                     "open" => { self.show_main(ctx); self.set_tab(Tab::Whiteboards); }
                     _ => self.show_main(ctx),
                 },
+                #[cfg(target_os = "linux")]
                 Out::Menu(id) => self.pick_tray(&id, ctx, now),
             }
         }

@@ -159,7 +159,10 @@ fn ensure_channel(st: &mut State) {
 pub(crate) fn col_width(inner: f32, cols: usize) -> f32 { ((inner - 2.0 * GRID_PAD - BAR_W - (cols as f32 - 1.0) * GAP) / cols as f32).floor() }
 
 /// Masonry placement: every GIF goes under the currently shortest column, height from its aspect ratio.
-pub(crate) fn masonry(gifs: &[Gif], colw: f32, cols: usize) -> (Vec<Rect>, f32) {
+pub(crate) fn masonry(gifs: &[Gif], colw: f32, cols: usize) -> (Vec<Rect>, f32) { masonry_gap(gifs, colw, cols, GAP) }
+
+/// `masonry` with its own gap between tiles (px).
+pub(crate) fn masonry_gap(gifs: &[Gif], colw: f32, cols: usize, gap: f32) -> (Vec<Rect>, f32) {
     let cols = cols.max(1);
     let mut heights = vec![0.0f32; cols];
     let mut out = Vec::with_capacity(gifs.len());
@@ -167,8 +170,8 @@ pub(crate) fn masonry(gifs: &[Gif], colw: f32, cols: usize) -> (Vec<Rect>, f32) 
         let h = (colw * g.thumb_h as f32 / g.thumb_w.max(1) as f32).round().max(24.0);
         let mut c = 0;
         for k in 1..cols { if heights[k] < heights[c] { c = k } }
-        out.push(Rect::from_min_size(pos2(c as f32 * (colw + GAP), heights[c]), Vec2::new(colw, h)));
-        heights[c] += h + GAP;
+        out.push(Rect::from_min_size(pos2(c as f32 * (colw + gap), heights[c]), Vec2::new(colw, h)));
+        heights[c] += h + gap;
     }
     (out, heights.iter().cloned().fold(0.0, f32::max))
 }

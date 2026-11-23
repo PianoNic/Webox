@@ -121,7 +121,7 @@ impl App {
         let bs = ui.interact(btn, Id::new(("msg-video-btn", salt.0, salt.1, cur_seq(ui.ctx()))), Sense::click());
         let fill = if bs.is_pointer_button_down_on() { 0.2 } else if bs.hovered() { 0.07 } else { 0.0 };
         if fill > 0.0 { p.circle_filled(btn.center(), 14.0, fg(fill)); }
-        p.circle_stroke(btn.center(), 13.5, Stroke::new(1.0, fg(0.5)));
+        p.circle_stroke(btn.center(), 13.5, Stroke::new(1.0_f32, fg(0.5)));
         self.icons.paint(ui, if shown { "open-in-folder_12" } else { "download_12" }, Rect::from_center_size(btn.center(), Vec2::splat(12.0)), fg(0.95));
         let _ = c;
         if bs.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -132,10 +132,10 @@ impl App {
     pub(super) fn video_spinner(&mut self, ui: &mut egui::Ui, _c: &Mc, at: egui::Pos2, pct: Option<u32>, now: f64) {
         let p = ui.painter();
         p.circle_filled(at, 24.0, Color32::from_black_alpha(120));
-        p.circle_stroke(at, 18.0, Stroke::new(3.0, hex(0x8F8F8F))); // spinner-progress-track
+        p.circle_stroke(at, 18.0, Stroke::new(3.0_f32, hex(0x8F8F8F))); // spinner-progress-track
         let (a0, span) = match pct { Some(k) => (-std::f32::consts::FRAC_PI_2, std::f32::consts::TAU * k as f32 / 100.0), None => ((now * 5.0) as f32, 1.6) };
         let pts: Vec<egui::Pos2> = (0..=40).map(|i| { let a = a0 + span * i as f32 / 40.0; at + Vec2::new(a.cos(), a.sin()) * 18.0 }).collect();
-        if span > 0.0 { p.add(Shape::line(pts, Stroke::new(3.0, hex(0x64B4FA)))); } // spinner-progress-cursor
+        if span > 0.0 { p.add(Shape::line(pts, Stroke::new(3.0_f32, hex(0x64B4FA)))); } // spinner-progress-cursor
         if let Some(k) = pct { p.text(at, Align2::CENTER_CENTER, format!("{k}%"), FontId::proportional(11.0), Color32::WHITE); }
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
     }
@@ -163,7 +163,7 @@ impl App {
         if pill.bottom() > r.bottom() { return false; }
         let rs = ui.interact(pill, ui.id().with(("video-reload", r.min.x as i32, r.min.y as i32)), Sense::click());
         if rs.hovered() { p.rect_filled(pill, 14.0, wa(c.white, 0.07)); ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        p.rect_stroke(pill, 14.0, Stroke::new(1.0, wa(c.white, 0.5)), StrokeKind::Inside);
+        p.rect_stroke(pill, 14.0, Stroke::new(1.0_f32, wa(c.white, 0.5)), StrokeKind::Inside);
         p.galley(pill.center() - g.size() / 2.0, g, c.white);
         rs.clicked()
     }

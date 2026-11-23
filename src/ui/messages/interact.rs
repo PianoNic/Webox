@@ -16,23 +16,25 @@ impl App {
             let half = (REACT_H / 2.0) as u8;
             if l.hovered() { ui.painter().rect_filled(left, egui::CornerRadius { nw: half, sw: half, ne: 0, se: 0 }, c.chip_hover); }
             if rr.hovered() { ui.painter().rect_filled(right, egui::CornerRadius { nw: 0, sw: 0, ne: half, se: half }, c.chip_hover); }
-            ui.painter().rect_stroke(rect.shrink(0.5), REACT_H / 2.0, Stroke::new(1.0, c.chip_border), StrokeKind::Inside);
-            ui.painter().vline(rect.left() + lw + 0.5, (rect.top() + 4.0)..=(rect.bottom() - 4.0), Stroke::new(1.0, c.chip_border));
+            ui.painter().rect_stroke(rect.shrink(0.5), REACT_H / 2.0, Stroke::new(1.0_f32, c.chip_border), StrokeKind::Inside);
+            ui.painter().vline(rect.left() + lw + 0.5, (rect.top() + 4.0)..=(rect.bottom() - 4.0), Stroke::new(1.0_f32, c.chip_border));
             let er = Rect::from_center_size(pos2(rect.left() + 8.0 + 8.0, rect.center().y), Vec2::splat(16.0));
             if !self.icons.emoji(ui, &glyph, er) { ui.painter().text(er.center(), Align2::CENTER_CENTER, &glyph, FontId::proportional(14.0), c.body); }
             ui.painter().galley(pos2(right.left() + 6.0, rect.center().y - count.size().y / 2.0), count, c.body);
-            let tip = if r.mine.is_some() { "Reaktion entfernen" } else { "Reaktion hinzufügen" };
-            if l.on_hover_text(tip).clicked() | rr.on_hover_text(format!("{} {}", r.count, r.name)).clicked() {
+            // The emoji adds or takes back my reaction; the count shows who reacted (the reactors popover, no tooltip).
+            let tip = crate::i18n::tr("ReactionsContentList", if r.mine.is_some() { "Remove reaction" } else { "Add reaction" });
+            if l.on_hover_text(tip.as_ref()).clicked() {
                 if r.mine.is_none() { crate::ui::theme::fx::reacted(rect); } // adding one: a design plugin's ripple
                 self.toggle_reaction(&m.id, &r.name);
             }
+            self.reactors_hover(&ui.ctx().clone(), m, &r, right, &rr);
             x = rect.right() + 4.0;
         }
         // Add-reaction pill (reactions_12): height = row height, width = height + 8.
         let pill = Rect::from_min_size(pos2(x, at.y), Vec2::new(REACT_H + 8.0, REACT_H));
         let resp = ui.interact(pill, Id::new(("react-add", &m.id, cur_seq(ui.ctx()))), Sense::click());
         if resp.hovered() { ui.painter().rect_filled(pill, REACT_H / 2.0, c.chip_hover); }
-        ui.painter().rect_stroke(pill.shrink(0.5), REACT_H / 2.0, Stroke::new(1.0, c.chip_border), StrokeKind::Inside);
+        ui.painter().rect_stroke(pill.shrink(0.5), REACT_H / 2.0, Stroke::new(1.0_f32, c.chip_border), StrokeKind::Inside);
         self.icons.paint(ui, "reactions_12", Rect::from_center_size(pill.center(), Vec2::splat(12.0)), c.body);
         if resp.on_hover_text("Reaktion hinzufügen").clicked() { self.open_reaction_picker(&ui.ctx().clone(), &m.id, pill); }
     }
@@ -85,7 +87,7 @@ impl App {
             let ph = self.photo_for(ui.ctx(), &pid, &pem);
             let ar = Rect::from_center_size(pos2(x + 15.0, cy), Vec2::splat(28.0));
             if r.mine {
-                ui.painter().circle_stroke(ar.center(), 13.5, Stroke::new(1.0, c.ring));
+                ui.painter().circle_stroke(ar.center(), 13.5, Stroke::new(1.0_f32, c.ring));
                 self.icons.paint(ui, "chat-filled", Rect::from_center_size(ar.center() + Vec2::new(0.0, 0.3), Vec2::splat(16.5)), c.bubble);
             } else {
                 let mut child = ui.new_child(egui::UiBuilder::new().max_rect(ar));
@@ -118,7 +120,7 @@ impl App {
             let r = Rect::from_min_size(pos2(x, y), Vec2::new(12.0 + 12.0 + 6.0 + g.size().x + 12.0, 28.0));
             let resp = ui.interact(r, Id::new((key, &root.id)), Sense::click());
             if resp.hovered() { ui.painter().rect_filled(r, 14.0, c.chip_hover); }
-            ui.painter().rect_stroke(r.shrink(0.5), 14.0, Stroke::new(1.0, c.chip_border), StrokeKind::Inside);
+            ui.painter().rect_stroke(r.shrink(0.5), 14.0, Stroke::new(1.0_f32, c.chip_border), StrokeKind::Inside);
             s.icons.paint(ui, icon, Rect::from_center_size(pos2(r.left() + 12.0 + 6.0, r.center().y), Vec2::splat(12.0)), c.body);
             ui.painter().galley(pos2(r.left() + 12.0 + 12.0 + 6.0, r.center().y - g.size().y / 2.0), g, c.body);
             x = r.right() + 5.0;
@@ -148,7 +150,7 @@ impl App {
             let mut child = ui.new_child(egui::UiBuilder::new().max_rect(ar));
             avatar_photo(&mut child, &mut self.icons, t, &pp.name, 24.0, false, None, st.as_deref(), ph);
             if let Some(space) = self.selected.as_deref() {
-                if crate::ui::typing::is_typing(space, pp) { crate::ui::typing::draw_overlay(ui.painter(), ar, ui.input(|i| i.time)); }
+                if crate::ui::typing::is_typing(space, pp) { crate::ui::typing::draw_overlay(ui.painter(), ar.expand2(Vec2::new(1.0, 0.0)), crate::ui::typing::anim_time(ui.ctx())); } // the whole 26 pt slot
             }
             ui.interact(ar, Id::new(("seen-avatar", &pp.email, &pp.id)), Sense::hover()).on_hover_text(&pp.name);
             x += 32.0;
@@ -181,6 +183,7 @@ impl App {
         ctx.data_mut(|d| d.insert_temp(bar_key, Rect::from_min_size(pos, Vec2::new(w, TB_H)).expand(2.0)));
         let bar_layer = egui::LayerId::new(egui::Order::Foreground, Id::new(("msg-toolbar", id, &m.id, cur_seq(ui.ctx()))));
         crate::ui::scroll_route::scroll_passthrough(&ctx, bar_layer); // the wheel over the bar scrolls the list
+        crate::ui::type_focus::passive(&ctx, bar_layer); // not a popup: typing still goes to the composer
         egui::Area::new(bar_layer.id).fixed_pos(pos).order(egui::Order::Foreground).show(&ctx, |ui| {
             let (bar, _) = ui.allocate_exact_size(Vec2::new(w, TB_H), Sense::hover());
             let half = (TB_H / 2.0) as u8;
@@ -196,7 +199,7 @@ impl App {
                 let ir = Rect::from_center_size(r.center(), Vec2::splat(16.0));
                 if let Some(e) = emo { if !s.icons.emoji(ui, e, ir) { ui.painter().text(ir.center(), Align2::CENTER_CENTER, e, FontId::proportional(14.0), c.white); } }
                 if let Some(n) = icon { s.icons.paint(ui, n, ir, c.white); }
-                if i + 1 < n { ui.painter().vline(r.right() - 0.5, (r.top() + 1.0)..=(r.bottom() - 1.0), Stroke::new(1.0, c.pill_border)); }
+                if i + 1 < n { ui.painter().vline(r.right() - 0.5, (r.top() + 1.0)..=(r.bottom() - 1.0), Stroke::new(1.0_f32, c.pill_border)); }
                 i += 1;
                 resp.on_hover_text(tip)
             };
@@ -211,7 +214,7 @@ impl App {
             if more.clicked() { menu::menu_toggle(&ctx, &k_more); }
             more_rect = more.rect;
             // Border: drawn last so the hover fills don't cover it.
-            ui.painter().rect_stroke(bar.shrink(0.5), half, Stroke::new(1.0, c.pill_border), StrokeKind::Inside);
+            ui.painter().rect_stroke(bar.shrink(0.5), half, Stroke::new(1.0_f32, c.pill_border), StrokeKind::Inside);
         });
         // The "···" menu (shared menu toolkit): drawn every frame while open, anchored at the button.
         if menu::menu_is_open(&ctx, &k_more) {

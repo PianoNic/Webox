@@ -44,14 +44,14 @@ impl App {
             for (i, (tab, off, on_icon, label)) in RAIL.iter().enumerate() {
                 // Settings > App-Seitenleiste: unticked entries leave the rail.
                 let sb = match tab { Tab::Messaging => "sb_messaging", Tab::Meetings => "sb_meetings", Tab::Calling => "sb_calling", Tab::Whiteboards => "sb_whiteboards", Tab::Contacts => "sb_contacts", _ => "" };
-                if !sb.is_empty() && self.settings[sb] == false { if i == 2 { let (sr, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 6.0), Sense::hover()); ui.painter().hline((sr.left() + 6.0)..=(sr.right() - 4.0), sr.center().y - 1.0, Stroke::new(1.0, t.ink_a(0.06))); } continue; }
+                if !sb.is_empty() && self.settings[sb] == false { if i == 2 { let (sr, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 6.0), Sense::hover()); ui.painter().hline((sr.left() + 6.0)..=(sr.right() - 4.0), sr.center().y - 1.0, Stroke::new(1.0_f32, t.ink_a(0.06))); } continue; }
                 let on = self.tab == *tab;
                 if self.rail_item(ui, t, if on { on_icon } else { off }, tr(label), on, *tab == Tab::Messaging && unread, h).clicked() { self.set_tab(*tab) }
                 ui.add_space(gap);
                 // Thin divider between the call/meeting entries and the rest.
                 if i == 2 {
                     let (sr, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 6.0), Sense::hover());
-                    ui.painter().hline((sr.left() + 6.0)..=(sr.right() - 4.0), sr.center().y - 1.0, Stroke::new(1.0, t.ink_a(0.06)));
+                    ui.painter().hline((sr.left() + 6.0)..=(sr.right() - 4.0), sr.center().y - 1.0, Stroke::new(1.0_f32, t.ink_a(0.06)));
                 }
             }
             let more = self.rail_item(ui, t, "more-regular", tr("More"), false, false, h);
@@ -100,10 +100,10 @@ impl App {
         if !near { return; }
         egui::Area::new(egui::Id::new("rail-edge")).fixed_pos(pos2(bx - 11.0, top)).order(egui::Order::Foreground).show(ctx, |ui| {
             ui.set_clip_rect(Rect::from_min_size(pos2(bx - 11.0, top), Vec2::new(22.0, screen.height() - e - top)));
-            ui.painter().vline(bx - 0.5, top..=(screen.bottom() - e), Stroke::new(1.0, t.sep));
+            ui.painter().vline(bx - 0.5, top..=(screen.bottom() - e), Stroke::new(1.0_f32, t.sep));
             let resp = ui.interact(btn, egui::Id::new("rail-edge-btn"), Sense::click());
             ui.painter().circle_filled(btn.center(), 10.0, t.win_b);
-            ui.painter().circle_stroke(btn.center(), 9.4, Stroke::new(1.2, if resp.hovered() { t.tk("navigationtab-text:checked") } else { t.tk("navigationtab-text") }));
+            ui.painter().circle_stroke(btn.center(), 9.4, Stroke::new(1.2_f32, if resp.hovered() { t.tk("navigationtab-text:checked") } else { t.tk("navigationtab-text") }));
             self.icons.paint(ui, if self.rail_wide { "arrow-left-optical_10" } else { "arrow-right-optical_10" }, Rect::from_center_size(btn.center(), Vec2::splat(11.0)), t.text1);
             // Tooltip: Webox's own wording (the pack has no German string for "Expand or collapse navigation menu").
             if resp.on_hover_text("Navigationsmenü ein-/ausklappen (Alt+Umschalt+Q)").clicked() { self.act(Act::ToggleRail, ctx) }

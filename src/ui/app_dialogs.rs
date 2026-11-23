@@ -27,8 +27,6 @@ pub(crate) fn open_time_picker(ctx: &egui::Context, what: &str) {
 enum DevPage { #[default] List, Search, Code, Failed }
 
 impl App {
-    fn call_active(&self) -> bool { self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none()) }
-
     pub(crate) fn appwide_dialogs(&mut self, ctx: &egui::Context, t: &Th, now: f64) {
         self.edit_profile_dialog(ctx, t);
         self.health_dialog(ctx, t);

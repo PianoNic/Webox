@@ -79,7 +79,13 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - run: cargo build --release --locked -p webox --bin webox
+      # build.rs bakes these into the binary (sign-in and the GIF picker work out of the box).
+      - name: Build
+        env:
+          WEBOX_CLIENT_ID: ${{ secrets.WEBOX_CLIENT_ID }}
+          WEBOX_CLIENT_SECRET: ${{ secrets.WEBOX_CLIENT_SECRET }}
+          WEBOX_GIPHY_API_KEY: ${{ secrets.WEBOX_GIPHY_API_KEY }}
+        run: cargo build --release --locked -p webox --bin webox
 
       - name: Zip
         shell: pwsh
@@ -147,6 +153,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ github.event.release.tag_name }}
+          WEBOX_CLIENT_ID: ${{ secrets.WEBOX_CLIENT_ID }}
+          WEBOX_CLIENT_SECRET: ${{ secrets.WEBOX_CLIENT_SECRET }}
+          WEBOX_GIPHY_API_KEY: ${{ secrets.WEBOX_GIPHY_API_KEY }}
         run: |
           set -euo pipefail
           sh packaging/linux/make-tarball.sh

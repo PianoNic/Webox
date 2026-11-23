@@ -17,15 +17,16 @@
 //!   Server OFFERs are answered with an ANSWER. A call created without the offer leaves the callee stuck on "connecting",
 //!   so the offer is always built first (no offer, no request).
 //! * **Media transport** (`media.rs`): webrtc-rs peer connection (ICE, DTLS-SRTP, RTP), Opus 48 kHz via `ropus`, devices via `cpal` (`audio.rs`).
-//! * **Not done:** TURN discovery (`TURN_DISCOVERY_REQUEST`, only needed when UDP to the media cluster is blocked), the
-//!   `reachability` data (media cluster choice), video / screen share, noise removal, echo cancellation. Interop with
-//!   Locus' media servers is only tested against a second local webrtc-rs peer.
+//! * **Not done:** media over TCP / TLS 443 (the server's TCP and `xTLS` candidates are dropped, webrtc-rs only does UDP
+//!   ICE) and TURN discovery (`TURN_DISCOVERY_REQUEST`), both only needed when UDP to the media cluster is blocked; the
+//!   `reachability` data (media cluster choice), video / screen share. Interop with Locus' media servers is only tested
+//!   against a second local webrtc-rs peer.
 //!
 //! "Verbunden" is shown only when the callee's participant state is JOINED **and** our peer connection is `Connected`.
 //!
 //! Safety: `WEBOX_CALL_TEST_ONLY=<address>` makes every outgoing call to any other address fail before any network request,
 //! only e-mail style addresses can be dialled (no phone numbers), one call at a time, at most one dial every 10 s.
-use super::media::{Media, MediaState};
+use super::media::{route_ip, Media, MediaState, Net};
 use super::*;
 use crate::media::audio;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,7 +34,32 @@ use std::sync::Arc;
 
 pub const GUARD_ENV: &str = "WEBOX_CALL_TEST_ONLY";
 const REDIAL_COOLDOWN: Duration = Duration::from_secs(10);
+/// The call's tick: re-evaluates the known locus (media may have connected); it reads the locus only when `poll_due`.
 const TICK: Duration = Duration::from_secs(1);
+/// Locus state comes with the Mercury events (each carries the full locus); a GET is only the fallback: every 15 s until
+/// connected, every 30 s while connected, and at most every 2 s for an event without the full locus.
+const POLL_RINGING: Duration = Duration::from_secs(15);
+const POLL_CONNECTED: Duration = Duration::from_secs(30);
+const MIN_READ_GAP: Duration = Duration::from_secs(2);
+/// Media counters in the debug log, from memory (never a request).
+const STATS_EVERY: Duration = Duration::from_secs(10);
+
+/// Whether the tick at `now` should read the locus: never read yet, an event asked for a read (`stale`, at most every
+/// `MIN_READ_GAP`), or the fallback poll is due.
+pub fn poll_due(read_at: Option<Instant>, now: Instant, connected: bool, stale: bool) -> bool {
+    let Some(t) = read_at else { return true };
+    let since = now.saturating_duration_since(t);
+    (stale && since >= MIN_READ_GAP) || since >= if connected { POLL_CONNECTED } else { POLL_RINGING }
+}
+
+/// The full locus a Mercury event carries (`fullState`, `self`, `participants`), if it does.
+pub fn full_locus(d: &Value) -> Option<&Value> {
+    let l = locus_of(d);
+    (!st(&l["fullState"], "type").is_empty() && l["self"].is_object() && l["participants"].is_array()).then_some(l)
+}
+
+/// The locus' sequence number (last of `sequence.entries`): events can arrive out of order.
+pub fn locus_seq(l: &Value) -> u64 { l["sequence"]["entries"].as_array().and_then(|e| e.last()).and_then(Value::as_u64).unwrap_or(0) }
 
 /// `Dialing` = request sent / invitee not alerted yet; `Ringing` = invitee's device is alerting; `Connecting` = the invitee
 /// joined but our media leg (ICE/DTLS) isn't up yet; `Connected` only when both are true.
@@ -145,6 +171,18 @@ struct Active {
     url: String, self_id: String, self_url: String, media_id: String, correlation_id: String,
     outgoing: bool, name: String, email: String, last: Option<CallState>, answered: bool,
     media: Option<Media>, roap_seq: u32, roap_done: bool,
+    /// Media trouble was already reported for this call (`media_trouble`).
+    media_warned: bool,
+    /// Event-driven state: the last locus applied, its sequence, when it was last read by GET, whether an event asked
+    /// for a read, and when the media counters were last logged.
+    view: Option<LocusView>, seq: u64, read_at: Option<Instant>, stale: bool, stats_at: Option<Instant>,
+}
+
+impl Active {
+    fn new(url: String, self_id: String, self_url: String, outgoing: bool, name: String, email: String) -> Active {
+        Active { url, self_id, self_url, media_id: String::new(), correlation_id: String::new(), outgoing, name, email, last: None, answered: outgoing,
+            media: None, roap_seq: 0, roap_done: false, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None }
+    }
 }
 
 #[derive(Default)]
@@ -168,11 +206,26 @@ pub fn roap_in(d: &Value) -> Option<(String, u32, Option<String>)> {
     Some((st(m, "messageType"), m["seq"].as_u64().unwrap_or(0) as u32, m["sdps"].as_array().and_then(|a| a.first()).and_then(Value::as_str).map(String::from)))
 }
 
+/// The media connection id of a join answer: `mediaConnections[]` at the top, else under the locus' `self.devices[]` (this
+/// device first). Without it no ROAP OK can be sent.
+pub fn media_id_of(r: &Value, device_url: &str) -> String {
+    let first = |v: &Value| v["mediaConnections"].as_array().into_iter().flatten().map(|c| st(c, "mediaId")).find(|m| !m.is_empty());
+    let devs = locus_of(r)["self"]["devices"].as_array().cloned().unwrap_or_default();
+    first(r).or_else(|| devs.iter().filter(|d| st(d, "url") == device_url).chain(devs.iter()).find_map(first)).unwrap_or_default()
+}
+
+/// The cause fields of a ROAP ERROR (short enum-like values only) for the debug log.
+pub fn roap_error(m: &Value) -> String {
+    let f = |k: &str| scrub(&st(m, k)).chars().filter(|c| c.is_ascii_graphic() || *c == ' ').take(80).collect::<String>();
+    format!("seq={} errorType={} errorCause={}", m["seq"], f("errorType"), f("errorCause"))
+}
+
 /// The answer a join / media response may already carry in `mediaConnections[].remoteSdp` (a JSON string holding a roapMessage).
 pub fn remote_roap(r: &Value) -> Option<(String, u32, Option<String>)> {
     let rs = r["mediaConnections"].as_array()?.iter().find_map(|c| c["remoteSdp"].as_str())?;
     let v: Value = serde_json::from_str(rs).ok()?;
     let m = if v["roapMessage"].is_object() { &v["roapMessage"] } else { &v };
+    if st(m, "messageType").is_empty() { return None; } // a remoteSdp without a ROAP message (the answer comes by mercury)
     Some((st(m, "messageType"), m["seq"].as_u64().unwrap_or(0) as u32, m["sdps"].as_array().and_then(|a| a.first()).and_then(Value::as_str).map(String::from)))
 }
 

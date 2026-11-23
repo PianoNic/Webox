@@ -221,7 +221,7 @@ impl App {
         let h = 40.0 + 30.0 + 4.0 * (kh + gap) + 12.0;
         let r = Rect::from_center_size(area.center(), Vec2::new(w, h));
         ui.painter().rect_filled(r, 12.0, if menu::light(t) { Color32::WHITE } else { hex(0x000000) });
-        ui.painter().rect_stroke(r, 12.0, Stroke::new(1.0, t.sep), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(r, 12.0, Stroke::new(1.0_f32, t.sep), egui::StrokeKind::Inside);
         ui.painter().text(r.left_top() + Vec2::new(16.0, 20.0), egui::Align2::LEFT_CENTER, "Tastatur", semibold(15.0), t.text1);
         let close = super::call_toast::ghost_at(ui, &mut self.icons, t, "kp-close", r.right_top() + Vec2::new(-22.0, 20.0), 28.0, "cancel-regular", t.text1).on_hover_text("Schließen");
         if close.clicked() { self.call.mc.keypad = false; }

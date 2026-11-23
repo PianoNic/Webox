@@ -92,10 +92,10 @@ pub(crate) fn check(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th, label: &st
     // unchecked: checkbox-unchecked-background (transparent / 7 % / 20 %) inside a checkbox-unchecked-border frame;
     // disabled: checked fill 20 %, tick 40 %, unchecked border 20 %.
     if *on { p.rect_filled(b, 2.0, if enabled { c.checked_bg.pick(&resp) } else { alpha(base, 0.2) }); }
-    else { p.rect_filled(b, 2.0, if enabled { c.unchecked_bg.pick(&resp) } else { Color32::TRANSPARENT }); p.rect_stroke(b, 2.0, Stroke::new(1.0, if enabled { c.unchecked_border } else { alpha(base, 0.2) }), egui::StrokeKind::Inside); }
+    else { p.rect_filled(b, 2.0, if enabled { c.unchecked_bg.pick(&resp) } else { Color32::TRANSPARENT }); p.rect_stroke(b, 2.0, Stroke::new(1.0_f32, if enabled { c.unchecked_border } else { alpha(base, 0.2) }), egui::StrokeKind::Inside); }
     if *on { ic.paint(ui, "check-bold", Rect::from_center_size(b.center(), Vec2::splat(12.0)), if enabled { c.checked_icon } else { alpha(base, 0.4) }); }
     ui.painter().galley(pos2(r.left() + indent + 26.0, r.top() + 1.0), g, t.text1);
-    if resp.has_focus() { ui.painter().rect_stroke(b.expand(2.0), 3.0, Stroke::new(2.0, k.focus), egui::StrokeKind::Outside); }
+    if resp.has_focus() { ui.painter().rect_stroke(b.expand(2.0), 3.0, Stroke::new(2.0_f32, k.focus), egui::StrokeKind::Outside); }
     if enabled && resp.clicked() { *on = !*on; return true; }
     false
 }
@@ -140,7 +140,7 @@ pub(crate) fn radio(ui: &mut egui::Ui, t: &Th, label: &str, selected: bool, desc
         p.circle_filled(c, 3.0, k.checked_icon); // radio-checked-icon
     } else {
         p.circle_filled(c, 8.0, k.unchecked_bg.pick(&resp)); // radio-unchecked-background
-        p.circle_stroke(c, 7.5, Stroke::new(1.0, k.unchecked_border)); // radio-unchecked-border
+        p.circle_stroke(c, 7.5, Stroke::new(1.0_f32, k.unchecked_border)); // radio-unchecked-border
     }
     p.galley(pos2(r.left() + 24.0, r.top() + 1.0), g.clone(), t.text1);
     if let Some(d) = dg { p.galley(pos2(r.left() + 24.0, r.top() + 1.0 + g.size().y), d, t.text2); }
@@ -171,7 +171,7 @@ pub(crate) fn slider(ui: &mut egui::Ui, t: &Th, v: &mut f32, from: f32, to: f32,
     p.rect_filled(Rect::from_min_max(pos2(x0, r.center().y - 1.0), pos2(x1, r.center().y + 1.0)), 2.0, k.track_empty); // slider-track-empty-background
     p.rect_filled(Rect::from_min_max(pos2(x0, r.center().y - 1.0), pos2(hx, r.center().y + 1.0)), 2.0, k.track_indicator); // slider-track-indicator-background
     p.circle_filled(pos2(hx, r.center().y), 8.0, k.handle_bg.pick(&resp)); // slider-handle-background
-    p.circle_stroke(pos2(hx, r.center().y), 7.5, Stroke::new(1.0, k.handle_border)); // slider-handle-border
+    p.circle_stroke(pos2(hx, r.center().y), 7.5, Stroke::new(1.0_f32, k.handle_border)); // slider-handle-border
     (*v - before).abs() > f32::EPSILON
 }
 
@@ -183,7 +183,7 @@ pub(crate) fn pill(ui: &mut egui::Ui, t: &Th, label: &str, small: bool, enabled:
     let (r, resp) = ui.allocate_exact_size(Vec2::new(w, h), if enabled { Sense::click() } else { Sense::hover() });
     let fill = if !enabled { Color32::TRANSPARENT } else if resp.is_pointer_button_down_on() { k.btn_press } else if resp.hovered() { k.btn_hover } else { Color32::TRANSPARENT };
     ui.painter().rect_filled(r, h / 2.0, fill);
-    ui.painter().rect_stroke(r, h / 2.0, Stroke::new(1.0, if enabled { k.outline_hover } else { k.outline }), egui::StrokeKind::Inside);
+    ui.painter().rect_stroke(r, h / 2.0, Stroke::new(1.0_f32, if enabled { k.outline_hover } else { k.outline }), egui::StrokeKind::Inside);
     ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, label, semibold(BODY), if enabled { t.text1 } else { t.text2 });
     resp
 }
@@ -193,7 +193,7 @@ pub(crate) fn link(ui: &mut egui::Ui, t: &Th, text: &str) -> egui::Response {
     let g = ui.painter().layout_no_wrap(text.to_string(), font(BODY), t.link);
     let (r, resp) = ui.allocate_exact_size(g.size(), Sense::click());
     ui.painter().galley(r.min, g, t.link);
-    if resp.hovered() { ui.painter().hline(r.x_range(), r.bottom() - 1.0, Stroke::new(1.0, t.link)); ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+    if resp.hovered() { ui.painter().hline(r.x_range(), r.bottom() - 1.0, Stroke::new(1.0_f32, t.link)); ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     resp
 }
 
@@ -204,6 +204,6 @@ pub(crate) fn text_field(ui: &mut egui::Ui, t: &Th, text: &mut String, hint: &st
     ui.painter().rect_filled(r, 8.0, k.input_bg);
     let mut c = ui.new_child(egui::UiBuilder::new().max_rect(r.shrink2(Vec2::new(12.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
     let resp = c.add(egui::TextEdit::singleline(text).frame(false).margin(Vec2::ZERO).hint_text(RichText::new(hint).color(t.text2).size(BODY)).font(font(BODY)).desired_width(r.width() - 24.0));
-    ui.painter().rect_stroke(r, 8.0, Stroke::new(if resp.has_focus() { 2.0 } else { 1.0 }, if resp.has_focus() { k.focus } else if resp.hovered() { k.outline_hover } else { k.outline }), egui::StrokeKind::Inside);
+    ui.painter().rect_stroke(r, 8.0, Stroke::new(if resp.has_focus() { 2.0_f32 } else { 1.0_f32 }, if resp.has_focus() { k.focus } else if resp.hovered() { k.outline_hover } else { k.outline }), egui::StrokeKind::Inside);
     resp
 }

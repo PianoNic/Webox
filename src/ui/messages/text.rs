@@ -69,8 +69,8 @@ impl JobBuilder {
         let size = self.st.size.unwrap_or(BODY) * super::super::widgets::msg_scale(); // Barrierefreiheit > Schriftgröße
         let font_id = if self.st.code { FontId::monospace(size * 0.92) } else if self.st.bold { semibold(size) } else { FontId::proportional(size) };
         let ul = underline || self.st.underline;
-        let fmt = egui::TextFormat { font_id, color, underline: if ul { Stroke::new(1.0, color) } else { Stroke::NONE }, italics: self.st.italic,
-            strikethrough: if self.st.strike { Stroke::new(1.0, color) } else { Stroke::NONE }, background: self.st.bg.unwrap_or(Color32::TRANSPARENT), ..Default::default() };
+        let fmt = egui::TextFormat { font_id, color, underline: if ul { Stroke::new(1.0_f32, color) } else { Stroke::NONE }, italics: self.st.italic,
+            strikethrough: if self.st.strike { Stroke::new(1.0_f32, color) } else { Stroke::NONE }, background: self.st.bg.unwrap_or(Color32::TRANSPARENT), ..Default::default() };
         self.put(s, fmt);
     }
     pub(super) fn put(&mut self, s: &str, fmt: egui::TextFormat) { self.job.append(s, 0.0, fmt); self.nchars += s.chars().count(); }
