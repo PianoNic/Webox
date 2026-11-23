@@ -52,18 +52,65 @@ pub fn host() -> cpal::Host {
     cpal::default_host()
 }
 
+#[cfg(not(target_os = "linux"))]
 pub fn inputs() -> Vec<Dev> {
     let h = host();
     let def = h.default_input_device().and_then(|d| d.name().ok());
     h.input_devices().map(|it| it.filter_map(|d| d.name().ok()).map(|n| Dev { default: Some(&n) == def.as_ref(), name: n }).collect()).unwrap_or_default()
 }
+#[cfg(not(target_os = "linux"))]
 pub fn outputs() -> Vec<Dev> {
     let h = host();
     let def = h.default_output_device().and_then(|d| d.name().ok());
     h.output_devices().map(|it| it.filter_map(|d| d.name().ok()).map(|n| Dev { default: Some(&n) == def.as_ref(), name: n }).collect()).unwrap_or_default()
 }
+/// Microphones and speakers in one go (on Linux one enumeration: cpal opens every ALSA PCM to list it).
+#[cfg(not(target_os = "linux"))]
+pub fn devices() -> (Vec<Dev>, Vec<Dev>) { (inputs(), outputs()) }
+#[cfg(target_os = "linux")]
+#[allow(dead_code)] // tests; the UI lists both sides with `devices`
+pub fn inputs() -> Vec<Dev> { alsa_list(true, false).0 }
+#[cfg(target_os = "linux")]
+pub fn outputs() -> Vec<Dev> { alsa_list(false, true).1 }
+#[cfg(target_os = "linux")]
+pub fn devices() -> (Vec<Dev>, Vec<Dev>) { alsa_list(true, true) }
+
+/// A sound server's ALSA PCM (`default` already goes through it).
+#[cfg(target_os = "linux")]
+fn is_server(name: &str) -> bool { matches!(name, "pipewire" | "pulse") }
+/// ALSA PCMs that are not offered: raw hardware and plugin layers (`hw` / `plughw` grab the card exclusively, the rest
+/// duplicate or bypass `default`), the sound server's own PCM (the same sink as `default`) and, with a sound server
+/// (`server`), the per-card `sysdefault` (it bypasses the server and fights it for the card).
+#[cfg(target_os = "linux")]
+pub(crate) fn hidden(name: &str, server: bool) -> bool {
+    const RAW: [&str; 27] = ["hw", "plughw", "front", "rear", "center_lfe", "side", "dmix", "dsnoop", "dshare", "iec958", "spdif", "hdmi",
+        "usbstream", "modem", "phoneline", "pipewire", "pulse", "jack", "oss", "speex", "speexrate", "samplerate", "lavrate", "lavcrate",
+        "a52", "upmix", "vdownmix"];
+    let base = name.split(':').next().unwrap_or(name);
+    base.starts_with("surround") || base == "null" || RAW.contains(&base) || (server && base == "sysdefault")
+}
+/// The ALSA PCMs worth offering. Hidden ones are dropped before their formats are probed (cpal has already opened them
+/// to list them; the hint list itself is not reachable through cpal).
+#[cfg(target_os = "linux")]
+fn alsa_list(want_in: bool, want_out: bool) -> (Vec<Dev>, Vec<Dev>) {
+    let mut server = false;
+    let mut keep = vec![];
+    if let Ok(it) = host().devices() {
+        for d in it {
+            let Ok(n) = d.name() else { continue };
+            server |= is_server(&n);
+            if !hidden(&n, false) { keep.push((n, d)); }
+        }
+    }
+    keep.retain(|(n, _)| !hidden(n, server));
+    let dev = |n: &String| Dev { default: n == "default", name: n.clone() };
+    let ins = if want_in { keep.iter().filter(|(_, d)| d.supported_input_configs().is_ok_and(|mut c| c.next().is_some())).map(|(n, _)| dev(n)).collect() } else { vec![] };
+    let outs = if want_out { keep.iter().filter(|(_, d)| d.supported_output_configs().is_ok_and(|mut c| c.next().is_some())).map(|(n, _)| dev(n)).collect() } else { vec![] };
+    (ins, outs)
+}
 /// The saved device if it is still plugged in, else the system default (hot-plug safe).
-fn pick(name: &str, input: bool) -> Option<cpal::Device> {
+#[cfg(not(target_os = "linux"))]
+pub(crate) fn pick(name: &str, input: bool) -> Option<cpal::Device> {
     let h = host();
     if !name.is_empty() {
         let mut it = if input { h.input_devices().ok()? } else { h.output_devices().ok()? };
@@ -71,6 +118,46 @@ fn pick(name: &str, input: bool) -> Option<cpal::Device> {
     }
     if input { h.default_input_device() } else { h.default_output_device() }
 }
+/// Linux: `default` and hidden PCMs (an older saved `hw:` / `sysdefault:` choice) go to `default` without enumerating;
+/// other names are looked up without probing every device's formats on the way.
+#[cfg(target_os = "linux")]
+pub(crate) fn pick(name: &str, input: bool) -> Option<cpal::Device> {
+    let h = host();
+    if !name.is_empty() && name != "default" && !hidden(name, false) {
+        let mut server = false; // the server's PCMs are listed before the per-card ones
+        let found = h.devices().ok().and_then(|mut it| it.find(|d| { let n = d.name().unwrap_or_default(); server |= is_server(&n); n == name }));
+        let ok = |d: &cpal::Device| if input { d.supported_input_configs().is_ok_and(|mut c| c.next().is_some()) } else { d.supported_output_configs().is_ok_and(|mut c| c.next().is_some()) };
+        if let Some(d) = found.filter(|d| !hidden(name, server) && ok(d)) { return Some(d); }
+    }
+    if input { h.default_input_device() } else { h.default_output_device() }
+}
+
+/// Stream configs to try, best first, ending with the device's default. On Linux first 48 kHz (what calls and PipeWire run
+/// at; cpal's default picks 44.1 kHz from PipeWire's continuous range, so everything got resampled twice), with a fixed
+/// buffer of `buf` frames where the device allows it, then 48 kHz with the default buffer.
+pub(crate) fn stream_configs(dev: &cpal::Device, input: bool, buf: Option<u32>) -> Result<Vec<(cpal::StreamConfig, cpal::SampleFormat)>, String> {
+    let def = if input { dev.default_input_config() } else { dev.default_output_config() }.map_err(|e| e.to_string())?;
+    let mut v = vec![];
+    #[cfg(target_os = "linux")]
+    {
+        let ranges: Vec<cpal::SupportedStreamConfigRange> = if input { dev.supported_input_configs().map(|c| c.collect()) } else { dev.supported_output_configs().map(|c| c.collect()) }.unwrap_or_default();
+        let fits = |r: &&cpal::SupportedStreamConfigRange| r.sample_format() == def.sample_format() && r.min_sample_rate().0 <= RATE && RATE <= r.max_sample_rate().0;
+        if let Some(r) = ranges.iter().filter(fits).find(|r| r.channels() == def.channels()).or_else(|| ranges.iter().find(fits)) {
+            let mut c = r.clone().with_sample_rate(cpal::SampleRate(RATE)).config();
+            if let (Some(b), cpal::SupportedBufferSize::Range { min, max }) = (buf, r.buffer_size()) {
+                if *min <= b && b <= *max { v.push((cpal::StreamConfig { buffer_size: cpal::BufferSize::Fixed(b), ..c.clone() }, def.sample_format())); }
+            }
+            c.buffer_size = cpal::BufferSize::Default;
+            v.push((c, def.sample_format()));
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = buf;
+    v.push((def.config(), def.sample_format()));
+    Ok(v)
+}
+/// Call audio's fixed buffer on Linux: 20 ms (cpal's default asks ALSA for 100 ms).
+const BUF_FRAMES: u32 = FRAME as u32;
 
 /// Linear-interpolating resampler (push style): good enough for speech, no external crate.
 pub struct Lin { ratio: f64, pos: f64, last: f32 }
@@ -113,6 +200,8 @@ pub struct Io {
     call: AtomicBool,
     /// What the speaker played (48 kHz, after the volume), waiting for the echo canceller.
     pub far: Mutex<VecDeque<f32>>,
+    /// A stream reported an error (device unplugged, sound server restarted): the engine reopens its devices.
+    failed: AtomicBool,
 }
 impl Io {
     pub fn level(&self) -> f32 { f32::from_bits(self.level.load(Ordering::Relaxed)) }
@@ -162,7 +251,7 @@ pub fn rms(pcm: &[i16]) -> f32 {
 enum Cmd { Open(Option<String>, Option<String>, Sender<Result<String, String>>), Close }
 
 /// Owns the audio thread. `open` (re)starts capture + playback on the chosen devices; `close` stops them.
-/// Sounds open only the speaker (`open_output*`), the level meter only the microphone (`open_input_async`).
+/// Sounds open only the speaker (`open_output_async`), the level meter only the microphone (`open_input_async`).
 pub struct Engine { tx: Sender<Cmd>, pub io: Arc<Io> }
 
 impl Engine {
@@ -172,12 +261,31 @@ impl Engine {
         let (tx, rx) = channel::<Cmd>();
         let io2 = io.clone();
         std::thread::spawn(move || {
+            use std::sync::mpsc::RecvTimeoutError;
             let mut streams: Vec<cpal::Stream> = vec![];
-            for cmd in rx {
+            // The devices of the running streams, to reopen them when one fails (Linux; Windows keeps its old behaviour).
+            let mut last: Option<(Option<String>, Option<String>)> = None;
+            loop {
+                let cmd = match rx.recv_timeout(std::time::Duration::from_secs(2)) {
+                    Ok(c) => c,
+                    Err(RecvTimeoutError::Disconnected) => break,
+                    Err(RecvTimeoutError::Timeout) => {
+                        if !cfg!(target_os = "linux") { continue; }
+                        let Some((i, o)) = last.clone() else { continue };
+                        if !io2.failed.swap(false, Ordering::Relaxed) { continue; }
+                        streams.clear();
+                        // the same devices, else the defaults; still failing: tried again on the next tick
+                        let r = open_streams(&io2, i.as_deref(), o.as_deref()).or_else(|_| open_streams(&io2, i.as_ref().map(|_| ""), o.as_ref().map(|_| "")));
+                        match r { Ok((s, info)) => { eprintln!("audio: reopened ({info})"); streams = s; } Err(e) => { eprintln!("audio: reopen failed: {e}"); io2.failed.store(true, Ordering::Relaxed); } }
+                        continue;
+                    }
+                };
                 streams.clear(); // dropping stops them
+                io2.failed.store(false, Ordering::Relaxed);
+                last = None;
                 if let Cmd::Open(i, o, reply) = cmd {
                     let r = open_streams(&io2, i.as_deref(), o.as_deref());
-                    let _ = reply.send(match r { Ok((s, info)) => { streams = s; Ok(info) } Err(e) => Err(e) });
+                    let _ = reply.send(match r { Ok((s, info)) => { streams = s; last = Some((i, o)); Ok(info) } Err(e) => Err(e) });
                 }
             }
         });
@@ -185,8 +293,6 @@ impl Engine {
     }
     /// Starts the streams. Returns a short description ("In: …, Out: …") or the reason it failed. Blocks briefly.
     pub fn open(&self, input: &str, output: &str) -> Result<String, String> { self.open_wait(Some(input), Some(output)) }
-    /// Only the speaker (ringtones, sounds): a microphone that is missing, busy or blocked never stops them.
-    pub fn open_output(&self, output: &str) -> Result<String, String> { self.open_wait(None, Some(output)) }
     fn open_wait(&self, input: Option<&str>, output: Option<&str>) -> Result<String, String> {
         let rrx = self.send_open(input, output);
         rrx.recv_timeout(std::time::Duration::from_secs(10)).map_err(|_| "audio devices didn't answer".to_string())?
@@ -206,15 +312,18 @@ impl Engine {
 
 fn to_f32<T: cpal::Sample>(v: T) -> f32 where T: cpal::SizedSample, f32: cpal::FromSample<T> { v.to_sample::<f32>() }
 
+/// Builds the stream with the first config that works (`stream_configs` order); the last one's error otherwise.
+pub(crate) fn first_ok(cfgs: &[(cpal::StreamConfig, cpal::SampleFormat)], mut build: impl FnMut(&cpal::StreamConfig, cpal::SampleFormat) -> Result<cpal::Stream, String>) -> Result<cpal::Stream, String> {
+    let mut last = Err("no stream config".to_string());
+    for (c, f) in cfgs { last = build(c, *f); if last.is_ok() { break; } }
+    last
+}
+
 fn open_streams(io: &Arc<Io>, input: Option<&str>, output: Option<&str>) -> Result<(Vec<cpal::Stream>, String), String> {
     let mut streams = vec![];
     let mut info = vec![];
     if let Some(dev) = input.and_then(|i| pick(i, true)) {
-        let cfg = dev.default_input_config().map_err(|e| format!("Mikrofon: {e}"))?;
-        let (rate, ch, fmt) = (cfg.sample_rate().0, cfg.channels() as usize, cfg.sample_format());
-        let mut lin = Lin::new(rate, RATE);
-        let mut mono: Vec<f32> = vec![];
-        let mut res: Vec<f32> = vec![];
+        let cfgs = stream_configs(&dev, true, Some(BUF_FRAMES)).map_err(|e| format!("Mikrofon: {e}"))?;
         // The microphone chain runs on its own thread so it never holds up the device callback. The callback only mixes
         // down, resamples to 48 kHz and hands the block over; the thread ends when the stream (and so `blocks`) is dropped.
         let (blocks, rx) = channel::<Vec<f32>>();
@@ -236,51 +345,62 @@ fn open_streams(io: &Arc<Io>, input: Option<&str>, output: Option<&str>) -> Resu
                 }
             }
         }).map_err(|e| format!("Mikrofon: {e}"))?;
-        let mut handle = move |frames: &mut dyn Iterator<Item = f32>| {
-            mono.clear();
-            let mut acc = 0.0; let mut n = 0;
-            for s in frames { acc += s; n += 1; if n == ch { mono.push(acc / ch as f32); acc = 0.0; n = 0; } }
-            res.clear();
-            lin.push(&mono, &mut res);
-            let _ = blocks.send(res.clone());
+        let build = |cfg: &cpal::StreamConfig, fmt: cpal::SampleFormat| -> Result<cpal::Stream, String> {
+            let (ch, blocks) = (cfg.channels as usize, blocks.clone());
+            let (mut lin, mut mono, mut res) = (Lin::new(cfg.sample_rate.0, RATE), Vec::<f32>::new(), Vec::<f32>::new());
+            let mut handle = move |frames: &mut dyn Iterator<Item = f32>| {
+                mono.clear();
+                let mut acc = 0.0; let mut n = 0;
+                for s in frames { acc += s; n += 1; if n == ch { mono.push(acc / ch as f32); acc = 0.0; n = 0; } }
+                res.clear();
+                lin.push(&mono, &mut res);
+                let _ = blocks.send(res.clone());
+            };
+            let io4 = io.clone();
+            let err = move |e| { if !io4.failed.swap(true, Ordering::Relaxed) { eprintln!("audio input: {e}"); } };
+            match fmt {
+                cpal::SampleFormat::F32 => dev.build_input_stream(cfg, move |d: &[f32], _| handle(&mut d.iter().copied()), err, None),
+                cpal::SampleFormat::I16 => dev.build_input_stream(cfg, move |d: &[i16], _| handle(&mut d.iter().map(|&s| to_f32(s))), err, None),
+                cpal::SampleFormat::U16 => dev.build_input_stream(cfg, move |d: &[u16], _| handle(&mut d.iter().map(|&s| to_f32(s))), err, None),
+                f => return Err(format!("Mikrofon: Format {f:?} wird nicht unterstützt")),
+            }.map_err(|e| format!("Mikrofon: {e}"))
         };
-        let err = |e| eprintln!("audio input: {e}");
-        let st = match fmt {
-            cpal::SampleFormat::F32 => dev.build_input_stream(&cfg.into(), move |d: &[f32], _| handle(&mut d.iter().copied()), err, None),
-            cpal::SampleFormat::I16 => dev.build_input_stream(&cfg.into(), move |d: &[i16], _| handle(&mut d.iter().map(|&s| to_f32(s))), err, None),
-            cpal::SampleFormat::U16 => dev.build_input_stream(&cfg.into(), move |d: &[u16], _| handle(&mut d.iter().map(|&s| to_f32(s))), err, None),
-            f => return Err(format!("Mikrofon: Format {f:?} wird nicht unterstützt")),
-        }.map_err(|e| format!("Mikrofon: {e}"))?;
+        let st = first_ok(&cfgs, build)?;
+        drop(blocks); // the stream holds the sender now; the chain's thread ends with it
         st.play().map_err(|e| format!("Mikrofon: {e}"))?;
         streams.push(st);
         info.push(format!("In: {}", dev.name().unwrap_or_default()));
     }
     if let Some(dev) = output.and_then(|o| pick(o, false)) {
-        let cfg = dev.default_output_config().map_err(|e| format!("Lautsprecher: {e}"))?;
-        let (rate, ch, fmt) = (cfg.sample_rate().0, cfg.channels() as usize, cfg.sample_format());
-        let io2 = io.clone();
-        let mut pull = Pull::new(RATE, rate);
-        let play_into = move |len: usize, mut put: Box<dyn FnMut(usize, f32) + '_>| {
-            let gain = io2.gain();
-            let mut q = io2.to_play.lock().ok();
-            // in a call, what is played (at 48 kHz, after the volume) is the echo canceller's reference
-            let mut far = if io2.in_call() { io2.far.lock().ok() } else { None };
-            let mut src = || {
-                let v = q.as_mut().and_then(|q| q.pop_front()).map_or(0.0, |s| s as f32 / i16::MAX as f32);
-                if let Some(f) = far.as_mut() { f.push_back(v * gain); }
-                v
+        let cfgs = stream_configs(&dev, false, Some(BUF_FRAMES)).map_err(|e| format!("Lautsprecher: {e}"))?;
+        let build = |cfg: &cpal::StreamConfig, fmt: cpal::SampleFormat| -> Result<cpal::Stream, String> {
+            let (rate, ch) = (cfg.sample_rate.0, cfg.channels as usize);
+            let io2 = io.clone();
+            let mut pull = Pull::new(RATE, rate);
+            let play_into = move |len: usize, mut put: Box<dyn FnMut(usize, f32) + '_>| {
+                let gain = io2.gain();
+                let mut q = io2.to_play.lock().ok();
+                // in a call, what is played (at 48 kHz, after the volume) is the echo canceller's reference
+                let mut far = if io2.in_call() { io2.far.lock().ok() } else { None };
+                let mut src = || {
+                    let v = q.as_mut().and_then(|q| q.pop_front()).map_or(0.0, |s| s as f32 / i16::MAX as f32);
+                    if let Some(f) = far.as_mut() { f.push_back(v * gain); }
+                    v
+                };
+                for i in 0..len / ch { let v = pull.next(&mut src) * gain; for c in 0..ch { put(i * ch + c, v); } }
+                if let Some(f) = far.as_mut() { while f.len() > super::mic::FAR_MAX { f.pop_front(); } }
             };
-            for i in 0..len / ch { let v = pull.next(&mut src) * gain; for c in 0..ch { put(i * ch + c, v); } }
-            if let Some(f) = far.as_mut() { while f.len() > super::mic::FAR_MAX { f.pop_front(); } }
+            let mut play_into = play_into;
+            let io4 = io.clone();
+            let err = move |e| { if !io4.failed.swap(true, Ordering::Relaxed) { eprintln!("audio output: {e}"); } };
+            match fmt {
+                cpal::SampleFormat::F32 => dev.build_output_stream(cfg, move |d: &mut [f32], _| { let n = d.len(); play_into(n, Box::new(|i, v| d[i] = v)) }, err, None),
+                cpal::SampleFormat::I16 => dev.build_output_stream(cfg, move |d: &mut [i16], _| { let n = d.len(); play_into(n, Box::new(|i, v| d[i] = (v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)) }, err, None),
+                cpal::SampleFormat::U16 => dev.build_output_stream(cfg, move |d: &mut [u16], _| { let n = d.len(); play_into(n, Box::new(|i, v| d[i] = ((v.clamp(-1.0, 1.0) * 0.5 + 0.5) * u16::MAX as f32) as u16)) }, err, None),
+                f => return Err(format!("Lautsprecher: Format {f:?} wird nicht unterstützt")),
+            }.map_err(|e| format!("Lautsprecher: {e}"))
         };
-        let mut play_into = play_into;
-        let err = |e| eprintln!("audio output: {e}");
-        let st = match fmt {
-            cpal::SampleFormat::F32 => dev.build_output_stream(&cfg.into(), move |d: &mut [f32], _| { let n = d.len(); play_into(n, Box::new(|i, v| d[i] = v)) }, err, None),
-            cpal::SampleFormat::I16 => dev.build_output_stream(&cfg.into(), move |d: &mut [i16], _| { let n = d.len(); play_into(n, Box::new(|i, v| d[i] = (v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)) }, err, None),
-            cpal::SampleFormat::U16 => dev.build_output_stream(&cfg.into(), move |d: &mut [u16], _| { let n = d.len(); play_into(n, Box::new(|i, v| d[i] = ((v.clamp(-1.0, 1.0) * 0.5 + 0.5) * u16::MAX as f32) as u16)) }, err, None),
-            f => return Err(format!("Lautsprecher: Format {f:?} wird nicht unterstützt")),
-        }.map_err(|e| format!("Lautsprecher: {e}"))?;
+        let st = first_ok(&cfgs, build)?;
         st.play().map_err(|e| format!("Lautsprecher: {e}"))?;
         streams.push(st);
         info.push(format!("Out: {}", dev.name().unwrap_or_default()));
@@ -346,6 +466,19 @@ mod tests {
         assert!(bytes < pcm.len() * 2 / 4, "compressed {bytes} bytes");
         let tail = &out[out.len() / 2..];
         assert!((rms(tail) - 0.3535).abs() < 0.08, "rms {}", rms(tail)); // the tone survives the codec
+    }
+
+    /// Raw ALSA PCMs stay out of the device lists; `default` and user-defined PCMs stay in, `sysdefault` only without a
+    /// sound server. Pure name logic, opens nothing.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn raw_alsa_pcms_are_hidden() {
+        for n in ["hw:CARD=PCH,DEV=0", "plughw:CARD=PCH,DEV=0", "front:CARD=PCH,DEV=0", "surround51:CARD=PCH,DEV=0", "dmix:CARD=PCH,DEV=0",
+                  "dsnoop:CARD=PCH,DEV=0", "iec958:CARD=PCH,DEV=0", "hdmi:CARD=HDMI,DEV=0", "usbstream:CARD=Headset", "pipewire", "pulse", "null"] {
+            assert!(hidden(n, false), "{n}");
+        }
+        for n in ["default", "sysdefault:CARD=Headset", "my_asoundrc_pcm"] { assert!(!hidden(n, false), "{n}"); }
+        assert!(hidden("sysdefault:CARD=Headset", true) && !hidden("default", true));
     }
 
     #[test]

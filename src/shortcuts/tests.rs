@@ -176,3 +176,29 @@ fn settings_json_round_trip() {
     assert_eq!(j["EndCall"]["global"], true);
     assert!(j.get("Nope").is_none());
 }
+
+#[test]
+fn digits_match_physically_and_exact_shift_wins() {
+    let m = |ctrl: bool, alt: bool, shift: bool| Modifiers { ctrl, alt, shift, command: ctrl, ..Default::default() };
+    // Alt+Shift+1 on DE / CH: logical "!", physical 1.
+    assert!(c("Alt+Shift+1").matches_at(Key::Exclamationmark, Some(Key::Num1), &m(false, true, true), true));
+    assert!(!c("Alt+Shift+2").matches_at(Key::Exclamationmark, Some(Key::Num1), &m(false, true, true), true));
+    assert!(c("Alt+Shift+0").matches_at(Key::Equals, Some(Key::Num0), &m(false, true, true), false));
+    // Ctrl+Shift+0 on DE is "=" with Shift: exact for Superscript, only loose for Subscript.
+    let (eq, sh) = (Key::Equals, m(true, false, true));
+    assert!(c("Ctrl+Shift+=").matches_at(eq, Some(Key::Num0), &sh, false));
+    assert!(!c("Ctrl+=").matches_at(eq, Some(Key::Num0), &sh, false) && c("Ctrl+=").matches_at(eq, Some(Key::Num0), &sh, true));
+    assert!(!c("Ctrl+Shift+0").matches_at(eq, Some(Key::Num0), &m(true, true, true), true));
+}
+
+#[test]
+fn take_key_drops_the_text_of_alt_keys_only() {
+    let key = |modifiers| egui::Event::Key { key: Key::K, physical_key: Some(Key::K), pressed: true, repeat: false, modifiers };
+    let text = || egui::Event::Text("k".into());
+    let mut ev = vec![key(Modifiers::ALT), text(), text()];
+    take_key(&mut ev, 0);
+    assert_eq!(ev.len(), 1);
+    let mut ev = vec![key(Modifiers::NONE), text()];
+    take_key(&mut ev, 0);
+    assert!(matches!(ev.as_slice(), [egui::Event::Text(_)]));
+}

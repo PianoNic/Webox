@@ -6,9 +6,11 @@
 //! * `notifications.rs`: on Wayland, where a client can't place its own windows, the toasts go to the desktop's notification
 //!   server (org.freedesktop.Notifications) with the same text and buttons. On X11 the app's own toast windows are used, as on Windows.
 //! * `x11.rs`: work area, window lookup / placement / capture and XGrabKey global hotkeys (pure-Rust x11rb, no libxcb).
+//! * `activation.rs`: raising the main window on Wayland (xdg-activation-v1 with the panel's / notification's / launcher's token).
 //! * global hotkeys on Wayland: the xdg-desktop-portal GlobalShortcuts interface (ashpd), see `shortcuts/global_linux.rs`.
 //!
 //! Everything talks D-Bus through zbus on one small tokio runtime of its own (zbus/ashpd are already in the tree via rfd's portal).
+pub(crate) mod activation;
 pub(crate) mod instance;
 pub(crate) mod launcher;
 pub(crate) mod notifications;
@@ -36,15 +38,19 @@ pub(crate) fn set_scale(s: f32) { SCALE.store(s.to_bits(), Ordering::Relaxed); }
 pub(crate) fn scale() -> f32 { f32::from_bits(SCALE.load(Ordering::Relaxed)).max(0.5) }
 
 /// Called once per frame by the main window with its raw handle: records X11 vs Wayland and returns the X11 window id
-/// (0 on Wayland, where windows have no global id).
+/// (0 on Wayland, where windows have no global id). On Wayland it hands the wl_display / wl_surface to `activation`.
 pub(crate) fn note_window(frame: &eframe::Frame, ctx: &eframe::egui::Context) -> Option<isize> {
-    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use raw_window_handle::{HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle};
     if let Some(p) = ctx.input(|i| i.viewport().native_pixels_per_point) { set_scale(p); }
     let h = frame.window_handle().ok()?;
     match h.as_raw() {
         RawWindowHandle::Xlib(w) => { set_session(Session::X11); Some(w.window as isize) }
         RawWindowHandle::Xcb(w) => { set_session(Session::X11); Some(w.window.get() as isize) }
-        RawWindowHandle::Wayland(_) => { set_session(Session::Wayland); Some(0) }
+        RawWindowHandle::Wayland(w) => {
+            set_session(Session::Wayland);
+            if let Ok(RawDisplayHandle::Wayland(d)) = frame.display_handle().map(|d| d.as_raw()) { activation::note(d.display.as_ptr() as usize, w.surface.as_ptr() as usize); }
+            Some(0)
+        }
         _ => None,
     }
 }

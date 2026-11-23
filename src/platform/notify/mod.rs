@@ -65,12 +65,16 @@ pub(crate) struct Toast {
     /// (id, label, primary)
     buttons: Vec<(&'static str, String, bool)>,
     born: f64, deadline: f64, hovered: bool, dismissed: bool,
+    /// The notification server failed it once: it stays the app's own toast (Linux, `native_toasts`).
+    #[cfg(target_os = "linux")]
+    native_failed: bool,
 }
 
 impl Toast {
     pub(crate) fn new(kind: Kind, title: impl Into<String>, body: impl Into<String>) -> Self {
         Toast { id: 0, kind, kicker: String::new(), title: title.into(), lead: None, body: body.into(), avatar: None, space: None, link: None, key: String::new(),
-            buttons: vec![], born: 0.0, deadline: 0.0, hovered: false, dismissed: false }
+            buttons: vec![], born: 0.0, deadline: 0.0, hovered: false, dismissed: false,
+            #[cfg(target_os = "linux")] native_failed: false }
     }
     fn kicker(mut self, s: &str) -> Self { self.kicker = s.into(); self }
     fn lead(mut self, s: impl Into<String>, t: Tone) -> Self { self.lead = Some((s.into(), t)); self }
@@ -85,7 +89,8 @@ impl Toast {
     }
 }
 
-enum Out { Open(Option<String>), Button(Toast, &'static str), #[cfg(target_os = "linux")] Menu(String) }
+/// `Token` (Linux): the xdg-activation token of the notification action right behind it, for that action's `show_main` only.
+enum Out { Open(Option<String>), Button(Toast, &'static str), #[cfg(target_os = "linux")] Menu(String), #[cfg(target_os = "linux")] Token(String) }
 
 struct TrayMenu { pos: (i32, i32), opened: f64, focused: bool, hwnd: Option<isize>, placed: Option<(i32, i32, i32, i32)> }
 
@@ -106,6 +111,12 @@ pub(crate) struct Hub {
     /// Toasts handed to the desktop's notification server (Linux/Wayland), by its notification id.
     #[cfg(target_os = "linux")]
     native: HashMap<u32, Toast>,
+    /// Toasts the notification server was asked to show and hasn't answered for yet (notifications::send doesn't block).
+    #[cfg(target_os = "linux")]
+    native_wait: Vec<(crate::platform::linux::notifications::Sent, Toast)>,
+    /// The activation token for the next `show_main` (the notification action being handled), never kept past it.
+    #[cfg(target_os = "linux")]
+    pub(crate) raise_token: Option<String>,
 }
 
 impl Hub {

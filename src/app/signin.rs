@@ -100,14 +100,20 @@ impl App {
     }
 
     /// Polls the embedded webview. Once it hands back the code, run the out-of-process PKCE exchange
-    /// (which `poll_login` then finishes).
+    /// (which `poll_login` then finishes). `Closed` (the user shut the Linux sign-in window) goes back to the email step.
     pub(crate) fn poll_webview(&mut self) {
-        let Some(platform::webview::Captured::Code(code)) = self.webview.as_ref().and_then(|w| w.poll()) else { return };
+        let Some(cap) = self.webview.as_ref().and_then(|w| w.poll()) else { return };
         self.webview = None;
         self.login_error.clear();
-        self.login_page = LoginPage::Code;
-        let (base, dev) = (self.idbroker_base(), self.oauth_device_id());
-        self.pending = Some(auth::exchange_async(code, self.pkce_verifier.clone(), base, dev));
+        match cap {
+            #[cfg(all(unix, not(target_os = "macos")))]
+            platform::webview::Captured::Closed => self.login_page = LoginPage::Email,
+            platform::webview::Captured::Code(code) => {
+                self.login_page = LoginPage::Code;
+                let (base, dev) = (self.idbroker_base(), self.oauth_device_id());
+                self.pending = Some(auth::exchange_async(code, self.pkce_verifier.clone(), base, dev));
+            }
+        }
     }
 
     pub(crate) fn sign_in(&mut self, token: String) {

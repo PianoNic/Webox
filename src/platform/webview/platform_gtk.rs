@@ -75,6 +75,10 @@ fn open(url: String, profile: std::path::PathBuf, tx: Sender<super::Captured>, c
         if let Some(c) = super::classify(&s) { let _ = tx_msg.send(c); }
     });
 
+    // The user closed the window (title bar, Alt+F4): the sign-in page goes back to the email step.
+    let tx_closed = tx.clone();
+    window.connect_destroy(move |_| { let _ = tx_closed.send(super::Captured::Closed); });
+
     // Every committed URI: the SCRAPER's location.hash fallback and any `code=`-carrying navigation.
     let tx_uri = tx;
     webview.connect_uri_notify(move |wv| {

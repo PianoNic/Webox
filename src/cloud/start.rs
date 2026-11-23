@@ -14,7 +14,7 @@ pub fn start(token: String, device: Option<String>, kms_src: Option<(String, Str
     if let Ok(mut r) = REFRESH_SRC.write() { *r = kms_src.clone(); }
     std::thread::spawn(move || {
         let (kms_tx, kms_rx) = channel::<String>();
-        let agent = ureq::AgentBuilder::new().timeout(Duration::from_secs(30)).build();
+        let agent = super::tls::agent().timeout(Duration::from_secs(30)).build();
         // The key service gets its own reduced-scope token; fall back to the main one.
         let kms_token = kms_src.and_then(|(r, base)| match crate::cloud::auth::refresh_kms(&r, &base) {
             Ok(t) => { dbg_conn("got KMS-scoped token"); Some(t.access) }

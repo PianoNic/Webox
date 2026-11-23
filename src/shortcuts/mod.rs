@@ -104,14 +104,27 @@ impl Combo {
         format!("{}{}{}{}", if self.ctrl { "Strg+" } else { "" }, if self.alt { "Alt+" } else { "" }, if self.shift { "Umschalt+" } else { "" }, key_name_de(self.key))
     }
     pub(crate) fn from_event(key: Key, m: &Modifiers) -> Combo { Combo { ctrl: m.ctrl || m.command, alt: m.alt, shift: m.shift, key } }
-    pub(crate) fn matches(&self, key: Key, m: &Modifiers) -> bool {
-        if key != self.key && !(self.key == Key::Plus && key == Key::Equals && m.shift) { return false; }
+    #[cfg(test)]
+    pub(crate) fn matches(&self, key: Key, m: &Modifiers) -> bool { self.matches_at(key, None, m, true) }
+    /// `physical`: the key's place on a US layout (egui's `physical_key`). Digit bindings match it, Shift+1 being "!" on DE/CH.
+    /// `loose`: a symbol binding without Shift also matches with Shift (the dispatch tries the exact matches first).
+    pub(crate) fn matches_at(&self, key: Key, physical: Option<Key>, m: &Modifiers, loose: bool) -> bool {
+        let digit = DIGITS.contains(&self.key) && physical == Some(self.key);
+        if key != self.key && !digit && !(self.key == Key::Plus && key == Key::Equals && m.shift) { return false; }
         if (m.ctrl || m.command) != self.ctrl || m.alt != self.alt { return false; }
-        m.shift == self.shift || (is_symbol(self.key) && !self.shift)
+        m.shift == self.shift || (loose && is_symbol(self.key) && !self.shift)
     }
     /// A modifier or a function key: the minimum for a user-chosen combination ("starting with Control, Option, Command or Shift").
     pub(crate) fn capturable(&self) -> bool { self.ctrl || self.alt || self.shift || FKEYS.contains(&self.key) }
     pub(crate) fn plain_modifier_free(&self) -> bool { !self.ctrl && !self.alt }
+}
+
+/// Removes the key press at `pos` and, with Alt or Ctrl held, the text it typed (winit sends Alt+K as a K key and a "k" text on
+/// Linux; egui-winit drops the text only with Ctrl). AltGr is Level3, not Alt, so AltGr typing never reaches here.
+pub(crate) fn take_key(events: &mut Vec<egui::Event>, pos: usize) {
+    let alt_ctrl = matches!(events.get(pos), Some(egui::Event::Key { modifiers: m, .. }) if m.alt || m.ctrl || m.command);
+    events.remove(pos);
+    if alt_ctrl && matches!(events.get(pos), Some(egui::Event::Text(_))) { events.remove(pos); }
 }
 
 // Registry.

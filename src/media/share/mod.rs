@@ -197,6 +197,12 @@ impl Drop for ShareStream { fn drop(&mut self) { self.halt(); } }
 /// Screens first (primary first), then windows in Z order; Webox's own windows are never listed.
 pub fn sources() -> Vec<ShareSource> { backend::sources() }
 
+/// Why nothing can be shared (German, for the picker), or None. Linux: Wayland without a ScreenCast portal.
+pub fn unavailable() -> Option<String> {
+    #[cfg(target_os = "linux")] { backend::unavailable() }
+    #[cfg(not(target_os = "linux"))] { None }
+}
+
 /// A small picture of the source (RGBA, fitted into `max`), for the picker; None when there is none (minimised, Wayland).
 /// Blocking: call it from a worker thread.
 pub fn thumbnail(s: &ShareSource, max: (u32, u32)) -> Option<(u32, u32, Vec<u8>)> {

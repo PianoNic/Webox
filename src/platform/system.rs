@@ -40,16 +40,22 @@ pub fn space_from_uri(uri: &str) -> Option<String> {
     rest.strip_prefix("space/").map(|s| s.trim_end_matches('/').to_string())
 }
 
+/// `$XDG_CONFIG_HOME` (only when absolute, as the spec demands), else `~/.config`.
+#[cfg(not(windows))]
+pub fn xdg_config_home() -> Option<PathBuf> {
+    std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).filter(|p| p.is_absolute())
+        .or_else(|| std::env::var_os("HOME").filter(|h| !h.is_empty()).map(|h| PathBuf::from(h).join(".config")))
+}
+
 /// The settings folder (tokens, plugin settings, the webview profile). Owner-only (0700) on unix. Worked out once per run:
 /// the last-resort fallback is a fresh folder, which every caller must share.
 pub fn config_dir() -> PathBuf {
     static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
     DIR.get_or_init(|| {
-        let base = if cfg!(windows) {
-            std::env::var_os("APPDATA").map(PathBuf::from)
-        } else {
-            std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-        };
+        #[cfg(windows)]
+        let base = std::env::var_os("APPDATA").map(PathBuf::from);
+        #[cfg(not(windows))]
+        let base = xdg_config_home();
         let Some(base) = base else { return fallback_config_dir() };
         let d = base.join(if cfg!(windows) { "WebOx" } else { "webox" });
         // The app was called CollabHost before: carry its settings, sign-in and plugins over once.
@@ -256,13 +262,60 @@ pub fn save_settings(dir: &std::path::Path, v: &Value) {
 pub fn open(url: &str) {
     // Only web, mail, phone and meeting links are handed to the system.
     if !["https://", "http://", "sip:", "tel:", "mailto:"].iter().any(|p| url.starts_with(p)) { return; }
-    #[cfg(windows)] let _ = std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", url]).spawn();
-    #[cfg(not(windows))] let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+    #[cfg(windows)] spawn_detached(std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", url]));
+    #[cfg(not(windows))] spawn_detached(std::process::Command::new("xdg-open").arg(url));
 }
 
 pub fn open_folder(p: &std::path::Path) {
-    #[cfg(windows)] let _ = std::process::Command::new("explorer").arg(p).spawn();
-    #[cfg(not(windows))] let _ = std::process::Command::new("xdg-open").arg(p).spawn();
+    #[cfg(windows)] spawn_detached(std::process::Command::new("explorer").arg(p));
+    #[cfg(not(windows))] spawn_detached(std::process::Command::new("xdg-open").arg(p));
+}
+
+/// Gives a child process the caller's own `LD_LIBRARY_PATH` back: the Nix wrapper prefixes its libraries (`WEBOX_ORIG_LD_LIBRARY_PATH`
+/// is the value from before that), and `xdg-open`, the browser, `secret-tool` ... must not load them.
+pub fn restore_env(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    #[cfg(not(windows))]
+    if let Some(orig) = std::env::var_os("WEBOX_ORIG_LD_LIBRARY_PATH") {
+        if orig.is_empty() { cmd.env_remove("LD_LIBRARY_PATH"); } else { cmd.env("LD_LIBRARY_PATH", orig); }
+    }
+    cmd
+}
+
+/// Starts `cmd` and reaps it on a thread of its own: a dropped `Child` that is never waited for stays a zombie until we exit.
+pub fn spawn_detached(cmd: &mut std::process::Command) {
+    if let Ok(mut c) = restore_env(cmd).spawn() { let _ = std::thread::Builder::new().name("webox-reap".into()).spawn(move || { let _ = c.wait(); }); }
+}
+
+/// Linux: makes the calling thread part of the D-Bus runtime. zbus / ashpd (so rfd's portal dialogs) spawn onto "the current tokio
+/// runtime" and panic on a plain thread. Hold the guard while the dialog is open. None elsewhere.
+pub fn enter_dbus_rt() -> Option<tokio::runtime::EnterGuard<'static>> {
+    #[cfg(target_os = "linux")]
+    { Some(crate::platform::linux::rt().enter()) }
+    #[cfg(not(target_os = "linux"))]
+    { None }
+}
+
+/// The value of `key` (e.g. `XDG_DOWNLOAD_DIR`) in the text of `user-dirs.dirs` (`KEY="$HOME/Herunterladen"`), absolute; None when
+/// unset or pointing at `$HOME` itself (the spec's way to switch a folder off).
+#[cfg_attr(windows, allow(dead_code))]
+pub(crate) fn parse_user_dir(text: &str, key: &str, home: &std::path::Path) -> Option<PathBuf> {
+    let v = text.lines().map(str::trim).filter(|l| !l.starts_with('#')).find_map(|l| l.strip_prefix(key)?.trim_start().strip_prefix('='))?;
+    let v = v.trim().trim_matches('"');
+    let p = match v.strip_prefix("$HOME") { Some(r) => home.join(r.trim_start_matches('/')), None => PathBuf::from(v) };
+    (p.is_absolute() && p != home).then_some(p)
+}
+
+/// The OS download folder: Windows `%USERPROFILE%\Downloads`; elsewhere `XDG_DOWNLOAD_DIR` of `~/.config/user-dirs.dirs` (localised,
+/// e.g. `Herunterladen`), else `~/Downloads`.
+pub fn default_download_dir() -> PathBuf {
+    #[cfg(windows)]
+    if let Ok(p) = std::env::var("USERPROFILE") { return PathBuf::from(p).join("Downloads"); }
+    #[cfg(not(windows))]
+    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from).filter(|h| h.is_absolute()) {
+        let text = xdg_config_home().and_then(|c| std::fs::read_to_string(c.join("user-dirs.dirs")).ok()).unwrap_or_default();
+        return parse_user_dir(&text, "XDG_DOWNLOAD_DIR", &home).unwrap_or_else(|| home.join("Downloads"));
+    }
+    PathBuf::from("Downloads")
 }
 
 #[cfg(windows)]
@@ -314,7 +367,9 @@ pub fn hold_app_mutex() {
     let _ = unsafe { windows::Win32::System::Threading::CreateMutexW(None, false, PCWSTR(name.as_ptr())) };
 }
 
-/// Whether the Run key starts Webox (the installer's "start with Windows" writes the same value). `None` off Windows.
+/// Whether Webox starts with the computer: the Run key on Windows (the installer's "start with Windows" writes the same value), an
+/// XDG autostart entry on Linux (`webox.desktop` in the user's autostart folder, else the first one of `XDG_CONFIG_DIRS`, e.g.
+/// from the NixOS module or home-manager; `Hidden=true` switches it off). `None` elsewhere.
 pub fn autostart_registered() -> Option<bool> {
     #[cfg(windows)]
     {
@@ -324,29 +379,63 @@ pub fn autostart_registered() -> Option<bool> {
         let mut len = 0u32;
         Some(unsafe { RegGetValueW(HKEY_CURRENT_USER, PCWSTR(k.as_ptr()), PCWSTR(n.as_ptr()), RRF_RT_REG_SZ, None, None, Some(&mut len)) }.is_ok())
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        // The first folder that has the file decides (a user file overrides a system one, also by hiding it).
+        let text = autostart_dirs().iter().find_map(|d| std::fs::read_to_string(d.join(AUTOSTART_FILE)).ok());
+        Some(text.is_some_and(|t| !desktop_hidden(&t)))
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     None
+}
+
+#[cfg(not(windows))]
+const AUTOSTART_FILE: &str = "webox.desktop";
+
+/// The autostart folders in the order of precedence: the user's, then `XDG_CONFIG_DIRS` (default `/etc/xdg`).
+#[cfg(not(windows))]
+fn autostart_dirs() -> Vec<PathBuf> {
+    let dirs = std::env::var_os("XDG_CONFIG_DIRS").filter(|v| !v.is_empty()).unwrap_or_else(|| "/etc/xdg".into());
+    xdg_config_home().into_iter().chain(std::env::split_paths(&dirs).filter(|p| p.is_absolute())).map(|p| p.join("autostart")).collect()
+}
+
+/// `Hidden=true` (or the GNOME switch `X-GNOME-Autostart-enabled=false`) in the text of a desktop entry.
+#[cfg(not(windows))]
+fn desktop_hidden(text: &str) -> bool {
+    text.lines().map(str::trim).any(|l| l.eq_ignore_ascii_case("Hidden=true") || l.eq_ignore_ascii_case("X-GNOME-Autostart-enabled=false"))
 }
 
 /// Start with the computer: the Run key on Windows, an XDG autostart entry on Linux.
 pub fn set_autostart(on: bool) -> Result<(), String> {
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     #[cfg(windows)]
     {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         // In-process registry calls (no spawned `reg add` / `reg delete` to wait for).
         let ok = reg_run_value("WebOx", on.then(|| format!("\"{}\" {AUTOSTART_ARGS}", exe.display())).as_deref());
         if ok || !on { Ok(()) } else { Err("couldn't change the Run key".into()) }
     }
     #[cfg(not(windows))]
     {
-        let _ = exe;
-        let dir = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config"))).ok_or("no home folder")?.join("autostart");
-        let file = dir.join("webox.desktop");
-        if !on { let _ = std::fs::remove_file(&file); return Ok(()); }
+        let dir = xdg_config_home().ok_or("no home folder")?.join("autostart");
+        let file = dir.join(AUTOSTART_FILE);
+        // home-manager / the NixOS module own a symlink into the read-only store: leave it alone when switching on.
+        let is_link = file.symlink_metadata().is_ok_and(|m| m.file_type().is_symlink());
+        if on && is_link && file.exists() { return Ok(()); }
+        if !on {
+            // A system entry (/etc/xdg/autostart) or a store symlink can't be deleted: a user file with Hidden=true overrides it.
+            let system = autostart_dirs().iter().skip(1).any(|d| std::fs::read_to_string(d.join(AUTOSTART_FILE)).is_ok_and(|t| !desktop_hidden(&t)));
+            if !system && !is_link { let _ = std::fs::remove_file(&file); return Ok(()); }
+            // A live symlink is home-manager's: replacing it would block its next activation, so it stays in charge.
+            if is_link && file.exists() { return Err("Autostart wird von Home Manager verwaltet (programs.webox.autostart)".into()); }
+            if is_link { let _ = std::fs::remove_file(&file); } // dangling link (garbage-collected store path)
+            std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+            return std::fs::write(&file, "[Desktop Entry]\nType=Application\nName=Webox\nHidden=true\n").map_err(|e| e.to_string());
+        }
+        if is_link { let _ = std::fs::remove_file(&file); } // dangling link (garbage-collected store path)
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        // A Nix store path changes with every update: start through PATH then (the Nix profile / NixOS system put `webox` there).
-        let exec = match launcher_exe() { p if p.starts_with("/nix/store") => "webox".to_string(), p => desktop_exec_arg(&p.to_string_lossy()) };
+        // A Nix store path changes with every update: use the profile's path, else start through PATH (the Nix profile / NixOS system put
+        // `webox` there). Either way quoted and escaped for the Exec key.
+        let exec = match launcher_exe() { p if p.starts_with("/nix/store") => stable_launcher().map_or("webox".to_string(), |s| desktop_exec_arg(&s.to_string_lossy())), p => desktop_exec_arg(&p.to_string_lossy()) };
         std::fs::write(&file, format!("[Desktop Entry]\nType=Application\nName=Webox\nIcon=webox\nExec={exec} --minimized --autostarted\nX-GNOME-Autostart-enabled=true\n"))
             .map_err(|e| e.to_string())
     }
@@ -373,6 +462,44 @@ pub fn launcher_exe() -> PathBuf {
         .or_else(|| std::env::current_exe().ok()).unwrap_or_else(|| PathBuf::from("webox"))
 }
 
+/// `/nix/store/<hash>-<name>-<version>/<rest>` -> (`<name>`, `<rest>`): which program a store path is, regardless of its version.
+#[cfg(not(windows))]
+fn nix_program(p: &std::path::Path) -> Option<(String, PathBuf)> {
+    let mut it = p.strip_prefix("/nix/store").ok()?.components();
+    let name = it.next()?.as_os_str().to_str()?.get(33..)?; // "<32 chars hash>-"
+    let end = name.char_indices().find(|&(i, c)| c == '-' && name[i + 1..].starts_with(|d: char| d.is_ascii_digit())).map_or(name.len(), |(i, _)| i);
+    Some((name[..end].to_string(), it.as_path().to_path_buf()))
+}
+
+/// Whether `cand` is (a link to) the same program as `cur`, possibly an other version of it.
+#[cfg(not(windows))]
+fn same_program(cand: &std::path::Path, cur: &std::path::Path) -> bool {
+    let (Ok(a), Ok(b)) = (cand.canonicalize(), cur.canonicalize()) else { return false };
+    a == b || nix_program(&a).is_some_and(|x| nix_program(&b) == Some(x))
+}
+
+/// The launcher by a path that survives updates and garbage collection: when `launcher_exe()` is in the Nix store, the first of the
+/// profile paths (NixOS user / system profile, nix-env, `nix profile`) that exists and is the same program. None elsewhere.
+pub fn stable_launcher() -> Option<PathBuf> {
+    #[cfg(not(windows))]
+    {
+        let cur = launcher_exe();
+        if !cur.starts_with("/nix/store") { return None; }
+        let home = std::env::var_os("HOME").filter(|h| !h.is_empty()).map(PathBuf::from);
+        let mut cands: Vec<PathBuf> = vec![];
+        if let Some(u) = std::env::var_os("USER").filter(|u| !u.is_empty()) { cands.push(PathBuf::from("/etc/profiles/per-user").join(u).join("bin/webox")); }
+        if let Some(h) = &home { cands.push(h.join(".nix-profile/bin/webox")); }
+        cands.push("/run/current-system/sw/bin/webox".into());
+        if let Some(h) = &home { cands.push(h.join(".local/state/nix/profile/bin/webox")); }
+        cands.into_iter().find(|c| c.is_file() && same_program(c, &cur))
+    }
+    #[cfg(windows)]
+    None
+}
+
+/// `launcher_exe()` by its stable path when it has one.
+pub fn launcher_path() -> PathBuf { stable_launcher().unwrap_or_else(launcher_exe) }
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -384,6 +511,20 @@ mod tests {
         let l = super::log_line(r"Loaded C:\Users\you\AppData\Local\x", t, &[r"C:\Users\you\AppData\Local".into()]);
         assert_eq!(l, "2026-11-09 06:58:55.957 Loaded **************************\\x\r\n");
         assert_eq!(super::log_line("", t, &[]), "\r\n");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn xdg_files() {
+        use std::path::Path;
+        let home = Path::new("/home/a");
+        let t = "# c\nXDG_DESKTOP_DIR=\"$HOME/Desktop\"\nXDG_DOWNLOAD_DIR=\"$HOME/Herunterladen\"\n";
+        assert_eq!(super::parse_user_dir(t, "XDG_DOWNLOAD_DIR", home), Some("/home/a/Herunterladen".into()));
+        assert_eq!(super::parse_user_dir("XDG_DOWNLOAD_DIR=\"/data/dl\"", "XDG_DOWNLOAD_DIR", home), Some("/data/dl".into()));
+        assert_eq!(super::parse_user_dir("XDG_DOWNLOAD_DIR=\"$HOME/\"", "XDG_DOWNLOAD_DIR", home), None);
+        assert_eq!(super::parse_user_dir(t, "XDG_MUSIC_DIR", home), None);
+        assert!(super::desktop_hidden("[Desktop Entry]\nHidden=true\n") && !super::desktop_hidden("[Desktop Entry]\nHidden=false\n"));
+        assert_eq!(super::nix_program(Path::new("/nix/store/0123456789abcdfghijklmnpqrsvwxyz-webox-0.3.1/bin/webox")), Some(("webox".into(), "bin/webox".into())));
     }
 
     #[test]

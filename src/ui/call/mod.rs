@@ -22,7 +22,9 @@ pub(crate) struct CallUi {
     // Separate-window state, offline sample mode (no sound, no microphone), toast's ring switch.
     pub(crate) win: super::call_win::WinState, pub(crate) sample: bool, pub(crate) ring_muted: bool,
     /// Plays ringtone / ringback / test tones (its own streams, on the ringtone or speaker device).
-    ring: Vec<audio::Engine>, ring_kind: u8, prefs: Option<Prefs>,
+    /// Each engine with its device open until it answered; `ring_devs`: the worker listing the devices for "ring on all".
+    ring: Vec<(audio::Engine, Option<std::sync::mpsc::Receiver<Result<String, String>>>)>, ring_kind: u8, prefs: Option<Prefs>,
+    ring_devs: Option<std::sync::mpsc::Receiver<Vec<String>>>,
     /// One-shot sounds (message sounds, call-end tones, tests): the engine and, until it answered, its device open.
     once: Vec<(audio::Engine, Option<std::sync::mpsc::Receiver<Result<String, String>>>)>,
     /// Capture-only engine for the level meter while a device picker is on screen.
@@ -107,32 +109,55 @@ impl App {
 
     /// Ringtone (incoming) / ringback (outgoing, until the callee answers) on the right output device.
     fn ring_sound(&mut self, state: Option<&CallState>) {
+        use std::sync::mpsc::TryRecvError;
         let p = self.prefs();
         let kind = if !p.call_sounds || self.call.sample || self.call.ring_muted { 0 } else { match state { Some(CallState::Incoming) => 1, Some(CallState::Dialing | CallState::Ringing) => 2, _ => 0 } };
-        if kind != self.call.ring_kind { self.call.ring.clear(); self.call.ring_kind = kind; } // stops on answer / decline / hang-up / end
+        if kind != self.call.ring_kind { self.call.ring.clear(); self.call.ring_devs = None; self.call.ring_kind = kind; } // stops on answer / decline / hang-up / end
         if kind == 0 { self.call.ring_fail_at = None; return; }
         // A failed start (sound file unreadable, no output device opened) is retried at most every MIC_RETRY_SECS: retrying it
-        // every frame would enumerate and open the audio devices (and re-decode the file) on the UI thread while the call rings.
-        if self.call.ring.is_empty() && self.call.ring_fail_at.is_some_and(|t| t.elapsed().as_secs_f64() < MIC_RETRY_SECS) { return; }
+        // every frame would list and open the audio devices (and re-decode the file) again and again while the call rings.
+        if self.call.ring.is_empty() && self.call.ring_devs.is_none() && self.call.ring_fail_at.is_some_and(|t| t.elapsed().as_secs_f64() < MIC_RETRY_SECS) { return; }
         let id = if kind == 1 { p.ringtone.clone() } else { "Ringback".to_string() };
         let Some(pcm) = sounds::pcm(&id) else { self.call.ring_fail_at = Some(std::time::Instant::now()); return };
         if self.call.ring.is_empty() {
-            let c = self.choice();
-            let dev = if kind == 1 && !c.ringtone.is_empty() { c.ringtone } else { c.output };
-            for d in Self::out_devices(&dev, kind == 1 && p.ring_all_devices) {
-                let e = audio::Engine::new();
-                if e.open_output(&d).is_ok() { e.io.set_volume(p.ringer_volume); self.call.ring.push(e); }
-            }
-            if self.call.ring.is_empty() { self.call.ring_fail_at = Some(std::time::Instant::now()); return; }
-            self.call.ring_fail_at = None;
+            // Nothing here waits for a device: "ring on all devices" lists them on a worker thread, and every device opens on
+            // its engine's own thread (the ringtone queued meanwhile plays once it is open).
+            let devs = match &self.call.ring_devs {
+                Some(rx) => match rx.try_recv() { Ok(v) => { self.call.ring_devs = None; v } Err(TryRecvError::Empty) => return, Err(TryRecvError::Disconnected) => { self.call.ring_devs = None; vec![] } },
+                None => {
+                    let c = self.choice();
+                    let dev = if kind == 1 && !c.ringtone.is_empty() { c.ringtone } else { c.output };
+                    if kind == 1 && p.ring_all_devices {
+                        let (tx, rx) = std::sync::mpsc::channel();
+                        std::thread::spawn(move || { let _ = tx.send(Self::out_devices(&dev, true)); crate::ui::wake(); });
+                        self.call.ring_devs = Some(rx);
+                        return;
+                    }
+                    vec![dev]
+                }
+            };
+            for d in devs { let e = audio::Engine::new(); let opened = e.open_output_async(&d); e.io.set_volume(p.ringer_volume); self.call.ring.push((e, Some(opened))); }
         }
+        // Engines whose device didn't open go; the call view repaints every 200 ms while it rings, so the answers are seen.
+        self.call.ring.retain_mut(|(_, opened)| match opened.as_ref().map(|rx| rx.try_recv()) {
+            None | Some(Err(TryRecvError::Empty)) => true,
+            Some(Ok(Ok(_))) => { *opened = None; true }
+            Some(Ok(Err(_)) | Err(TryRecvError::Disconnected)) => false,
+        });
+        if self.call.ring.is_empty() { self.call.ring_fail_at = Some(std::time::Instant::now()); return; }
+        self.call.ring_fail_at = None;
         // Loop: refill whenever less than half a second is queued (ringtone / ringback files include their own pauses).
-        for e in &self.call.ring { e.io.set_volume(p.ringer_volume); if e.io.play_pending() < audio::RATE as usize / 2 { e.io.play_long(&pcm); } }
+        for (e, _) in &self.call.ring { e.io.set_volume(p.ringer_volume); if e.io.play_pending() < audio::RATE as usize / 2 { e.io.play_long(&pcm); } }
     }
 
-    /// Output device names to play on: all of them, or the chosen one ("" = system default).
+    /// Output device names to play on: all of them (each sink once), or the chosen one ("" = system default). Listing them
+    /// blocks: `all` only off the UI thread.
     fn out_devices(dev: &str, all: bool) -> Vec<String> {
-        if all { let v: Vec<String> = audio::outputs().into_iter().map(|d| d.name).collect(); if !v.is_empty() { return v; } }
+        if all {
+            let mut seen = HashSet::new();
+            let v: Vec<String> = audio::outputs().into_iter().map(|d| d.name).filter(|n| seen.insert(n.clone())).collect();
+            if !v.is_empty() { return v; }
+        }
         vec![dev.to_string()]
     }
 
@@ -305,8 +330,9 @@ impl App {
         let Some(v) = self.call_view(ctx, now) else { return };
         let mut actions = CallActions::default();
         if v.state == CallState::Incoming {
+            actions = self.call_note(ctx, &v); // Wayland: the desktop notification too (deduped per ringing)
             egui::Area::new(egui::Id::new("incoming-call")).anchor(egui::Align2::RIGHT_TOP, [-20.0, 64.0]).order(egui::Order::Foreground)
-                .show(ctx, |ui| actions = self.incoming_toast_ui(ui, t, &v));
+                .show(ctx, |ui| { let a = self.incoming_toast_ui(ui, t, &v); actions.answer |= a.answer; actions.hang |= a.hang; actions.dismiss |= a.dismiss; });
         } else {
             egui::Area::new(egui::Id::new("call-card")).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).order(egui::Order::Foreground).show(ctx, |ui| {
                 egui::Frame::default().fill(t.card).stroke(Stroke::new(1.0_f32, t.sep)).corner_radius(12.0).inner_margin(28)

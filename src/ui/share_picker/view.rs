@@ -34,7 +34,7 @@ impl App {
         // title bar
         let bar = Rect::from_min_size(r.min, Vec2::new(r.width(), TITLE_H));
         let drag = ui.interact(bar, ui.id().with("share-title"), Sense::click_and_drag());
-        if own_window && drag.drag_started() { ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); }
+        if own_window && drag.drag_started() { crate::ui::chrome::note_os_grab(ctx); ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); }
         painter.text(pos2(bar.left() + 16.0, bar.center().y), egui::Align2::LEFT_CENTER, crate::tr!("ShareDialogTitleBar", "Share content"), semibold(14.0), t.text1);
         let x = Rect::from_center_size(pos2(bar.right() - 24.0, bar.center().y), Vec2::splat(28.0));
         let xr = ui.interact(x, ui.id().with("share-close"), Sense::click());
@@ -77,6 +77,9 @@ impl App {
             (crate::tr!("ScreenAndAppTab", "Screen").into(), p.sources.iter().filter(|s| !is_app(s)).cloned().collect()),
             (crate::tr!("ScreenAndAppTab", "Application").into(), p.sources.iter().filter(|s| is_app(s)).cloned().collect()),
         ];
+        if p.sources.is_empty() {
+            if let Some(m) = crate::media::share::unavailable() { child_note(ui, t, r, &m); return false; }
+        }
         let height: f32 = sections.iter().filter(|s| !s.1.is_empty()).map(|(_, v)| 28.0 + 8.0 + v.len().div_ceil(cols) as f32 * CELL.y + 8.0).sum();
         let wheel = if ui.rect_contains_pointer(r) { ui.input(|i| i.smooth_scroll_delta.y) } else { 0.0 };
         p.scroll = crate::ui::menu::wheel_offset(p.scroll, wheel, height - r.height());
@@ -162,4 +165,9 @@ impl App {
             c.label(RichText::new(crate::trq!("You're optimizing for motion and video, so your computer audio is automatically shared.")).size(12.0).color(t.text2));
         }
     }
+}
+
+/// One muted line at the top of the (empty) source list.
+fn child_note(ui: &mut egui::Ui, t: &Th, r: Rect, msg: &str) {
+    ui.painter().text(pos2(r.left() + 24.0, r.top() + 14.0), egui::Align2::LEFT_CENTER, msg, FontId::proportional(14.0), t.text2);
 }

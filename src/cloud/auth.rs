@@ -86,7 +86,7 @@ pub fn discover_idbroker(email: &str) -> String {
     if email.is_empty() { return US_BROKER.to_string(); }
     let url = format!("{U2C_CATALOG}?emailhash={}", sha256_hex(&email));
     let found = (|| -> Option<String> {
-        let v: Value = ureq::get(&url).timeout(std::time::Duration::from_secs(6)).call().ok()?.into_json().ok()?;
+        let v: Value = super::tls::agent_for(&url).build().get(&url).timeout(std::time::Duration::from_secs(6)).call().ok()?.into_json().ok()?;
         let svc = v["services"].as_array()?.iter().find(|s| s["serviceName"] == "idbroker")?;
         let base = svc["serviceUrls"][0]["baseUrl"].as_str()?.trim_end_matches('/');
         (!base.is_empty()).then(|| base.to_string())
@@ -155,7 +155,7 @@ fn token_call(base: &str, form: &[(&str, &str)]) -> Result<Token, String> {
     let keys = form.iter().map(|(k, v)| format!("{k}<{}>", v.len())).collect::<Vec<_>>().join(" ");
     dbg_auth(format!("POST {url}\n  {keys}"));
     let body = form.iter().map(|(k, v)| format!("{k}={}", enc(v))).collect::<Vec<_>>().join("&");
-    let req = ureq::post(&url)
+    let req = super::tls::agent_for(&url).build().post(&url)
         .set("Authorization", &basic_auth())
         .set("User-Agent", USER_AGENT)
         .set("TrackingID", &format!("CLIENT_{}", crate::jose::uuid()))
@@ -200,7 +200,8 @@ pub fn refresh_kms(refresh: &str, base: &str) -> Result<Token, String> {
 
 pub fn revoke(token: &str, base: &str) {
     let base = if base.is_empty() { US_BROKER } else { base.trim_end_matches('/') };
-    let _ = ureq::post(&format!("{base}{REVOKE_PATH}"))
+    let url = format!("{base}{REVOKE_PATH}");
+    let _ = super::tls::agent_for(&url).build().post(&url)
         .set("Authorization", &basic_auth())
         .set("User-Agent", USER_AGENT)
         .set("TrackingID", &format!("CLIENT_{}", crate::jose::uuid()))

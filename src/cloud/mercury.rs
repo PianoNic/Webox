@@ -31,7 +31,7 @@ pub(super) fn mercury(ws: String, gen: u64, jobs: Sender<Job>, kms: Sender<Strin
     loop {
         if !session_current(gen) { return }
         let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
-        let conn = tungstenite::connect(socket_url(&ws, ms).as_str());
+        let conn = super::tls::connect_ws(socket_url(&ws, ms).as_str());
         let mut close: Option<(u16, String)> = None;
         match conn {
             Err(e) => dbg_conn(&format!("mercury connect error: {}", e.to_string().chars().take(120).collect::<String>())),

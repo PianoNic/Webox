@@ -154,9 +154,10 @@ fn percent_decode(s: &str) -> String {
 #[cfg(test)]
 mod tests;
 
-/// What the webview hands back: the authorization **code** for the native PKCE exchange. A ready-made token is never
-/// accepted from a page: any page could post one, while a foreign code fails the exchange (it lacks our PKCE verifier).
-pub enum Captured { Code(String) }
+/// What the webview hands back: the authorization **code** for the native PKCE exchange, or that the user closed the sign-in
+/// window (Linux, a window of its own). A ready-made token is never accepted from a page: any page could post one, while a
+/// foreign code fails the exchange (it lacks our PKCE verifier).
+pub enum Captured { Code(String), #[cfg(all(unix, not(target_os = "macos")))] Closed }
 
 /// Classify a message the SCRAPER posted back: the code for the native out-of-process exchange.
 fn classify(s: &str) -> Option<Captured> {

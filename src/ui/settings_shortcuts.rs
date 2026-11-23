@@ -102,6 +102,16 @@ impl App {
                 ui.add(egui::Label::new(RichText::new("Es wurden keine Tastenkombinationen gefunden, die Ihren Suchkriterien entsprechen.").color(text2).size(14.0)).wrap());
             });
         }
+        #[cfg(target_os = "linux")]
+        {
+            ui.add_space(12.0);
+            let mut on = self.settings[shortcuts::GLOBAL_KEY].as_bool().unwrap_or(false);
+            if crate::ui::settings::kit::check(ui, &mut self.icons, t, "Globale Tastenkombinationen systemweit registrieren", &mut on, true, false) {
+                self.settings[shortcuts::GLOBAL_KEY] = serde_json::json!(on);
+                if self.shot.is_none() { system::save_settings(&self.cfg, &self.settings); }
+            }
+            ui.label(RichText::new("Belegt die Tasten auch in anderen Programmen").color(text2).size(12.5));
+        }
         // Reset button.
         ui.add_space(16.0);
         let tw = ui.fonts(|f| f.layout_no_wrap("Auf Standard zurücksetzen".into(), semibold(14.0), text).size().x);
@@ -234,7 +244,11 @@ impl App {
         let reg = registry();
         if self.sc.page.edit.is_none() || self.sc.page.dlg.is_some() { if self.sc.page.edit.is_some() { Self::mark_capture(ctx); } return; }
         Self::mark_capture(ctx);
-        let evs: Vec<(Key, Modifiers)> = ctx.input(|i| i.events.iter().filter_map(|e| match e { egui::Event::Key { key, pressed: true, modifiers, .. } => Some((*key, *modifiers)), _ => None }).collect());
+        // A digit key records the physical digit: Alt+Shift+1 is "!" on DE/CH.
+        let evs: Vec<(Key, Modifiers)> = ctx.input(|i| i.events.iter().filter_map(|e| match e {
+            egui::Event::Key { key, physical_key, pressed: true, modifiers, .. } =>
+                Some((physical_key.filter(|k| matches!(k, Key::Num0 | Key::Num1 | Key::Num2 | Key::Num3 | Key::Num4 | Key::Num5 | Key::Num6 | Key::Num7 | Key::Num8 | Key::Num9)).unwrap_or(*key), *modifiers)),
+            _ => None }).collect());
         let Some(&(key, mods)) = evs.first() else { return };
         ctx.input_mut(|i| i.events.retain(|e| !matches!(e, egui::Event::Key { .. })));
         if matches!(key, Key::Escape | Key::Tab) { self.sc.page.edit = None; return; }

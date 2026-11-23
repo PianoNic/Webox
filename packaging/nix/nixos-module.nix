@@ -27,6 +27,7 @@ in
 
   config = lib.mkIf cfg.enable {
     environment.systemPackages = [ cfg.package ];
+    hardware.graphics.enable = lib.mkDefault true;
 
     environment.etc."xdg/autostart/webox.desktop" = lib.mkIf cfg.autostart {
       text = ''
@@ -34,12 +35,13 @@ in
         Type=Application
         Name=Webox
         Icon=webox
+        Terminal=false
         Exec=${lib.getExe cfg.package} --minimized --autostarted
         X-GNOME-Autostart-enabled=true
       '';
     };
 
-    # File dialogs and Wayland global shortcuts go through xdg-desktop-portal; every desktop environment module enables it.
+    # File dialogs and Wayland global shortcuts go through xdg-desktop-portal; desktop environment modules enable it (not forced here: it needs a backend choice).
     # Sign-in cookies, settings and plugins live in ~/.config/webox.
   };
 }

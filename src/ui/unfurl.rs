@@ -198,8 +198,9 @@ fn read_capped(r: ureq::Response, cap: u64) -> Option<Vec<u8>> {
 
 fn agent() -> ureq::Agent {
     // A browser user agent, as some sites serve their meta tags only to browsers. Redirects are followed by `get`, which
-    // checks every hop; the resolver refuses non-public addresses.
-    ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(6)).redirects(0).resolver(public_addrs)
+    // checks every hop; the resolver refuses non-public addresses. The shared trust store, but never a proxy: through one the
+    // resolver would vet the proxy's address instead of the page's.
+    ureq::AgentBuilder::new().tls_config(crate::cloud::tls::config()).timeout(std::time::Duration::from_secs(6)).redirects(0).resolver(public_addrs)
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36").build()
 }
 

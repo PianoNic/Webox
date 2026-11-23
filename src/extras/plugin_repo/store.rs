@@ -47,7 +47,8 @@ pub fn write(root: &Path, list: &[Installed]) -> Result<(), String> {
 pub fn write_atomic(p: &Path, bytes: &[u8]) -> Result<(), String> {
     if let Some(d) = p.parent() { crate::system::create_private_dir(d).map_err(|e| e.to_string())?; }
     let tmp = p.with_extension(format!("tmp{}", std::process::id()));
-    crate::system::write_private(&tmp, bytes).map_err(|e| e.to_string())?;
+    // Unix: private (0600) from the first byte (the plugin-settings file may hold secrets when there is no keyring).
+    crate::system::write_private(&tmp, bytes).map_err(|e| { let _ = std::fs::remove_file(&tmp); e.to_string() })?;
     std::fs::rename(&tmp, p).map_err(|e| { let _ = std::fs::remove_file(&tmp); e.to_string() })
 }
 

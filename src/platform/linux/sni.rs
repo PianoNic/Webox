@@ -2,8 +2,10 @@
 //! registered with the desktop's org.kde.StatusNotifierWatcher. The panel draws the icon and the menu itself (native look and
 //! placement, X11 and Wayland alike). Left click = `Activate` → show the window; the menu has the same entries as the Windows
 //! tray menu; hosts without dbusmenu call `ContextMenu(x, y)` and get the app's own menu window instead.
-//! No watcher on the bus (plain GNOME without the AppIndicator extension, bare WMs): `Tray::new` returns None, as on Windows
-//! when Shell_NotifyIcon fails, so "close to tray" never hides the window where it couldn't be brought back.
+//! Registration runs off the UI thread (`Tray::start`, picked up by `Tray::ready`) and waits for the watcher: at autostart the
+//! panel may come up after the app. Until then (or for good: plain GNOME without the AppIndicator extension, bare WMs) there is
+//! no tray, as on Windows when Shell_NotifyIcon fails, so "close to tray" never hides the window where it couldn't be brought back.
+//! KDE calls `ProvideXdgActivationToken` before `Activate`: the token lets the window come to the front on Wayland (activation.rs).
 use crate::platform::tray::{app_icon_rgba, tooltip, unread_icon_rgba, TrayEvent};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -60,6 +62,7 @@ impl Item {
     fn secondary_activate(&self, _x: i32, _y: i32) { push(&self.st, TrayEvent::Left); }
     fn context_menu(&self, x: i32, y: i32) { push(&self.st, TrayEvent::Menu(x, y)); }
     fn scroll(&self, _delta: i32, _orientation: &str) {}
+    fn provide_xdg_activation_token(&self, token: String) { super::activation::offer(token); }
 
     #[zbus(signal)] async fn new_icon(e: &SignalEmitter<'_>) -> zbus::Result<()>;
     #[zbus(signal)] async fn new_tool_tip(e: &SignalEmitter<'_>) -> zbus::Result<()>;
@@ -128,11 +131,38 @@ async fn register(conn: &zbus::Connection, name: &str) -> bool {
 
 pub struct Tray { st: Arc<Mutex<St>>, conn: zbus::Connection, shown: Option<usize> }
 
+/// The tray `start` registered, until the UI thread takes it (`ready`).
+static READY: Mutex<Option<Tray>> = Mutex::new(None);
+
 impl Tray {
-    pub fn new(ctx: &eframe::egui::Context) -> Option<Tray> {
+    /// Registers the tray off the UI thread (call once): as soon as a watcher is on the bus, now or when the panel comes up later
+    /// (checked again on its NameOwnerChanged and every 10 s), the tray turns up in `ready` and the window is woken.
+    pub fn start(ctx: &eframe::egui::Context) {
+        let ctx = ctx.clone();
+        super::rt().spawn(async move {
+            use futures_util::StreamExt;
+            const RETRY: std::time::Duration = std::time::Duration::from_secs(10);
+            let (Some(bus), Ok(name)) = (super::bus().await, zbus::names::BusName::try_from(WATCHER)) else { return };
+            let Ok(dbus) = zbus::fdo::DBusProxy::new(&bus).await else { return };
+            // Subscribed before the first check, so a watcher appearing in between is not missed.
+            let mut appeared = dbus.receive_name_owner_changed_with_args(&[(0, WATCHER)]).await.ok();
+            loop {
+                if dbus.name_has_owner(name.clone()).await.unwrap_or(false) {
+                    if let Some(t) = Self::create(&ctx).await { *READY.lock().unwrap() = Some(t); ctx.request_repaint(); return; }
+                }
+                let woke = match &mut appeared { Some(s) => tokio::time::timeout(RETRY, s.next()).await.map(|o| o.is_some()), None => { tokio::time::sleep(RETRY).await; Ok(true) } };
+                if woke == Ok(false) { appeared = None; } // the signal stream ended: plain 10 s retries from now on
+            }
+        });
+    }
+
+    /// The tray once `start` registered it (taken once).
+    pub fn ready() -> Option<Tray> { READY.lock().unwrap().take() }
+
+    async fn create(ctx: &eframe::egui::Context) -> Option<Tray> {
         let st = Arc::new(Mutex::new(St { icon: pixmaps(false), tip: tooltip(0), ctx: Some(ctx.clone()), ..Default::default() }));
         let st2 = st.clone();
-        let conn = super::block(3000, async move {
+        let conn = async move {
             let name = format!("org.kde.StatusNotifierItem-{}-1", std::process::id());
             let conn = zbus::connection::Builder::session().ok()?.name(name.clone()).ok()?
                 .serve_at(ITEM_PATH, Item { st: st2.clone() }).ok()?
@@ -150,7 +180,7 @@ impl Tray {
                 }
             });
             Some(conn)
-        }).flatten()?;
+        }.await?;
         Some(Tray { st, conn, shown: Some(0) })
     }
 

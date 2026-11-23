@@ -23,9 +23,11 @@ impl App {
         if let Some(e) = &self.call.mic_test { e.io.set_smart(m); }
         if self.call.cur.as_ref().is_some_and(|x| x.ended_at.is_none()) { if let Some(cl) = &self.client { cl.req(Req::Call(CallReq::SmartMic(m))); } }
     }
-    /// Device lists, refreshed at most every 2 s while a picker is visible (hot-plug). The enumeration itself runs on a
-    /// worker thread so the UI never waits for it; the previous list stays on screen until the new one arrives.
+    /// Device lists, refreshed at most every `LIST_EVERY` s while a picker is visible (hot-plug). The enumeration itself runs
+    /// on a worker thread so the UI never waits for it; the previous list stays on screen until the new one arrives.
     fn refresh_devices(&mut self, now: f64) {
+        // Linux: listing opens every ALSA PCM (cpal probes each one), so not every 2 s.
+        const LIST_EVERY: f64 = if cfg!(target_os = "linux") { 10.0 } else { 2.0 };
         if let Some(rx) = &self.call.dev_job {
             match rx.try_recv() {
                 Ok((ins, outs)) => { self.call.ins = ins; self.call.outs = outs; self.call.dev_job = None; }
@@ -33,10 +35,10 @@ impl App {
                 Err(std::sync::mpsc::TryRecvError::Empty) => return,
             }
         }
-        if now - self.call.listed_at > 2.0 || self.call.listed_at == 0.0 {
+        if now - self.call.listed_at > LIST_EVERY || self.call.listed_at == 0.0 {
             self.call.listed_at = now;
             let (tx, rx) = std::sync::mpsc::channel();
-            std::thread::spawn(move || { let _ = tx.send((audio::inputs(), audio::outputs())); crate::ui::wake(); });
+            std::thread::spawn(move || { let _ = tx.send(audio::devices()); crate::ui::wake(); });
             self.call.dev_job = Some(rx);
         }
     }
