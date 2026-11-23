@@ -11,9 +11,6 @@ shots/
 
 .env
 
-# Files from the official Webex client, kept locally only (see docs/cisco-assets.md)
-assets/cisco/
-
 # Python
 __pycache__/
 *.pyc

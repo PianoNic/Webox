@@ -1,0 +1,1865 @@
+{
+    "keyboardShortcutGroups": [
+        {
+            "name": "General",
+            "comment": "Shortcuts that are general to the app like opening preferences or navigating to a particular tab",
+            "shortcuts":[
+                {
+                    "command": "Search",
+                    "comment": "Sets focus in the global search",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+F",
+                        "qt": "Ctrl+F"
+                    }
+                },
+                {
+                    "command": "HistoryBack",
+                    "comment": "Go back in history to the previous item",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+[",
+                        "qt": "Alt+LeftArrow"
+                    }
+                },
+                {
+                    "command": "HistoryForward",
+                    "comment": "Go forward in history. Used after going back in history",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+]",
+                        "qt": "Alt+RightArrow"
+                    }                    
+                },
+                {
+                    "command": "OpenHome",
+                    "comment": "Switches to the home tab",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "OpenSpaces",
+                    "comment": "Switches to the messaging tab",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+A",
+                        "qt": "Ctrl+1"
+                    }
+                },
+                {
+                    "command": "OpenTeams",
+                    "comment": "Switches to the teams tab",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+T",
+                        "qt": "Ctrl+2"
+                    }
+                },
+                {
+                    "command": "OpenContacts",
+                    "comment": "Switches to the contacts tab",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+G",
+                        "qt": "Ctrl+3"
+                    }
+                },
+                {
+                    "command": "OpenCalls",
+                    "comment": "Switches to the calling tab",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+C",
+                        "qt": "Ctrl+4"
+                    }
+                },
+                {
+                    "command": "OpenMeetings",
+                    "comment": "Switches to the meetings tab",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+B",
+                        "qt": "Ctrl+5"
+                    }
+                },
+                {
+                    "command": "OpenVoicemails",
+                    "comment": "Switches to the voicemails tab",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+V",
+                        "qt": "Ctrl+7"
+                    }
+                },
+                {
+                    "command": "OpenWhiteboards",
+                    "comment": "Switches to the whiteboards tab",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+W",
+                        "qt": "Ctrl+8"
+                    }
+                },
+                {
+                    "command": "OpenHelpCenter",
+                    "comment": "Opens the health center",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "F1"
+                    }
+                },
+                {
+                    "command": "OpenPreferences",
+                    "comment": "Open the preferences window",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+,",
+                        "qt": "Ctrl+,"
+                    }
+                },
+                {
+                    "command": "ToggleAssistantPanel",
+                    "comment": "Show assistant panel",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+I",
+                        "qt": "Alt+I"
+                    }
+                },
+                {
+                    "command": "AdvancedSearch",
+                    "comment": "Advanced message searching",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac":"Shift+Return",
+                        "qt": "Shift+Return"
+                    }
+                },
+                {
+                    "command": "OpenDiagnostics",
+                    "comment": "Opens the diagnostics window",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Ctrl+Option+Shift+D",
+                        "qt": "Ctrl+Alt+Shift+D"
+                    }
+                },
+                {
+                    "command": "ToggleNavigationMenu",
+                    "comment": "Expand and collapse the navigation menu",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Option+Command+Q",
+                        "qt": "Alt+Shift+Q"
+                    }
+                },
+                {
+                    "command": "ShortcutMenu",
+                    "comment": "Open shortcut menu",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+/",
+                        "qt": "Ctrl+/"
+                    }
+                },
+                {
+                    "command": "ContextMenu",
+                    "comment": "Context menu",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Shift+F10",
+                        "qt": "Shift+F10"
+                    }
+                },
+                {
+                    "command": "SignOut",
+                    "comment": "Sign out from application",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Alt+Q"
+                    }
+                },
+                {
+                    "command": "Quit",
+                    "comment": "Quit application",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac":"Command+Q",
+                        "qt": "Ctrl+Q"
+                    }
+                },
+                {
+                    "command": "Minimize",
+                    "comment": "Minimizes the window",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac":"Command+M",
+                        "qt": "Command+DownArrow"
+                    }
+                },
+                {
+                    "command": "Maximize",
+                    "comment": "Maximizes the window",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac":"Command+N",
+                        "qt": "Command+UpArrow"
+                    }
+                },
+                {
+                    "command": "Close",
+                    "comment": "Closes the window",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac":"Command+W",
+                        "qt": "Alt+F4"
+                    }
+                },
+                {
+                    "command": "FindAndReplace",
+                    "comment": "Find and replace",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "Hide",
+                    "comment": "Hide application windows",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command+H",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "HideOthers",
+                    "comment": "Hide other application windows",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Option+Command+H",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "CallFloatingWindowFocus",
+                    "comment": "Switch focus between floating windows",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Shift+Command+S",
+                        "qt": "Ctrl+Alt+Shift+S"
+                    }
+                },
+                {
+                    "command": "Zoom",
+                    "comment": "Zoom application window",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Ctrl+Command+-",
+                        "qt": "UNSUPPORTED"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Messaging",
+            "comment": "Shortcuts related to messaging for example attaching a file or screenshot to a message",
+            "shortcuts":[
+                {
+                    "command": "SearchInConversation",
+                    "comment": "Search within a space. The space should be open",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Shift+Command+F",
+                        "qt": "Ctrl+Shift+J"
+                    }
+                },
+                {
+                    "command": "ContactAPerson",
+                    "comment": "Opens the send direct message panel",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Shift+Command+P",
+                        "qt": "Ctrl+N"
+                    }
+                },
+                {
+                    "command": "CreateSpace",
+                    "comment": "Create a space",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Shift+Command+N",
+                        "qt": "Ctrl+Shift+N"
+                    }
+                },
+                {
+                    "command": "ShowAll",
+                    "comment": "Opens all spaces and direct message list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command+1",
+                        "qt": "Alt+Shift+A"
+                    }
+                },
+                {
+                    "command": "ShowNotifications",
+                    "comment": "Opens message notification list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command+2",
+                        "qt": "Alt+Shift+N"
+                    }
+                },
+                {
+                    "command": "ShowUnread",
+                    "comment": "Opens unread message list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command+4",
+                        "qt": "Alt+Shift+E"
+                    }
+                },
+                {
+                    "command": "ShowPeople",
+                    "comment": "Opens Direct Message list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command+5",
+                        "qt": "Ctrl+Shift+T"
+                    }
+                },
+                {
+                    "command": "ShowFavorites",
+                    "comment": "Opens favorites list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command+6",
+                        "qt": "Ctrl+Shift+O"
+                    }
+                },
+                {
+                    "command": "ShowMentionMe",
+                    "comment": "Opens @mentions to me list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command+7",
+                        "qt": "Alt+Shift+H"
+                    }
+                },
+                {
+                    "command": "ShowMentionAll",
+                    "comment": "Opens @mentions to all list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command+8",
+                        "qt": "Alt+Shift+G"
+                    }
+                },
+                {
+                    "command": "ShowFlags",
+                    "comment": "Opens flagged messages list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command+9",
+                        "qt": "Alt+Shift+F"
+                    }
+                },
+                {
+                    "command": "ShowDrafts",
+                    "comment": "Go to drafts message list. Opens drafts list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command+3",
+                        "qt": "Alt+Shift+D"
+                    }
+                },
+                {
+                    "command": "ShowThreads",
+                    "comment": "Opens threads list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"UNSUPPORTED",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "LastMessageInFocus",
+                    "comment": "Goes to the last message in focus",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac":"UNSUPPORTED",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "ShowMessages",
+                    "comment": "Opens messages tab within a conversation",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Ctrl+Command+M",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "ShowSpaceContent",
+                    "comment": "Opens space content tab within a conversation",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Ctrl+Command+C",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "LeaveSpace",
+                    "comment": "Leave the current open space",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Option+Command+E",
+                        "qt": "Ctrl+Shift+E"
+                    }
+                },
+                {
+                    "command": "AddPeople",
+                    "comment": "Add people to the open space",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Option+Command+P",
+                        "qt": "Ctrl+Shift+P"
+                    }
+                },
+                {
+                    "command": "AddBitmoji",
+                    "comment": "Opens the bitmoji sticker panel",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Ctrl+J",
+                        "qt": "Ctrl+J"
+                    }
+                },
+                {
+                    "command": "AddGif",
+                    "comment": "Opens the Gif panel",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Ctrl+G",
+                        "qt": "Ctrl+G"
+                    }
+                },
+                {
+                    "command": "AddEmoji",
+                    "comment": "Opens the emoji panel",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Ctrl+Command+Spacebar",
+                        "qt": "Ctrl+Shift+Spacebar"
+                    }
+                },
+                {
+                    "command": "AttachFile",
+                    "comment": "Invokes the attach file command in the current conversation",                
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+A",
+                        "qt": "Ctrl+O"
+                    }
+                },
+                {
+                    "command": "PreviousSpace",
+                    "comment": "Navigate up in the space list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Option+UpArrow",
+                        "qt": "Alt+UpArrow"
+                    }
+                },
+                {
+                    "command": "NextSpace",
+                    "comment": "Navigate down in the space list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+DownArrow",
+                        "qt": "Alt+DownArrow"
+                    }
+                },
+                {
+                    "command": "CollapseSections",
+                    "comment": "Collapses all the sections in the space list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+LeftArrow",
+                        "qt": "Alt+Shift+LeftArrow"
+                    }
+                },
+                {
+                    "command": "ExpandSections",
+                    "comment": "Expands all the sections in the space list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+RightArrow",
+                        "qt": "Alt+Shift+RightArrow"
+                    }
+                },
+                {
+                    "command": "CreateWhiteboard",
+                    "comment": "Create a new whiteboard",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Option+Shift+Command+W",
+                        "qt": "Ctrl+Shift+B"
+                    }
+                },
+                {
+                    "command": "ShowWhiteboards",
+                    "comment": "Show whiteboards for the current space",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Shift+Command+Control+W",
+                        "qt": "Ctrl+Shift+W"
+                    }
+                },
+                {
+                    "command": "SpaceSettings",
+                    "comment": "Opens the space settings",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"UNSUPPORTED",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "EditLastMessage",
+                    "comment": "Edits the last sent message in space",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Shift+UpArrow",
+                        "qt": "Shift+UpArrow"
+                    }
+                },
+                {
+                    "command": "ScrollToNewMessages",
+                    "comment": "Scrolls to the new messages",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac":"UNSUPPORTED",
+                        "qt": "Ctrl+Alt+M"
+                    }
+                },                
+                {
+                    "command": "ZoomIn",
+                    "comment": "Increases the font size of the messages in space or sharing content",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command++",
+                        "qt": "Ctrl++"
+                    }
+                },
+                {
+                    "command": "ZoomOut",
+                    "comment": "Decreases the font size of the messages in space or sharing content",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command+-",
+                        "qt": "Ctrl+-"
+                    }
+                },
+                {
+                    "command": "InsertPMR",
+                    "comment": "Inserts the personal meeting room link in the message input area",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Shift+Command+K",
+                        "qt": "Alt+Shift+P"
+                    }
+                },
+                {
+                    "command": "ScreenCapture",
+                    "comment": "Screen capture a portion of the screen",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command+S",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "ScreenCaptureNoMini",
+                    "comment": "Screen capture a portion of the screen with minimizing the client",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Option+Command+S",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "ToggleFavorite",
+                    "comment": "Toggles the favorite space",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Option+Command+V",
+                        "qt": "Ctrl+Shift+F"
+                    }
+                },
+                {
+                    "command": "CallSelectedPerson",
+                    "comment": "Calls the selected searched person(People only)",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command+Enter",
+                        "qt": "Ctrl+Shift+Enter"
+                    }
+                },
+                {
+                    "command": "GoToTeam",
+                    "comment": "Go to selected team",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Option+Shift+Command+T",
+                        "qt": "Ctrl+Shift+2"
+                    }
+                },
+                {
+                    "command": "ReloadSpace",
+                    "comment": "Reloads the space",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Ctrl+Shift+Y",
+                        "qt": "Ctrl+Alt+Y"
+                    }
+                },
+                {
+                    "command": "ViewSpaceSettings",
+                    "comment": "View space settigns",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Ctrl+Command+T",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "ToggleNotifyOnAllMessages",
+                    "comment": "Toggles the notify on all messages",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac":"Option+Command+N",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "ShowParticipants",
+                    "comment": "Switches to the people tab in the current space",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Option+Shift+Command+P",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "ShowLinks",
+                    "comment": "Switches to the links tab in the current space",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Shift+Command+L",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "NewMessageButton",
+                    "comment": "New message button",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"UNSUPPORTED",
+                        "qt": "Alt+Shift+J"
+                    }
+                },
+                {
+                    "command": "NewReplyButton",
+                    "comment": "New reply button",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"UNSUPPORTED",
+                        "qt": "Alt+Shift+T"
+                    }
+                },
+                {
+                    "command": "JumpToBottom",
+                    "comment": "Jumps to the bottom",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac":"UNSUPPORTED",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "CopySpaceInformation",
+                    "comment": "Copies the current space details to clipboard",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac":"Option+Command+K",
+                        "qt": "Ctrl+Shift+K"
+                    }
+                },
+                {
+                    "command": "FocusMainConversation",
+                    "comment": "Focuses on the main conversation window",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Ctrl+H"
+                    }
+                },
+                {
+                    "command": "FocusMainInputBox",
+                    "comment": "Focuses the text input box in the messaging area",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Ctrl+Alt+I"
+                    }
+                },
+                {
+                    "command": "QuickMessage",
+                    "comment": "Opens the quick message dialog",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Command+S",
+                        "qt": "UNSUPPORTED"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "MeetingsAndCalling",
+            "comment": "Shortcuts that effect calling for example togging mute microphone or ending calls",
+            "shortcuts": [
+                {
+                    "command": "StartCall",
+                    "comment": "Start a call",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+Return",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "StartVideoCall",
+                    "comment": "Start a video call",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Return",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "EndCall",
+                    "comment": "End a call",
+                    "canBeGlobal": true,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+L",
+                        "qt": "Ctrl+L"
+                    }
+                },
+                {
+                    "command": "AnswerCall",
+                    "comment": "Answer an incoming call",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+C",
+                        "qt": "Ctrl+Shift+C"
+                    }
+                },
+                {
+                    "command": "AnswerWithMessage",
+                    "comment": "Answer an incoming call with a message",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Ctrl+Alt+A"
+                    }
+                },
+                {
+                  "command": "ShowHideCallingDock",
+                  "comment": "Show Hide Calling Dock",
+                  "canBeGlobal": true,
+                  "isGlobal": true,
+                  "isCustomizable": true,
+                  "keyCombination": {
+                    "mac": "UNSUPPORTED",
+                    "qt": "Ctrl+Shift+X"
+                  }
+                },
+				{
+                    "command": "HoldResumeCall",
+                    "comment": "Hold/Resume call",
+                    "canBeGlobal": true,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Option+H",
+                        "qt": "Ctrl+Alt+H"
+                    }
+                },
+                {
+                    "command": "DeclineCall",
+                    "comment": "Decline a call",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+D",
+                        "qt": "Ctrl+D"
+                    }
+                },
+                {
+                    "command": "HighlightToCall",
+                    "comment": "Highlight to call",
+                    "canBeGlobal": true,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Command+Option+H",
+                        "qt": "Ctrl+Shift+Alt+H"
+                    }
+                },
+                {
+                    "command": "TransferCall",
+                    "comment": "Transfer a call",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+T",
+                        "qt": "Alt+T"
+                    }
+                },
+                {
+                    "command": "ToggleAudioMute",
+                    "comment": "Toggle mute audio on a call",
+                    "canBeGlobal": true,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+M",
+                        "qt": "Ctrl+M"
+                    }
+                },
+                {
+                    "command": "ToggleVideoMute",
+                    "comment": "Start or stop video on a call",
+                    "canBeGlobal": true,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+V",
+                        "qt": "Ctrl+Shift+V"
+                    }
+                },
+                {
+                    "command": "SwitchSmartAudioMode",
+                    "comment": "Switch smart audio mode",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+M",
+                        "qt": "Ctrl+Shift+M"
+                    }
+                },
+                {
+                    "command": "ShareContent",
+                    "comment": "Starts sharing content",
+                    "canBeGlobal": true,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+D",
+                        "qt": "Ctrl+Shift+D"
+                    }
+                },
+                {
+                    "command": "ToggleShowFloatingWindow",
+                    "comment": "Show or hide the video view while sharing",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Option+P",
+                        "qt": "Ctrl+Alt+P"
+                    }
+                },
+                {
+                    "command": "ShareFileVideo",
+                    "comment": "Shares a file or a video",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+O",
+                        "qt": "Ctrl+Alt+O"
+                    }
+                },
+                {
+                    "command": "ToggleSharing",
+                    "comment": "Pauses or resumes sharing",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+S",
+                        "qt": "Alt+Shift+S"
+                    }
+                },
+                {
+                    "command": "StopSharing",
+                    "comment": "Stops sharing",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+Z",
+                        "qt": "Ctrl+Shift+Z"
+                    }
+                },
+                {
+                    "command": "CleanModeShare",
+                    "comment": "Enters clean mode during sharing",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+Q",
+                        "qt": "Ctrl+Shift+Q"
+                    }
+                },
+                {
+                    "command": "ClearWhiteboardAnnotations",
+                    "comment": "Clears all annotations on the whiteboard",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+Delete",
+                        "qt": "Ctrl+Delete"
+                    }
+                },
+                {
+                    "command": "ToggleMeetingControls",
+                    "comment": "Show or hide meeting controls",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+H",
+                        "qt": "Ctrl+Shift+H"
+                    }
+                },
+                {
+                    "command": "StartAnnotation",
+                    "comment": "Starts annotations",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+Z",
+                        "qt": "Alt+Shift+Z"
+                    }
+                },
+                {
+                    "command": "StopAnnotation",
+                    "comment": "Stop annotations",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+X",
+                        "qt": "Alt+Shift+X"
+                    }
+                },
+                {
+                    "command": "AddGuest",
+                    "comment": "Add a guest",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Ctrl+Alt+G"
+                    }
+                },
+                {
+                    "command": "FullScreen",
+                    "comment": "Switch to full screen",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+F",
+                        "qt": "Alt+Return"
+                    }
+                },
+                {
+                    "command": "Thumbnail",
+                    "comment": "Show thumbnail view",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac": "Command+T",
+                        "qt": "Ctrl+T"
+                    }
+                },
+                {
+                    "command": "OpenDialpad",
+                    "comment": "Opens dialpad",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+k",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "ToggleHand",
+                    "comment": "Raise or lower hand",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+R",
+                        "qt": "Ctrl+Shift+R"
+                    }
+                },
+                {
+                    "command": "ToggleChat",
+                    "comment": "Open or close the Chat pane",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+E",
+                        "qt": "Ctrl+E"
+                    }
+                },
+                {
+                    "command": "ToggleChatNotificationsReadout",
+                    "comment": "Dont read out in meeting chat notifications",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+J",
+                        "qt": "Ctrl+Alt+K"
+                    }
+                },
+                {
+                    "command": "ToggleInterpretation",
+                    "comment": "Open or close interpretation dialog",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+W",
+                        "qt": "Alt+Shift+W"
+                    }
+                },
+                {
+                    "command": "ToggleParticipantsVideos",
+                    "comment": "Show or hide participant videos",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+X",
+                        "qt": "Ctrl+Alt+Shift+X"
+                    }
+                },
+                {
+                    "command": "ToggleParticipantsWithoutVideo",
+                    "comment": "Show or hide participant without video",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+H",
+                        "qt": "Ctrl+Alt+Q"
+                    }
+                },
+                {
+                    "command": "ToggleNameInVideos",
+                    "comment": "Show or hide participant names in videos",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+I",
+                        "qt": "Ctrl+Shift+I"
+                    }
+                },
+                {
+                    "command": "MuteParticipants",
+                    "comment": "Mute all participants",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+U",
+                        "qt": "Ctrl+Shift+U"
+                    }
+                },
+                {
+                    "command": "LowerParticipantsHands",
+                    "comment": "Lower all participant hands",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+L",
+                        "qt": "Ctrl+Shift+L"
+                    }
+                },
+                {
+                    "command": "ToggleLock",
+                    "comment": "Lock or unlock the meeting",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+R",
+                        "qt": "Ctrl+R"
+                    }
+                },
+                {
+                    "command": "ExpelAttendees",
+                    "comment": "Remove attendee",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+E",
+                        "qt": "Ctrl+Alt+R"
+                    }
+                },
+                {
+                    "command": "AdmitParticipants",
+                    "comment": "Admit participants from lobby",
+                    "canBeGlobal": true,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+G",
+                        "qt": "Ctrl+Shift+G"
+                    }
+                },
+                {
+                    "command": "AudioCall",
+                    "comment": "Start an audio call from search",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Ctrl+Shift+Return"
+                    }
+                },
+                {
+                    "command": "VideoCall",
+                    "comment": "Start a video call from search",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Ctrl+Return"
+                    }
+                },
+                {
+                    "command": "ToggleRemoteControl",
+                    "comment": "Start or stop remote control",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Option+R",
+                        "qt": "Alt+Shift+R"
+                    }
+                },
+                {
+                    "command": "ToggleClosedCaption",
+                    "comment": "Start or stop closed captions",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Shift+A",
+                        "qt": "Ctrl+Shift+A"
+                    }
+                },
+                {
+                    "command": "SelectClosedCaption",
+                    "comment": "Focus on the closed captions menu",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+A",
+                        "qt": "Shift+A"
+                    }
+                },
+                {
+                    "command": "PreviousSlide",
+                    "comment": "Shows previous slide during sharing",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+UpArrow",
+                        "qt": "PgUp"
+                    }
+                },
+                {
+                    "command": "NextSlide",
+                    "comment": "Shows next slide during sharing",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+DownArrow",
+                        "qt": "PgDn"
+                    }
+                },
+                {
+                    "command": "AllowParticipantShare",
+                    "comment": "Allow all participants share",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Ctrl+Shift+S"
+                    }
+                },
+                {
+                    "command": "MeetingNotificationKey",
+                    "comment": "Switch focus to meeting notification",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+F6",
+                        "qt": "Ctrl+F6"
+                    }
+                },
+                {
+                    "command": "LocalShareControlKey",
+                    "comment": "Set local share control keywindow",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Command+K",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "OpenMeetingReactionsPanel",
+                    "comment": "Open reactions panel in meetings",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+Y",
+                        "qt": "Ctrl+Shift+Y"
+                    }
+                },
+                {
+                    "command": "SendMeetingReaction1",
+                    "subCommand": "MeetingReactionThumbsUp",
+                    "comment": "Send a thumbs up reaction in the meeting",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+4",
+                        "qt": "Alt+Shift+4"
+                    }
+                },
+                {
+                    "command": "SendMeetingReaction2",
+                    "subCommand": "MeetingReactionClappingHands",
+                    "comment": "Send a clapping hands reaction in the meeting",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+5",
+                        "qt": "Alt+Shift+5"
+                    }
+                },
+                {
+                    "command": "SendMeetingReaction3",
+                    "subCommand": "MeetingReactionHaha",
+                    "comment": "Send a haha reaction in the meeting",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+6",
+                        "qt": "Alt+Shift+6"
+                    }
+                },
+                {
+                    "command": "SendMeetingReaction4",
+                    "subCommand": "MeetingReactionCelebrate",
+                    "comment": "Send a celebrate reaction in the meeting",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+7",
+                        "qt": "Alt+Shift+7"
+                    }
+                },
+                {
+                    "command": "SendMeetingReaction5",
+                    "subCommand": "MeetingReactionLove",
+                    "comment": "Send a love reaction in the meeting",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+8",
+                        "qt": "Alt+Shift+8"
+                    }
+                }
+            ]
+        },
+        { 
+            "name": "Formatting",
+            "comment": "Shortcuts that effect the message input text area particularly the text the user types",
+            "shortcuts": [
+                {
+                    "command": "AddNewline",
+                    "comment": "Add new line in message",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac": "Shift+Enter",
+                        "qt": "Shift+Enter"
+                    }
+                },
+                {
+                    "command": "AddLink",
+                    "comment": "Add link to the message",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac":"Command+K",
+                        "qt": "Ctrl+K"
+                    }
+                },
+                {
+                    "command": "ToggleMarkdown",
+                    "comment": "Turn markdown on/off",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+F",
+                        "qt": "Alt+Shift+M"
+                    }
+                },
+                {
+                    "command": "ToggleBold",
+                    "comment": "Bold on/off for the selected text",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+B",
+                        "qt": "Ctrl+B"
+                    }
+                },
+                {
+                    "command": "ToggleItalic",
+                    "comment": "Italics on/off for the selected text",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+I",
+                        "qt": "Ctrl+I"
+                    }
+                },
+                {
+                    "command": "ToggleUnderline",
+                    "comment": "Underline on/off for the selected text",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+U",
+                        "qt": "Ctrl+U"
+                    }
+                },
+                {
+                    "command": "HeadingOne",
+                    "comment": "Sets heading size 1",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+1",
+                        "qt": "Alt+Shift+1"
+                    }
+                },
+                {
+                    "command": "HeadingTwo",
+                    "comment": "Sets heading size 2",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+2",
+                        "qt": "Alt+Shift+2"
+                    }
+                },
+                {
+                    "command": "HeadingThree",
+                    "comment": "Sets heading size 3",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+3",
+                        "qt": "Alt+Shift+3"
+                    }
+                },
+                {
+                    "command": "SelectAll",
+                    "comment": "Selects all content",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+A",
+                        "qt": "Ctrl+A"
+                    }
+                },
+                {
+                    "command": "Redo",
+                    "comment": "Redo typing",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Shift+Command+Z",
+                        "qt": "Ctrl+Y"
+                    }
+                },
+                {
+                    "command": "Undo",
+                    "comment": "Undo typing",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+Z",
+                        "qt": "Ctrl+Z"
+                    }
+                },
+                {
+                    "command": "ShowSpelling",
+                    "comment": "Shows the spelling and grammar panel",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+;",
+                        "qt": "UNSUPPORTED"
+                    }
+                },
+                {
+                    "command": "PasteMatchStyle",
+                    "comment": "Pastes and matches the style of the copied text (windows pastes as snippet pasteSpecial)",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Shift+Command+V",
+                        "qt": "Alt+Shift+V"
+                    }
+                },
+                {
+                    "command": "Copy",
+                    "comment": "Copy",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+C",
+                        "qt": "Ctrl+C"
+                    }
+                },
+                {
+                    "command": "Paste",
+                    "comment": "Paste",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+V",
+                        "qt": "Ctrl+V"
+                    }
+                },
+                {
+                    "command": "Cut",
+                    "comment": "Cut",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Command+X",
+                        "qt": "Ctrl+X"
+                    }
+                },
+                {
+                    "command": "PageDown",
+                    "comment": "Page down",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac": "fn+DownArrow",
+                        "qt": "Shift+PgDn"
+                    }
+                },
+                {
+                    "command": "PageUp",
+                    "comment": "Page up",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac": "fn+UpArrow",
+                        "qt": "Shift+PgUp"
+                    }
+                },
+                {
+                    "command": "ToggleNumberList",
+                    "comment": "Toggles numbered list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+O",
+                        "qt": "Alt+Shift+O"
+                    }
+                },
+                {
+                    "command": "ToggleBulletList",
+                    "comment": "Toggles bulleted list",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Option+Command+U",
+                        "qt": "Alt+Shift+U"
+                    }
+                },
+                {
+                    "command": "ToggleCodeBlock",
+                    "comment": "Toggles code block",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Alt+Shift+0"
+                    }
+                },
+                {
+                    "command": "ToggleStrikeThrough",
+                    "comment": "Toggles strike through",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Alt+K"
+                    }
+                },
+                {
+                    "command": "ToggleSubscript",
+                    "comment": "Toggles subscript",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Ctrl+="
+                    }
+                },
+                {
+                    "command": "ToggleSuperscript",
+                    "comment": "Toggles superscript",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Ctrl+Shift+="
+                    }
+                },
+                {
+                    "command": "ToggleInlineCode",
+                    "comment": "Toggles inline code",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Alt+Shift+K"
+                    }
+                }
+            ]    
+        },
+        { 
+            "name": "Developer",
+            "comment": "Developer additional shortcuts",
+            "shortcuts": [
+                {
+                    "command": "ShowThemeDashboard",
+                    "comment": "Opens the theme dashboard",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Ctrl+Alt+Shift+T"
+                    }
+                },
+                {
+                    "command": "ShowDevTools",
+                    "comment": "Opens the developer tools panel",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Ctrl+Alt+Shift+P"
+                    }
+                },
+                {
+                    "command": "ReloadQML",
+                    "comment": "Reloads the QML view",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Ctrl+Alt+Shift+R"
+                    }
+                },                
+                {
+                    "command": "ShowDebugWindow",
+                    "comment": "Shows the debug window",
+                    "canBeGlobal": false,
+                    "isGlobal": false,
+                    "isCustomizable": false,
+                    "keyCombination": {
+                        "mac": "UNSUPPORTED",
+                        "qt": "Ctrl+Alt+Shift+C"
+                    }
+                },
+                {
+                    "command": "CopyServiceCatalogue",
+                    "comment": "Copy service catalogue from server health window",
+                    "canBeGlobal": true,
+                    "isGlobal": true,
+                    "isCustomizable": true,
+                    "keyCombination": {
+                        "mac": "Ctrl+Option+Shift+S",
+                        "qt": "UNSUPPORTED"
+                    }
+                }
+            ]        
+        }   
+    ]   
+} 
