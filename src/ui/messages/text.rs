@@ -188,6 +188,34 @@ pub(super) fn elide_middle_by(s: &str, max: f32, w: &dyn Fn(&str) -> f32) -> Str
     best
 }
 
+/// How far a block quote's text sits right of the one around it (its bar is drawn in that gap).
+pub(super) const QUOTE_INDENT: f32 = 14.0;
+
+/// The nesting depth of the quote (a, b): 1 for an outermost one.
+pub(super) fn quote_depth(quotes: &[(usize, usize)], a: usize, b: usize) -> usize { quotes.iter().filter(|q| q.0 <= a && b <= q.1).count() }
+pub(super) fn quote_depth_max(quotes: &[(usize, usize)]) -> usize { quotes.iter().map(|q| quote_depth(quotes, q.0, q.1)).max().unwrap_or(0) }
+
+/// Shifts every row that starts inside a block quote (wrapped rows too, which leading spaces could not indent) right by
+/// `QUOTE_INDENT` per nesting level. Glyphs, mesh and rects move together, so cursor, selection and link hits stay right.
+pub(super) fn indent_quotes(g: std::sync::Arc<Galley>, quotes: &[(usize, usize)]) -> std::sync::Arc<Galley> {
+    if quotes.is_empty() { return g; }
+    let mut gal = (*g).clone();
+    let mut at = 0usize;
+    for row in &mut gal.rows {
+        let depth = quotes.iter().filter(|q| q.0 <= at && at < q.1).count();
+        at += row.char_count_including_newline();
+        if depth == 0 { continue }
+        let dx = egui::vec2(depth as f32 * QUOTE_INDENT, 0.0);
+        row.rect = row.rect.translate(dx);
+        for gl in &mut row.glyphs { gl.pos += dx; }
+        row.visuals.mesh.translate(dx);
+        row.visuals.mesh_bounds = row.visuals.mesh_bounds.translate(dx);
+        gal.rect = gal.rect.union(row.rect);
+        gal.mesh_bounds = gal.mesh_bounds.union(row.visuals.mesh_bounds);
+    }
+    std::sync::Arc::new(gal)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{link_hint, url_spans};
@@ -200,6 +228,26 @@ mod tests {
         // Thousands of unmatched closing brackets: all of them stay outside the link (each step used to recount the whole URL).
         let t = format!("https://x.example/{}", ")".repeat(50_000));
         assert_eq!(urls(&t), ["https://x.example/"]);
+    }
+
+    #[test]
+    fn nested_reply_quote_indents_every_row_and_nests() {
+        // The real message: a reply quoting a reply that itself quotes the first message, then the new text.
+        let h = r#"<blockquote class="messageQuote"><span class="spark-contact">Niclas Erismann</span><br><blockquote class="messageQuote"><p>Auso, wa isch jetzt mit dine 20k Draft issues?<br><a href="https://x.example/q">https://x.example/q</a></p></blockquote><p>das sind meistens stories wo claude aglegt het. s video züg isch parkiert bis de rest stabil lauft</p></blockquote>Machsch du die sache?"#;
+        let ctx = eframe::egui::Context::default();
+        let _ = ctx.run(Default::default(), |_| {});
+        let p = super::html::html_job(h, &super::super::mc(&crate::dark()), "", 260.0, false).unwrap();
+        assert_eq!(super::quote_depth_max(&p.quotes), 2);
+        let g = super::indent_quotes(ctx.fonts(|f| f.layout_job(p.job.clone())), &p.quotes);
+        let row_text = |r: &eframe::egui::epaint::text::Row| r.glyphs.iter().map(|g| g.chr).collect::<String>();
+        let x_of = |needle: &str| g.rows.iter().find(|r| row_text(r).contains(needle)).map(|r| r.rect.left()).expect(needle);
+        assert_eq!(x_of("Niclas"), super::QUOTE_INDENT); // outer quote
+        assert_eq!(x_of("Auso"), 2.0 * super::QUOTE_INDENT); // nested quote
+        assert_eq!(x_of("Machsch"), 0.0); // the new text is outside
+        // Every wrapped row of the outer quote's own paragraph keeps the indent (it used to fall back under the bar).
+        let outer: Vec<_> = g.rows.iter().filter(|r| { let t = row_text(r); t.contains("stories") || t.contains("parkiert") || t.contains("lauft") }).collect();
+        assert!(outer.len() >= 2, "paragraph should wrap at this width");
+        assert!(outer.iter().all(|r| r.rect.left() == super::QUOTE_INDENT));
     }
 
     #[test]

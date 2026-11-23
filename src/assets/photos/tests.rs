@@ -68,3 +68,15 @@ fn gif_frame_budget_shrinks_with_the_canvas() {
     assert_eq!(gif_frame_budget(&gif(0, 0)), 2000);
     assert_eq!(gif_frame_budget(b"GIF8"), 0);
 }
+
+#[test]
+fn viewer_image_is_dropped_once_the_viewer_no_longer_draws_it() {
+    let ctx = egui::Context::default();
+    let mut p = Photos::default();
+    p.add_images(vec![("full:x".into(), gif(&[[1, 2, 3, 255]])), ("y".into(), gif(&[[4, 5, 6, 255]]))]);
+    assert!(p.image(&ctx, "full:x").is_some() && p.image(&ctx, "y").is_some());
+    for _ in 0..3 { let _ = ctx.run(Default::default(), |_| {}); }
+    let _ = p.image(&ctx, "y"); // a later pass: the viewer is closed, the list image is still drawn
+    assert!(!p.image_tex.contains_key("full:x"));
+    assert!(p.image_tex.contains_key("y"));
+}

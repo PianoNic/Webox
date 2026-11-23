@@ -140,8 +140,18 @@ impl App {
         let sys = emoji_text::ensure_font(ui.ctx());
         // The message's rich text (object.content) is drawn; fall back to the plain text when there is none / it fails.
         let rich = if same && !m.html.trim().is_empty() { html::html_job(&m.html, c, &self.me.id, wrap, sys) } else { None };
+        // WEBOX_DUMP_MSG=<text>: the raw HTML of each message containing <text>, once, on stderr (rendering bug reports).
+        static DUMP: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+        if let Some(q) = DUMP.get_or_init(|| std::env::var("WEBOX_DUMP_MSG").ok()) {
+            static SEEN: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+            if m.html.contains(q.as_str()) && !SEEN.lock().unwrap().contains(&m.id) { SEEN.lock().unwrap().push(m.id.clone()); eprintln!("DUMP {} {:?}", m.id, m.html); }
+        }
         let (galley, links, emojis, quotes, jump) = if let Some(p) = rich {
-            (Some(ui.fonts(|f| f.layout_job(p.job))), p.links, p.runs, p.quotes, p.reply_quote)
+            // Quoted rows (wrapped ones too) are shifted right by their nesting depth after layout, so lay out that much narrower.
+            let mut job = p.job;
+            job.wrap.max_width -= text::quote_depth_max(&p.quotes) as f32 * text::QUOTE_INDENT;
+            let g = text::indent_quotes(ui.fonts(|f| f.layout_job(job)), &p.quotes);
+            (Some(g), p.links, p.runs, p.quotes, p.reply_quote)
         } else if body.trim().is_empty() { (None, Vec::new(), Vec::new(), Vec::new(), None) } else {
             let (job, links, emojis) = body_job(body, c, &self.me.name, wrap, sys);
             (Some(ui.fonts(|f| f.layout_job(job))), links, emojis, Vec::new(), None)
@@ -329,7 +339,8 @@ impl App {
                 for &(qa, qb) in &ct.quotes {
                     let rows = sel_rects(g, qa, qb);
                     if let (Some(f), Some(l)) = (rows.first(), rows.last()) {
-                        p.rect_filled(Rect::from_min_max(pos2(origin.x, origin.y + f.top()), pos2(origin.x + 2.4, origin.y + l.bottom())), 1.2, wa(c.body, 0.6)); // light-grey quote bar
+                        let x = origin.x + (text::quote_depth(&ct.quotes, qa, qb) - 1) as f32 * text::QUOTE_INDENT; // one bar per nesting level
+                        p.rect_filled(Rect::from_min_max(pos2(x, origin.y + f.top()), pos2(x + 2.4, origin.y + l.bottom())), 1.2, wa(c.body, 0.6)); // light-grey quote bar
                     }
                 }
                 // Emoji: the colour pictures (or a box) on the placeholders the layout reserved (emoji_text.rs).

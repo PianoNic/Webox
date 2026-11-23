@@ -181,7 +181,6 @@ impl Doc<'_> {
             if self.quote_depth > 0 {
                 let at = self.b.nchars;
                 for s in self.quote_start.iter_mut() { if s.is_none() { *s = Some(at); } }
-                for _ in 0..self.quote_depth { self.raw_plain("\u{2002}"); }
             }
             if let Some(bt) = self.bullet.take() {
                 for _ in 0..self.lists.len() { self.raw_plain("\u{2003}"); }

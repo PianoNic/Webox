@@ -352,12 +352,14 @@ impl App {
         let draft_at = self.row_draft.then(|| pos2(r.right() - if hovered_row { 14.0 + 24.0 + 14.0 } else { 14.0 } - 7.0, r.center().y));
         let max_w = draft_at.map_or(r.right() - 34.0, |c| c.x - 7.0 - 6.0) - tx; // the title's right padding 6
         let tf = if unread { semibold(g.title_pt) } else { FontId::proportional(g.title_pt) };
+        // Like Webex: read conversations' names in the secondary grey, the selected or an unread one in the primary white.
+        let title_col = if selected || unread { t.text1 } else { t.text2 };
         if g.one_line {
-            compact_list::one_line(ui.painter(), tx, r.center().y, max_w, title, tf, t.text1, sub, sub_color, t.text2);
+            compact_list::one_line(ui.painter(), tx, r.center().y, max_w, title, tf, title_col, sub, sub_color, t.text2);
         } else if sub.is_empty() {
-            fit_text(ui.painter(), tx, r.center().y, title, tf, t.text1, max_w);
+            fit_text(ui.painter(), tx, r.center().y, title, tf, title_col, max_w);
         } else {
-            fit_text(ui.painter(), tx, r.center().y - 9.5, title, tf, t.text1, max_w);
+            fit_text(ui.painter(), tx, r.center().y - 9.5, title, tf, title_col, max_w);
             fit_text(ui.painter(), tx, r.center().y + 10.0, &sub.replace('\n', " "), FontId::proportional(13.0), sub_color, max_w);
         }
         if let Some(c) = draft_at {

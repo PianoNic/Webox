@@ -7,6 +7,10 @@
 //! X11 window helpers); other platforms get no-op stubs.
 use std::path::Path;
 
+/// The main window is hidden in the tray. On Windows it is really only moved off-screen (and on Linux winit keeps running
+/// frames), so animations check this to stop redrawing a window nobody sees.
+pub static HIDDEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// What the tray icon reports back to the app. `Item(i)`: row i of the tray menu was picked in the panel's own menu (Linux dbusmenu).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TrayEvent { Left, Menu(i32, i32), #[cfg(target_os = "linux")] Item(u32) }

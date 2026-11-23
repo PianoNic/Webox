@@ -11,7 +11,8 @@ pub struct Anim { frames: Vec<(egui::TextureHandle, f32)>, size: [usize; 2], tot
 
 /// Decoded message images (all frames of all GIFs) kept in texture memory at most; beyond it the ones not drawn for the
 /// longest time are dropped and decoded again (on a worker) when they come back on screen.
-const IMAGE_TEX_BUDGET: usize = 256 * 1024 * 1024;
+/// With OpenGL on an integrated GPU, textures live in system RAM, so this counts fully against Webox's memory.
+const IMAGE_TEX_BUDGET: usize = 64 * 1024 * 1024;
 
 /// Message images are decoded on worker threads (a big picture or a long GIF would block the UI thread for tens to hundreds
 /// of ms); the textures are created there too (egui's texture manager is thread-safe) and handed back with the key's generation.
@@ -41,7 +42,9 @@ pub const MAX_FRAMES: usize = 60;
 pub const MAX_FRAME_SIDE: u32 = 512;
 /// Largest side of a static image texture (typical GPU limit is 8192–16384).
 pub const MAX_TEXTURE_SIDE: u32 = 8192;
-const MAX_ANIM_BYTES: usize = 96 * 1024 * 1024;
+const MAX_ANIM_BYTES: usize = 32 * 1024 * 1024;
+/// Largest side of a full-size image in the viewer (enough for a 4K screen; phone photos are larger and only cost memory).
+const MAX_FULL_SIDE: u32 = 4096;
 
 fn upload(ctx: &egui::Context, name: String, img: &image::RgbaImage) -> egui::TextureHandle {
     ctx.load_texture(name, egui::ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.as_raw()), egui::TextureOptions::LINEAR)
@@ -102,7 +105,7 @@ pub(crate) fn halve_frames<T>(frames: Vec<(T, f32)>) -> Vec<(T, f32)> {
 /// A failure is logged as "download unusable" vs "unsupported format" with the byte count and format only.
 fn decode_anim(ctx: &egui::Context, key: &str, bytes: &[u8]) -> Option<Anim> {
     // Full-resolution viewer images get bigger frames; static ones are capped at what a GPU texture can hold.
-    let (max_side, max_mem) = if key.starts_with("full:") { (1024, 192 * 1024 * 1024) } else { (MAX_FRAME_SIDE, MAX_ANIM_BYTES) };
+    let (max_side, max_mem) = if key.starts_with("full:") { (1024, 64 * 1024 * 1024) } else { (MAX_FRAME_SIDE, MAX_ANIM_BYTES) };
     use image::AnimationDecoder;
     let fmt = image::guess_format(bytes).ok();
     if fmt == Some(image::ImageFormat::Gif) {
@@ -138,8 +141,9 @@ fn decode_anim(ctx: &egui::Context, key: &str, bytes: &[u8]) -> Option<Anim> {
     match image::load_from_memory(bytes) {
         Ok(img) => {
             let mut img = img.to_rgba8();
-            if img.width().max(img.height()) > MAX_TEXTURE_SIDE { // larger than a GPU texture can be: scale down
-                let s = MAX_TEXTURE_SIDE as f32 / img.width().max(img.height()) as f32;
+            let max_side = if key.starts_with("full:") { MAX_FULL_SIDE } else { MAX_TEXTURE_SIDE };
+            if img.width().max(img.height()) > max_side { // larger than useful (viewer) or than a GPU texture can be: scale down
+                let s = max_side as f32 / img.width().max(img.height()) as f32;
                 img = image::imageops::resize(&img, ((img.width() as f32 * s) as u32).max(1), ((img.height() as f32 * s) as u32).max(1), image::imageops::FilterType::Triangle);
             }
             let size = [img.width() as usize, img.height() as usize];
@@ -238,8 +242,7 @@ impl Photos {
     fn collect(&mut self, pass: u64) {
         if self.collected == Some(pass) { return; }
         self.collected = Some(pass);
-        let Some(d) = &self.decoder else { return };
-        let done: Vec<Decoded> = d.rx.try_iter().collect();
+        let done: Vec<Decoded> = self.decoder.as_ref().map(|d| d.rx.try_iter().collect()).unwrap_or_default();
         for r in done {
             if self.decoding.get(&r.key) != Some(&r.generation) { // newer bytes arrived meanwhile, or released
                 if let Some(a) = &r.anim { self.forget_round.extend(a.frames.iter().map(|f| f.0.id())); }
@@ -247,8 +250,13 @@ impl Photos {
             }
             self.decoding.remove(&r.key);
             if let Some(a) = &r.anim { self.tex_bytes += a.bytes; self.known_size.insert(r.key.clone(), a.size); }
-            self.image_tex.insert(r.key, r.anim);
+            let mut anim = r.anim;
+            if let Some(a) = &mut anim { a.used = pass; } // fresh: not "least recently drawn" before it was ever drawn
+            self.image_tex.insert(r.key, anim);
         }
+        // A full-size viewer image is only needed while the viewer shows it: dropped as soon as it wasn't drawn last pass.
+        let closed: Vec<String> = self.image_tex.iter().filter(|(k, a)| k.starts_with("full:") && a.as_ref().is_some_and(|a| a.used + 1 < pass)).map(|(k, _)| k.clone()).collect();
+        for k in closed { self.drop_decoded(&k); }
         if self.tex_bytes > IMAGE_TEX_BUDGET {
             // Least recently drawn first; never what was drawn in this or the previous pass.
             let mut old: Vec<(u64, String)> = self.image_tex.iter().filter_map(|(k, a)| a.as_ref().filter(|a| a.used + 1 < pass).map(|a| (a.used, k.clone()))).collect();
@@ -285,7 +293,12 @@ impl Photos {
         let (mut acc, mut idx) = (0.0, 0);
         for (i, (_, d)) in a.frames.iter().enumerate() { if t < acc + d { idx = i; break } acc += d; idx = i; }
         let left = (acc + a.frames[idx].1 - t).max(0.005);
-        ctx.request_repaint_after(std::time::Duration::from_secs_f32(left));
+        // Every animation frame redraws the whole window: none while it's hidden (tray, minimized), at most 30 fps in front,
+        // 10 fps in the background.
+        let (minimized, focused) = ctx.input(|i| (i.viewport().minimized == Some(true), i.viewport().focused != Some(false)));
+        if !minimized && !crate::platform::tray::HIDDEN.load(std::sync::atomic::Ordering::Relaxed) {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f32(left.max(if focused { 1.0 / 30.0 } else { 0.1 })));
+        }
         Some((a.frames[idx].0.id(), a.size))
     }
 

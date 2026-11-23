@@ -15,6 +15,24 @@ impl eframe::App for App {
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        // WEBOX_PROBE=1: every 5 s on stderr, the frames drawn, texture memory and which code asked for the repaints
+        // (performance checks against the official Webex app).
+        static PROBE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *PROBE.get_or_init(|| std::env::var_os("WEBOX_PROBE").is_some()) {
+            static LAST: std::sync::Mutex<(f64, u32, Vec<String>)> = std::sync::Mutex::new((0.0, 0, Vec::new()));
+            let t = ctx.input(|i| i.time);
+            let mut l = LAST.lock().unwrap();
+            l.1 += 1;
+            for c in ctx.repaint_causes() { l.2.push(format!("{}:{} {}", c.file, c.line, c.reason)); }
+            if t - l.0 > 5.0 {
+                let mut m: std::collections::BTreeMap<String, u32> = Default::default();
+                for k in l.2.drain(..) { *m.entry(k).or_default() += 1; }
+                let mut v: Vec<_> = m.into_iter().collect(); v.sort_by(|a, b| b.1.cmp(&a.1));
+                let (n, bytes) = ctx.tex_manager().read().allocated().fold((0usize, 0usize), |(n, b), (_, m)| (n + 1, b + m.size[0] * m.size[1] * m.bytes_per_pixel));
+                eprintln!("PROBE {:.0}s frames={} textures={} tex_mb={} causes={:?}", t - l.0, l.1, n, bytes >> 20, &v[..v.len().min(12)]);
+                l.0 = t; l.1 = 0;
+            }
+        }
         let _ = &frame;
         super::set_ui_ctx(ctx); // background results wake the window (ui::wake)
         crate::i18n::sync_from_settings(ctx, &self.settings); // live language switching (settings key `language`)

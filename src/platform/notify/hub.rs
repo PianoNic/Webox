@@ -8,6 +8,7 @@ impl App {
 
     /// Brings the main window back from the tray / the taskbar and focuses it.
     pub(crate) fn show_main(&mut self, ctx: &egui::Context) {
+        tray::HIDDEN.store(false, std::sync::atomic::Ordering::Relaxed);
         if let Some(h) = self.hwnd { tray::restore_from_tray(h); }
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
@@ -23,6 +24,7 @@ impl App {
 
     /// Hides the main window into the tray (off-screen without a taskbar button on Windows, so the app keeps updating and can raise toasts).
     pub(super) fn hide_main(&mut self, ctx: &egui::Context) {
+        tray::HIDDEN.store(true, std::sync::atomic::Ordering::Relaxed);
         match self.hwnd { Some(h) if cfg!(windows) => tray::hide_to_tray(h), _ => ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false)) }
     }
 

@@ -30,7 +30,7 @@ const AVATAR: f32 = 32.0; // avatar size
 const AVATAR_SLOT: f32 = 34.0; // avatar column width
 const BOX_LEFT: f32 = GRID_X + AVATAR_LEFT + AVATAR_SLOT; // 51; the text starts RADIUS further in
 const RADIUS: f32 = 8.0; // message frame radius
-const RIGHT_MARGIN: f32 = 5.0; // message frame right margin
+const RIGHT_MARGIN: f32 = 5.0 + SB_W; // message frame right margin: clear of the scrollbar drawn over the list's right edge
 fn avatar_top() -> f32 { dm().msg_avatar_top } // avatar top margin (18)
 /// Emoji in text are drawn this big (~1.15 x the font size; the layout reserves 1.2 em).
 const EMOJI_SIZE: f32 = 17.0;
