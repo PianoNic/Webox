@@ -70,8 +70,7 @@ pub(super) fn run(src: &ShareSource, opts: Opts, out: &Out) -> Result<(), String
         let _ = windows::Win32::System::Com::CoInitializeEx(None, windows::Win32::System::Com::COINIT_MULTITHREADED);
         // windows-rs caches WinRT activation factories for the whole process: the MTA must outlive this thread, or the next
         // share would use a factory torn down with it
-        static MTA: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-        MTA.get_or_init(|| { let _ = windows::Win32::System::Com::CoIncrementMTAUsage(); });
+        crate::media::keep_com_loaded();
         MFStartup(MF_VERSION, MFSTARTUP_FULL).map_err(|e| format!("Media Foundation: {}", e.message()))?;
     }
     // 1 ms timer resolution while sharing: the default 15.6 ms makes the 30 fps pacing (33 ms) and the encoder waits coarse
