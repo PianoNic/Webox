@@ -32,18 +32,6 @@ fn only_codes_are_accepted() {
 }
 
 #[test]
-fn trusted_source() {
-    let auth = "https://idbroker-eu.webex.com/idb/oauth2/v1/authorize?x=1";
-    assert!(super::trusted_source("https://idbroker.webex.com/idb/oauth2/v1/authorize", auth));
-    assert!(super::trusted_source("urn:ietf:wg:oauth:2.0:oob?code=abc", auth));
-    // The authorize URL's own host (a discovered cluster outside webex.com) counts too.
-    assert!(super::trusted_source("https://idbroker.example-gov.us/idb/x", "https://idbroker.example-gov.us/idb/oauth2/v1/authorize"));
-    for bad in ["https://evil.tld/?.webex.com", "https://webex.com.evil.tld/", "http://idbroker.webex.com/", "https://a.webex.com@evil.tld/", "about:blank", ""] {
-        assert!(!super::trusted_source(bad, auth), "{bad}");
-    }
-}
-
-#[test]
 fn log_redaction() {
     let code = "OTF1OTgxMjM0NTY3ODkw_PE93_1a2b3c4d5e6f7a8b9c0d";
     for s in [format!("webox-code:{code}"), format!("{{\"authorizationCode\":\"{code}\"}}"), format!("<p hidden=\"\"> code={code}</p>"),

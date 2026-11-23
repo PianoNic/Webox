@@ -404,14 +404,14 @@ fn at_word(low: &str, word: &str) -> bool {
 
 /// Whether a message mentions me (`name` = my display name) or everybody: an @all mention in its rich text
 /// (`<spark-mention data-object-type="groupMention">`; a `<` in the sender's text always arrives escaped), else `@<name>`,
-/// `@<first name>`, `@all` (`@alle`) or `@here` as whole words in the plain text.
+/// `@<first name>`, `@all` (`@alle`) as whole words in the plain text.
 fn mentions_me(text: &str, html: &str, name: &str) -> bool {
     if name.is_empty() { return false; }
     let tags = html.to_lowercase();
     let all = tags.split("<spark-mention").skip(1).any(|t| { let tag = &t[..t.find('>').unwrap_or(t.len())]; tag.contains("groupmention") || tag.contains("data-group-type=\"all\"") });
     let (low, name) = (text.to_lowercase(), name.to_lowercase());
     let first = name.split_whitespace().next().unwrap_or("");
-    all || [name.as_str(), first, "all", "alle", "here"].iter().any(|w| at_word(&low, w))
+    all || [name.as_str(), first, "all", "alle"].iter().any(|w| at_word(&low, w))
 }
 
 #[cfg(test)]
@@ -421,7 +421,7 @@ mod tests {
     #[test]
     fn mentions_are_whole_words() {
         let me = "Alex Muster";
-        assert!(mentions_me("@all bitte lesen", "", me) && mentions_me("Hallo @here!", "", me) && mentions_me("(@Alex) schau mal", "", me));
+        assert!(mentions_me("@all bitte lesen", "", me) && mentions_me("(@Alex) schau mal", "", me));
         assert!(mentions_me("danke @alex muster.", "", me) && mentions_me("@alle: Meeting", "", me));
         // An e-mail address or a longer word is no mention.
         assert!(!mentions_me("schreib an x@allianz.com", "", me));

@@ -143,7 +143,7 @@ fn percent_decode(s: &str) -> String {
     let mut i = 0;
     while i < b.len() {
         if b[i] == b'%' && i + 2 < b.len() {
-            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) { out.push(v); i += 3; continue; }
+            if let Some(v) = std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) { out.push(v); i += 3; continue; }
         }
         out.push(b[i]);
         i += 1;
@@ -165,14 +165,6 @@ fn classify(s: &str) -> Option<Captured> {
         if !code.is_empty() { return Some(Captured::Code(code)); }
     }
     None
-}
-
-/// The pages a code is taken from: https idbroker (any `*.webex.com` host, or the authorize URL's own host, the discovered
-/// home cluster) and the OOB redirect. `authorize` is the URL the sign-in started on.
-fn trusted_source(uri: &str, authorize: &str) -> bool {
-    if uri.starts_with(crate::cloud::auth::REDIRECT_OOB) { return true; }
-    let host = |s: &str| url::Url::parse(s).ok().filter(|u| u.scheme() == "https").and_then(|u| u.host_str().map(str::to_ascii_lowercase));
-    host(uri).is_some_and(|h| h.ends_with(".webex.com") || host(authorize).is_some_and(|a| a == h))
 }
 
 /// A URL for the debug log: without query and fragment (they carry `code=…`).

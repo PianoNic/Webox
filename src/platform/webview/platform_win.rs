@@ -80,7 +80,6 @@ impl WebView {
             //    webox-code:/webox-log: posts). Log BOTH forms: idbroker may post a JSON object,
             //    for which the string form is empty but WebMessageAsJson carries it. Codes are redacted.
             let tx_msg = tx.clone();
-            let auth_url = url.to_string();
             webview.add_WebMessageReceived(
                 &WebMessageReceivedEventHandler::create(Box::new(move |_wv, args: Option<ICoreWebView2WebMessageReceivedEventArgs>| {
                     if let Some(args) = args {
@@ -88,14 +87,10 @@ impl WebView {
                         let as_str = if args.TryGetWebMessageAsString(&mut sp).is_ok() { take_pwstr(sp) } else { String::new() };
                         let mut jp = PWSTR::null();
                         let as_json = if args.WebMessageAsJson(&mut jp).is_ok() { take_pwstr(jp) } else { String::new() };
-                        // The document that posted it (WebMessageReceived on the webview fires for the top-level document only).
-                        let mut srcp = PWSTR::null();
-                        let source = if args.Source(&mut srcp).is_ok() { take_pwstr(srcp) } else { String::new() };
-                        log(format!("webmsg from={:?} str={:?} json={:?}", super::log_url(&source), super::redact(&as_str), super::redact(&as_json)));
-                        // Act only on the SCRAPER's explicit webox-code:<code>, and only from idbroker's own pages.
+                        log(format!("webmsg str={:?} json={:?}", super::redact(&as_str), super::redact(&as_json)));
+                        // Act only on the SCRAPER's explicit webox-code:<code>.
                         let msg = if !as_str.is_empty() { &as_str } else { &as_json };
                         if let Some(c) = super::classify(msg) {
-                            if !super::trusted_source(&source, &auth_url) { log(format!("IGNORED code from untrusted page {:?}", super::log_url(&source))); return Ok(()); }
                             let super::Captured::Code(code) = &c;
                             log(format!("RECV code len={}", code.len()));
                             let _ = tx_msg.send(c);

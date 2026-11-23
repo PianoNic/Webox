@@ -209,6 +209,9 @@ impl Session {
         let Some(c) = self.calls.cur.as_ref() else { return Ok(()) };
         let (url, id, incoming_pending) = (c.url.clone(), c.self_id.clone(), !c.outgoing && !c.answered);
         if !webex_host(&url) { self.end_call("left"); return Err("Ungültige Anruf-Adresse.".into()); }
+        // Local media stops first and whatever the server answers (stalled request, network error, back-off, expired
+        // token): the other side must never keep hearing us. The request error is still shown.
+        self.end_call(if incoming_pending { "declined" } else { "left" });
         let r = if incoming_pending {
             self.http("PUT", &format!("{url}/participant/decline"), Some(json!({"device": self.device_body()})))
         } else {
@@ -216,9 +219,6 @@ impl Session {
             self.http("PUT", &format!("{url}/participant/{id}/leave"), Some(leave))
         };
         dbg_conn(&format!("call: {} -> {}", if incoming_pending { "decline" } else { "leave" }, if r.is_ok() { "ok" } else { "failed" }));
-        // Local media stops whatever the server answered (network error, back-off, expired token): the other side must
-        // never keep hearing us. The request error is still shown.
-        self.end_call(if incoming_pending { "declined" } else { "left" });
         r.map(|_| ()).map_err(|e| format!("Auflegen fehlgeschlagen: {}", scrub(&e)))
     }
 

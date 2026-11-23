@@ -345,7 +345,7 @@ pub(super) fn html_job(html: &str, c: &Mc, me: &str, wrap: f32, sys: bool) -> Op
         match ev {
             Ev::Open(n, a) => {
                 // The first <blockquote>, at the very start and with an author line before the quoted text, is a reply's quote.
-                if n == "blockquote" && !d.reply_seen && d.b.job.text.is_empty() && d.quote_depth == 0 && has_author_line(&events[i + 1..]) {
+                if n == "blockquote" && !d.reply_seen && d.b.job.text.is_empty() && d.quote_depth == 0 && d.stack.len() < MAX_DEPTH && has_author_line(&events[i + 1..]) {
                     d.reply_seen = true;
                     d.author_pending = true;
                     d.open(n, a);

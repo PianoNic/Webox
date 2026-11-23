@@ -52,7 +52,7 @@ pub(crate) fn public_ip(ip: std::net::IpAddr) -> bool {
     fn v4(a: Ipv4Addr) -> bool {
         let o = a.octets();
         !(a.is_loopback() || a.is_private() || a.is_link_local() || a.is_unspecified() || a.is_multicast() || a.is_broadcast()
-            || o[0] == 0 || o[0] >= 240 || (o[0] == 100 && (o[1] & 0xC0) == 64))
+            || o[0] == 0 || o[0] >= 240 || (o[0] == 100 && (o[1] & 0xC0) == 64) || (o[0] == 198 && (o[1] & 0xFE) == 18))
     }
     match ip {
         IpAddr::V4(a) => v4(a),
@@ -225,7 +225,7 @@ fn fetch_page(url: &str) -> Option<(String, String)> {
 /// The preview image: jpg / png / gif only, at most MAX_IMAGE, and it must decode.
 fn fetch_image(img: &str) -> Option<Vec<u8>> {
     let (_, r) = get(img, "image/png,image/jpeg,image/gif,image/*;q=0.5")?;
-    read_capped(r, MAX_IMAGE).filter(|b| allowed_image(b) && image::load_from_memory(b).is_ok())
+    read_capped(r, MAX_IMAGE).filter(|b| allowed_image(b) && (!b.starts_with(b"GIF") || crate::assets::photos::gif_canvas_ok(b)) && image::load_from_memory(b).is_ok())
 }
 
 fn fetch(url: &str) -> Done {
