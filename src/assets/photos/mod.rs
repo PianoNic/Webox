@@ -49,6 +49,17 @@ fn upload(ctx: &egui::Context, name: String, img: &image::RgbaImage) -> egui::Te
 
 /// Hard stop for pathological GIFs (decoding is sequential and costs time even for frames we drop).
 const MAX_RAW_FRAMES: usize = 2000;
+/// Every frame composites the whole canvas, so the frame count is also capped by canvas size: at most this many canvas pixels in
+/// total (4096 x 4096 allows 128 frames, 500 x 500 the full MAX_RAW_FRAMES). A tiny GIF with a huge canvas and many 1 x 1 frames
+/// would otherwise keep a decode worker busy for minutes.
+const GIF_MAX_WORK_PIXELS: u64 = 2 * 1024 * 1024 * 1024;
+
+/// How many frames of this GIF are decoded at most (from the header's canvas size).
+pub(crate) fn gif_frame_budget(bytes: &[u8]) -> usize {
+    let Some(s) = bytes.get(6..10) else { return 0 };
+    let px = (u16::from_le_bytes([s[0], s[1]]) as u64 * u16::from_le_bytes([s[2], s[3]]) as u64).max(1);
+    ((GIF_MAX_WORK_PIXELS / px) as usize).clamp(1, MAX_RAW_FRAMES)
+}
 
 /// Largest GIF canvas (logical screen) we decode: ten header bytes can claim 65535 x 65535, and the decoder allocates the whole
 /// canvas (RGBA) before the first frame (~17 GB).
@@ -100,9 +111,10 @@ fn decode_anim(ctx: &egui::Context, key: &str, bytes: &[u8]) -> Option<Anim> {
         // kept one, so the loop duration stays right with at most MAX_FRAMES frames in memory.
         let mut buf: Vec<(image::RgbaImage, f32)> = vec![];
         let mut size = [0usize; 2];
+        let budget = gif_frame_budget(bytes);
         match frames {
             Ok(frames) => for (i, f) in frames.enumerate() {
-                if i >= MAX_RAW_FRAMES { break }
+                if i >= budget { break }
                 let Ok(f) = f else { break };
                 let (n, d) = f.delay().numer_denom_ms();
                 let delay = (n as f32 / d.max(1) as f32 / 1000.0).max(0.02);

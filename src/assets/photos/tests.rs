@@ -59,3 +59,12 @@ fn gif_with_a_huge_canvas_is_refused_before_decoding() {
     assert!(gif_canvas_ok(&gif(&[[1, 2, 3, 255]])) && gif_decoder(&gif(&[[1, 2, 3, 255]])).is_ok());
     assert!(!gif_canvas_ok(b"GIF89a")); // too short for a header
 }
+
+#[test]
+fn gif_frame_budget_shrinks_with_the_canvas() {
+    let gif = |w: u16, h: u16| { let mut b = b"GIF89a".to_vec(); b.extend(w.to_le_bytes()); b.extend(h.to_le_bytes()); b };
+    assert_eq!(gif_frame_budget(&gif(500, 500)), 2000);
+    assert_eq!(gif_frame_budget(&gif(4096, 4096)), 128);
+    assert_eq!(gif_frame_budget(&gif(0, 0)), 2000);
+    assert_eq!(gif_frame_budget(b"GIF8"), 0);
+}
