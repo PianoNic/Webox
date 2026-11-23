@@ -55,12 +55,24 @@ impl Session {
     pub(super) fn end_call(&mut self, why: &str) {
         self.emit(CallState::Ended(why.into()));
         if let Some(c) = self.calls.cur.take() { if let Some(m) = c.media { m.close(); } }
-        if let Some(e) = &self.calls.engine { e.io.set_call(false); e.close(); }
+        self.release_audio();
         self.calls.live.store(false, Ordering::SeqCst);
     }
 
+    /// Closes the call's audio devices (microphone included); every failed dial / answer ends here so the mic never stays open.
+    pub(super) fn release_audio(&mut self) {
+        if let Some(e) = &self.calls.engine { e.io.set_call(false); e.close(); }
+    }
+
     /// Opens the audio devices and the WebRTC peer and returns it with the ROAP OFFER SDP (ICE gathering complete).
+    /// On any failure the audio devices are closed again.
     pub(super) fn prepare_media(&mut self, c: &audio::Choice) -> Result<(Media, String), String> {
+        let r = self.open_media(c);
+        if r.is_err() { self.release_audio(); }
+        r
+    }
+
+    fn open_media(&mut self, c: &audio::Choice) -> Result<(Media, String), String> {
         // ICE binds only where the system routes to Webex (the locus host stands in for the media servers)
         let host = self.url("locus", "").split("://").nth(1).and_then(|r| r.split(['/', ':']).next()).unwrap_or_default().to_string();
         let engine = self.calls.engine.get_or_insert_with(audio::Engine::new);
@@ -94,7 +106,7 @@ impl Session {
             "localMedias": [{"localSdp": roap_local_sdp("OFFER", Some(&offer), 1, self.calls.muted)}]});
         let url = self.url("locus", "/loci/call?alternateRedirect=true");
         dbg_conn("call: POST /loci/call (with ROAP offer)");
-        let r = match self.http("POST", &url, Some(body)) { Ok(r) => r, Err(e) => { media.close(); if let Some(en) = &self.calls.engine { en.close(); } return Err(format!("Anruf fehlgeschlagen: {}", scrub(&e))); } };
+        let r = match self.http("POST", &url, Some(body)) { Ok(r) => r, Err(e) => { media.close(); self.release_audio(); return Err(format!("Anruf fehlgeschlagen: {}", scrub(&e))); } };
         self.adopt(&r, media, corr, true)
     }
 
@@ -111,7 +123,7 @@ impl Session {
         dbg_conn("call: POST /participant (answer, with ROAP offer)");
         let r = match self.http("POST", &format!("{url}/participant"), Some(body)) {
             Ok(r) => r,
-            Err(e) => { dbg_conn(&format!("call: answer failed: {}", scrub(&e))); media.close(); return Err(format!("Annehmen fehlgeschlagen: {}", scrub(&e))); }
+            Err(e) => { dbg_conn(&format!("call: answer failed: {}", scrub(&e))); media.close(); self.release_audio(); return Err(format!("Annehmen fehlgeschlagen: {}", scrub(&e))); }
         };
         self.adopt(&r, media, corr, false)
     }
@@ -123,6 +135,7 @@ impl Session {
         let lurl = if v.url.is_empty() { locus_url_of(r) } else { v.url.clone() };
         if lurl.is_empty() || !webex_host(&lurl) {
             media.close();
+            self.release_audio();
             let keys = r.as_object().map(|m| m.keys().cloned().collect::<Vec<_>>().join(",")).unwrap_or_default();
             return Err(format!("Anruf: unerwartete Antwort (keys: {keys})"));
         }
@@ -195,7 +208,10 @@ impl Session {
     pub(super) fn hang_up(&mut self) -> Result<(), String> {
         let Some(c) = self.calls.cur.as_ref() else { return Ok(()) };
         let (url, id, incoming_pending) = (c.url.clone(), c.self_id.clone(), !c.outgoing && !c.answered);
-        if !webex_host(&url) { self.calls.cur = None; return Err("Ungültige Anruf-Adresse.".into()); }
+        if !webex_host(&url) { self.end_call("left"); return Err("Ungültige Anruf-Adresse.".into()); }
+        // Local media stops first and whatever the server answers (stalled request, network error, back-off, expired
+        // token): the other side must never keep hearing us. The request error is still shown.
+        self.end_call(if incoming_pending { "declined" } else { "left" });
         let r = if incoming_pending {
             self.http("PUT", &format!("{url}/participant/decline"), Some(json!({"device": self.device_body()})))
         } else {
@@ -203,9 +219,7 @@ impl Session {
             self.http("PUT", &format!("{url}/participant/{id}/leave"), Some(leave))
         };
         dbg_conn(&format!("call: {} -> {}", if incoming_pending { "decline" } else { "leave" }, if r.is_ok() { "ok" } else { "failed" }));
-        r.map_err(|e| format!("Auflegen fehlgeschlagen: {}", scrub(&e)))?;
-        self.end_call(if incoming_pending { "declined" } else { "left" });
-        Ok(())
+        r.map(|_| ()).map_err(|e| format!("Auflegen fehlgeschlagen: {}", scrub(&e)))
     }
 
     /// Maps the locus + our media state to what the UI shows; Connected only with real media.

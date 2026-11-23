@@ -67,7 +67,7 @@ pub fn stage_copy(g: &Gif) -> Option<PathBuf> {
     if !src.is_file() { return None; }
     let mut name = crate::app::files::safe_name(&g.title);
     if !name.to_lowercase().ends_with(".gif") { name.push_str(".gif"); }
-    let dir = std::env::temp_dir().join("webox-staged").join(crate::jose::uuid());
+    let dir = crate::app::files::private_tmp("staged").ok()?.join(crate::jose::uuid());
     std::fs::create_dir_all(&dir).ok()?;
     let dst = dir.join(name);
     std::fs::copy(src, &dst).ok()?;
@@ -81,7 +81,7 @@ pub fn load_thumb_async(tx: std::sync::mpsc::Sender<crate::extras::giphy::Event>
 
 fn first_frame(bytes: &[u8]) -> Option<image::RgbaImage> {
     use image::AnimationDecoder;
-    let d = image::codecs::gif::GifDecoder::new(std::io::Cursor::new(bytes)).ok()?;
+    let d = crate::assets::photos::gif_decoder(bytes).ok()?; // canvas size checked, allocations limited
     d.into_frames().next()?.ok().map(|f| f.into_buffer())
 }
 
@@ -140,6 +140,7 @@ mod tests {
         assert!(star(&d, "big.gif", &big).is_err());
         assert!(star(&d, "x.png", b"\x89PNG\r\n\x1a\n0000").is_err());
         assert!(star(&d, "broken.gif", b"GIF89a\x01").is_err());
+        assert!(star(&d, "bomb.gif", &[b"GIF89a".as_slice(), &[0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0x3b]].concat()).is_err()); // 65535² canvas
         assert!(!d.exists() || std::fs::read_dir(&d).unwrap().next().is_none(), "nothing written");
     }
 

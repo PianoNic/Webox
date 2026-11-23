@@ -22,7 +22,7 @@ jobs:
       sha: ${{ steps.sync.outputs.sha }}
     steps:
       - name: Checkout main
-        uses: useblacksmith/checkout@v1
+        uses: useblacksmith/checkout@75c49b6ed30ce59336e9252425796cfcfac155f8 # v1
         with:
           ref: main
           fetch-depth: 0
@@ -73,11 +73,13 @@ jobs:
       contents: write
     steps:
       - name: Checkout the commit the version bump landed on
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.sync-version.outputs.sha }}
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
 
       # build.rs bakes these into the binary (sign-in and the GIF picker work out of the box).
       - name: Build
@@ -136,7 +138,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout the commit the version bump landed on
-        uses: useblacksmith/checkout@v1
+        uses: useblacksmith/checkout@75c49b6ed30ce59336e9252425796cfcfac155f8 # v1
         with:
           ref: ${{ needs.sync-version.outputs.sha }}
 
@@ -149,7 +151,9 @@ jobs:
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             libxkbcommon-x11-0 libgl1 libegl1 fonts-dejavu-core
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
 
       - name: Pack, checksum and upload
         env:

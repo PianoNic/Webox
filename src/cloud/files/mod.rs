@@ -253,7 +253,7 @@ impl Session {
             let r = fetch_to(&agent, &token, &scr, &key, &cancel, &part).and_then(|()| std::fs::rename(&part, &path).map_err(|e| e.to_string()));
             if r.is_err() { let _ = std::fs::remove_file(&part); }
             match r {
-                Ok(()) => { shared::download_phase(&key, Phase::Done); finish(&path, then); }
+                Ok(()) => { crate::app::files::mark_downloaded(&path); shared::download_phase(&key, Phase::Done); finish(&path, then); }
                 Err(_) if cancel.load(Ordering::SeqCst) => shared::download_phase(&key, Phase::Cancelled),
                 Err(e) => { dbg_conn(&format!("file download failed: {}", e.chars().take(80).collect::<String>())); shared::download_phase(&key, Phase::Failed(e)) }
             }
@@ -309,8 +309,8 @@ fn fetch_to(agent: &ureq::Agent, token: &str, scr: &Value, key: &str, cancel: &A
     let loc = st(scr, "loc");
     let plain_get = images::giphy_host(&loc);
     let url = if plain_get { loc.replacen("http://", "https://", 1) } else {
-        if !loc.starts_with("https://") || !images::token_host(&loc) { return Err("content location is not a Webex host".into()); }
-        let host = loc["https://".len()..].split('/').next().unwrap_or("");
+        // The endpoints request goes to the parsed host, the one the check looked at (not text cut out of `loc`).
+        let Some(host) = images::token_host_of(&loc) else { return Err("content location is not a Webex host".into()) };
         let ep = call(agent, token, "POST", &format!("https://{host}/v1/download/endpoints"), Some(json!({"endpoints": [loc]}))).map_err(|(c, _)| format!("endpoints http {c}"))?;
         Some(st(&ep["endpoints"], &loc)).filter(|u| !u.is_empty()).unwrap_or(loc.clone())
     };

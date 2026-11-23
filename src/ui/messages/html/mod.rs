@@ -20,6 +20,8 @@ pub(super) const MENTION: &str = "webox-mention:";
 enum Ev { Open(String, Vec<(String, String)>), Close(String), Text(String) }
 
 const VOID: [&str; 7] = ["br", "hr", "img", "wbr", "meta", "input", "link"];
+/// Open elements beyond this depth are ignored (see `Doc::open`).
+const MAX_DEPTH: usize = 32;
 
 fn decode_entities(s: &str) -> String {
     let (mut out, mut rest) = (String::with_capacity(s.len()), s);
@@ -38,12 +40,20 @@ fn decode_entities(s: &str) -> String {
     out + rest
 }
 
-fn tag_end(h: &str, from: usize) -> Option<usize> {
-    let mut quote: Option<u8> = None;
-    for (i, &b) in h.as_bytes().iter().enumerate().skip(from + 1) {
-        match (quote, b) { (Some(q), b) if b == q => quote = None, (Some(_), _) => {}, (None, b'"' | b'\'') => quote = Some(b), (None, b'>') => return Some(i), _ => {} }
+/// For every byte position p: the first `>` outside quotes when scanning from p with no quote open (usize::MAX = none), so the
+/// end of the tag that starts at `<` = i is `ends[i + 1]`. Computed once from the right: a scan from p reaches the same state as
+/// one from p + 1 (or from behind the closing quote), so a message full of `<` without `>` stays linear instead of rescanning
+/// to its end for every `<`.
+fn tag_ends(b: &[u8]) -> Vec<usize> {
+    let mut ends = vec![usize::MAX; b.len() + 1];
+    let (mut dq, mut sq) = (usize::MAX, usize::MAX); // the next `"` / `'` after p
+    for p in (0..b.len()).rev() {
+        let after = |q: usize| if q == usize::MAX { usize::MAX } else { ends[q + 1] }; // an unclosed quote hides every later `>`
+        let e = match b[p] { b'>' => p, b'"' => after(dq), b'\'' => after(sq), _ => ends[p + 1] };
+        ends[p] = e;
+        match b[p] { b'"' => dq = p, b'\'' => sq = p, _ => {} }
     }
-    None
+    ends
 }
 
 fn parse_tag(inner: &str) -> Option<(bool, String, Vec<(String, String)>, bool)> {
@@ -82,6 +92,7 @@ fn parse_tag(inner: &str) -> Option<(bool, String, Vec<(String, String)>, bool)>
 fn tokenize(h: &str) -> Vec<Ev> {
     let (mut ev, mut i, mut text_start) = (Vec::new(), 0usize, 0usize);
     let b = h.as_bytes();
+    let ends = tag_ends(b);
     let flush = |ev: &mut Vec<Ev>, a: usize, z: usize| { if z > a { ev.push(Ev::Text(decode_entities(&h[a..z]))); } };
     while i < b.len() {
         if b[i] == b'<' {
@@ -91,7 +102,7 @@ fn tokenize(h: &str) -> Vec<Ev> {
                 text_start = i;
                 continue;
             }
-            if let Some(end) = tag_end(h, i) {
+            if let Some(end) = Some(ends[i + 1]).filter(|&e| e != usize::MAX) {
                 let inner = &h[i + 1..end];
                 if inner.starts_with('!') || inner.starts_with('?') { flush(&mut ev, text_start, i); i = end + 1; text_start = i; continue; }
                 if let Some((closing, name, attrs, self_close)) = parse_tag(inner) {
@@ -238,6 +249,12 @@ impl Doc<'_> {
         let attr = |k: &str| attrs.iter().find(|a| a.0 == k).map(|a| a.1.as_str()).unwrap_or("");
         let saved = (name.to_string(), self.b.st.clone(), self.color);
         let block = |s: &mut Self| s.nls = s.nls.max(1);
+        // Deeper than MAX_DEPTH open elements: only a block's line break counts (no style, indent or list level, not on the
+        // stack), so nesting can't make every line and every close tag cost more and more.
+        if !VOID.contains(&name) && self.stack.len() >= MAX_DEPTH {
+            if matches!(name, "p" | "div" | "section" | "table" | "tr" | "ul" | "ol" | "li" | "blockquote" | "pre" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6") { block(self); }
+            return;
+        }
         match name {
             "br" => if self.absorb_br { self.absorb_br = false } else { self.nls = (self.nls + 1).min(3) },
             "hr" => block(self),
@@ -324,11 +341,12 @@ pub(super) fn html_job(html: &str, c: &Mc, me: &str, wrap: f32, sys: bool) -> Op
     b.job.wrap.max_width = wrap;
     let mut d = Doc { b, c, me, stack: Vec::new(), color: None, nls: 0, lists: Vec::new(), bullet: None, quote_depth: 0, quote_start: Vec::new(), quotes: Vec::new(), pre: 0, link: None, links: Vec::new(), author_pending: false, reply_depth: 0, reply_text: String::new(), reply_seen: false, absorb_br: false };
     let events = tokenize(html);
+    let mut author_checked = false; // the rest is scanned for an author line once, for the first candidate only
     for (i, ev) in events.iter().enumerate() {
         match ev {
             Ev::Open(n, a) => {
                 // The first <blockquote>, at the very start and with an author line before the quoted text, is a reply's quote.
-                if n == "blockquote" && !d.reply_seen && d.b.job.text.is_empty() && d.quote_depth == 0 && has_author_line(&events[i + 1..]) {
+                if n == "blockquote" && !d.reply_seen && d.b.job.text.is_empty() && d.quote_depth == 0 && d.stack.len() < MAX_DEPTH && !std::mem::replace(&mut author_checked, true) && has_author_line(&events[i + 1..]) {
                     d.reply_seen = true;
                     d.author_pending = true;
                     d.open(n, a);

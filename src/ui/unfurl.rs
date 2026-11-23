@@ -4,7 +4,8 @@
 //! enough info. The setting: "Show Link Previews" ("Link-Vorschau anzeigen"), on by default (settings key `show_link_previews`).
 //!
 //! The pipeline:
-//! - Only http(s) URLs to public host names are fetched (no IP literals, no localhost / intranet names).
+//! - Only http(s) URLs to public host names are fetched (no IP literals, no localhost / intranet names), every redirect hop
+//!   is checked the same way, and a name is connected to only when all its addresses are public (`public_ip`).
 //! - The page is downloaded by the client itself, with no Webex token and no cookies. Limits: MAX_PAGE, 6 s, 5 redirects.
 //! - The parser reads `<title`, `<meta ` and `<link ` up to `</head`, keys `og:title` `twitter:title` `title`,
 //!   `og:description` `twitter:description` `description`, `og:image` then `twitter:image`, `og:site_name` then
@@ -30,14 +31,52 @@ type Done = (String, Option<cloud::LinkPreview>, Option<Vec<u8>>);
 #[derive(Default)]
 pub(crate) struct Unfurl { cache: HashMap<String, Option<cloud::LinkPreview>>, pending: HashSet<String>, chan: Option<(Sender<Done>, Receiver<Done>)> }
 
-/// Only public web pages: http(s), a host name with a dot, no IP literal, no localhost / .local / .internal / .lan names.
-pub(crate) fn fetchable(u: &str) -> bool {
-    let rest = match u.strip_prefix("https://").or_else(|| u.strip_prefix("http://")) { Some(r) => r, None => return false };
-    let host = rest.split(['/', '?', '#']).next().unwrap_or("").rsplit('@').next().unwrap_or("");
-    let host = host.split(':').next().unwrap_or("").to_lowercase();
-    if host.is_empty() || !host.contains('.') || host.starts_with('[') { return false; }
-    if host.split('.').all(|p| p.chars().all(|c| c.is_ascii_digit())) { return false; }
-    !(host == "localhost" || [".local", ".internal", ".lan", ".localhost", ".corp", ".home"].iter().any(|s| host.ends_with(s)))
+/// Only public web pages: http(s), no user name / password, a host name with a dot, no IP literal, no localhost / .local /
+/// .internal / .lan names. Parsed the way the HTTP client parses it (`http://0x7f.1/` is 127.0.0.1, a `\` ends the host).
+pub(crate) fn fetchable(u: &str) -> bool { checked(u).is_some() }
+
+fn checked(u: &str) -> Option<url::Url> {
+    let p = url::Url::parse(u).ok()?;
+    if !matches!(p.scheme(), "http" | "https") || !p.username().is_empty() || p.password().is_some() { return None; }
+    let host = match p.host()? { url::Host::Domain(d) => d.trim_end_matches('.').to_ascii_lowercase(), _ => return None };
+    if host.is_empty() || !host.contains('.') || host.split('.').all(|l| l.chars().all(|c| c.is_ascii_digit())) { return None; }
+    if host == "localhost" || [".local", ".internal", ".lan", ".localhost", ".corp", ".home"].iter().any(|s| host.ends_with(s)) { return None; }
+    Some(p)
+}
+
+/// An address a preview may connect to: none of loopback, private, link-local, unspecified, multicast, broadcast,
+/// CGNAT 100.64/10, "this network" 0/8, reserved 240/4, IPv6 unique-local fc00::/7, link-local fe80::/10, site-local
+/// fec0::/10, and no IPv4 embedded in IPv6 (mapped, compatible, NAT64 64:ff9b::/96, 6to4 2002::/16) that is one of those.
+pub(crate) fn public_ip(ip: std::net::IpAddr) -> bool {
+    use std::net::{IpAddr, Ipv4Addr};
+    fn v4(a: Ipv4Addr) -> bool {
+        let o = a.octets();
+        !(a.is_loopback() || a.is_private() || a.is_link_local() || a.is_unspecified() || a.is_multicast() || a.is_broadcast()
+            || o[0] == 0 || o[0] >= 240 || (o[0] == 100 && (o[1] & 0xC0) == 64) || (o[0] == 198 && (o[1] & 0xFE) == 18))
+    }
+    match ip {
+        IpAddr::V4(a) => v4(a),
+        IpAddr::V6(a) => {
+            let s = a.segments();
+            let embedded = |hi: u16, lo: u16| Ipv4Addr::new((hi >> 8) as u8, hi as u8, (lo >> 8) as u8, lo as u8);
+            if let Some(m) = a.to_ipv4_mapped() { return v4(m); }
+            if s[..6].iter().all(|x| *x == 0) { return false; } // ::, ::1 and the deprecated IPv4-compatible ::a.b.c.d
+            if s[..6] == [0x64, 0xFF9B, 0, 0, 0, 0] && !v4(embedded(s[6], s[7])) { return false; }
+            if s[0] == 0x2002 && !v4(embedded(s[1], s[2])) { return false; }
+            !(a.is_multicast() || (s[0] & 0xFE00) == 0xFC00 || (s[0] & 0xFFC0) == 0xFE80 || (s[0] & 0xFFC0) == 0xFEC0)
+        }
+    }
+}
+
+/// The agent's DNS step: every address of the name must be public, else nothing is connected. The addresses checked here
+/// are the ones connected to (no second lookup that a rebinding DNS server could answer differently).
+fn public_addrs(netloc: &str) -> std::io::Result<Vec<std::net::SocketAddr>> {
+    use std::net::ToSocketAddrs;
+    let addrs: Vec<std::net::SocketAddr> = netloc.to_socket_addrs()?.collect();
+    if addrs.is_empty() || addrs.iter().any(|a| !public_ip(a.ip())) {
+        return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "link preview: not a public address"));
+    }
+    Ok(addrs)
 }
 
 /// HTML character references in attribute values / <title>: numeric (&#183; &#xB7;) and the common named ones.
@@ -158,25 +197,35 @@ fn read_capped(r: ureq::Response, cap: u64) -> Option<Vec<u8>> {
 }
 
 fn agent() -> ureq::Agent {
-    // A browser user agent, as some sites serve their meta tags only to browsers.
-    ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(6)).redirects(MAX_REDIRECTS)
+    // A browser user agent, as some sites serve their meta tags only to browsers. Redirects are followed by `get`, which
+    // checks every hop; the resolver refuses non-public addresses.
+    ureq::AgentBuilder::new().timeout(std::time::Duration::from_secs(6)).redirects(0).resolver(public_addrs)
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36").build()
+}
+
+/// GET `url`, following at most MAX_REDIRECTS redirects by hand with every hop `fetchable`: (final URL, response).
+fn get(url: &str, accept: &str) -> Option<(String, ureq::Response)> {
+    let agent = agent();
+    let mut at = checked(url)?;
+    for _ in 0..=MAX_REDIRECTS {
+        let r = agent.get(at.as_str()).set("Accept", accept).call().ok()?;
+        if !(300..400).contains(&r.status()) { return Some((at.to_string(), r)); }
+        at = checked(at.join(r.header("Location")?).ok()?.as_str())?;
+    }
+    None
 }
 
 /// The page behind `url` (following redirects, html only, at most MAX_PAGE): (final URL, html).
 fn fetch_page(url: &str) -> Option<(String, String)> {
-    let r = agent().get(url).set("Accept", "text/html,application/xhtml+xml").call().ok()?;
-    let fin = r.get_url().to_string();
-    if !r.content_type().contains("html") || !fetchable(&fin) { return None; }
+    let (fin, r) = get(url, "text/html,application/xhtml+xml")?;
+    if !r.content_type().contains("html") { return None; }
     Some((fin, String::from_utf8_lossy(&read_capped(r, MAX_PAGE)?).into_owned()))
 }
 
 /// The preview image: jpg / png / gif only, at most MAX_IMAGE, and it must decode.
 fn fetch_image(img: &str) -> Option<Vec<u8>> {
-    if !fetchable(img) { return None; }
-    let r = agent().get(img).set("Accept", "image/png,image/jpeg,image/gif,image/*;q=0.5").call().ok()?;
-    if !fetchable(r.get_url()) { return None; }
-    read_capped(r, MAX_IMAGE).filter(|b| allowed_image(b) && image::load_from_memory(b).is_ok())
+    let (_, r) = get(img, "image/png,image/jpeg,image/gif,image/*;q=0.5")?;
+    read_capped(r, MAX_IMAGE).filter(|b| allowed_image(b) && (!b.starts_with(b"GIF") || crate::assets::photos::gif_canvas_ok(b)) && image::load_from_memory(b).is_ok())
 }
 
 fn fetch(url: &str) -> Done {
@@ -225,8 +274,36 @@ mod tests {
 
     #[test]
     fn only_public_web_pages_are_fetched() {
-        for ok in ["https://gitlab.com/x", "http://www.example.org/a?b", "https://user@sub.example.com:8443/p"] { assert!(fetchable(ok), "{ok}"); }
-        for no in ["file:///c:/x", "https://localhost/x", "http://10.0.0.1/x", "https://intranet/x", "https://nas.local/", "https://[::1]/", "javascript:alert(1)", "https://printer.lan"] { assert!(!fetchable(no), "{no}"); }
+        for ok in ["https://gitlab.com/x", "http://www.example.org/a?b", "https://sub.example.com:8443/p", "https://WWW.Example.ORG/"] { assert!(fetchable(ok), "{ok}"); }
+        for no in ["file:///c:/x", "https://localhost/x", "http://10.0.0.1/x", "https://intranet/x", "https://nas.local/", "https://[::1]/", "javascript:alert(1)", "https://printer.lan",
+            "https://user@sub.example.com/p", "https://u:p@example.com/", "http://0x7f.1/", "http://2130706433/", "https://127.0.0.1\\@evil.com/", "http://169.254.169.254/latest",
+            "https://localhost./", "https://nas.local./", "ftp://example.com/"] { assert!(!fetchable(no), "{no}"); }
+    }
+
+    #[test]
+    fn only_public_addresses_are_connected_to() {
+        let ip = |s: &str| s.parse::<std::net::IpAddr>().unwrap();
+        for ok in ["93.184.216.34", "1.1.1.1", "100.63.255.255", "100.128.0.0", "2606:4700:4700::1111", "::ffff:8.8.8.8", "64:ff9b::808:808"] { assert!(public_ip(ip(ok)), "{ok}"); }
+        for no in ["127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "0.0.0.0", "0.1.2.3", "224.0.0.1", "255.255.255.255", "100.64.0.1",
+            "100.127.255.255", "240.0.0.1", "::", "::1", "::127.0.0.1", "fc00::1", "fd12:3456::1", "fe80::1", "fec0::1", "ff02::1", "::ffff:127.0.0.1",
+            "::ffff:169.254.169.254", "::ffff:10.0.0.1", "64:ff9b::7f00:1", "2002:c0a8:101::1"] { assert!(!public_ip(ip(no)), "{no}"); }
+    }
+
+    /// The resolver refuses literals with a non-public address before any connection (IP literals, no DNS lookup).
+    #[test]
+    fn resolver_refuses_private_addresses() {
+        for n in ["127.0.0.1:80", "[::1]:443", "169.254.169.254:80", "[::ffff:10.0.0.1]:443"] { assert!(public_addrs(n).is_err(), "{n}"); }
+        assert_eq!(public_addrs("1.1.1.1:443").unwrap(), vec!["1.1.1.1:443".parse::<std::net::SocketAddr>().unwrap()]);
+    }
+
+    /// A redirect target is checked like the link: relative hops resolve against the hop before, private targets stop.
+    #[test]
+    fn redirect_hops_are_checked() {
+        let at = checked("https://www.example.org/a/b").unwrap();
+        assert_eq!(checked(at.join("/c?d").unwrap().as_str()).map(|u| u.to_string()).as_deref(), Some("https://www.example.org/c?d"));
+        for loc in ["http://169.254.169.254/", "http://localhost:8080/", "//10.0.0.1/x", "file:///etc/passwd", "https://u@example.com/"] {
+            assert!(at.join(loc).ok().and_then(|u| checked(u.as_str())).is_none(), "{loc}");
+        }
     }
 
     const DESC: &str = "A small made-up tool that copies files between two example machines over the network";

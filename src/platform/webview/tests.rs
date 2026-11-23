@@ -23,3 +23,22 @@ fn capture_true_mode() {
     assert_eq!(super::capture("https://x/?country_code=CH&error_code=invalid_request"), None);
     assert_eq!(super::capture("no code here"), None);
 }
+
+#[test]
+fn only_codes_are_accepted() {
+    // A ready-made token from a page is never taken (no PKCE behind it); the code marker still is.
+    assert!(super::classify("webox-token:{\"access_token\":\"x\"}").is_none());
+    assert!(matches!(super::classify("webox-code:ABCDEFGHIJKL"), Some(super::Captured::Code(c)) if c == "ABCDEFGHIJKL"));
+}
+
+#[test]
+fn log_redaction() {
+    let code = "OTF1OTgxMjM0NTY3ODkw_PE93_1a2b3c4d5e6f7a8b9c0d";
+    for s in [format!("webox-code:{code}"), format!("{{\"authorizationCode\":\"{code}\"}}"), format!("<p hidden=\"\"> code={code}</p>"),
+              format!("x?code={}", code.replace('_', "%5F"))] {
+        let r = super::redact(&s);
+        assert!(!r.contains(code) && !r.contains("OTF1OTgxMjM0NTY3ODkw"), "{r}");
+    }
+    assert_eq!(super::redact("webox-log:page:{\"bodyLen\":12}"), "webox-log:page:{\"bodyLen\":12}");
+    assert_eq!(super::log_url("https://idbroker.webex.com/cb?code=abc#webox-code:abc"), "https://idbroker.webex.com/cb");
+}

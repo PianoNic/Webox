@@ -205,6 +205,17 @@ pub fn policy_block_reason() -> String {
     format!("blockiert: Schutz vor Side-Loading ist aktiv (Richtlinie {}); nur Plugins neben Webox werden geladen", crate::system::SIDE_LOADING_POLICY)
 }
 
+/// The plugin folder of the Linux package layout, relative to the program's folder (`<prefix>/bin`).
+const PACKAGE_PLUGINS: &str = "../lib/collabhost/plugins";
+
+/// Whether `dir` is one of the program's own plugin folders ("shipped": loaded even under the side-loading policy): inside the
+/// program's folder, or (not on Windows) the package's `<prefix>/lib/collabhost/plugins`. Both sides are resolved first (`..`,
+/// links); a folder that can't be resolved is not shipped.
+fn is_shipped(dir: &Path, exe_dir: &Path) -> bool {
+    let (Ok(d), Ok(x)) = (dir.canonicalize(), exe_dir.canonicalize()) else { return false };
+    d.starts_with(&x) || (cfg!(not(windows)) && exe_dir.join(PACKAGE_PLUGINS).canonicalize().is_ok_and(|l| l == d))
+}
+
 impl Plugins {
     pub fn new(config: &Path) -> Self { Self::with_root(config, store::install_root(config)) }
 
@@ -212,7 +223,9 @@ impl Plugins {
         let mut dirs = vec![config.join("plugins")];
         if let Some(exe_dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf)) {
             dirs.push(exe_dir.join("plugins"));
-            dirs.push(exe_dir.join("../lib/collabhost/plugins")); // Nix / Linux package layout
+            // Nix / Linux package layout (<prefix>/bin/webox). Not on Windows: next to a portable C:\<dir>\webox.exe that would be
+            // C:\lib\collabhost\plugins, a folder any local user can create.
+            if cfg!(not(windows)) { dirs.push(exe_dir.join(PACKAGE_PLUGINS)); }
         }
         if let Some(extra) = std::env::var_os("COLLABHOST_PLUGIN_PATH") { dirs.extend(std::env::split_paths(&extra)); }
         let _ = std::fs::create_dir_all(&dirs[0]);
@@ -251,15 +264,15 @@ impl Plugins {
         for inst in store::read(&self.install_root) {
             let mut e = Self::entry(store::path_of(&self.install_root, &inst), &inst.pkg, &state, Some(inst.clone()));
             seen.insert(stem_of(&e.file));
+            // Loading runs the library's code: a switched-off plugin is listed from its install record and loaded when switched on.
             if protect { e.error = Some(policy_block_reason()); e.enabled = false; }
-            else {
-                match store::verify(&self.install_root, &inst) { Ok(_) => self.load(&mut e, &inst.pkg), Err(x) => { e.error = Some(x); e.enabled = false; } }
-            }
+            else if let Err(x) = store::verify(&self.install_root, &inst) { e.error = Some(x); e.enabled = false; }
+            else if e.enabled { self.load(&mut e, &inst.pkg) }
             versions.push(format!("{} version: {}", e.file.display(), inst.version));
             self.list.push(e);
         }
         for dir in self.dirs.clone().iter() {
-            let shipped = exe_dir.as_ref().is_some_and(|x| dir.starts_with(x));
+            let shipped = exe_dir.as_ref().is_some_and(|x| is_shipped(dir, x));
             let Ok(rd) = std::fs::read_dir(dir) else { continue };
             let mut files: Vec<PathBuf> = rd.flatten().map(|e| e.path())
                 .filter(|p| p.is_file() && p.extension().is_some_and(|x| x == ext)).collect();
@@ -272,7 +285,8 @@ impl Plugins {
                     // With the side-loading policy on, nothing side-loaded runs.
                     e.error = Some(policy_block_reason());
                     e.enabled = false;
-                } else {
+                } else if e.enabled {
+                    // Switched off: listed by its file name only, loaded when switched on (loading runs its code).
                     self.load(&mut e, &stem);
                 }
                 versions.push(format!("{} version: {}", e.file.display(), if e.version.is_empty() { "unknown" } else { &e.version }));
@@ -326,6 +340,21 @@ impl Plugins {
     }
 
     pub fn set_enabled(&mut self, i: usize, on: bool) {
+        // Not loaded yet (switched off at start): load it now, which starts it. A blocked or broken one (error set) stays off;
+        // a repository install is hashed again first.
+        let e = &self.list[i];
+        if on && !e.enabled && e.loaded.is_none() && !e.builtin && e.error.is_none() {
+            let mut e = self.list.remove(i);
+            e.enabled = true;
+            let key = e.key.clone();
+            match e.source.as_ref().map(|s| store::verify(&self.install_root, s)) {
+                Some(Err(x)) => { e.error = Some(x); e.enabled = false; }
+                _ => self.load(&mut e, &key),
+            }
+            self.list.insert(i, e);
+            self.save_state();
+            return;
+        }
         let e = &mut self.list[i];
         if let Some(l) = &e.loaded {
             if on && !e.enabled { push_settings(l, &e.settings); (l.c.start)(l.inst, &*l.host) } else if !on && e.enabled { (l.c.stop)(l.inst) }
@@ -701,8 +730,11 @@ mod tests {
         let Some(built) = crate::extras::plugin_repo::tests::built(&name) else { eprintln!("build the workspace first; skipping"); return };
         std::fs::copy(&built, plug.join(&name)).unwrap();
         let mut p = super::Plugins::with_root(&dir, dir.join("installed"));
-        let i = p.list.iter().position(|e| e.name == "Slash Commands").expect("plugin listed");
+        // Switched off (the default for a loose file): listed by its file name, not loaded.
+        let i = p.list.iter().position(|e| e.key == "collabhost_slash_commands").expect("plugin listed");
+        assert!(p.list[i].loaded.is_none() && !p.list[i].enabled && p.list[i].name == "collabhost_slash_commands");
         p.set_enabled(i, true);
+        assert_eq!(p.list[i].name, "Slash Commands", "loaded when switched on");
         assert_eq!(p.command("/shrug hi").as_deref(), Some("hi \u{af}\\_(\u{30c4})_/\u{af}"));
         assert_eq!(p.on_send("ok :)").as_deref(), Some("ok \u{1f642}"));
         assert_eq!(p.command("/nope"), None);
@@ -710,5 +742,45 @@ mod tests {
         assert!(p.out.lock().unwrap().toasts.is_empty());
         let _ = p.command("/count");
         assert!(!p.out.lock().unwrap().toasts.is_empty());
+    }
+
+    #[test]
+    fn switched_off_plugins_are_not_loaded() {
+        if crate::system::side_loading_protection() { eprintln!("side-loading policy on; skipping"); return; }
+        let dir = std::env::temp_dir().join(format!("collabhost-test-off-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let plug = dir.join("plugins");
+        std::fs::create_dir_all(&plug).unwrap();
+        // Not a library at all: any attempt to load it reports an error.
+        std::fs::write(plug.join(format!("broken.{}", std::env::consts::DLL_EXTENSION)), b"not a library").unwrap();
+        let mut p = super::Plugins::with_root(&dir, dir.join("installed"));
+        let i = p.list.iter().position(|e| e.key == "broken").expect("listed");
+        assert!(p.list[i].error.is_none() && p.list[i].loaded.is_none() && !p.list[i].enabled, "off: never opened");
+        assert_eq!(p.list[i].name, "broken");
+        p.set_enabled(i, true);
+        let e = &p.list[i];
+        assert!(e.error.is_some() && !e.enabled && e.key == "broken", "on: loaded (and refused) in place");
+        // Switched on in plugins.json: loaded at start.
+        std::fs::write(dir.join("plugins.json"), r#"{"broken": true}"#).unwrap();
+        p.rescan();
+        assert!(p.list.iter().find(|e| e.key == "broken").unwrap().error.is_some());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_the_programs_own_folders_are_shipped() {
+        let root = std::env::temp_dir().join(format!("collabhost-test-shipped-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (bin, lib, other) = (root.join("prefix/bin"), root.join("prefix/lib/collabhost/plugins"), root.join("lib/collabhost/plugins"));
+        for d in [&bin.join("plugins"), &lib, &other] { std::fs::create_dir_all(d).unwrap(); }
+        assert!(super::is_shipped(&bin.join("plugins"), &bin));
+        assert!(super::is_shipped(&bin.join("plugins/../plugins"), &bin));
+        // `..` is resolved: a folder above the program's folder is not inside it.
+        assert!(!super::is_shipped(&bin.join("../../lib/collabhost/plugins"), &bin));
+        assert!(!super::is_shipped(&root.join("prefix/bin/../.."), &bin));
+        // The package layout <prefix>/bin + <prefix>/lib/collabhost/plugins (Linux only; on Windows that folder is not even searched).
+        assert_eq!(super::is_shipped(&bin.join(super::PACKAGE_PLUGINS), &bin), cfg!(not(windows)));
+        assert!(!super::is_shipped(&bin.join("missing"), &bin), "unresolvable: not shipped");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
