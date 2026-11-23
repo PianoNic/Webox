@@ -9,8 +9,6 @@ result-*
 shots/
 *.log
 
-# Local secrets (see secrets.example.toml)
-secrets.toml
 .env
 
 # Files from the official Webex client, kept locally only (see docs/cisco-assets.md)
