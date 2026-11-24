@@ -173,13 +173,17 @@ impl App {
     }
     pub(super) fn page_call_dock(&mut self, ui: &mut egui::Ui, t: &Th, ) {
         section(ui, t, "Anruf-Dock", "Über das Anruf-Dock erhalten Sie direkt schnellen Zugriff auf Webex Calling-Funktionen wie das Multi-Anruf-Fenster, Voicemail, Anrufprotokoll, Einstellungen und mehr.", true, |ui| {
-            self.pcheck(ui, t, "calling_dock", true, "Anruf-Dock aktivieren");
+            // Off: the dock no longer opens by itself during a call (call_win/call.rs); Strg+Umschalt+X still opens it.
+            self.pcheck(ui, t, super::DOCK_ENABLED, true, "Anruf-Dock aktivieren");
         });
         section(ui, t, "Fenstereinstellungen", "", false, |ui| {
-            self.pcheck(ui, t, "dock_stay_on_top", false, "Anruf-Dock im Vordergrund beibehalten");
+            // The key the dock reads for its window level (= the dock's pin button).
+            self.pcheck(ui, t, super::DOCK_KEEP_IN_FRONT, false, "Anruf-Dock im Vordergrund beibehalten");
         });
+        // The radio group is disabled while the dock is off (SettingsCallingDockPage.qml: `enabled: phoneWidgetOption.isChecked`).
+        let dock_on = self.sb(super::DOCK_ENABLED, true);
         section(ui, t, "Optionen für die Benachrichtigung bei eingehendem Anruf", "Wählen Sie aus, wo Ihre Benachrichtigungen für eingehende Anrufe priorisiert werden.", false, |ui| {
-            self.pradio(ui, t, "dock_incoming", "default", &[("default", "Standard-Anrufbenachrichtigung verwenden"), ("front", "Anruf-Dock für eingehende Anrufe im Vordergrund anzeigen")]);
+            ui.add_enabled_ui(dock_on, |ui| { self.pradio(ui, t, "dock_incoming", "default", &[("default", "Standard-Anrufbenachrichtigung verwenden"), ("front", "Anruf-Dock für eingehende Anrufe im Vordergrund anzeigen")]); });
         });
     }
     pub(super) fn page_call_block(&mut self, ui: &mut egui::Ui, t: &Th, now: f64) {

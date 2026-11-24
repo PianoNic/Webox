@@ -48,7 +48,10 @@ const TITLE: &str = "Webox toast";
 const MENU_TITLE: &str = "Webox tray menu";
 
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub(crate) enum Kind { Message, Mention, MeetingReminder, MessageReminder, CallSummary, Recording, Whiteboard, Info }
+pub(crate) enum Kind { Message, Mention, MeetingReminder, MessageReminder, CallSummary, Recording, Whiteboard, Info, MissedCall }
+
+/// `Toast::space` of a missed-call toast: clicking it opens the "Anrufe" tab instead of a space.
+pub(crate) const OPEN_CALLS: &str = "webox:calls";
 
 /// Colour of the highlighted lead-in of a preview (`wx-incomingMessageToast-replyLabel` / `-fileLabel`, `message-bodyText-mention-self-text`).
 #[derive(Clone, Copy, PartialEq)]
@@ -85,6 +88,7 @@ impl Toast {
         match self.kind {
             Kind::Message | Kind::Mention => "chat-filled", Kind::MeetingReminder => "calendar-month-filled", Kind::MessageReminder => "alarm-filled",
             Kind::CallSummary => "sparkle-filled", Kind::Recording => "play-filled", Kind::Whiteboard => "whiteboard-content-filled", Kind::Info => "info-circle-filled",
+            Kind::MissedCall => "call-missed-filled",
         }
     }
 }

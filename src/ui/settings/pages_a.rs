@@ -77,7 +77,7 @@ impl App {
             // Only the computer's time zone is offered.
             self.pcombo(ui, t, "time_zone", "system", &[("system", "Zeitzone des Computers verwenden")], 472.0);
         });
-        section(ui, t, "Multitasking", "", false, |ui| { self.pcheck(ui, t, "multitasking", false, "Mein(en) Webex-Anruf oder -Meeting automatisch in einem unverankerten Minifenster anzeigen, wenn es von anderen Apps verdeckt wird."); });
+        section(ui, t, "Multitasking", "", false, |ui| { self.pcheck(ui, t, super::DOCK_AUTO_COVERED /* read by the dock */, false, "Mein(en) Webex-Anruf oder -Meeting automatisch in einem unverankerten Minifenster anzeigen, wenn es von anderen Apps verdeckt wird."); });
         // Webox-specific: language, close-to-tray, browser helper, account.
         section(ui, t, "Sprache", "Sprache der Oberfläche.", false, |ui| { // "Sprache" = pack word
             self.pcombo(ui, t, "language", "system", &[("system", "Systemstandard"), ("de", "Deutsch"), ("en", "English")], 280.0);
