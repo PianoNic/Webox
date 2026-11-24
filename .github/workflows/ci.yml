@@ -5,11 +5,6 @@ on:
   push:
     branches: [main]
   workflow_call:
-    inputs:
-      nix:
-        description: Also run the Nix build (off for the release, since CI already built that commit)
-        type: boolean
-        default: true
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -75,7 +70,7 @@ jobs:
     timeout-minutes: 90
     # buildRustPackage rebuilds all crates in one derivation (12-18 min) and Linux CI already compiles the same code: on pull
     # requests only when the Nix packaging or the dependencies change; always on main; never as a release gate.
-    if: ${{ inputs.nix != false }}
+    if: ${{ github.event_name != 'release' }}
     steps:
       - uses: useblacksmith/checkout@75c49b6ed30ce59336e9252425796cfcfac155f8 # v1
         with:

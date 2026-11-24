@@ -178,9 +178,10 @@ fn test_picture_round_trip() {
     aus.extend(collect(&s, 0.4, || {}).unwrap_or_default());
     s.stop();
     check_stream(&aus, (w, h));
-    // the rate once running (opening a GPU encoder takes a moment)
+    // the rate once running (opening a GPU encoder takes a moment). At least half of it: CI runners have no GPU and encode in
+    // software at ~20 fps in a debug build; a broken pipeline drops far lower.
     let secs = (aus.last().unwrap().pts_us - aus[0].pts_us) as f64 / 1e6;
-    assert!(secs > 0.5 && aus.len() as f64 >= secs * 30.0 * 0.85, "{} pictures in {secs:.2} s at 30 fps", aus.len());
+    assert!(secs > 0.5 && aus.len() as f64 >= secs * 30.0 * 0.5, "{} pictures in {secs:.2} s at 30 fps", aus.len());
     assert!(aus[asked..asked + 3.min(aus.len() - asked)].iter().any(|a| a.keyframe), "a key frame follows the request");
     assert!(aus[1..asked].iter().all(|a| !a.keyframe), "no key frames without a request (keyframe_secs 0)");
     let Some((info, frames)) = decode(&aus) else { return };

@@ -10,8 +10,6 @@ jobs:
   ci:
     name: Gates
     uses: ./.github/workflows/ci.yml
-    with:
-      nix: false
 
   sync-version:
     name: Bump version to the release tag
