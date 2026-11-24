@@ -84,7 +84,8 @@ jobs:
 
       # Which media tests really ran here (VideoToolbox / AVFoundation) and which skipped for want of a desktop or encoder.
       - name: Media backends on this runner
-        run: cargo test --locked -p webox --bin webox media:: -- --nocapture 2>&1 | grep -E "SKIPPED|encoder:|decoder:|test result" || true
+        run: |
+          cargo test --locked -p webox --bin webox media:: -- --nocapture 2>&1 | grep -E "SKIPPED|encoder:|decoder:|test result" || true
 
       # docs/MACOS.md: the app starts, renders the sample data and quits; the picture is kept as an artifact.
       - name: Start-up screenshot
