@@ -85,6 +85,21 @@ fn older_updates_are_ignored() {
     assert!(!b.accept(&up("active", Order::StatusTime(999)), 0));
 }
 
+/// Snapshot and live events have separate orders; one whose last activity is older than an applied one is dropped (the
+/// desktop client's "PresenceIgnored"), so a late snapshot can't bring back yesterday's "inactive". No activity time: kept.
+#[test]
+fn an_older_last_activity_is_ignored_across_orders() {
+    let mut b = Book::default();
+    let live = Update { uuid: U.into(), status: Some("active".into()), last: 2_000, order: Order::Sequence(7), ..Default::default() };
+    assert!(b.accept(&live, 0));
+    let snapshot = Update { uuid: U.into(), status: Some("inactive".into()), last: 1_000, order: Order::StatusTime(5), ..Default::default() };
+    assert!(!b.accept(&snapshot, 0));
+    let no_time = Update { uuid: U.into(), status: Some("call".into()), last: 0, order: Order::Sequence(8), ..Default::default() };
+    assert!(b.accept(&no_time, 0));
+    let newer = Update { uuid: U.into(), status: Some("inactive".into()), last: 3_000, order: Order::StatusTime(6), ..Default::default() };
+    assert!(b.accept(&newer, 0));
+}
+
 /// "In einem Anruf" with an end; the call ends without an event → once the end has passed the person is due for a
 /// snapshot again (then at most once a minute); an "active" update clears it.
 #[test]

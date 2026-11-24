@@ -5,6 +5,9 @@
 use super::*;
 use std::io::Read;
 
+mod subs;
+pub use subs::{evicted, subscribe_body, Subs};
+
 /// Picture size asked from the avatar service (px). 192 covers the 96 pt profile card at 200 %, so large avatars are not
 /// upscaled. `AVATAR_SIZE_FALLBACK` is used when the answer has no entry for the larger size.
 pub const AVATAR_SIZE: u32 = 192;
@@ -137,17 +140,21 @@ pub const PRESENCE_RECHECK_MS: i64 = 60_000;
 /// status (call, meeting, DND …) ends. The snapshot is asked again once the status's own end (`expiresTime`) has passed
 /// without an update, so a call that ended without an event doesn't stay forever.
 #[derive(Default, Debug)]
-pub struct Book { seq: HashMap<String, i64>, time: HashMap<String, i64>, ends: HashMap<String, i64> }
+pub struct Book { seq: HashMap<String, i64>, time: HashMap<String, i64>, ends: HashMap<String, i64>, last: HashMap<String, i64> }
 
 impl Book {
-    /// Whether `u` is newer than what was applied; remembers its order and the status's end.
+    /// Whether `u` is newer than what was applied; remembers its order and the status's end. Like the desktop client
+    /// ("PresenceIgnored"), an update whose last activity is older than one already applied is dropped: the snapshot and
+    /// the live events have separate orders, and an older record must not bring back an older state.
     pub fn accept(&mut self, u: &Update, now: i64) -> bool {
+        if u.last > 0 && self.last.get(&u.uuid).is_some_and(|l| u.last < *l) { return false }
         let fresh = match u.order {
             Order::Sequence(n) => { let e = self.seq.entry(u.uuid.clone()).or_insert(0); if n <= *e { false } else { *e = n; true } }
             Order::StatusTime(t) => { let e = self.time.entry(u.uuid.clone()).or_insert(0); if t < *e { false } else { *e = t; true } }
             Order::None => true,
         };
         if !fresh { return false }
+        if u.last > 0 { self.last.insert(u.uuid.clone(), u.last); }
         if let Some(status) = &u.status {
             match u.until.filter(|_| !matches!(status.as_str(), "" | "active" | "inactive")) {
                 Some(end) => { self.ends.insert(u.uuid.clone(), end.max(now + if end <= now { PRESENCE_RECHECK_MS } else { 0 })); }
@@ -228,15 +235,32 @@ impl Session {
         want
     }
 
-    /// Opens the live presence subscription (usersub, needs the device URL) so mercury delivers
-    /// `apheleia.subscription_update` events. Read-only: it only asks to be told about these contacts.
-    pub(super) fn subscribe_presence(&self, people: &[Person]) {
-        let ids: Vec<String> = people.iter().filter_map(|p| self.uuid_of(p)).collect();
+    /// Opens / renews the live presence subscription (usersub, needs the device URL) so mercury delivers
+    /// `usersub.userstate` events, the way the desktop client asks (people/subs.rs): ttl 600, and `refresh` for contacts
+    /// new to the subscription or whose subscription lapsed, so their current state is pushed again. Read-only: it only
+    /// asks to be told about these contacts.
+    pub(super) fn subscribe_presence(&mut self, people: &[Person]) {
+        let mut ids: Vec<String> = people.iter().filter_map(|p| self.uuid_of(p)).collect();
+        ids.sort();
+        ids.dedup();
         for chunk in ids.chunks(PRESENCE_BATCH) {
+            let now = now_ms();
+            let users: Vec<(String, bool)> = chunk.iter().map(|u| (u.clone(), self.subs.refresh(u, now))).collect();
+            let refresh = users.iter().filter(|(_, r)| *r).count();
             let url = self.url("usersub", "/subscribe");
-            let r = with_bearer(self.agent.post(&url), &url, &self.token)
-                .set("Cisco-Device-URL", &self.device).set("TrackingID", &format!("CLIENT_{}", jose::uuid())).send_json(json!({"contactIds": chunk}));
-            match r { Ok(r) => dbg_conn(&format!("usersub subscribe {} contacts -> {}", chunk.len(), r.status())), Err(e) => dbg_conn(&format!("usersub subscribe failed: {}", e.to_string().chars().take(100).collect::<String>())) }
+            let post = |body: Value| with_bearer(self.agent.post(&url), &url, &self.token)
+                .set("Cisco-Device-URL", &self.device).set("Cisco-Usersub-Device-Caps", "subs:2")
+                .set("TrackingID", &format!("CLIENT_{}", jose::uuid())).send_json(body);
+            let mut r = post(subscribe_body(&users));
+            // Should the service ever refuse the desktop client's body, the older `contactIds` form still subscribes.
+            if matches!(r, Err(ureq::Error::Status(400, _))) {
+                dbg_conn("usersub subscribe: users body refused (400), sending contactIds");
+                r = post(json!({"contactIds": chunk}));
+            }
+            match r {
+                Ok(r) => { self.subs.subscribed(chunk, now); dbg_conn(&format!("usersub subscribe {} contacts ({refresh} refresh) -> {}", chunk.len(), r.status())) }
+                Err(e) => dbg_conn(&format!("usersub subscribe failed: {}", e.to_string().chars().take(100).collect::<String>())),
+            }
         }
     }
 
@@ -323,8 +347,11 @@ impl Session {
 
     /// A live `usersub.userstate` / `apheleia.subscription_update` → `Resp::Presence` (+ details). Updates older than one
     /// already applied are dropped; an update without a status only moves the last-activity time.
-    pub(super) fn presence_event(&self, data: &Value) {
+    pub(super) fn presence_event(&mut self, data: &Value) {
         let now = now_ms();
+        // Subscriptions the server dropped: the next renewal subscribes them again, with their current state.
+        let gone = evicted(data);
+        if !gone.is_empty() { dbg_conn(&format!("usersub: {} subscriptions evicted", gone.len())); self.subs.forget(&gone); }
         let updates: Vec<Update> = parse_presence(data).into_iter().filter(|u| book(|b| b.accept(u, now))).collect();
         let (mapped, mapped_details) = self.map_updates(&updates);
         send_presence(&self.out, mapped);
