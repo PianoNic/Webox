@@ -21,6 +21,9 @@ pub(crate) struct CallUi {
     choice: Option<Choice>, pub(crate) muted: bool, pub(crate) open_menu: bool,
     /// Our screen share runs (the cloud thread says so), or a pick went to it and the answer is pending.
     pub(crate) sharing: bool, pub(crate) share_pending: bool,
+    /// The other side shares (their name): the call window shows it as the stage. Its texture and the picture number
+    /// it holds (a new picture is uploaded once, never per frame).
+    pub(crate) remote_share: Option<String>, share_tex: Option<egui::TextureHandle>, share_seq: u64,
     // Separate-window state, offline sample mode (no sound, no microphone), toast's ring switch.
     pub(crate) win: super::call_win::WinState, pub(crate) sample: bool, pub(crate) ring_muted: bool,
     /// Plays ringtone / ringback / test tones (its own streams, on the ringtone or speaker device).
@@ -93,6 +96,27 @@ impl App {
         self.call.share_pending = false; // a share start that failed says so with its own error
     }
 
+    /// The other side's share started (their name) or ended.
+    pub(crate) fn on_remote_share(&mut self, who: Option<String>) {
+        if who.is_none() { self.call.share_tex = None; self.call.share_seq = 0; }
+        self.call.remote_share = who;
+    }
+
+    /// The received share's newest picture and its size, uploaded to the GPU only when a new one arrived (the decoder
+    /// thread made the image; the same `Arc` goes up, nothing is copied here). None while no picture has come yet.
+    pub(crate) fn remote_share_picture(&mut self, ctx: &egui::Context) -> Option<(egui::TextureId, Vec2)> {
+        self.call.remote_share.as_ref()?;
+        if let Some(p) = cloud::share_rx::latest().filter(|p| p.seq != self.call.share_seq) {
+            let img = egui::ImageData::Color(p.image.clone());
+            match &mut self.call.share_tex {
+                Some(t) => t.set(img, egui::TextureOptions::LINEAR),
+                None => self.call.share_tex = Some(ctx.load_texture("call-remote-share", img, egui::TextureOptions::LINEAR)),
+            }
+            self.call.share_seq = p.seq;
+        }
+        self.call.share_tex.as_ref().map(|t| (t.id(), t.size_vec2()))
+    }
+
     /// The call window's share button: opens the screen / window picker, or stops our share.
     pub(crate) fn share_button(&mut self, now: f64) {
         if self.call.sharing { if let Some(c) = &self.client { c.req(Req::Call(CallReq::Share(None))); } self.call.sharing = false; return; }
@@ -124,6 +148,7 @@ impl App {
             self.call.history.truncate(30);
             self.call.muted = false;
             self.call.sharing = false; self.call.share_pending = false;
+            self.on_remote_share(None);
             super::share_picker::close();
             self.call.mc.keypad = false; self.call.mc.keypad_text.clear();
             if let Some(c) = &self.client { c.req(Req::CallHistory); } // the session is in janus now
@@ -310,7 +335,20 @@ impl App {
     pub(crate) fn call_card_ui(&mut self, ui: &mut egui::Ui, t: &Th, now: f64, v: &CallView) -> CallActions {
         let mut a = CallActions::default();
         let ctx = ui.ctx().clone();
-        ui.set_width(280.0);
+        let share = v.state == CallState::Connected && !v.ended && self.call.remote_share.is_some();
+        ui.set_width(if share { 480.0 } else { 280.0 });
+        if share {
+            // the other side's screen on top of the card (the in-window fallback of the call window's stage)
+            let who = self.call.remote_share.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| v.name.clone());
+            ui.label(RichText::new(format!("{who} teilt den Bildschirm")).font(semibold(13.0)).color(t.text1));
+            let (r, _) = ui.allocate_exact_size(Vec2::new(480.0, 270.0), Sense::hover());
+            ui.painter().rect_filled(r, 4.0, Color32::BLACK);
+            match self.remote_share_picture(&ctx) {
+                Some((id, size)) => { ui.painter().image(id, Rect::from_center_size(r.center(), crate::ui::call_win::fit_size(size, r.size())), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE); }
+                None => { ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "Freigabe wird geladen…", FontId::proportional(14.0), t.text2); }
+            }
+            ui.add_space(14.0);
+        }
         ui.vertical_centered(|ui| {
             avatar_photo(ui, &mut self.icons, t, &v.name, 96.0, false, None, None, v.photo);
             ui.add_space(14.0);

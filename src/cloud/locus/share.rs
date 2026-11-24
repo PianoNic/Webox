@@ -36,8 +36,6 @@ enum Phase { Capturing, Negotiating, Requesting, Sharing }
 pub struct Share {
     stream: Arc<std::sync::Mutex<ShareStream>>,
     feed: Option<ShareFeed>,
-    /// The ROAP seq of our share re-OFFER while its ANSWER is awaited.
-    pub(super) offer_seq: Option<u32>,
     floor_url: String,
     phase: Phase,
     since: Instant,
@@ -110,7 +108,7 @@ impl Session {
         if !webex_host(&floor_url) { return Err("Freigabe nicht möglich: ungültige Freigabe-Adresse.".into()); }
         dbg_conn(&format!("call: share: capture starting ({:?}, {:?}, {} fps)", r.source.kind, r.opts.max_size, r.opts.fps));
         let stream = Arc::new(std::sync::Mutex::new(capture::start(&r.source, r.opts)));
-        c.share = Some(Share { stream, feed: None, offer_seq: None, floor_url, phase: Phase::Capturing, since: Instant::now(), granted: false });
+        c.share = Some(Share { stream, feed: None, floor_url, phase: Phase::Capturing, since: Instant::now(), granted: false });
         self.share_tick();
         Ok(())
     }
@@ -161,20 +159,46 @@ impl Session {
         }
     }
 
-    /// The capture runs: negotiate the share's media lines once per call, then ask for the floor.
+    /// The capture runs: the share's lines (negotiated once per call, for sending and receiving), then the floor.
     fn share_negotiate(&mut self) {
         let Some(c) = self.calls.cur.as_mut() else { return };
-        let Some(m) = c.media.as_ref() else { return };
-        if m.has_share() { if let Some(s) = c.share.as_mut() { s.phase = Phase::Requesting; } return self.share_answered(); }
-        let sdp = match m.add_share() { Ok(s) => s, Err(e) => return self.share_failed(&format!("Freigabe fehlgeschlagen: Die Medienleitung ließ sich nicht anlegen ({}).", scrub(&e))) };
+        let ready = c.media.as_ref().is_some_and(|m| m.has_share()) && c.lines_seq.is_none();
+        if let Some(s) = c.share.as_mut() { s.phase = Phase::Negotiating; s.since = Instant::now(); }
+        if ready { return self.share_answered(); }
+        if c.lines_seq.is_some() { return; } // a negotiation for the far end's share runs: `lines_ready` goes on
+        if let Err(e) = self.negotiate_lines(false) { self.share_failed(&e); }
+    }
+
+    /// One ROAP round that adds the share's lines (`video/main`, `audio/slides`, `video/slides` sendrecv) or, with
+    /// `again`, offers them once more (to declare the SSRC a received share really comes from).
+    pub(super) fn negotiate_lines(&mut self, again: bool) -> Result<(), String> {
+        let Some(c) = self.calls.cur.as_mut() else { return Err("Kein Anruf.".into()) };
+        let Some(m) = c.media.as_ref() else { return Err("Keine Medienverbindung.".into()) };
+        let sdp = if again { m.reoffer() } else { m.add_share() }
+            .map_err(|e| format!("Freigabe fehlgeschlagen: Die Medienleitung ließ sich nicht anlegen ({}).", scrub(&e)))?;
         let seq = c.roap_seq + 1;
-        c.roap_seq = seq;
-        c.roap_done = false;
-        if let Some(s) = c.share.as_mut() { s.offer_seq = Some(seq); s.phase = Phase::Negotiating; s.since = Instant::now(); }
-        dbg_conn(&format!("call: share: roap OFFER seq={seq} {}", crate::cloud::sdp::summary(&sdp)));
+        (c.roap_seq, c.roap_done, c.lines_seq, c.lines_at) = (seq, false, Some(seq), Some(Instant::now()));
+        dbg_conn(&format!("call: share: roap OFFER seq={seq} ({}) {}", if again { "again" } else { "share lines" }, crate::cloud::sdp::summary(&sdp)));
         if let Err(e) = self.send_roap("OFFER", Some(&sdp), seq) {
-            if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; }
-            self.share_failed(&format!("Freigabe fehlgeschlagen: Webex hat die Medienanfrage abgelehnt ({}).", scrub(&e)));
+            if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; c.lines_seq = None; c.lines_at = None; }
+            return Err(format!("Freigabe fehlgeschlagen: Webex hat die Medienanfrage abgelehnt ({}).", scrub(&e)));
+        }
+        Ok(())
+    }
+
+    /// The share's lines are negotiated: our own share goes on to the floor request.
+    pub(super) fn lines_ready(&mut self) {
+        dbg_conn("call: share: lines negotiated");
+        if self.calls.cur.as_ref().is_some_and(|c| c.share.as_ref().is_some_and(|s| s.phase == Phase::Negotiating)) { self.share_answered(); }
+    }
+
+    /// Negotiating the share's lines failed: our share ends with the reason; a received share can't be shown.
+    pub(super) fn lines_failed(&mut self, why: &str) {
+        dbg_conn(&format!("call: share: lines refused: {why}"));
+        if self.calls.cur.as_ref().is_some_and(|c| c.share.is_some()) { return self.share_failed(why); }
+        let Some(c) = self.calls.cur.as_ref() else { return };
+        if let Some(n) = &c.remote_share {
+            let _ = self.out.send(Resp::Error(format!("Die Freigabe von {} kann nicht angezeigt werden: {why}", if n.is_empty() { "deinem Gegenüber" } else { n })));
         }
     }
 
@@ -184,7 +208,6 @@ impl Session {
         let self_url = c.self_url.clone();
         let Some(s) = c.share.as_mut() else { return };
         s.phase = Phase::Requesting;
-        s.offer_seq = None;
         let url = s.floor_url.clone();
         dbg_conn("call: share: floor request (GRANTED)");
         if let Err(e) = self.http("PUT", &url, Some(floor_body("GRANTED", &self_url, &self.device, &self.calls.device_type))) {
@@ -201,7 +224,7 @@ impl Session {
         let _ = self.out.send(Resp::CallShare(true));
     }
 
-    /// The locus changed: our floor granted, or taken / released elsewhere; the other side's share announced.
+    /// The locus changed: our floor granted, or taken / released elsewhere; the far end's share starts or ends.
     pub(super) fn share_locus(&mut self, l: &Value) {
         let Some(c) = self.calls.cur.as_mut() else { return };
         let (disp, ben) = content_floor(l);
@@ -217,13 +240,64 @@ impl Session {
                 self.share_stop();
                 let _ = self.out.send(Resp::Error(why.into()));
             }
+        }
+        self.remote_share_from(l);
+    }
+
+    /// The far end's share, from the locus: on when the `content` floor is GRANTED to a participant still in the call
+    /// (not us), off when it is released or that participant left. Starting it makes sure the share's lines exist, so the
+    /// server can send it to us (the official client offers them from the start; Webox adds them when they are needed).
+    fn remote_share_from(&mut self, l: &Value) {
+        let Some(c) = self.calls.cur.as_mut() else { return };
+        let now = crate::cloud::share_rx::remote_sharer(l, &c.self_url);
+        match (now, c.remote_share.is_some()) {
+            (Some(name), false) => {
+                let shown = [name, c.name.clone()].into_iter().find(|n| !n.is_empty()).unwrap_or_default();
+                dbg_conn("call: share: the far end shares, receiving");
+                crate::cloud::share_rx::clear();
+                (c.remote_share, c.remote_since, c.rx_reoffered, c.rx_warned) = (Some(shown.clone()), Some(Instant::now()), false, false);
+                let _ = self.out.send(Resp::RemoteShare(Some(shown)));
+                let need = c.media.as_ref().is_some_and(|m| !m.has_share()) && c.lines_seq.is_none();
+                if need { if let Err(e) = self.negotiate_lines(false) { self.lines_failed(&e); } }
+            }
+            (None, true) => {
+                dbg_conn("call: share: the far end's share released");
+                c.remote_share = None;
+                crate::cloud::share_rx::clear();
+                let _ = self.out.send(Resp::RemoteShare(None));
+            }
+            _ => {}
+        }
+    }
+
+    /// Every tick: the lines' ANSWER that never comes; while the far end shares, its share arriving from an SSRC webrtc-rs
+    /// wasn't told (seen on the ICE socket, nothing taken): one more ROAP round declares it.
+    pub(super) fn share_rx_tick(&mut self) {
+        let Some(c) = self.calls.cur.as_mut() else { return };
+        if c.lines_at.is_some_and(|t| t.elapsed() > ROAP_TIMEOUT) {
+            (c.lines_seq, c.lines_at, c.roap_done) = (None, None, true);
+            return self.lines_failed("Der Medienserver hat auf die Freigabe-Verbindung nicht geantwortet.");
+        }
+        let Some(since) = c.remote_since.filter(|_| c.remote_share.is_some()) else { return };
+        let Some(m) = c.media.as_ref() else { return };
+        let (seen, rx, ready) = (m.seen_slides_ssrc.load(Ordering::Relaxed), m.rx_video.load(Ordering::Relaxed), m.has_share() && c.lines_seq.is_none() && c.roap_done);
+        if ready && !c.rx_reoffered && seen != 0 && rx == 0 && since.elapsed() > RX_SSRC_WAIT {
+            c.rx_reoffered = true;
+            dbg_conn("call: share: the far end's share arrives from an undeclared SSRC, negotiating again");
+            if let Err(e) = self.negotiate_lines(true) { self.lines_failed(&e); }
             return;
         }
-        let remote = disp == "GRANTED" && !ours && !ben.is_empty();
-        if remote && !c.remote_share {
-            dbg_conn("call: share: the other side shares (not shown: Webox can't display received shares yet)");
-            let _ = self.out.send(Resp::Error(format!("{} gibt Inhalte frei. Webox kann empfangene Freigaben noch nicht anzeigen.", if c.name.is_empty() { "Dein Gegenüber" } else { c.name.as_str() })));
+        if !c.rx_warned && crate::cloud::share_rx::latest().is_none() && since.elapsed() > RX_NOTHING {
+            c.rx_warned = true;
+            dbg_conn(&format!("call: share: nothing decoded after {} s (video packets {rx}, seen on the wire {})", RX_NOTHING.as_secs(), seen != 0));
+            let who = c.remote_share.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| "Dein Gegenüber".into());
+            let _ = self.out.send(Resp::Error(format!("{who} gibt den Bildschirm frei, aber es kommt kein Bild an.")));
         }
-        c.remote_share = remote;
     }
 }
+
+/// How long the far end's share may arrive undecoded from an SSRC we didn't declare before the lines are offered again.
+const RX_SSRC_WAIT: Duration = Duration::from_secs(3);
+/// The user is told once when a received share shows no picture after this long.
+const RX_NOTHING: Duration = Duration::from_secs(15);
+

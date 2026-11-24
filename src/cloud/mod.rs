@@ -13,6 +13,7 @@ pub mod features; // feature toggles + client policies (App::feature)
 mod images;
 pub mod locus;
 pub mod media;
+pub mod share_rx; // a screen share received in a call: decode, newest picture for the call window
 mod sdp; // answer filtering and address-free summaries for the media leg
 mod sdp_compat; // remote descriptions rewritten into what webrtc-rs accepts
 mod ice_socket; // the call's own ICE socket (survives Windows' ICMP errors)
@@ -263,6 +264,8 @@ pub enum Resp {
     Call(locus::CallEvent),
     /// Our screen share in the call started (true) or ended (false).
     CallShare(bool),
+    /// The other side shares its screen (their name), or stopped (None). The pictures: `share_rx::latest`.
+    RemoteShare(Option<String>),
     /// Directory people for a search query (query, people, last batch).
     Directory(String, Vec<Person>, bool),
     /// All my flags: (space id or "" when the flag doesn't say, message id, flag url).

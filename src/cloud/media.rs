@@ -54,8 +54,11 @@ pub struct Media {
     /// The SSRC the server's audio comes from (learned from the first packet; 0 = none yet). A renegotiated answer with
     /// more than one m-line must declare it, or webrtc-rs stops that receiver (`share_answer_sdp`).
     pub rx_ssrc: Arc<AtomicU32>,
-    /// Video RTP packets received (the far end's share is counted, not shown).
+    /// Video RTP packets received (the far end's share).
     pub rx_video: Arc<AtomicU64>,
+    /// The SSRC H.264 (the slides line's payload type) was last seen arriving from on the ICE socket, whether webrtc-rs
+    /// took it or not (0 = none): with several m-lines webrtc-rs drops RTP from undeclared SSRCs.
+    pub seen_slides_ssrc: Arc<AtomicU32>,
     /// The screen share's sending side, once `add_share` ran.
     share: std::sync::Mutex<Option<ShareTx>>,
 }
@@ -75,6 +78,9 @@ impl Drop for ShareFeed { fn drop(&mut self) { self.halt() } }
 fn opus_cap() -> RTCRtpCodecCapability {
     RTCRtpCodecCapability { mime_type: MIME_TYPE_OPUS.to_owned(), clock_rate: 48000, channels: 2, sdp_fmtp_line: "minptime=10;useinbandfec=1".to_owned(), rtcp_feedback: vec![] }
 }
+
+/// The H.264 payload type we offer (the share's lines; an answer keeps the offer's numbers).
+pub const SLIDES_PT: u8 = 102;
 
 /// What `media::share` sends: H.264 Constrained Baseline, packetization-mode 1 (the content stream of a share).
 fn h264_cap() -> RTCRtpCodecCapability {
@@ -103,19 +109,26 @@ pub fn label_content(sdp: &str) -> String {
 }
 
 /// The server's answer to our share re-OFFER, made fit for webrtc-rs: every m-line gets our mid when it has none, the
-/// server's own `a=ssrc` lines go (it sends from others), and the first audio line declares the SSRC the call's audio
-/// really comes from: webrtc-rs stops every receiver whose SSRC a renegotiated answer doesn't name.
-pub fn share_answer_sdp(sdp: &str, mids: &[String], audio_ssrc: u32) -> String {
+/// server's own audio `a=ssrc` lines go (it sends audio from others), and the first audio line declares the SSRC the
+/// call's audio really comes from: webrtc-rs stops every receiver whose SSRC a renegotiated answer doesn't name. With
+/// more than one m-line webrtc-rs only takes RTP from declared SSRCs, so the video lines keep what the server declares,
+/// and `slides_ssrc` (the SSRC the far end's share was seen arriving from, see `ice_socket`) replaces that when known.
+pub fn share_answer_sdp(sdp: &str, mids: &[String], audio_ssrc: u32, slides_ssrc: Option<u32>) -> String {
     let mut sections: Vec<Vec<String>> = vec![vec![]];
     for l in sdp.lines().map(str::trim).filter(|l| !l.is_empty()) {
         if l.starts_with("m=") { sections.push(vec![]); }
         if let Some(s) = sections.last_mut() { s.push(l.to_string()); }
     }
     let mut out: Vec<String> = sections.remove(0);
+    let mut videos = 0;
     for (i, mut m) in sections.into_iter().enumerate() {
-        m.retain(|l| !l.starts_with("a=ssrc:") && !l.starts_with("a=ssrc-group:"));
+        let (audio, video) = (m[0].starts_with("m=audio"), m[0].starts_with("m=video"));
+        if video { videos += 1; }
+        let slides = video && videos == 2;
+        if audio || (slides && slides_ssrc.is_some()) { m.retain(|l| !l.starts_with("a=ssrc:") && !l.starts_with("a=ssrc-group:")); }
         if !m.iter().any(|l| l.starts_with("a=mid:")) { if let Some(id) = mids.get(i).filter(|id| !id.is_empty()) { m.push(format!("a=mid:{id}")); } }
-        if i == 0 && m[0].starts_with("m=audio") && audio_ssrc != 0 { m.push(format!("a=ssrc:{audio_ssrc} cname:webex")); }
+        if i == 0 && audio && audio_ssrc != 0 { m.push(format!("a=ssrc:{audio_ssrc} cname:webex")); }
+        if let Some(s) = slides_ssrc.filter(|_| slides) { m.push(format!("a=ssrc:{s} cname:webex-slides")); }
         out.extend(m);
     }
     let mut s = out.join("\r\n");
@@ -172,7 +185,7 @@ pub fn route_ip(host: &str) -> Option<IpAddr> {
 }
 
 /// Needs the tokio runtime (the ICE socket is registered with it).
-fn settings(net: Net) -> Result<SettingEngine, String> {
+fn settings(net: Net, seen_slides: Arc<AtomicU32>) -> Result<SettingEngine, String> {
     let mut s = SettingEngine::default();
     s.set_ice_multicast_dns_mode(MulticastDnsMode::Disabled); // the default binds 0.0.0.0:5353; Webex never sends mDNS names
     let keep: Option<IpAddr> = match net {
@@ -184,9 +197,49 @@ fn settings(net: Net) -> Result<SettingEngine, String> {
         s.set_network_types(vec![if ip.is_ipv4() { NetworkType::Udp4 } else { NetworkType::Udp6 }]);
         s.set_ip_filter(Box::new(move |a| a == ip));
         // our own socket on that address only (reads survive ICMP errors, see ice_socket.rs)
-        s.set_udp_network(super::ice_socket::mux(ip).map_err(|e| format!("ICE socket: {e}"))?);
+        s.set_udp_network(super::ice_socket::mux(ip, seen_slides, SLIDES_PT).map_err(|e| format!("ICE socket: {e}"))?);
     }
     Ok(s)
+}
+
+/// The far end's screen share on the `video/slides` line: RTP -> H.264 access units -> the decoder thread (`share_rx`).
+/// Key frames are asked for with RTCP PLI at the start, after a loss or a bad picture, and again while nothing decodes.
+async fn receive_share(track: Arc<webrtc::track::track_remote::TrackRemote>, stop: Arc<AtomicBool>, rx_video: Arc<AtomicU64>,
+    pc: Arc<std::sync::Mutex<Option<std::sync::Weak<RTCPeerConnection>>>>) {
+    use webrtc::media::io::sample_builder::SampleBuilder;
+    use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
+    use webrtc::rtp::codecs::h264::H264Packet;
+    let ssrc = track.ssrc();
+    dbg_conn("call: share: video from the far end arrives");
+    let dec = super::share_rx::Decode::start();
+    let mut sb = SampleBuilder::new(128, H264Packet::default(), 90_000);
+    let (mut last_pli, mut last_seq): (Option<Instant>, Option<u16>) = (None, None);
+    while !stop.load(Ordering::Relaxed) {
+        let now = Instant::now();
+        if super::share_rx::pli_due(dec.keyframe.load(Ordering::SeqCst), dec.decoded.load(Ordering::Relaxed) > 0, last_pli, now) {
+            let pc = pc.lock().ok().and_then(|p| p.as_ref().and_then(|w| w.upgrade()));
+            if let Some(pc) = pc {
+                let _ = pc.write_rtcp(&[Box::new(PictureLossIndication { sender_ssrc: 0, media_ssrc: ssrc })]).await;
+            }
+            dec.keyframe.store(false, Ordering::SeqCst);
+            last_pli = Some(now);
+        }
+        let pkt = match tokio::time::timeout(Duration::from_millis(250), track.read_rtp()).await {
+            Err(_) => continue, // nothing for a while: the PLI above may be due again
+            Ok(Err(_)) => break,
+            Ok(Ok((pkt, _))) => pkt,
+        };
+        rx_video.fetch_add(1, Ordering::Relaxed);
+        let seq = pkt.header.sequence_number;
+        if last_seq.is_some_and(|p| seq != p.wrapping_add(1) && seq.wrapping_sub(p) < 0x8000) { dec.keyframe.store(true, Ordering::SeqCst); }
+        last_seq = Some(last_seq.map_or(seq, |p| if seq.wrapping_sub(p) < 0x8000 { seq } else { p }));
+        sb.push(pkt);
+        while let Some(s) = sb.pop() {
+            if s.prev_dropped_packets > 0 { dec.keyframe.store(true, Ordering::SeqCst); }
+            dec.push(s.data.to_vec());
+        }
+    }
+    dbg_conn("call: share: video from the far end ended");
 }
 
 /// `call: ice …` log lines with the time since the peer was made.
@@ -203,15 +256,17 @@ impl Media {
         let v6 = matches!(net, Net::Route(Some(IpAddr::V6(_))));
         let rx_ssrc = Arc::new(AtomicU32::new(0));
         let rx_video = Arc::new(AtomicU64::new(0));
+        let seen_slides_ssrc = Arc::new(AtomicU32::new(0));
+        let seen = seen_slides_ssrc.clone();
         let pc = {
             let (state, io, rxp, stop, rx_ssrc, rx_video) = (state.clone(), io.clone(), rx_packets.clone(), stop.clone(), rx_ssrc.clone(), rx_video.clone());
             rt.block_on(async move {
                 let mut m = MediaEngine::default();
                 m.register_codec(RTCRtpCodecParameters { capability: opus_cap(), payload_type: 111, ..Default::default() }, RTPCodecType::Audio).map_err(|e| e.to_string())?;
                 // offered only once a share adds its video lines (an audio call's offer has no m=video)
-                m.register_codec(RTCRtpCodecParameters { capability: h264_cap(), payload_type: 102, ..Default::default() }, RTPCodecType::Video).map_err(|e| e.to_string())?;
+                m.register_codec(RTCRtpCodecParameters { capability: h264_cap(), payload_type: SLIDES_PT, ..Default::default() }, RTPCodecType::Video).map_err(|e| e.to_string())?;
                 let registry = register_default_interceptors(Registry::new(), &mut m).map_err(|e| e.to_string())?;
-                let api = APIBuilder::new().with_media_engine(m).with_interceptor_registry(registry).with_setting_engine(settings(net)?).build();
+                let api = APIBuilder::new().with_media_engine(m).with_interceptor_registry(registry).with_setting_engine(settings(net, seen)?).build();
                 let ice_servers = turn.filter(|t| !t.url.is_empty()).map(|t| vec![RTCIceServer { urls: vec![t.url], username: t.username, credential: t.password, ..Default::default() }]).unwrap_or_default();
                 let pc = Arc::new(api.new_peer_connection(RTCConfiguration { ice_servers, ..Default::default() }).await.map_err(|e| e.to_string())?);
                 let (s2, t0) = (state.clone(), Instant::now());
@@ -228,13 +283,12 @@ impl Media {
                 // webrtc-rs awaits each on_track handler while holding the handler's lock, so a handler that reads its
                 // track until the call ends blocks every later track (the share's, or audio from a new server SSRC after a
                 // renegotiation): the read loops run in tasks of their own and the handler returns at once.
+                let pc_slot: Arc<std::sync::Mutex<Option<std::sync::Weak<RTCPeerConnection>>>> = Arc::new(std::sync::Mutex::new(Some(Arc::downgrade(&pc))));
                 pc.on_track(Box::new(move |track, _, _| {
-                    let (io, rxp, stop, rx_ssrc, rx_video) = (io.clone(), rxp.clone(), stop.clone(), rx_ssrc.clone(), rx_video.clone());
+                    let (io, rxp, stop, rx_ssrc, rx_video, slot) = (io.clone(), rxp.clone(), stop.clone(), rx_ssrc.clone(), rx_video.clone(), pc_slot.clone());
                     tokio::spawn(async move {
                         if track.kind() == RTPCodecType::Video {
-                            // the far end's share: counted, not shown (Webox can't show received video in a call yet)
-                            dbg_conn("call: video track from the far end (not displayed)");
-                            while !stop.load(Ordering::Relaxed) { if track.read_rtp().await.is_err() { break } rx_video.fetch_add(1, Ordering::Relaxed); }
+                            receive_share(track, stop, rx_video, slot).await;
                             return;
                         }
                         dbg_conn(&format!("call: audio track from the far end (ssrc {})", if rx_ssrc.load(Ordering::Relaxed) == 0 { "first" } else { "changed" }));
@@ -257,7 +311,7 @@ impl Media {
                 Ok::<_, String>(pc)
             })?
         };
-        let me = Media { rt, pc, state, muted, rx_packets, tx_frames, stop, v6, rx_ssrc, rx_video, share: std::sync::Mutex::new(None) };
+        let me = Media { rt, pc, state, muted, rx_packets, tx_frames, stop, v6, rx_ssrc, rx_video, seen_slides_ssrc, share: std::sync::Mutex::new(None) };
         me.start_sender(io)?;
         Ok(me)
     }
@@ -353,7 +407,8 @@ impl Media {
                 None => { pc.add_transceiver_from_kind(RTPCodecType::Audio, init(RTCRtpTransceiverDirection::Recvonly)).await.map_err(|e| e.to_string())?; }
             }
             let track = Arc::new(TrackLocalStaticSample::new(h264_cap(), "slides".to_owned(), "webox-share".to_owned()));
-            let t = pc.add_transceiver_from_track(Arc::clone(&track) as Arc<dyn TrackLocal + Send + Sync>, init(RTCRtpTransceiverDirection::Sendonly)).await.map_err(|e| e.to_string())?;
+            // sendrecv like the official client ("suggestedShareDirection: sendrecv"): the same line carries the far end's share
+            let t = pc.add_transceiver_from_track(Arc::clone(&track) as Arc<dyn TrackLocal + Send + Sync>, init(RTCRtpTransceiverDirection::Sendrecv)).await.map_err(|e| e.to_string())?;
             // RTCP from the far end: a picture loss / full intra request asks for a key frame
             let keyframe = Arc::new(AtomicBool::new(false));
             let (k, sender) = (keyframe.clone(), t.sender().await);
@@ -366,6 +421,11 @@ impl Media {
             Ok::<_, String>(ShareTx { track, keyframe })
         })?;
         if let Ok(mut s) = self.share.lock() { *s = Some(tx); }
+        self.reoffer()
+    }
+
+    /// A new OFFER of the lines we have (the share's included), for one more ROAP round on the same session.
+    pub fn reoffer(&self) -> Result<String, String> {
         let pc = self.pc.clone();
         let sdp = self.rt.block_on(async move {
             let offer = pc.create_offer(None).await.map_err(|e| e.to_string())?;
@@ -386,7 +446,11 @@ impl Media {
         let pc = self.pc.clone();
         let local = self.rt.block_on(pc.local_description()).map(|d| d.sdp).unwrap_or_default();
         let mids = mids_of(&local);
-        let sdp = share_answer_sdp(&usable(&sdp, self.v6, lookup, mids.first().map_or("", |s| s.as_str())), &mids, self.rx_ssrc.load(Ordering::Relaxed));
+        // the far end's share seen on the wire but not taken by webrtc-rs (it isn't the declared SSRC): declare that one
+        let seen = self.seen_slides_ssrc.load(Ordering::Relaxed);
+        let slides = (seen != 0 && self.rx_video.load(Ordering::Relaxed) == 0).then_some(seen);
+        if slides.is_some() { dbg_conn("call: share: declaring the SSRC the far end's share arrives from"); }
+        let sdp = share_answer_sdp(&usable(&sdp, self.v6, lookup, mids.first().map_or("", |s| s.as_str())), &mids, self.rx_ssrc.load(Ordering::Relaxed), slides);
         // our `audio/slides` is recvonly in webrtc-rs (see add_share): its answer must read sendonly, whatever the
         // server said, or webrtc-rs pauses the receiver the call's audio arrives on
         let sdp = match section_of_kind(&local, "audio", 2) { Some(i) => with_direction(&sdp, i, "sendonly"), None => sdp };
@@ -563,7 +627,7 @@ mod tests {
         assert_eq!(lines.iter().filter(|l| l.0 == "audio").count(), 2, "{offer}");
         assert_eq!(lines.iter().filter(|l| l.0 == "video").count(), 2, "{offer}");
         assert_eq!(lines.iter().filter(|l| l.1 == "slides").count(), 2, "{lines:?}");
-        assert!(offer.contains("H264/90000") && offer.contains("a=sendonly"), "{offer}");
+        assert!(offer.contains("H264/90000") && offer.split("m=").last().is_some_and(|m| m.contains("a=sendrecv")), "slides line sendrecv: {offer}");
         let b_answer = b.answer(offer).unwrap();
         a.apply_share_answer_with(b_answer, &stub).unwrap();
         assert!(a.has_share());
@@ -589,6 +653,51 @@ mod tests {
         b.close();
     }
 
+    /// Receiving a share: A shares real H.264 (OpenH264's encoder, a moving picture) on the slides line, B depacketizes it,
+    /// asks for a key frame (RTCP PLI, which reaches A's encoder side) and decodes pictures of the share's size for the
+    /// call window. 127.0.0.1 only.
+    #[test]
+    fn received_share_is_decoded() {
+        let (io1, io2) = (Arc::new(Io::default()), Arc::new(Io::default()));
+        let a = Media::new(io1.clone(), None, Net::Loopback).unwrap();
+        let b = Media::new(io2.clone(), None, Net::Loopback).unwrap();
+        b.apply_answer(a.answer(b.offer().unwrap()).unwrap()).unwrap();
+        let t0 = std::time::Instant::now();
+        while t0.elapsed() < Duration::from_secs(30) && (a.state() != MediaState::Connected || b.state() != MediaState::Connected) { std::thread::sleep(Duration::from_millis(20)); }
+        assert_eq!((a.state(), b.state()), (MediaState::Connected, MediaState::Connected));
+        // A adds the share lines (sendrecv) and offers them; B answers
+        let offer = a.add_share().unwrap();
+        assert!(offer.split("m=").nth(4).is_some_and(|m| m.contains("a=sendrecv") && m.contains("a=content:slides")), "slides line sendrecv: {offer}");
+        a.apply_share_answer(b.answer(offer).unwrap()).unwrap();
+        let tx = a.share.lock().unwrap().clone().unwrap();
+        let (w, h) = (320usize, 240usize);
+        let mut enc = openh264::encoder::Encoder::new().unwrap();
+        let mut yuv = openh264::formats::YUVBuffer::new(w, h);
+        let mut rgb = vec![0u8; w * h * 3];
+        crate::cloud::share_rx::clear();
+        let (t1, mut n) = (std::time::Instant::now(), 0usize);
+        let mut asked = false;
+        while t1.elapsed() < Duration::from_secs(30) {
+            if tx.keyframe.swap(false, Ordering::SeqCst) { asked = true; enc.force_intra_frame(); }
+            for (i, px) in rgb.chunks_mut(3).enumerate() { let (x, y) = (i % w, i / w); px.copy_from_slice(&[((x + n * 4) % 256) as u8, (y % 256) as u8, 128]); }
+            yuv.read_rgb(openh264::formats::RgbSliceU8::new(&rgb, (w, h)));
+            let au = enc.encode(&yuv).unwrap().to_vec();
+            if !au.is_empty() { a.rt.block_on(tx.track.write_sample(&Sample { data: bytes::Bytes::from(au), duration: Duration::from_millis(66), ..Default::default() })).unwrap(); }
+            n += 1;
+            if crate::cloud::share_rx::latest().is_some_and(|p| p.seq > 0) && asked && n > 10 { break; }
+            std::thread::sleep(Duration::from_millis(66));
+        }
+        let p = crate::cloud::share_rx::latest().expect("B decoded a picture of the share");
+        assert_eq!(p.image.size, [w, h], "decoded at the share's size");
+        assert!(asked, "B asked for a key frame (PLI) and A's sender saw it");
+        assert!(b.rx_video.load(Ordering::Relaxed) > 0);
+        assert_ne!(b.seen_slides_ssrc.load(Ordering::Relaxed), 0, "the ICE socket noted the share's SSRC");
+        crate::cloud::share_rx::clear();
+        assert!(crate::cloud::share_rx::latest().is_none(), "released: no picture left");
+        a.close();
+        b.close();
+    }
+
     #[test]
     fn share_sdp_helpers() {
         let offer = "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=mid:0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=mid:1\r\nm=video 9 UDP/TLS/RTP/SAVPF 102\r\na=mid:2\r\nm=video 9 UDP/TLS/RTP/SAVPF 102\r\na=mid:3\r\n";
@@ -603,9 +712,13 @@ mod tests {
         assert_eq!(mids_of(offer), vec!["0", "1", "2", "3"]);
         // a server answer without mids and with its own SSRCs
         let ans = "v=0\r\nm=audio 5004 UDP/TLS/RTP/SAVPF 111\r\na=ssrc:4242 cname:linus\r\na=sendrecv\r\nm=audio 0 UDP/TLS/RTP/SAVPF 111\r\na=inactive\r\nm=video 0 UDP/TLS/RTP/SAVPF 102\r\na=inactive\r\nm=video 5004 UDP/TLS/RTP/SAVPF 102\r\na=recvonly\r\na=ssrc:7 cname:linus\r\n";
-        let s = share_answer_sdp(ans, &mids_of(offer), 99);
-        assert!(!s.contains("4242") && !s.contains("ssrc:7"), "{s}");
+        let s = share_answer_sdp(ans, &mids_of(offer), 99, None);
+        assert!(!s.contains("4242"), "the server's audio SSRC goes: {s}");
+        assert!(s.contains("a=ssrc:7 cname:linus"), "the video lines keep what the server declares: {s}");
         assert!(s.contains("a=ssrc:99 cname:webex"), "{s}");
+        // the share's SSRC seen arriving replaces the declared one on the slides line
+        let s2 = share_answer_sdp(ans, &mids_of(offer), 99, Some(1234));
+        assert!(!s2.contains("ssrc:7 ") && s2.split("m=").nth(4).unwrap().contains("a=ssrc:1234 cname:webex-slides"), "{s2}");
         assert_eq!(mids_of(&s), vec!["0", "1", "2", "3"]);
         // directions per m-line
         assert_eq!(section_of_kind(offer, "audio", 2), Some(1));

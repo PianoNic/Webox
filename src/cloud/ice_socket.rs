@@ -5,48 +5,82 @@
 //! firewall, e.g. one of the server's two ports) makes the next `recv_from` fail with WSAECONNRESET. webrtc-ice (0.14
 //! and 0.17) then stops reading that socket for good, so ICE never completes even though the other port works. Here
 //! such reads are skipped.
+//!
+//! It also notes the SSRC that H.264 on the share's payload type arrives from (`video_ssrc`): the RTP header is not
+//! encrypted by SRTP, and with several m-lines webrtc-rs drops a stream whose SSRC the answer didn't declare.
 use std::future::Future;
 use std::io::ErrorKind;
 use std::net::{IpAddr, SocketAddr};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use webrtc::ice::udp_mux::{UDPMuxDefault, UDPMuxParams};
 use webrtc::ice::udp_network::UDPNetwork;
 use webrtc::util::{Conn, Error};
 
 type Fut<'a, T> = Pin<Box<dyn Future<Output = Result<T, Error>> + Send + 'a>>;
 
-pub struct IceSocket(tokio::net::UdpSocket);
+pub struct IceSocket { sock: tokio::net::UdpSocket, video_ssrc: Arc<AtomicU32>, video_pt: u8 }
 
-/// A UDP mux on `ip` (an ephemeral port). Needs a running tokio runtime.
-pub fn mux(ip: IpAddr) -> std::io::Result<UDPNetwork> {
+/// A UDP mux on `ip` (an ephemeral port). Needs a running tokio runtime. RTP with payload type `video_pt` leaves its SSRC
+/// in `video_ssrc`.
+pub fn mux(ip: IpAddr, video_ssrc: Arc<AtomicU32>, video_pt: u8) -> std::io::Result<UDPNetwork> {
     let s = std::net::UdpSocket::bind(SocketAddr::new(ip, 0))?;
     s.set_nonblocking(true)?;
-    let conn = IceSocket(tokio::net::UdpSocket::from_std(s)?);
+    let conn = IceSocket { sock: tokio::net::UdpSocket::from_std(s)?, video_ssrc, video_pt };
     Ok(UDPNetwork::Muxed(UDPMuxDefault::new(UDPMuxParams::new(conn))))
 }
 
 /// The error a datagram's ICMP reply leaves on the socket (Windows); nothing is wrong with the socket itself.
 fn transient(e: &std::io::Error) -> bool { e.kind() == ErrorKind::ConnectionReset }
 
+/// The SSRC of an RTP packet with payload type `pt` (RFC 7983: first byte 128..191; RTCP's types 200..206 excluded).
+pub fn rtp_ssrc(b: &[u8], pt: u8) -> Option<u32> {
+    if b.len() < 12 || !(128..=191).contains(&b[0]) || (192..=223).contains(&b[1]) || b[1] & 0x7f != pt { return None; }
+    Some(u32::from_be_bytes([b[8], b[9], b[10], b[11]]))
+}
+
+impl IceSocket {
+    fn note(&self, b: &[u8]) { if let Some(s) = rtp_ssrc(b, self.video_pt) { self.video_ssrc.store(s, Ordering::Relaxed); } }
+}
+
 // The trait is declared with async_trait; these are its expanded signatures.
 impl Conn for IceSocket {
     fn connect<'a, 'b>(&'a self, addr: SocketAddr) -> Fut<'b, ()> where 'a: 'b, Self: 'b {
-        Box::pin(async move { Ok(self.0.connect(addr).await?) })
+        Box::pin(async move { Ok(self.sock.connect(addr).await?) })
     }
     fn recv<'a, 'c, 'b>(&'a self, buf: &'c mut [u8]) -> Fut<'b, usize> where 'a: 'b, 'c: 'b, Self: 'b {
-        Box::pin(async move { loop { match self.0.recv(buf).await { Err(e) if transient(&e) => continue, r => return Ok(r?) } } })
+        Box::pin(async move { loop { match self.sock.recv(buf).await { Err(e) if transient(&e) => continue, Ok(n) => { self.note(&buf[..n]); return Ok(n) } Err(e) => return Err(e.into()) } } })
     }
     fn recv_from<'a, 'c, 'b>(&'a self, buf: &'c mut [u8]) -> Fut<'b, (usize, SocketAddr)> where 'a: 'b, 'c: 'b, Self: 'b {
-        Box::pin(async move { loop { match self.0.recv_from(buf).await { Err(e) if transient(&e) => continue, r => return Ok(r?) } } })
+        Box::pin(async move { loop { match self.sock.recv_from(buf).await { Err(e) if transient(&e) => continue, Ok((n, a)) => { self.note(&buf[..n]); return Ok((n, a)) } Err(e) => return Err(e.into()) } } })
     }
     fn send<'a, 'c, 'b>(&'a self, buf: &'c [u8]) -> Fut<'b, usize> where 'a: 'b, 'c: 'b, Self: 'b {
-        Box::pin(async move { Ok(self.0.send(buf).await?) })
+        Box::pin(async move { Ok(self.sock.send(buf).await?) })
     }
     fn send_to<'a, 'c, 'b>(&'a self, buf: &'c [u8], target: SocketAddr) -> Fut<'b, usize> where 'a: 'b, 'c: 'b, Self: 'b {
-        Box::pin(async move { Ok(self.0.send_to(buf, target).await?) })
+        Box::pin(async move { Ok(self.sock.send_to(buf, target).await?) })
     }
-    fn local_addr(&self) -> Result<SocketAddr, Error> { Ok(self.0.local_addr()?) }
-    fn remote_addr(&self) -> Option<SocketAddr> { self.0.peer_addr().ok() }
+    fn local_addr(&self) -> Result<SocketAddr, Error> { Ok(self.sock.local_addr()?) }
+    fn remote_addr(&self) -> Option<SocketAddr> { self.sock.peer_addr().ok() }
     fn close<'a, 'b>(&'a self) -> Fut<'b, ()> where 'a: 'b, Self: 'b { Box::pin(async { Ok(()) }) }
     fn as_any(&self) -> &(dyn std::any::Any + Send + Sync) { self }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn rtp_ssrc_only_for_rtp_of_that_type() {
+        let mut rtp = [0u8; 12];
+        rtp[0] = 0x80; rtp[1] = 0x80 | 102; rtp[8..12].copy_from_slice(&0x0102_0304u32.to_be_bytes());
+        assert_eq!(rtp_ssrc(&rtp, 102), Some(0x0102_0304), "marker bit set, PT 102");
+        rtp[1] = 102;
+        assert_eq!(rtp_ssrc(&rtp, 102), Some(0x0102_0304));
+        assert_eq!(rtp_ssrc(&rtp, 111), None, "another payload type");
+        rtp[1] = 200; // RTCP sender report
+        assert_eq!(rtp_ssrc(&rtp, 200 & 0x7f), None);
+        assert_eq!(rtp_ssrc(&[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 102), None, "STUN");
+        assert_eq!(rtp_ssrc(&[0x80, 102], 102), None, "too short");
+    }
 }
