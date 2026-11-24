@@ -181,6 +181,11 @@ fn take_prewarmed(kind: Kind, name: &'static str) -> Option<egui::ColorImage> {
     PREWARMED.lock().ok()?.as_mut()?.remove(&(kind, name))
 }
 
+/// Icons, emoji and illustrations are rasterised once (64 / 256 px) and drawn much smaller: with mipmaps the GPU scales them down
+/// smoothly. Plain linear filtering sampled only a few texels per pixel, so round edges turned to steps and small details (an
+/// emoji's mouth) vanished.
+const SCALED: egui::TextureOptions = egui::TextureOptions { mipmap_mode: Some(egui::TextureFilter::Linear), ..egui::TextureOptions::LINEAR };
+
 #[derive(Default)]
 pub struct Icons(HashMap<&'static str, TextureHandle>, HashMap<&'static str, TextureHandle>, HashMap<(&'static str, u32), TextureHandle>);
 
@@ -188,7 +193,7 @@ impl Icons {
     fn tex(&mut self, ctx: &egui::Context, name: &'static str) -> Option<egui::TextureId> {
         if let Some(t) = self.0.get(name) { return Some(t.id()); }
         let img = match take_prewarmed(Kind::Icon, name) { Some(i) => i, None => raster_icon(name, lookup(name)?)? };
-        let t = ctx.load_texture(name, img, egui::TextureOptions::LINEAR);
+        let t = ctx.load_texture(name, img, SCALED);
         let id = t.id();
         self.0.insert(name, t);
         Some(id)
@@ -203,7 +208,7 @@ impl Icons {
         if !self.1.contains_key(name) {
             let img = if mono { raster_px(data, true, 256, None) } else { take_prewarmed(Kind::Art, name).or_else(|| raster_px(data, false, 256, None)) };
             let Some(img) = img else { return false };
-            self.1.insert(name, ui.ctx().load_texture(format!("art-{name}"), img, egui::TextureOptions::LINEAR));
+            self.1.insert(name, ui.ctx().load_texture(format!("art-{name}"), img, SCALED));
         }
         let tint = if mono { art_ink() } else { Color32::WHITE };
         ui.painter().image(self.1[name].id(), rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
@@ -217,11 +222,13 @@ impl Icons {
         let with_vs = format!("{bare}-fe0f"); // e.g. ❤ is stored as 2764-fe0f
         let Some((key, data)) = [file.as_str(), bare.as_str(), with_vs.as_str()].into_iter()
             .find_map(|f| EMOJI_TABLE.binary_search_by(|e| e.0.cmp(f)).ok().map(|i| EMOJI_TABLE[i])) else { return false };
-        if !self.0.contains_key(key) {
-            let Some(img) = take_prewarmed(Kind::Emoji, key).or_else(|| raster(data, false)) else { return false };
-            self.0.insert(key, ui.ctx().load_texture(key, img, egui::TextureOptions::LINEAR));
+        // Rasterised at the drawn size, like `paint`: a small emoji keeps its details (a 64 px raster scaled down lost the mouth).
+        let px = (rect.width() * ui.ctx().pixels_per_point()).round().clamp(1.0, 256.0) as u32;
+        if !self.2.contains_key(&(key, px)) {
+            let Some(img) = raster_px(data, false, px, None) else { return false };
+            self.2.insert((key, px), ui.ctx().load_texture(format!("{key}@{px}"), img, egui::TextureOptions::LINEAR));
         }
-        ui.painter().image(self.0[key].id(), rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
+        ui.painter().image(self.2[&(key, px)].id(), rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
         true
     }
 
@@ -248,21 +255,21 @@ impl Icons {
         Some((t.id(), t.size()))
     }
 
-    /// Like `paint`, but rasterised at `rect`'s size in device pixels (cached per size) instead of scaling the 64 px raster
-    /// down: for small glyphs that must stay crisp, such as the avatars' presence badges. `rect` should sit on the pixel grid.
-    pub fn paint_exact(&mut self, ui: &egui::Ui, name: &'static str, rect: Rect, tint: Color32) {
+    /// Same as `paint` (kept for its callers; every icon is rasterised at its drawn size now).
+    pub fn paint_exact(&mut self, ui: &egui::Ui, name: &'static str, rect: Rect, tint: Color32) { self.paint(ui, name, rect, tint) }
+
+    /// Draws an icon rasterised at `rect`'s size in device pixels (cached per size), as sharp as the SVG allows: the 64 px raster
+    /// scaled down turned round edges into steps. Falls back to that raster when the SVG can't be rasterised at this size.
+    pub fn paint(&mut self, ui: &egui::Ui, name: &'static str, rect: Rect, tint: Color32) {
         let px = (rect.width() * ui.ctx().pixels_per_point()).round().clamp(1.0, 256.0) as u32;
         if !self.2.contains_key(&(name, px)) {
-            let Some(img) = lookup(name).and_then(|d| raster_px(d, true, px, Some(name))) else { return self.paint(ui, name, rect, tint) };
+            let Some(img) = lookup(name).and_then(|d| raster_px(d, true, px, Some(name))) else {
+                if let Some(id) = self.tex(ui.ctx(), name) { ui.painter().image(id, rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint); }
+                return;
+            };
             self.2.insert((name, px), ui.ctx().load_texture(format!("{name}@{px}"), img, egui::TextureOptions::LINEAR));
         }
         ui.painter().image(self.2[&(name, px)].id(), rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
-    }
-
-    pub fn paint(&mut self, ui: &egui::Ui, name: &'static str, rect: Rect, tint: Color32) {
-        if let Some(id) = self.tex(ui.ctx(), name) {
-            ui.painter().image(id, rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
-        }
     }
 
     /// An icon button: `size` is the clickable square, the icon is drawn at `icon` px inside it.
