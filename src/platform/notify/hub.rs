@@ -58,6 +58,14 @@ impl App {
         true
     }
 
+    /// A plugin's toast (`ui.toast` / `host.toast`). In the window while it is in front; otherwise a desktop toast like a
+    /// message's, because the in-window one is gone after 5 s and nobody sees it while Webox is behind other windows or in the
+    /// tray (an Auto-Antwort suggestion, a provider error). Ruhezeiten and Nicht stören keep it in the window.
+    pub(crate) fn plugin_toast(&mut self, plugin: String, text: String, now: f64) {
+        if self.window_active() || self.quiet_now() || self.dnd() { self.toast(format!("{plugin}: {text}"), now); return; }
+        self.notify.push(Toast::new(Kind::Info, plugin, text));
+    }
+
     /// Meeting reminder toasts from the meeting list ("Meeting-Erinnerung"; start times are the list's HH:MM, UTC like the list shows them).
     pub(super) fn meeting_reminders(&mut self) {
         if self.client.is_none() || self.dnd() || !self.nb("meeting_toast_enabled", true) { return; }

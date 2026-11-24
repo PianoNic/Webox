@@ -70,7 +70,7 @@ plugin can check for something newer than its own contract and degrade when the 
 | Method | Argument | Result |
 |---|---|---|
 | `host.capabilities` | none | `{name: version, ...}` for methods and events |
-| `ui.toast` | `{"text": "..."}` | `{}`; shown as "<plugin>: text" (same as the `toast` hook) |
+| `ui.toast` | `{"text": "..."}` | `{}`; shown as "<plugin name>: text" (same as the `toast` hook): in the window while it is in front, otherwise as a desktop toast. Safe to call from any thread (it wakes the window). |
 | `log.write` | `{"text": "..."}` | `{}`; written to the plugin log (same as the `log` hook) |
 | `settings.get` | none | the plugin's setting values (same as `settings_get`) |
 | `space.send` | `{"space": "...", "text": "..."}` | `{}`; posted into that space as a new plain-text message on the next frame, through the plugins' send hooks like a typed one. Dropped for a space you cannot write in; the composer is not touched. |
