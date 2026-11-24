@@ -36,6 +36,19 @@ impl App {
         self.time_picker(ctx, t, now);
         self.sessions_dialog(ctx, t);
         self.hide_from_dialog(ctx, t);
+        self.plugin_confirm_dialog(ctx, t);
+    }
+
+    /// A plugin asks before it acts (`ui.confirm`, extras/plugins/confirm.rs): its text with its two buttons; the X and Esc
+    /// answer "no". The plugin's thread waits for the answer; questions come one at a time, oldest first.
+    fn plugin_confirm_dialog(&mut self, ctx: &egui::Context, t: &Th) {
+        let Some((id, title, text, ok, cancel)) = self.plugins.confirm_shown() else { return };
+        let k = format!("plugin-confirm-{id}");
+        if !menu::menu_is_open(ctx, &k) { menu::menu_open(ctx, &k); }
+        if let Some(b) = menu::webex_dialog(ctx, t, &k, &title, &text, None, &[Button::secondary("no", &cancel), Button::primary("yes", &ok)]) {
+            self.plugins.confirm_answer(id, b == "yes");
+            menu::menu_close(ctx, &k);
+        }
     }
 
     /// Settings > Allgemein > Letzte Sitzungen > "Details anzeigen": the sessions Webox knows = this one (the device it registers,

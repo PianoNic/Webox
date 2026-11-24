@@ -70,3 +70,5 @@ pub(crate) fn set_ui_ctx(ctx: &eframe::egui::Context) { if UI_CTX.get().is_none(
 /// A background result is waiting for the UI: draw a frame now. The window has no periodic redraw, so every worker that
 /// hands something to the UI calls this after sending it. No-op before the first frame.
 pub(crate) fn wake() { if let Some(c) = UI_CTX.get() { c.request_repaint(); } }
+/// Puts `text` on the clipboard (from code that has no `egui::Context` at hand, e.g. the plugin outbox).
+pub(crate) fn copy_text(text: String) { if let Some(c) = UI_CTX.get() { c.copy_text(text); } }

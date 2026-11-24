@@ -7,6 +7,8 @@ use super::plugin_repo::{index::check_contract, store};
 use super::plugin_settings as ps;
 pub mod settings;
 pub mod kept;
+pub mod view;
+pub mod confirm;
 use settings::push_settings;
 use collabhost_plugin_api::{cs, unpack_contract, Accents, Decor, HostApi, Palette, PluginVTable, ThemeInfo, ABI_VERSION, CONTRACT_SYMBOL, ENTRY_SYMBOL};
 use serde_json::{Map, Value};
@@ -25,10 +27,14 @@ pub struct Outbox {
     /// `space.send`: (space id, text).
     pub sends_to: Vec<(String, String)>,
     /// `message.keep` changed what is kept: the loaded lists are drawn again (`Plugins::reapply_kept`).
-    pub kept_changed: bool }
+    pub kept_changed: bool,
+    /// `settings.set`: (plugin key, setting id, value), saved like a change on the plugin's page.
+    pub settings_set: Vec<(String, String, Value)>,
+    /// `clipboard.write`: the text to put on the clipboard.
+    pub clipboard: Option<String> }
 
-/// One message of a space as `space.history` hands it out.
-struct Recent { author: String, mine: bool, text: String }
+/// One message of a space as `space.history` hands it out (`date` / `time` UTC).
+struct Recent { id: String, author: String, email: String, mine: bool, text: String, date: String, time: String, published_ms: i64 }
 /// The newest messages per space, copied from the window's loaded lists while a plugin subscribes to `message.received`, so
 /// plugin threads can read them (`space.history`) without touching the UI's data.
 type Recents = Arc<Mutex<HashMap<String, Vec<Recent>>>>;
@@ -39,7 +45,9 @@ const SEEN_MAX: usize = 4096;
 
 /// `plugin` is the key (plugin-data.json, log lines), `name` the shown name (toasts).
 struct Ctx { plugin: String, name: String, out: Arc<Mutex<Outbox>>, data: Arc<Mutex<Map<String, Value>>>, data_file: PathBuf, settings: Arc<Mutex<Map<String, Value>>>,
-    recent: Recents, kept: Arc<Mutex<kept::Kept>>,
+    recent: Recents, kept: Arc<Mutex<kept::Kept>>, view: Arc<Mutex<view::View>>, confirms: confirm::Confirms,
+    /// The window's thread (`ui.confirm` refuses to block it); None in tests.
+    ui_thread: Option<std::thread::ThreadId>,
     /// `reactions.show_avatars`: what this plugin last asked for (None = off).
     avatars: Mutex<Option<ReactionAvatars>> }
 
@@ -116,6 +124,12 @@ pub struct Loaded { inst: Ptr, c: Calls, events: Vec<String>, host: Box<HostApi>
 impl Loaded {
     /// Takes a string the plugin returned (null = None) and hands it back to the plugin's allocator.
     fn take(&self, r: *mut c_char) -> Option<String> { if r.is_null() { None } else { let t = s(r); (self.c.free_str)(r); Some(t) } }
+    /// Stops the plugin. Its open `ui.confirm` questions are dropped first (answered "no"), so threads it joins in `stop` are not
+    /// left waiting for a dialog the window cannot show while it is inside `stop`.
+    fn stop(&self) {
+        lock(&self._ctx.confirms).retain(|q| q.plugin != self._ctx.plugin);
+        (self.c.stop)(self.inst)
+    }
     /// Sends event `name` (one of `EVENTS`) to this plugin if it subscribed to it: its answer, if any.
     fn event(&self, name: &str, json: &str) -> Option<String> {
         let f = self.c.on_event?;
@@ -153,6 +167,13 @@ pub struct Plugins {
     kept: Arc<Mutex<kept::Kept>>,
     /// Keys `message.deleted` ("d" + id) / `message.edited` ("e" + id + new text) already fired for, like `seen`.
     fired: (HashSet<String>, VecDeque<String>),
+    /// Spaces and people for plugin threads (`spaces.list`, `people.search`), filled by `feed` like `recent`.
+    view: Arc<Mutex<view::View>>,
+    /// Whether `feed` copied everything since a plugin subscribed to `message.received`.
+    fed: bool,
+    /// Open `ui.confirm` questions, oldest first (the window shows the first).
+    confirms: confirm::Confirms,
+    ui_thread: std::thread::ThreadId,
 }
 
 fn s(p: *const c_char) -> String { if p.is_null() { String::new() } else { unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned() } }
@@ -205,13 +226,32 @@ const METHODS: &[(&str, u32, Method)] = &[
         _ => serde_json::json!({ "error": "space und text erforderlich" }),
     }),
     // `{"space","limit"}`: the last `limit` loaded messages, oldest first, without system lines. No network request.
-    ("space.history", 1, |c, a| {
+    // 2: each message also has "id", "email", "date", "time" (UTC) and "published_ms".
+    ("space.history", 2, |c, a| {
         let Some(sp) = a.get("space").and_then(Value::as_str) else { return serde_json::json!({ "error": "space fehlt" }) };
         let n = a.get("limit").and_then(Value::as_u64).unwrap_or(RECENT_MAX as u64) as usize;
         let r = lock(&c.recent);
         let l = r.get(sp).map_or(&[][..], |l| &l[l.len().saturating_sub(n)..]);
-        serde_json::json!({ "messages": l.iter().map(|m| serde_json::json!({ "author": m.author, "mine": m.mine, "text": m.text })).collect::<Vec<_>>() })
+        serde_json::json!({ "messages": l.iter().map(view::message_json).collect::<Vec<_>>() })
     }),
+    // `{"limit","query"}`: the spaces of the list (hidden ones left out), latest activity first: `{"spaces": [{"id","title",
+    // "direct","unread","last","writable"}]}`. Same feed as `space.history`.
+    ("spaces.list", 1, view::spaces_list),
+    // `{"query","space","limit"}`: loaded messages containing `query`, newest first, with "space" / "space_title".
+    ("messages.search", 1, view::messages_search),
+    // `{"query","limit"}`: known people by name or e-mail, with their presence: `{"people": [{"id","name","email","status"}]}`.
+    ("people.search", 1, view::people_search),
+    // `{"text","title","ok","cancel","timeout"}`: asks the person in a dialog; blocks the calling (plugin) thread until the
+    // answer `{"ok": bool}`. Not on the UI thread.
+    ("ui.confirm", 1, confirm::ui_confirm),
+    // `{"id","value"}`: saves one of the plugin's own settings as if changed on its page (validated; passwords to the keyring),
+    // on the next frame; the plugin then gets `settings.changed`.
+    ("settings.set", 1, |c, a| match (a.get("id").and_then(Value::as_str), a.get("value")) {
+        (Some(id), Some(v)) => { post(c, |o| o.settings_set.push((c.plugin.clone(), id.to_string(), v.clone()))); Value::Object(Map::new()) }
+        _ => serde_json::json!({ "error": "id und value erforderlich" }),
+    }),
+    // `{"text"}`: puts the text on the clipboard (next frame).
+    ("clipboard.write", 1, |c, a| with_text(a, |t| post(c, |o| o.clipboard = Some(t.to_string())))),
     // `{"deleted": [...], "edited": [...], "replace": bool}`: deleted messages to keep showing and earlier texts to attach
     // (records as the events deliver them, plus "style" / "history"); used to restore them after a restart. Local only.
     ("message.keep", 1, |c, a| {
@@ -333,7 +373,8 @@ impl Plugins {
         let data_file = config.join("plugin-data.json");
         let mut p = Plugins { dirs, list: vec![], out: Default::default(), install_root, data: Arc::new(Mutex::new(read_json(&data_file))),
             state_file: config.join("plugins.json"), data_file, settings_store: ps::Store::new(config), recent: Default::default(), seen: Default::default(),
-            kept: Default::default(), fired: Default::default() };
+            kept: Default::default(), fired: Default::default(), view: Default::default(), fed: false, confirms: Default::default(),
+            ui_thread: std::thread::current().id() };
         store::clean(&p.install_root);
         p.rescan();
         p
@@ -434,7 +475,8 @@ impl Plugins {
         e.commands = s(v.commands).split_whitespace().map(String::from).collect();
         let name = if e.name.trim().is_empty() { key.to_string() } else { e.name.clone() };
         let ctx = Box::new(Ctx { plugin: key.to_string(), name, out: self.out.clone(), data: self.data.clone(), data_file: self.data_file.clone(),
-            settings: e.settings.values.clone(), recent: self.recent.clone(), kept: self.kept.clone(), avatars: Mutex::new(None) });
+            settings: e.settings.values.clone(), recent: self.recent.clone(), kept: self.kept.clone(), view: self.view.clone(), confirms: self.confirms.clone(),
+            ui_thread: Some(self.ui_thread), avatars: Mutex::new(None) });
         let host = Box::new(HostApi { ctx: &*ctx as *const Ctx as Ptr, toast: Some(h_toast), send: Some(h_send), log: Some(h_log),
             data_get: Some(h_get), data_set: Some(h_set), free_str: Some(h_free), settings_get: Some(h_settings),
             // 1.6
@@ -460,7 +502,7 @@ impl Plugins {
         }
         let e = &mut self.list[i];
         if let Some(l) = &e.loaded {
-            if on && !e.enabled { push_settings(l, &e.settings); (l.c.start)(l.inst, &*l.host) } else if !on && e.enabled { crate::media::camera::hook::release(&e.key); (l.c.stop)(l.inst) }
+            if on && !e.enabled { push_settings(l, &e.settings); (l.c.start)(l.inst, &*l.host) } else if !on && e.enabled { crate::media::camera::hook::release(&e.key); l.stop() }
         }
         e.enabled = on && (e.loaded.is_some() || e.builtin);
         self.save_state();
@@ -563,7 +605,7 @@ impl Plugins {
     /// plugin subscribes to `message.received`.
     pub fn note_space(&self, space: &str, list: &[crate::cloud::Message]) {
         let l = list.iter().filter(|m| m.notice.is_empty() && m.deleted == 0).rev().take(RECENT_MAX).collect::<Vec<_>>();
-        let l = l.into_iter().rev().map(|m| Recent { author: m.author.clone(), mine: m.mine, text: m.text.clone() }).collect();
+        let l = l.into_iter().rev().map(view::recent_of).collect();
         lock(&self.recent).insert(space.to_string(), l);
     }
 
@@ -680,7 +722,7 @@ fn unload(e: &mut Entry) {
     if let Some(l) = e.loaded.take() {
         // the camera hooks first: no frame filter may run while (or after) the plugin stops
         crate::media::camera::hook::release(&e.key);
-        if e.enabled { (l.c.stop)(l.inst) }
+        if e.enabled { l.stop() }
         (l.c.destroy)(l.inst);
     }
 }
@@ -689,9 +731,11 @@ impl Drop for Plugins { fn drop(&mut self) { for e in &mut self.list { unload(e)
 
 #[cfg(test)]
 mod e2e;
+#[cfg(test)]
+mod method_tests;
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     #[derive(Default)]
     struct P;
     impl collabhost_plugin_api::Plugin for P {
@@ -729,7 +773,7 @@ mod tests {
     }
 
     /// Loads plugin `T` from this test binary as if it were a library reporting contract 1.`minor`.
-    fn load_in_process<T: collabhost_plugin_api::Plugin>(minor: u16) -> (super::Plugins, std::path::PathBuf) {
+    pub(super) fn load_in_process<T: collabhost_plugin_api::Plugin>(minor: u16) -> (super::Plugins, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!("collabhost-ev-{minor}-{}-{}", T::NAME, std::process::id()));
         let mut p = super::Plugins::with_root(&dir, dir.join("installed"));
         #[cfg(windows)] let lib: libloading::Library = libloading::os::windows::Library::this().unwrap().into();
@@ -788,7 +832,7 @@ mod tests {
         use std::ffi::CStr;
         let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: Default::default(), data: Default::default(), data_file: Default::default(),
             settings: std::sync::Arc::new(std::sync::Mutex::new(serde_json::json!({ "x": true }).as_object().unwrap().clone())), recent: Default::default(), kept: Default::default(),
-            avatars: Default::default() };
+            view: Default::default(), confirms: Default::default(), ui_thread: None, avatars: Default::default() };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |m: &str, j: &str| {
             let (m, j) = (collabhost_plugin_api::cs(m), collabhost_plugin_api::cs(j));
@@ -863,7 +907,7 @@ mod tests {
         let notice = crate::cloud::Message { notice: "Anna ist beigetreten".into(), ..Default::default() };
         p.note_space("s1", &[msg("Anna", false, "eins"), notice, msg("Ich", true, "zwei"), msg("Anna", false, "drei")]);
         let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(), recent: p.recent.clone(), kept: Default::default(),
-            avatars: Default::default() };
+            view: p.view.clone(), confirms: Default::default(), ui_thread: None, avatars: Default::default() };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |m: &str, j: serde_json::Value| {
             let (m, j) = (collabhost_plugin_api::cs(m), collabhost_plugin_api::cs(&j.to_string()));
@@ -874,7 +918,9 @@ mod tests {
         };
         // The last `limit`, oldest first, system lines left out; an unknown space has none.
         assert_eq!(call("space.history", serde_json::json!({ "space": "s1", "limit": 2 })),
-            serde_json::json!({ "messages": [{ "author": "Ich", "mine": true, "text": "zwei" }, { "author": "Anna", "mine": false, "text": "drei" }] }));
+            serde_json::json!({ "messages": [
+                { "id": "", "author": "Ich", "email": "", "mine": true, "text": "zwei", "date": "", "time": "", "published_ms": 0 },
+                { "id": "", "author": "Anna", "email": "", "mine": false, "text": "drei", "date": "", "time": "", "published_ms": 0 }] }));
         assert_eq!(call("space.history", serde_json::json!({ "space": "s1" }))["messages"].as_array().unwrap().len(), 3);
         assert_eq!(call("space.history", serde_json::json!({ "space": "nope", "limit": 5 })), serde_json::json!({ "messages": [] }));
         assert!(call("space.history", serde_json::json!({})).get("error").is_some());
@@ -985,7 +1031,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("collabhost-keep-{}", std::process::id()));
         let p = super::Plugins::with_root(&dir, dir.join("installed"));
         let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(),
-            recent: p.recent.clone(), kept: p.kept.clone(), avatars: Default::default() };
+            recent: p.recent.clone(), kept: p.kept.clone(), view: Default::default(), confirms: Default::default(), ui_thread: None, avatars: Default::default() };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |j: serde_json::Value| {
             let (m, j) = (collabhost_plugin_api::cs("message.keep"), collabhost_plugin_api::cs(&j.to_string()));
