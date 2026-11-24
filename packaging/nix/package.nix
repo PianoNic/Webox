@@ -1,7 +1,9 @@
 # Webox for Linux / NixOS. Built from this repository with the pinned Cargo.lock (no network at build time).
+# Built with crane (flake input): the ~760 dependencies are one derivation (cargoArtifacts) that only changes with Cargo.lock /
+# Cargo.toml, so a source edit recompiles only Webox itself and CI reuses the dependencies from its Nix store cache.
 {
   lib,
-  rustPlatform,
+  craneLib,
   stdenvNoCC,
   pkg-config,
   wrapGAppsHook3,
@@ -61,34 +63,32 @@ in
 let
   version = cargoToml.package.version;
 
-  # The Rust build (one compile, shared by both variants of the wrapper below).
-  unwrapped = rustPlatform.buildRustPackage {
+  # Only what the build needs (no target/, screenshots or tooling), so unrelated edits don't trigger rebuilds. build.rs reads
+  # assets/ and secrets.toml: a file missing here silently drops a feature (without secrets.toml sign-in is "not configured").
+  src = lib.fileset.toSource {
+    root = ../..;
+    fileset = lib.fileset.unions [
+      ../../Cargo.toml
+      ../../Cargo.lock
+      ../../build.rs
+      ../../secrets.toml # sign-in and the GIF picker (build.rs embeds it)
+      ../../src
+      ../../assets
+      ../../examples
+      ../../plugin-api
+      ../../plugins
+      ../../packaging/linux
+    ];
+  };
+
+  commonArgs = {
     pname = "webox-unwrapped";
-    inherit version;
-
-    # Only what the build needs (no target/, screenshots or tooling), so unrelated edits don't trigger rebuilds.
-    src = lib.fileset.toSource {
-      root = ../..;
-      fileset = lib.fileset.unions [
-        ../../Cargo.toml
-        ../../Cargo.lock
-        ../../build.rs
-        ../../secrets.toml # sign-in and the GIF picker (build.rs embeds it)
-        ../../src
-        ../../assets
-        ../../examples
-        ../../plugin-api
-        ../../plugins
-        ../../packaging/linux
-      ];
-    };
-
-    cargoLock = {
-      lockFile = ../../Cargo.lock;
-      # Git dependencies need a fixed hash for the offline vendor step (Cargo.toml pins deep_filter to a commit).
-      outputHashes."deep_filter-0.5.6" = "sha256-5bYbfO1kmduNm9YV5niaaPvRIDRmPt4QOX7eKpK+sWY=";
-    };
-    cargoBuildFlags = [ "-p" "webox" "--bin" "webox" ];
+    inherit version src;
+    strictDeps = true;
+    cargoExtraArgs = "--locked -p webox --bin webox";
+    # Git dependencies need a fixed hash for the offline vendor step (Cargo.toml pins deep_filter to a commit).
+    outputHashes."git+https://github.com/Rikorose/DeepFilterNet?rev=978576aa8400552a4ce9730838c635aa30db5e61#978576aa8400552a4ce9730838c635aa30db5e61" =
+      "sha256-5bYbfO1kmduNm9YV5niaaPvRIDRmPt4QOX7eKpK+sWY=";
     # The unit tests run in the dev shell / CI; some need a display or network.
     doCheck = false;
 
@@ -106,16 +106,36 @@ let
       gst_all_1.gstreamer
       gst_all_1.gst-plugins-base
     ];
-
-    postInstall = ''
-      install -Dm644 packaging/linux/webox.desktop $out/share/applications/webox.desktop
-      for s in 16 20 24 32 40 48 60 64 256; do
-        install -Dm644 assets/icon/webox-$s.png $out/share/icons/hicolor/''${s}x''${s}/apps/webox.png
-      done
-    '';
-
-    meta.platforms = lib.platforms.linux;
   };
+
+  # Every dependency, compiled once against dummy sources of this workspace: changes only with Cargo.lock / Cargo.toml.
+  cargoArtifacts = craneLib.buildDepsOnly (
+    commonArgs
+    // {
+      # Only `cargo build`: the default extra `cargo check` pass would compile the dependencies' metadata a second time.
+      buildPhaseCargoCommand = "cargoWithProfile build ${commonArgs.cargoExtraArgs}";
+    }
+  );
+
+  # The Rust build (one compile of Webox on top of cargoArtifacts, shared by both variants of the wrapper below).
+  unwrapped = craneLib.buildPackage (
+    commonArgs
+    // {
+      inherit cargoArtifacts;
+      # Keep the target/ archive out of $out: the wrapper references this output, so it would land in the closure.
+      doInstallCargoArtifacts = false;
+
+      postInstall = ''
+        install -Dm644 packaging/linux/webox.desktop $out/share/applications/webox.desktop
+        for s in 16 20 24 32 40 48 60 64 256; do
+          install -Dm644 assets/icon/webox-$s.png $out/share/icons/hicolor/''${s}x''${s}/apps/webox.png
+        done
+      '';
+
+      passthru = { inherit cargoArtifacts; };
+      meta.platforms = lib.platforms.linux;
+    }
+  );
 in
 stdenvNoCC.mkDerivation {
   pname = "webox";
@@ -169,7 +189,10 @@ stdenvNoCC.mkDerivation {
     ''}
   '';
 
-  passthru = { inherit runtimeLibs withMesaFallback unwrapped; };
+  passthru = {
+    inherit runtimeLibs withMesaFallback unwrapped;
+    inherit (unwrapped) cargoArtifacts;
+  };
 
   meta = {
     description = "Desktop client for Webex messaging, meetings and calls (Rust/egui)";
