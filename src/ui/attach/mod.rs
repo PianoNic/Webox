@@ -183,8 +183,13 @@ impl PasteKeys {
     }
 }
 
-/// The clipboard's image as PNG (arboard reads CF_DIBV5 / PNG on Windows).
+/// The clipboard's image as PNG (arboard reads CF_DIBV5 / PNG on Windows, image/png on X11). On Wayland the native clipboard
+/// first (data-control, `platform::linux::clipboard`); arboard's X11 read through XWayland only where that protocol is missing.
 pub(super) fn clipboard_png() -> Option<Vec<u8>> {
+    #[cfg(target_os = "linux")]
+    if crate::platform::linux::session() == crate::platform::linux::Session::Wayland {
+        if let Some(png) = crate::platform::linux::clipboard::image_png() { return png; }
+    }
     let mut cb = arboard::Clipboard::new().ok()?;
     let img = cb.get_image().ok()?;
     let rgba = image::RgbaImage::from_raw(img.width as u32, img.height as u32, img.bytes.into_owned())?;
@@ -192,7 +197,8 @@ pub(super) fn clipboard_png() -> Option<Vec<u8>> {
     image::DynamicImage::ImageRgba8(rgba).write_to(&mut out, image::ImageFormat::Png).ok()?;
     Some(out.into_inner())
 }
-/// Pasted images, per space, read off the UI thread (the X11 / XWayland clipboard can take seconds to answer).
+/// Pasted images, per space, read off the UI thread (the X11 clipboard can take seconds to answer, a Wayland
+/// source app as long as it needs to write the image).
 static PASTED: Mutex<Vec<(String, Vec<u8>)>> = Mutex::new(Vec::new());
 /// Reads the clipboard's image for `space` on a thread; `take_pasted` hands it over.
 pub(super) fn clipboard_png_async(ctx: &egui::Context, space: &str) {
