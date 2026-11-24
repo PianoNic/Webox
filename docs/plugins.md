@@ -77,6 +77,7 @@ plugin can check for something newer than its own contract and degrade when the 
 | `space.history` | `{"space": "...", "limit": n}` | `{"messages": [{"author": "...", "mine": true, "text": "..."}]}`, the last `limit` (at most 200) messages Webox has loaded, oldest first, system lines left out. No network request: a space never opened holds only what arrived live. Filled only while a plugin subscribes to `message.received`. Safe to call from any thread. |
 | `message.keep` | `{"deleted": [...], "edited": [...], "replace": bool}` | `{}`; what the answers to `message.deleted` / `message.edited` keep, given again, e.g. after a restart: `deleted` entries are `message.deleted` payloads plus `"style"`, `edited` entries `{"id", "history": [...]}`. `replace` first drops everything kept so far (also to forget it all: `{"replace": true}`). Lists already on screen are drawn again. See "Deleted and edited messages". |
 | `reactions.show_avatars` | `{"enabled": true, "max": 3, "size": "small", "hide_self": false}`, every field optional (these are the defaults) | `{}`; from now on Webox draws small round avatars of the people who reacted inside each reaction chip, after the count: the first `max` (1–10, clamped) in the service's order, overlapping, then "+K" for the rest of the count. `size`: `small` (14 pt) or `medium` (18 pt), anything else answers `{"error"}` and changes nothing. `hide_self` leaves my own reaction out. Hovering an avatar shows the name (the reactors popover's lookup). Avatars come from the people and photo caches, no network request. `{"enabled": false}` turns them off. Webox remembers the call per plugin; a plugin that is switched off or unloaded stops counting, and with several the last enabled one wins. Without any, the chips look as before. Safe to call from any thread. |
+| `camera.filter`, `camera.source`, `media.open`, `media.read`, `media.close` | see "Camera pictures" below | a frame filter on every camera picture under a time budget, a video file or picture instead of the camera, and decoded pictures for a plugin's own buffer. Safe to call from any thread. |
 
 | Event | Payload | Answer |
 |---|---|---|
@@ -126,6 +127,49 @@ and never sends them anywhere. To keep them across restarts the plugin stores th
 them back with `message.keep` on start. The [Nachrichtenprotokoll](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/message-logger)
 plugin does this.
 
+### Camera pictures
+
+Pictures are too big for JSON events (720p at 30 fps is 110 MB/s of RGBA), so they never travel as JSON. Three method groups
+cover what a video plugin needs, all in `src/media/camera/hook.rs`:
+
+| Method | Argument | Result |
+|---|---|---|
+| `camera.filter` | `{"fn": <address>, "ctx": <address>}`; `{"fn": 0, "ctx"?}` removes it | `{}` or `{"error"}`. Registers the plugin's frame filter, an `extern "C" fn(ctx, *mut VideoFrame) -> i32` (plugin-api `FrameFn`). One per plugin; a second call replaces the first. Removing it waits until a call still running has returned. Use `Host::camera_filter(closure)`, which does all of this. |
+| `camera.source` | `{"path": "..."}`, `""` = the camera | `{}` or `{"error"}` (no such file). A video file (looping, paced at its own frame times) or a picture replaces the camera, at the camera's maximum resolution up to 1280 x 720. The camera stays closed. Decoded with the platform's framework (`src/media/video/`, no codec of our own); a file it cannot decode shows the camera's error panel. Only the plugin that set the file can clear it; the last call wins. |
+| `media.open` | `{"path", "width", "height"}` | `{"id", "still"}` or `{"error"}`: a video (looping) or a picture as RGBA pictures of exactly that size (scaled to fill, the overhang cut off evenly). A video decodes on a host thread, a picture or two ahead. At most 4 per plugin. |
+| `media.read` | `{"id", "data": <address>, "width", "height", "stride"}` | `{"pts"}` or `{"error"}`: copies the next picture (the current one again while the next is not decoded yet) into the plugin's buffer of `stride * height` bytes. The size must be the one given to `media.open`. |
+| `media.close` | `{"id"}`, `{}` = all of the plugin's | `{}` |
+
+**The frame filter.** `hook::apply` is the one place every camera picture passes: the capture worker calls it right after
+the device's picture is decoded and before anything uses it. Today that is the Settings > Video preview (so the preview
+shows every effect); Webox calls carry no camera video yet, and the call's video send path is meant to take its pictures
+from the same worker. Without a filter `apply` costs one atomic load and the picture stays in the device's format. With
+one, the picture is converted to full-size RGBA (`VideoFrame`: `width`, `height`, `stride`, `data`, `seq`, `time_us`) and
+handed to the filter's own thread, which edits it in place.
+
+**Time budget.** The camera thread waits at most 20 ms per frame (`hook::BUDGET`, of the 33 ms a 30 fps frame has) for all
+filters together. A filter that misses it is skipped for that frame: Webox uses that filter's previous picture again (so a
+replaced background never flashes the real room), or black before it has one, and does not wait for it. While its thread
+is still busy with an earlier frame, the next frames skip it at once; its late result becomes the picture shown again. So a
+slow plugin lowers its own frame rate, never the camera's.
+
+**Why a method and not a table entry.** The filter is an address passed as a number in the method's JSON. `HostApi` and
+`PluginVTable` stay as they are, so the contract stays 1.6 and no plugin needs rebuilding; an older host answers null for
+`camera.filter` and `host.has("camera.filter")` tells the plugin. The only new boundary type is `#[repr(C)] VideoFrame`,
+which starts with its `size` like `ThemeInfo` so it can grow. plugin-api 1.6.1 adds `VideoFrame`, `FrameFn`,
+`Host::camera_filter` (a closure behind a panic-catching shim; dropping the returned `CameraFilter` removes it and frees
+the closure) and the `file` settings field. Pointers to pictures (`media.read`'s `data`) work the same way: the plugin owns
+the buffer, the host only writes into it during the call.
+
+**Lifetime.** Before a plugin's `stop` (switched off, updated, uninstalled, Webox closing) Webox removes its filter
+(waiting for a running call), its camera source and its open media, so a filter never runs while or after its plugin
+stops, and the library is never unloaded under it.
+
+Everything stays on the machine: pictures go from the camera through the filters to the preview (and later the call's own
+video), nowhere else. The [Video](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/video) plugin uses all of
+them (video file or picture as the camera, background blur / picture / video with person segmentation, mirror,
+brightness / contrast, soft focus, a name overlay, a low-light boost).
+
 ## Plugin settings
 
 Since contract 1.2 a plugin can have settings. It declares them as a schema, and Webox draws the form on the plugin's own
@@ -147,6 +191,7 @@ fn settings(&self) -> Option<Schema> {
         .choice("mode", "Modus", "", "a", &[("a", "Einfach"), ("b", "Genau")])
         .multiline("notes", "Notizen", "", "")
         .password("token", "API-Schlüssel", "Wird im Schlüsselbund gespeichert.")
+        .file("bg", "Hintergrundbild", "", "Bilder", &["png", "jpg"])
         .button("reset", "Zähler zurücksetzen", ""))
 }
 fn settings_changed(&mut self, v: &Values) { self.smiley = v.bool("smiley").unwrap_or(true); }
@@ -178,6 +223,7 @@ Schema JSON (`version` 1):
     { "type": "password", "id": "token", "label": "..." },
     { "type": "number", "id": "delay", "label": "...", "default": 2, "min": 0, "max": 10, "step": 0.5 },
     { "type": "choice", "id": "mode", "label": "...", "default": "a", "options": [ { "value": "a", "label": "Einfach" } ] },
+    { "type": "file", "id": "bg", "label": "...", "default": "", "filter": "Bilder", "extensions": ["png", "jpg"] },
     { "type": "button", "id": "reset", "label": "..." }
   ] } ] }
 ```
@@ -189,7 +235,11 @@ A top-level `"fields": [...]` without sections is accepted too. Rules:
 - Number defaults are clamped into `min..max`. A choice default that is not one of the options becomes the first option.
 - Validation before saving: bool must be a bool. string has no line breaks and at most 1000 characters. multiline allows
   20,000 characters, password 4096. number must lie within `min..max` and on the `step` grid. choice must be one of the
-  options. A refused value is not saved, and the reason appears under the field.
+  options. file is a path without line breaks, at most 4096 characters (`""` = none). A refused value is not saved, and
+  the reason appears under the field.
+- `file` (plugin-api 1.6.1): a path field with "Durchsuchen…", which opens the system's open-file dialog (on its own thread)
+  filtered to `extensions` (letters and digits, without the dot) under the name `filter`, plus "Alle Dateien"; "Entfernen"
+  clears it. The path can also be typed. Hosts from before it leave the field out, like any unknown type.
 - The plugin always receives every field (buttons excluded). A stored value that no longer validates, for example after a
   schema change, is replaced by the default. An unset password is `""`.
 
@@ -360,5 +410,5 @@ update, tamper check and uninstall of the example plugin. `src/extras/plugin_set
 edit history attaching, `message.keep` restoring and replacing, everything kept going when the plugin is switched off, and
 lists staying as received without such a plugin, and `reactions.show_avatars` (off without a plugin, follows the plugin's switch,
 `max` / `size` clamped or refused); `src/ui/messages/who_reacted.rs` covers which reactors a chip shows, "+K", hiding your
-own reaction and the width. `os_keyring_roundtrip` (`--ignored`) checks the real OS keyring. The repository tests run against an in-process HTTP server on 127.0.0.1, which a
+own reaction and the width. `src/media/camera/hook.rs` covers the frame filters (called once per frame with the picture edited in place, a filter over the budget skipped at once with its last picture shown instead of the raw one, removal waiting for a running call, owner and ctx), the RGBA conversions, scaling and a picture as camera source and `media.read` clip; `src/media/video/tests.rs` (`file_source_loops`) a video as camera source starting over at the end, paced at its own rate; `src/extras/plugins` (`camera_filter_and_source_follow_the_plugin`) a plugin registering both through `Host::camera_filter` / `camera.source` and losing them when switched off; `src/extras/plugin_settings/tests.rs` the `file` field. `os_keyring_roundtrip` (`--ignored`) checks the real OS keyring. The repository tests run against an in-process HTTP server on 127.0.0.1, which a
 test-only policy allows. The app itself never allows plain HTTP.

@@ -42,7 +42,7 @@ pub fn pix_of(fcc: u32) -> Option<Pix> {
     }
 }
 pub fn fourcc_of(p: Pix) -> u32 {
-    match p { Pix::Yuyv => fourcc(b"YUYV"), Pix::Nv12 => fourcc(b"NV12"), Pix::Mjpg => fourcc(b"MJPG"), Pix::Rgb24 => fourcc(b"RGB3"), Pix::Bgra => fourcc(b"XR24") }
+    match p { Pix::Yuyv => fourcc(b"YUYV"), Pix::Nv12 => fourcc(b"NV12"), Pix::Mjpg => fourcc(b"MJPG"), Pix::Rgb24 => fourcc(b"RGB3"), Pix::Bgra => fourcc(b"XR24"), Pix::Rgba => fourcc(b"AB24") }
 }
 
 /// `struct v4l2_capability` (104 bytes).

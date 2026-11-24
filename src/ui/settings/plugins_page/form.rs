@@ -102,6 +102,23 @@ impl App {
                     self.apply_setting(s, i, &f.id, Value::String(v));
                 }
             }
+            Kind::File { filter, extensions } => {
+                label(ui);
+                // a path picked in the dialog (on its own thread) arrives here
+                let picked = { let mut p = lock_picks(); p.iter().position(|(pk, _)| *pk == k).map(|n| p.remove(n).1) };
+                if let Some(path) = picked { s.edits.remove(&k); self.apply_setting(s, i, &f.id, Value::String(path.to_string_lossy().into_owned())); }
+                let cur = self.plugins.list[i].settings.values().get(&f.id).and_then(Value::as_str).unwrap_or_default().to_string();
+                let buf = s.edits.entry(k.clone()).or_insert_with(|| cur.clone());
+                let mut commit = None;
+                ui.horizontal(|ui| {
+                    let r = kit::text_field(ui, t, buf, "Keine Datei", FIELD_W);
+                    if (r.lost_focus() || (r.has_focus() && ui.input(|i| i.key_pressed(Key::Enter)))) && *buf != cur { commit = Some(buf.clone()); }
+                    ui.add_space(8.0);
+                    if kit::pill(ui, t, "Durchsuchen…", false, true).clicked() { pick_file(k.clone(), filter.clone(), extensions.clone()); }
+                    if !cur.is_empty() { ui.add_space(4.0); if kit::pill(ui, t, "Entfernen", false, true).clicked() { commit = Some(String::new()); } }
+                });
+                if let Some(v) = commit { s.edits.remove(&k); self.apply_setting(s, i, &f.id, Value::String(v)); }
+            }
             Kind::Button => {
                 if kit::pill(ui, t, &f.label, true, true).clicked() {
                     let msg = if builtin { self.builtin_settings_action(&key, &f.id) } else { self.plugins.settings_action(i, &f.id) };
@@ -120,6 +137,20 @@ impl App {
             _ => None,
         }
     }
+}
+
+/// Paths picked for `file` fields: ("<plugin key>|<field id>", path), collected by the form on its next frame.
+static PICKS: std::sync::Mutex<Vec<(String, std::path::PathBuf)>> = std::sync::Mutex::new(Vec::new());
+fn lock_picks() -> std::sync::MutexGuard<'static, Vec<(String, std::path::PathBuf)>> { PICKS.lock().unwrap_or_else(|e| e.into_inner()) }
+/// Opens the native open-file dialog on a worker thread (the UI keeps running); a cancelled dialog changes nothing.
+fn pick_file(key: String, filter: String, ext: Vec<String>) {
+    std::thread::spawn(move || {
+        let _rt = system::enter_dbus_rt(); // rfd's portal backend needs the D-Bus tokio runtime
+        let mut d = rfd::FileDialog::new();
+        if !ext.is_empty() { d = d.add_filter(if filter.is_empty() { "Dateien" } else { &filter }, &ext); }
+        if let Some(p) = d.add_filter("Alle Dateien", &["*"]).pick_file() { lock_picks().push((key, p)); }
+        crate::ui::wake();
+    });
 }
 
 fn snap(v: f64, min: f64, step: f64) -> f64 { if step > 0.0 { min + ((v - min) / step).round() * step } else { v } }

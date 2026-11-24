@@ -224,7 +224,49 @@ const METHODS: &[(&str, u32, Method)] = &[
         Ok(v) => { *lock(&c.avatars) = v; crate::ui::wake(); Value::Object(Map::new()) }
         Err(e) => serde_json::json!({ "error": e }),
     }),
+    // Camera pictures (media/camera/hook.rs). Pictures never travel as JSON: the plugin passes addresses as numbers.
+    // `{"fn": <FrameFn address>, "ctx": <address>}`: the plugin's frame filter (one per plugin), called once per camera frame on
+    // a thread of its own under a time budget. `{"fn": 0, "ctx"?}` removes it and waits for a call still running.
+    ("camera.filter", 1, |c, a| {
+        let (f, ctx) = (a.get("fn").and_then(Value::as_u64).unwrap_or(0), a.get("ctx").and_then(Value::as_u64).unwrap_or(0));
+        if f == 0 { crate::media::camera::hook::remove_filter(&c.plugin, a.get("ctx").and_then(Value::as_u64).map(|x| x as usize)); return Value::Object(Map::new()); }
+        // SAFETY: the plugin hands in the address of an `extern "C" fn(*mut c_void, *mut VideoFrame) -> i32` (plugin-api's
+        // `Host::camera_filter`); it stays valid until the filter is removed, which `stop` / unloading does first.
+        let f: collabhost_plugin_api::FrameFn = unsafe { std::mem::transmute::<usize, collabhost_plugin_api::FrameFn>(f as usize) };
+        ok_or_error(crate::media::camera::hook::add_filter(&c.plugin, f, ctx as usize))
+    }),
+    // `{"path": "..."}`: a video file (looping) or an image replaces the camera; `""` brings the camera back.
+    ("camera.source", 1, |c, a| {
+        let p = a.get("path").and_then(Value::as_str).unwrap_or_default();
+        let r = crate::media::camera::hook::set_source(&c.plugin, (!p.is_empty()).then(|| PathBuf::from(p)));
+        crate::ui::wake(); // the Settings > Video preview reopens with it
+        ok_or_error(r)
+    }),
+    // `{"path", "width", "height"}` -> `{"id", "still"}`: a video (looping) or an image as pictures of that size, for `media.read`.
+    ("media.open", 1, |c, a| {
+        let n = |k: &str| a.get(k).and_then(Value::as_u64).unwrap_or(0) as usize;
+        let Some(p) = a.get("path").and_then(Value::as_str).filter(|p| !p.is_empty()) else { return serde_json::json!({ "error": "path fehlt" }) };
+        match crate::media::camera::hook::media_open(&c.plugin, Path::new(p), n("width"), n("height")) {
+            Ok((id, still)) => serde_json::json!({ "id": id, "still": still }),
+            Err(e) => serde_json::json!({ "error": e }),
+        }
+    }),
+    // `{"id", "data": <address>, "width", "height", "stride"}` -> `{"pts"}`: copies the next picture (RGBA) into the buffer.
+    ("media.read", 1, |c, a| {
+        let n = |k: &str| a.get(k).and_then(Value::as_u64).unwrap_or(0) as usize;
+        let (ptr, w, h, stride) = (n("data"), n("width"), n("height"), n("stride"));
+        if ptr == 0 || w == 0 || h == 0 || stride < w * 4 { return serde_json::json!({ "error": "data, width, height, stride erforderlich" }); }
+        // SAFETY: the plugin owns `stride * height` writable bytes at `data` for the duration of the call.
+        let dst = unsafe { std::slice::from_raw_parts_mut(ptr as *mut u8, stride * h) };
+        match crate::media::camera::hook::media_read(&c.plugin, n("id") as u64, dst, w, h, stride) {
+            Ok(pts) => serde_json::json!({ "pts": pts }),
+            Err(e) => serde_json::json!({ "error": e }),
+        }
+    }),
+    // `{"id"}` closes one clip, `{}` all of this plugin's.
+    ("media.close", 1, |c, a| { crate::media::camera::hook::media_close(&c.plugin, a.get("id").and_then(Value::as_u64)); Value::Object(Map::new()) }),
 ];
+fn ok_or_error(r: Result<(), String>) -> Value { match r { Ok(()) => Value::Object(Map::new()), Err(e) => serde_json::json!({ "error": e }) } }
 /// The events Webox fires: (name, version). A plugin receives those it lists in `Plugin::EVENTS`.
 const EVENTS: &[(&str, u32)] = &[
     // The plugin's setting values changed (and once before every start). Payload: all values, as `settings.get` returns them.
@@ -418,7 +460,7 @@ impl Plugins {
         }
         let e = &mut self.list[i];
         if let Some(l) = &e.loaded {
-            if on && !e.enabled { push_settings(l, &e.settings); (l.c.start)(l.inst, &*l.host) } else if !on && e.enabled { (l.c.stop)(l.inst) }
+            if on && !e.enabled { push_settings(l, &e.settings); (l.c.start)(l.inst, &*l.host) } else if !on && e.enabled { crate::media::camera::hook::release(&e.key); (l.c.stop)(l.inst) }
         }
         e.enabled = on && (e.loaded.is_some() || e.builtin);
         self.save_state();
@@ -636,6 +678,8 @@ fn stem_of(f: &Path) -> String { f.file_stem().unwrap_or_default().to_string_los
 
 fn unload(e: &mut Entry) {
     if let Some(l) = e.loaded.take() {
+        // the camera hooks first: no frame filter may run while (or after) the plugin stops
+        crate::media::camera::hook::release(&e.key);
         if e.enabled { (l.c.stop)(l.inst) }
         (l.c.destroy)(l.inst);
     }
@@ -690,8 +734,10 @@ mod tests {
         let mut p = super::Plugins::with_root(&dir, dir.join("installed"));
         #[cfg(windows)] let lib: libloading::Library = libloading::os::windows::Library::this().unwrap().into();
         #[cfg(unix)] let lib: libloading::Library = libloading::os::unix::Library::this().into();
-        let mut e = super::Plugins::entry(dir.join("ev"), "ev", &Default::default(), None);
-        let l = p.attach(&mut e, "ev", collabhost_plugin_api::vtable::<T>(), minor, lib).unwrap();
+        // one key per plugin type: keyed state (the camera hooks) of tests running side by side stays apart
+        let key = format!("ev-{}", T::NAME.to_lowercase());
+        let mut e = super::Plugins::entry(dir.join("ev"), &key, &Default::default(), None);
+        let l = p.attach(&mut e, &key, collabhost_plugin_api::vtable::<T>(), minor, lib).unwrap();
         e.loaded = Some(l);
         p.list.push(e);
         let i = p.list.len() - 1;
@@ -1018,6 +1064,54 @@ mod tests {
         assert_eq!(p.reaction_avatars(), None);
         drop(p);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Registers a frame filter (red channel to 7) and a picture as the camera in `start`, like the Video plugin; drops the
+    /// filter in `stop`.
+    #[derive(Default)]
+    struct Cam { filter: Option<collabhost_plugin_api::CameraFilter>, bad: Option<String> }
+    static CAM_PNG: std::sync::Mutex<Option<std::path::PathBuf>> = std::sync::Mutex::new(None);
+    impl collabhost_plugin_api::Plugin for Cam {
+        const NAME: &'static str = "Cam"; const AUTHOR: &'static str = ""; const VERSION: &'static str = ""; const DESCRIPTION: &'static str = "";
+        fn start(&mut self, h: collabhost_plugin_api::Host) {
+            assert!(h.has("camera.filter") && h.has("camera.source") && h.has("media.read"));
+            self.filter = h.camera_filter(|f| for y in 0..f.height { for x in 0..f.width { f.data[y * f.stride + x * 4] = 7; } });
+            self.bad = h.call("camera.source", r#"{"path":"/no/such/file.mp4"}"#);
+            let p = CAM_PNG.lock().unwrap().clone().unwrap();
+            assert_eq!(h.call("camera.source", &serde_json::json!({ "path": p }).to_string()).as_deref(), Some("{}"));
+        }
+        fn stop(&mut self) { self.filter = None; }
+    }
+
+    #[test]
+    fn camera_filter_and_source_follow_the_plugin() {
+        use crate::media::camera::{hook, Pix, Raw};
+        let png = std::env::temp_dir().join(format!("collabhost-cam-{}.png", std::process::id()));
+        image::RgbaImage::from_pixel(4, 4, image::Rgba([1, 2, 3, 255])).save(&png).unwrap();
+        *CAM_PNG.lock().unwrap() = Some(png.clone());
+        let raw = || Raw { pix: Pix::Rgb24, w: 4, h: 2, stride: 12, uv_off: 0, data: vec![100; 24] };
+        let (mut p, dir) = load_in_process::<Cam>(6);
+        let i = p.list.len() - 1;
+        // the filter runs on the camera picture (a frame may miss the budget while its thread starts on a busy test machine:
+        // then it is black, never the unfiltered picture), the source replaces the camera
+        let filtered = || (1..=50).map(|n| hook::apply(raw(), n, 0)).inspect(|o| assert!(o.pix == Pix::Rgba && (o.data[..3] == [0, 0, 0] || o.data[..3] == [7, 100, 100]), "{:?}", &o.data[..4]))
+            .any(|o| o.data[..4] == [7, 100, 100, 255]);
+        assert!(filtered());
+        assert!(hook::filter_stats("ev-cam").is_some());
+        assert_eq!(hook::source().as_deref(), Some(png.as_path()));
+        let cam = unsafe { &*(p.list[i].loaded.as_ref().unwrap().inst as *const Cam) };
+        assert!(cam.bad.as_deref().is_some_and(|b| b.contains("error")), "{:?}", cam.bad);
+        // switched off: both are gone before `stop` frees the filter; the camera picture passes untouched
+        p.set_enabled(i, false);
+        assert!(hook::filter_stats("ev-cam").is_none() && hook::source().is_none());
+        assert_eq!(hook::apply(raw(), 2, 0).pix, Pix::Rgb24);
+        // on again: back
+        p.set_enabled(i, true);
+        assert!(filtered());
+        drop(p);
+        assert!(hook::filter_stats("ev-cam").is_none() && hook::source().is_none());
+        let _ = std::fs::remove_dir_all(dir);
+        let _ = std::fs::remove_file(png);
     }
 
     #[test]

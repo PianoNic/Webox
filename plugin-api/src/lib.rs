@@ -247,6 +247,58 @@ pub struct PluginVTable {
     pub on_event: Option<extern "C" fn(*mut c_void, *const c_char, *const c_char) -> *mut c_char>,
 }
 
+/// One camera picture for a frame filter (host method `camera.filter`, docs/plugins.md "Camera pictures"). The host hands it
+/// to the filter on a thread of its own, once per frame; the filter edits the pixels in place. No table entry: the filter's
+/// address travels as a number in the method's JSON, so an older host simply lacks the method (`Host::has`).
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct VideoFrame {
+    /// `size_of::<VideoFrame>()` of the host (later hosts may append fields).
+    pub size: u32,
+    /// [`FRAME_RGBA`]; a filter leaves any other format alone.
+    pub format: u32,
+    pub width: u32,
+    pub height: u32,
+    /// Bytes from one row to the next (at least `width * 4`). The buffer holds `stride * height` bytes.
+    pub stride: u32,
+    pub data: *mut u8,
+    /// Frame counter of the running capture (starts at 1).
+    pub seq: u64,
+    /// Capture time in microseconds since the capture started.
+    pub time_us: u64,
+}
+/// [`VideoFrame::format`]: 8-bit R, G, B, A per pixel (A is 255 and ignored).
+pub const FRAME_RGBA: u32 = 0;
+/// A frame filter as the host calls it: (the context registered with it, the frame) -> 1 changed / 0 unchanged.
+pub type FrameFn = extern "C" fn(*mut c_void, *mut VideoFrame) -> i32;
+
+/// The picture a [`Host::camera_filter`] closure edits: RGBA rows `stride` bytes apart.
+pub struct Frame<'a> { pub width: usize, pub height: usize, pub stride: usize, pub data: &'a mut [u8], pub seq: u64, pub time_us: u64 }
+
+type FrameClosure = Box<dyn FnMut(&mut Frame<'_>) + Send>;
+extern "C" fn frame_shim(ctx: *mut c_void, f: *mut VideoFrame) -> i32 {
+    if ctx.is_null() || f.is_null() { return 0; }
+    catch_unwind(AssertUnwindSafe(|| {
+        let v = unsafe { &mut *f };
+        let (w, h, stride) = (v.width as usize, v.height as usize, v.stride as usize);
+        if v.format != FRAME_RGBA || v.data.is_null() || w == 0 || h == 0 || stride < w * 4 { return 0; }
+        let data = unsafe { std::slice::from_raw_parts_mut(v.data, stride * h) };
+        (unsafe { &mut *(ctx as *mut FrameClosure) })(&mut Frame { width: w, height: h, stride, data, seq: v.seq, time_us: v.time_us });
+        1
+    })).unwrap_or(0)
+}
+
+/// A frame filter registered with [`Host::camera_filter`]. Dropping it (at the latest in [`Plugin::stop`]) removes it from the
+/// host, which waits for a call still running, and then frees the closure.
+pub struct CameraFilter { host: Host, ctx: *mut c_void }
+unsafe impl Send for CameraFilter {}
+impl Drop for CameraFilter {
+    fn drop(&mut self) {
+        self.host.call("camera.filter", &format!("{{\"fn\":0,\"ctx\":{}}}", self.ctx as usize));
+        drop(unsafe { Box::from_raw(self.ctx as *mut FrameClosure) });
+    }
+}
+
 /// Safe handle to the host, given to [`Plugin::start`]. Valid until [`Plugin::stop`] returns.
 #[derive(Clone, Copy)]
 pub struct Host(*const HostApi);
@@ -271,6 +323,17 @@ impl Host {
         let s = unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned();
         free(p);
         Some(s)
+    }
+    /// `camera.filter`: runs `f` on every camera picture (full size, RGBA) before Webox uses it, on a host thread, under a
+    /// time budget: a call that takes too long is skipped for that frame. One filter per plugin (a second call replaces the
+    /// first). None when the host has no such method or refused it. Keep the returned value; dropping it removes the filter.
+    pub fn camera_filter(&self, f: impl FnMut(&mut Frame<'_>) + Send + 'static) -> Option<CameraFilter> {
+        let ctx = Box::into_raw(Box::new(Box::new(f) as FrameClosure)) as *mut c_void;
+        let json = format!("{{\"fn\":{},\"ctx\":{}}}", frame_shim as FrameFn as usize, ctx as usize);
+        match self.call("camera.filter", &json) {
+            Some(r) if !r.contains("\"error\"") => Some(CameraFilter { host: *self, ctx }),
+            _ => { drop(unsafe { Box::from_raw(ctx as *mut FrameClosure) }); None }
+        }
     }
     /// 1.6: the version of a host method or event (`host.capabilities`), None when this host does not offer it.
     pub fn version(&self, name: &str) -> Option<u32> {
@@ -515,5 +578,28 @@ mod tests {
         assert_eq!(unsafe { CStr::from_ptr(r) }.to_str().unwrap(), "b:true");
         (vt.free_str.unwrap())(r);
         (vt.destroy.unwrap())(vt.instance);
+    }
+
+    #[test]
+    fn frame_filter_shim_edits_in_place_and_refuses_odd_frames() {
+        let mut f: FrameClosure = Box::new(|f: &mut Frame<'_>| { if f.seq == 9 { panic!("boom") } for y in 0..f.height { f.data[y * f.stride] = 1; } });
+        let ctx = &mut f as *mut FrameClosure as *mut c_void;
+        // 2 x 2 RGBA with 4 bytes of padding per row
+        let mut px = vec![0u8; 12 * 2];
+        let mut v = VideoFrame { size: std::mem::size_of::<VideoFrame>() as u32, format: FRAME_RGBA, width: 2, height: 2, stride: 12, data: px.as_mut_ptr(), seq: 1, time_us: 0 };
+        assert_eq!(frame_shim(ctx, &mut v), 1);
+        assert_eq!((px[0], px[12], px[4]), (1, 1, 0));
+        // another format, a stride too small, a null frame: not touched
+        for (format, stride) in [(7, 12), (FRAME_RGBA, 4)] {
+            let mut v = VideoFrame { format, stride, data: px.as_mut_ptr(), ..v };
+            assert_eq!(frame_shim(ctx, &mut v), 0);
+        }
+        assert_eq!(frame_shim(ctx, std::ptr::null_mut()), 0);
+        // a panic stays inside
+        let prev = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+        let mut v = VideoFrame { seq: 9, data: px.as_mut_ptr(), ..v };
+        assert_eq!(frame_shim(ctx, &mut v), 0);
+        std::panic::set_hook(prev);
     }
 }
