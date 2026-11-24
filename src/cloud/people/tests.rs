@@ -129,3 +129,15 @@ fn iso() {
     assert_eq!(super::iso_ms("2026-11-13T13:37:17.527Z"), 1_794_577_037_527);
     assert_eq!(super::iso_ms("garbage"), 0);
 }
+
+/// The avatar / usersub calls take their URLs from the service catalog, but go through the same host gate as `http()`.
+#[test]
+fn people_requests_send_the_bearer_only_to_webex() {
+    let agent = ureq::agent();
+    for u in ["https://avatar-prod-us-east-2.webexcontent.com/profiles/urls", "https://usersub-a.wbx2.com/usersub/api/v1/subscribe"] {
+        assert_eq!(with_bearer(agent.get(u), u, "T").header("Authorization"), Some("Bearer T"), "{u}");
+    }
+    for u in ["https://evil.example/profiles/urls", "https://evil.example?.webex.com/x", "http://avatar-a.wbx2.com/x", "https://a.webex.com@evil.example/", "/profiles/urls"] {
+        assert_eq!(with_bearer(agent.get(u), u, "T").header("Authorization"), None, "{u}");
+    }
+}

@@ -13,6 +13,11 @@ pub const AVATAR_MAX_BYTES: u64 = 2 * 1024 * 1024;
 const AVATAR_BATCH: usize = 40;
 const PRESENCE_BATCH: usize = 100;
 
+/// `req` with the bearer when `url` passes the same host gate as `Session::http` (`bearer_host`); anything else goes without it.
+fn with_bearer(req: ureq::Request, url: &str, token: &str) -> ureq::Request {
+    if super::session::bearer_host(url) { req.set("Authorization", &format!("Bearer {token}")) } else { req }
+}
+
 fn is_uuid(s: &str) -> bool { s.len() == 36 && s.matches('-').count() == 4 }
 
 /// "2026-11-13T13:37:17.527Z" → Unix milliseconds (0 if unparseable).
@@ -228,7 +233,8 @@ impl Session {
     pub(super) fn subscribe_presence(&self, people: &[Person]) {
         let ids: Vec<String> = people.iter().filter_map(|p| self.uuid_of(p)).collect();
         for chunk in ids.chunks(PRESENCE_BATCH) {
-            let r = self.agent.post(&self.url("usersub", "/subscribe")).set("Authorization", &format!("Bearer {}", self.token))
+            let url = self.url("usersub", "/subscribe");
+            let r = with_bearer(self.agent.post(&url), &url, &self.token)
                 .set("Cisco-Device-URL", &self.device).set("TrackingID", &format!("CLIENT_{}", jose::uuid())).send_json(json!({"contactIds": chunk}));
             match r { Ok(r) => dbg_conn(&format!("usersub subscribe {} contacts -> {}", chunk.len(), r.status())), Err(e) => dbg_conn(&format!("usersub subscribe failed: {}", e.to_string().chars().take(100).collect::<String>())) }
         }
@@ -254,7 +260,7 @@ impl Session {
             let mut outcome: std::collections::BTreeMap<String, usize> = Default::default();
             for chunk in want.chunks(AVATAR_BATCH) {
                 let body: Vec<Value> = chunk.iter().map(|(u, _)| json!({"uuid": u, "sizes": [AVATAR_SIZE, AVATAR_SIZE_FALLBACK]})).collect();
-                let r = agent.post(&base).set("Authorization", &format!("Bearer {token}")).set("TrackingID", &format!("CLIENT_{}", jose::uuid())).send_json(Value::Array(body));
+                let r = with_bearer(agent.post(&base), &base, &token).set("TrackingID", &format!("CLIENT_{}", jose::uuid())).send_json(Value::Array(body));
                 let r = match r { Ok(r) => r, Err(e) => { *outcome.entry(format!("urls request failed: {}", match e { ureq::Error::Status(c, _) => c.to_string(), _ => "transport".into() })).or_default() += chunk.len(); continue } };
                 let v: Value = r.into_json().unwrap_or(Value::Null);
                 let mut batch = vec![];
@@ -294,7 +300,7 @@ impl Session {
         let (agent, token, url) = (self.agent.clone(), self.token.clone(), self.url("avatar", &format!("/coverImages/users/{uuid}")));
         let out = self.out.clone();
         std::thread::spawn(move || {
-            let a: Value = match agent.get(&url).set("Authorization", &format!("Bearer {token}")).call() {
+            let a: Value = match with_bearer(agent.get(&url), &url, &token).call() {
                 Ok(r) => r.into_json().unwrap_or(Value::Null),
                 Err(e) => { dbg_conn(&format!("person cover: {}", match e { ureq::Error::Status(c, _) => format!("http {c}"), _ => "transport".into() })); return }
             };
