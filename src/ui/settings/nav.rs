@@ -11,7 +11,9 @@
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub(crate) enum Page {
     #[default] General, Audio, SmartAudio, Video, Share, Notifications, NotifMessages, NotifCalls, NotifMeetings, Appearance, Accessibility, Shortcuts,
-    Privacy, Messaging, Meetings, MeetJoin, MeetLayout, MeetLobby, Calling, CallDock, CallBlock, Devices, Accessories, Sidebar,
+    Privacy, Messaging, Meetings, MeetJoin, MeetLayout, MeetLobby, Calling, CallDock, CallBlock, Devices, Accessories,
+    /// Oberfläche anpassen: show / hide / order UI elements (ui/customize.rs); took over the rail part of "App-Seitenleiste".
+    Customize,
     /// Webox only: the installed plugins.
     Plugins,
 }
@@ -28,6 +30,7 @@ pub(crate) const NAV: [(Page, &str, &str, u8); 25] = [
     (Page::NotifCalls, "Anrufbenachrichtigungen", "handset-regular", 1),
     (Page::NotifMeetings, "Meeting-Benachrichtigungen", "meetings-regular", 1),
     (Page::Appearance, "Erscheinungsbild", "appearance-regular", 0),
+    (Page::Customize, "Oberfläche anpassen", "adjust-regular", 0),
     (Page::Accessibility, "Barrierefreiheit", "accessibility-regular", 0),
     (Page::Shortcuts, "Tastenkombinationen", "keyboard-regular", 0),
     (Page::Privacy, "Privatfunktion", "private-regular", 0),
@@ -41,7 +44,6 @@ pub(crate) const NAV: [(Page, &str, &str, u8); 25] = [
     (Page::CallBlock, "Sperrliste", "", 1),
     (Page::Devices, "Geräte", "devices-regular", 0),
     (Page::Accessories, "Zubehör", "headset-regular", 0),
-    (Page::Sidebar, "App-Seitenleiste", "", 0),
     (Page::Plugins, "Plugins", "integrations-regular", 0), // Webox only, after the Webex entries
 ];
 
@@ -63,7 +65,7 @@ pub(crate) fn by_name(s: &str) -> Option<Page> {
         "notifmeetings" => Page::NotifMeetings, "appearance" => Page::Appearance, "accessibility" => Page::Accessibility, "shortcuts" => Page::Shortcuts,
         "privacy" => Page::Privacy, "messaging" => Page::Messaging, "meetings" => Page::Meetings, "join" => Page::MeetJoin, "layout" => Page::MeetLayout,
         "lobby" => Page::MeetLobby, "calling" => Page::Calling, "dock" => Page::CallDock, "block" => Page::CallBlock, "devices" => Page::Devices,
-        "accessories" => Page::Accessories, "sidebar" => Page::Sidebar, "plugins" => Page::Plugins, _ => return None,
+        "accessories" => Page::Accessories, "customize" | "sidebar" => Page::Customize, "plugins" => Page::Plugins, _ => return None,
     })
 }
 
@@ -136,7 +138,13 @@ pub(crate) const INDEX: &[(Page, &str, &str)] = &[
     (Page::CallBlock, "Nummer hinzufügen", "Sperrliste"),
     (Page::Devices, "Liste aktualisieren", "Gerätesuche und -verbindung"),
     (Page::Accessories, "Zubehör", "Headsets und Zubehör"),
-    (Page::Sidebar, "App-Seitenleiste", "Registerkarten per Drag-and-Drop organisieren"),
+    (Page::Customize, "App-Seitenleiste", "Registerkarten ein-/ausblenden und anordnen"),
+    (Page::Customize, "Oberfläche anpassen", "Elemente ein-/ausblenden und anordnen"),
+    (Page::Customize, "Symbolleiste des Nachrichtenfelds", "Schaltflächen unter dem Nachrichtenfeld ein-/ausblenden und anordnen"),
+    (Page::Customize, "Menü „Weitere“", "Voicemail, Plugins & Themes, Info über Webox, Beschriftungen anzeigen"),
+    (Page::Customize, "Kopfzeile", "Suche, +, Mit einem Gerät verbinden, KI-Assistent ausblenden"),
+    (Page::Customize, "Registerkarten im Bereich", "Personen, Inhalt, Meetings, +Apps ausblenden"),
+    (Page::Customize, "Nachrichtenaktionen", "Reaktionen, Bearbeiten, Antworten, Weiterleiten beim Darüberfahren"),
     (Page::Plugins, "Plugins", "Installierte Plugins aktivieren oder deaktivieren"),
     (Page::Plugins, "Design-Plugins", "Überschreiben die Farben des gewählten Themas"),
     (Page::Plugins, "Plugin-Ordner", "Plugins neu laden, Ordner öffnen"),
@@ -145,11 +153,17 @@ pub(crate) const INDEX: &[(Page, &str, &str)] = &[
     (Page::Plugins, "Automatisch nach Updates suchen", "Einmal am Tag nach neuen Plugin-Versionen suchen"),
 ];
 
-/// Case-insensitive substring search over label + description.
+/// Case-insensitive substring search over label + description, then over the elements of Oberfläche anpassen (label, group).
 pub(crate) fn search(q: &str) -> Vec<(Page, &'static str, &'static str)> {
     let q = q.trim().to_lowercase();
     if q.is_empty() { return vec![]; }
-    INDEX.iter().filter(|(_, l, d)| l.to_lowercase().contains(&q) || d.to_lowercase().contains(&q)).map(|e| (e.0, e.1, e.2)).collect()
+    let mut v: Vec<(Page, &'static str, &'static str)> = INDEX.iter().filter(|(_, l, d)| l.to_lowercase().contains(&q) || d.to_lowercase().contains(&q)).map(|e| (e.0, e.1, e.2)).collect();
+    for g in crate::ui::customize::GROUPS {
+        for e in g.els.iter().filter(|e| e.label.to_lowercase().contains(&q)) {
+            if !v.iter().any(|r| r.0 == Page::Customize && r.1 == e.label) { v.push((Page::Customize, e.label, g.title)); }
+        }
+    }
+    v
 }
 
 #[cfg(test)]
@@ -162,5 +176,11 @@ mod tests {
         assert!(has_children(Page::Notifications) && !has_children(Page::Video));
         assert!(search("stumm").iter().any(|e| e.0 == Page::NotifMeetings));
         assert!(search("").is_empty());
+        // Oberfläche anpassen: groups and single elements are found; the old sidebar page name still opens it.
+        for q in ["Oberfläche", "App-Seitenleiste", "GIFs hinzufügen", "Empfohlene", "Mit einem Gerät", "Whiteboards"] {
+            assert!(search(q).iter().any(|e| e.0 == Page::Customize), "{q}");
+        }
+        assert_eq!(by_name("sidebar"), Some(Page::Customize));
+        assert_eq!(by_name("customize"), Some(Page::Customize));
     }
 }

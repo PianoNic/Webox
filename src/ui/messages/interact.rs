@@ -181,7 +181,11 @@ impl App {
     pub(super) fn message_toolbar(&mut self, ui: &mut egui::Ui, t: &Th, c: &Mc, id: &str, m: &Message, boxr: Rect, head: bool, bar_key: Id, list_top: f32) {
         let k_more = format!("msg-more-{}", m.id);
         let mut more_rect = Rect::NOTHING;
-        let n = QUICK.len() + 1 + usize::from(m.mine) + 2 + 1;
+        // Settings > Oberfläche anpassen hides buttons; "···" (all actions) always stays.
+        let g = &crate::ui::customize::MSG_BAR;
+        let on = |id: &str| self.ui_shown(g, id);
+        let (quick, react, edit, reply, fwd) = (on("quick"), on("react"), m.mine && on("edit"), on("reply"), on("forward"));
+        let n = if quick { QUICK.len() } else { 0 } + usize::from(react) + usize::from(edit) + usize::from(reply) + usize::from(fwd) + 1;
         let w = TB_W * n as f32;
         let top = (boxr.top() + if head { -9.0 } else { -20.0 }).max(list_top + 1.0); // never above the message area
         let pos = pos2(boxr.right() - 2.0 * RADIUS - w, top);
@@ -209,13 +213,15 @@ impl App {
                 i += 1;
                 resp.on_hover_text(tip)
             };
-            for (ch, tip) in QUICK { if button(self, ui, None, Some(ch), tip).clicked() { self.toggle_reaction(&m.id, &reaction_name(ch)); } }
-            let add = button(self, ui, Some("reactions_12"), None, "Reaktion hinzufügen");
-            let shot_open = self.shot.is_some() && self.frames == 6 && std::env::var("WEBOX_SHOT_REACT_PICKER").is_ok(); // screenshot check only
-            if add.clicked() || shot_open { self.open_reaction_picker(&ctx, &m.id, add.rect); }
-            if m.mine && button(self, ui, Some("edit_12"), None, "Bearbeiten (Umschalt+Pfeil nach oben)").clicked() { self.start_edit(m); }
-            if button(self, ui, Some("reply_12"), None, "Im Thread antworten").clicked() { self.start_reply(m); }
-            if button(self, ui, Some("forward-message_12"), None, "Weiterleiten").clicked() { self.forward_text = Some(m.text.clone()); }
+            if quick { for (ch, tip) in QUICK { if button(self, ui, None, Some(ch), tip).clicked() { self.toggle_reaction(&m.id, &reaction_name(ch)); } } }
+            if react {
+                let add = button(self, ui, Some("reactions_12"), None, "Reaktion hinzufügen");
+                let shot_open = self.shot.is_some() && self.frames == 6 && std::env::var("WEBOX_SHOT_REACT_PICKER").is_ok(); // screenshot check only
+                if add.clicked() || shot_open { self.open_reaction_picker(&ctx, &m.id, add.rect); }
+            }
+            if edit && button(self, ui, Some("edit_12"), None, "Bearbeiten (Umschalt+Pfeil nach oben)").clicked() { self.start_edit(m); }
+            if reply && button(self, ui, Some("reply_12"), None, "Im Thread antworten").clicked() { self.start_reply(m); }
+            if fwd && button(self, ui, Some("forward-message_12"), None, "Weiterleiten").clicked() { self.forward_text = Some(m.text.clone()); }
             let more = button(self, ui, Some("more_12"), None, "Weitere Aktionen");
             if more.clicked() { menu::menu_toggle(&ctx, &k_more); }
             more_rect = more.rect;
@@ -224,8 +230,14 @@ impl App {
         });
         // The "···" menu (shared menu toolkit): drawn every frame while open, anchored at the button.
         if menu::menu_is_open(&ctx, &k_more) {
-            let items = self.message_entries(&ctx, id, m);
-            if let Some(a) = menu::webex_menu(&ctx, &mut self.icons, t, &k_more, more_rect, menu::Side::Below, menu::Align::Right, true, &items) { self.message_do(&ctx, id, m, &a, None); }
+            let mut items = self.message_entries(&ctx, id, m);
+            // With its button hidden, "Reaktion hinzufügen" moves into this menu.
+            if !react && !msel(&ctx, id).multi { items.insert(0, menu::Item::new("react", "Reaktion hinzufügen").icon("reactions-regular").entry()); }
+            match menu::webex_menu(&ctx, &mut self.icons, t, &k_more, more_rect, menu::Side::Below, menu::Align::Right, true, &items).as_deref() {
+                Some("react") => self.open_reaction_picker(&ctx, &m.id, more_rect),
+                Some(a) => self.message_do(&ctx, id, m, a, None),
+                None => {}
+            }
         }
     }
 

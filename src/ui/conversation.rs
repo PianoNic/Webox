@@ -129,6 +129,9 @@ impl App {
             let second = if space.direct { (ConvTab::Profile, tr("Profile").to_string()) } else if space.participants.is_empty() { (ConvTab::People, tr("People").to_string()) } else { (ConvTab::People, format!("{} ({})", tr("People"), space.participants.len())) };
             for (ct, name) in [(ConvTab::Messages, tr("Messages").to_string()), second, (ConvTab::Content, tr("Content").to_string()), (ConvTab::Meetings, "Meetings".to_string()), (ConvTab::Apps, tr("Apps").to_string())] {
                 if space.closed && ct == ConvTab::Profile { continue; } // closed chat: no Profil tab
+                // Settings > Oberfläche anpassen; the open tab stays visible until another one is picked.
+                let key = match ct { ConvTab::Profile | ConvTab::People => "people", ConvTab::Content => "content", ConvTab::Meetings => "meetings", ConvTab::Apps => "apps", ConvTab::Messages => "" };
+                if !key.is_empty() && self.conv_tab != ct && !self.ui_shown(&super::customize::SPACE_TABS, key) { continue; }
                 if text_tab(ui, &name, self.conv_tab == ct, t, t.tab_on).clicked() { self.conv_tab = ct }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

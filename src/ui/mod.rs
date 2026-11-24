@@ -22,6 +22,7 @@ pub(crate) mod messages;
 pub(crate) mod messaging;
 pub(crate) mod pages;
 pub(crate) mod settings;
+pub(crate) mod customize; // Settings > Oberfläche anpassen: shown / hidden / ordered UI elements
 pub(crate) mod settings_shortcuts;
 pub(crate) mod space_menu;
 pub(crate) mod widgets;

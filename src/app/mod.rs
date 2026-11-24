@@ -7,7 +7,8 @@ impl App {
         system::host_log(&cfg, &a);
         if a.screenshot.is_none() { platform::updater::after_start(); } // leftovers of an update, the installer's version entry
         if a.sample || a.screenshot.is_some() { platform::updater::NO_AUTO_CHECK.store(true, std::sync::atomic::Ordering::Relaxed); }
-        let settings = system::load_settings(&cfg);
+        let mut settings = system::load_settings(&cfg);
+        crate::ui::customize::migrate_legacy(&mut settings); // the old App-Seitenleiste checkboxes
         let (me, spaces, teams, people, meetings) = cloud::sample();
         let mut plugins = extras::plugins::Plugins::new(&cfg);
         if a.sample { plugins.use_memory_secrets(); } // demo runs never touch the OS keyring

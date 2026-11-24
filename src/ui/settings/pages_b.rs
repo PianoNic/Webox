@@ -211,7 +211,7 @@ impl App {
         });
     }
 
-    // Geräte / Zubehör / Seitenleiste.
+    // Geräte / Zubehör.
     pub(super) fn page_devices(&mut self, ui: &mut egui::Ui, t: &Th, now: f64) {
         section(ui, t, "Gerätesuche und -verbindung", "", true, |ui| {
             self.pcheck(ui, t, "devices_auto_connect", true, "Automatisch Verbindung herstellen");
@@ -221,9 +221,4 @@ impl App {
         });
     }
     pub(super) fn page_accessories(&mut self, ui: &mut egui::Ui, t: &Th) { text_note(ui, t, "Es wurde kein Zubehör erkannt."); }
-    pub(super) fn page_sidebar(&mut self, ui: &mut egui::Ui, t: &Th) {
-        section(ui, t, "App-Seitenleiste", "Organisieren Sie Registerkarten mittels Drag-and-Drop. Zum Verschieben über die Tastatur drücken Sie die Leertaste zum Auswählen und verwenden Sie dann die obere und untere Pfeiltaste.", true, |ui| {
-            for (name, key) in [("Nachrichten", "sb_messaging"), ("Meetings", "sb_meetings"), ("Anrufe", "sb_calling"), ("Whiteboards", "sb_whiteboards"), ("Kontakte", "sb_contacts")] { self.pcheck(ui, t, key, true, name); }
-        });
-    }
 }
