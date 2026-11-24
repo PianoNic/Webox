@@ -145,4 +145,11 @@ fn deep_nesting_is_capped() {
     // Formatting below the cap still works.
     let b = parse(&format!("{}<b>fett</b>", "<span>".repeat(10)));
     assert_eq!(fmt_of(&b, "fett").font_id.family, egui::FontFamily::Name("semibold".into()));
+    // Closes of the ignored opens beyond the cap don't end the outer element early: 40 nested <b> stay bold to the last close.
+    let b = parse(&format!("{}x{}tail{}after", "<b>".repeat(40), "</b>".repeat(39), "</b>"));
+    assert_eq!(fmt_of(&b, "tail").font_id.family, egui::FontFamily::Name("semibold".into()));
+    assert_ne!(fmt_of(&b, "after").font_id.family, egui::FontFamily::Name("semibold".into()));
+    let b = parse(&format!("<i>{}{}x{}still{}</i>out", "<span>".repeat(MAX_DEPTH), "<i>".repeat(10), "</i>".repeat(10), "</span>".repeat(MAX_DEPTH)));
+    assert!(fmt_of(&b, "still").italics, "the outer <i> is still open");
+    assert!(!fmt_of(&b, "out").italics);
 }
