@@ -244,37 +244,41 @@ pub(super) fn write(path: &Path, spec: super::synth::Spec, paint: &dyn Fn(u32, &
         if !writer.startWriting() { return Err(err(&writer)); }
         writer.startSessionAtSourceTime(kCMTimeZero);
 
-        let wait = |i: &AVAssetWriterInput, wr: &AVAssetWriter| -> Result<(), String> {
-            for _ in 0..2000 {
-                if i.isReadyForMoreMediaData() { return Ok(()); }
-                if wr.status() == AVAssetWriterStatus::Failed { return Err(err(wr)); }
-                std::thread::sleep(std::time::Duration::from_millis(2));
-            }
-            Err("AVAssetWriter input not ready".into())
-        };
-
-        // Pictures and sound interleaved per frame, so neither input waits for the other.
+        // Each input takes data whenever it is ready: the writer interleaves the two itself and may hold one input back until the
+        // other has caught up (feeding them in lockstep can stall both).
         let fmt = audio_format(rate)?;
         let per_frame = (rate / fps.max(1)) as usize;
         let mut rgba = vec![0u8; (w * h * 4) as usize];
-        let mut done_samples = 0usize;
-        for i in 0..frames {
-            paint(i, &mut rgba);
-            let pb = bgra_buffer(w, h, &rgba)?;
-            wait(&vin, &writer)?;
-            if !adaptor.appendPixelBuffer_withPresentationTime(&pb, CMTime::new(i as i64, fps as i32)) { return Err(err(&writer)); }
-            let mut pcm = Vec::with_capacity(per_frame * 2);
-            for n in done_samples..done_samples + per_frame {
-                let v = (2.0 * std::f32::consts::PI * 440.0 * n as f32 / rate as f32).sin() * 0.5;
-                pcm.extend([v, v]);
+        let (mut vi, mut done_samples, total) = (0u32, 0usize, per_frame * frames as usize);
+        let t0 = std::time::Instant::now();
+        while vi < frames || done_samples < total {
+            if writer.status() == AVAssetWriterStatus::Failed { return Err(err(&writer)); }
+            let mut fed = false;
+            if vi < frames && vin.isReadyForMoreMediaData() {
+                paint(vi, &mut rgba);
+                let pb = bgra_buffer(w, h, &rgba)?;
+                if !adaptor.appendPixelBuffer_withPresentationTime(&pb, CMTime::new(vi as i64, fps as i32)) { return Err(err(&writer)); }
+                vi += 1;
+                fed = true;
+                if vi == frames { vin.markAsFinished(); }
             }
-            let sb = audio_buffer(&fmt, &pcm, CMTime::new(done_samples as i64, rate as i32))?;
-            wait(&ain, &writer)?;
-            if !ain.appendSampleBuffer(&sb) { return Err(err(&writer)); }
-            done_samples += per_frame;
+            if done_samples < total && ain.isReadyForMoreMediaData() {
+                let mut pcm = Vec::with_capacity(per_frame * 2);
+                for n in done_samples..done_samples + per_frame {
+                    let v = (2.0 * std::f32::consts::PI * 440.0 * n as f32 / rate as f32).sin() * 0.5;
+                    pcm.extend([v, v]);
+                }
+                let sb = audio_buffer(&fmt, &pcm, CMTime::new(done_samples as i64, rate as i32))?;
+                if !ain.appendSampleBuffer(&sb) { return Err(err(&writer)); }
+                done_samples += per_frame;
+                fed = true;
+                if done_samples >= total { ain.markAsFinished(); }
+            }
+            if !fed {
+                if t0.elapsed() > std::time::Duration::from_secs(60) { return Err("AVAssetWriter input not ready".into()); }
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
         }
-        vin.markAsFinished();
-        ain.markAsFinished();
         if !writer.finishWriting() || writer.status() != AVAssetWriterStatus::Completed { return Err(err(&writer)); }
         Ok(())
     }
