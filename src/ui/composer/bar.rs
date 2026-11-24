@@ -17,15 +17,22 @@ impl App {
         // Pitch 30 pt between glyph centres = 28 button + 2, glyphs 16 pt.
         c.spacing_mut().item_spacing.x = TOOL_GAP;
         let md_tip = if st.md { "Markdown deaktivieren (Alt+Shift+M)" } else { "Markdown einschalten (Alt+Shift+M)" };
-        // Toolbar icons: attachment, screenshot, markdown, emoji, GIF, mention, and the AI sparkle. Send = send-filled, schedule =
+        // Toolbar icons: attachment, screenshot, markdown, emoji, GIF, mention, and the AI sparkle, in the order and with the
+        // buttons chosen in Settings > Oberfläche anpassen (the shortcuts work without a button). Send = send-filled, schedule =
         // recents-bold. The AI sparkle is drawn dimmed (#6F6F6F) as a disabled button (no hover, no click): the AI Assistant is out
         // of scope. Bitmoji (needs a Snapchat login) and video clips (Vidcast) are out of scope and not shown.
-        let tools: [(&'static str, String); 7] = [("attachment_16_em", "Datei anhängen (Strg+O)".into()), ("screenshot_16_em", "Screenshot".into()), ("markdown_16_em", md_tip.into()),
-            ("emoticons_16_em", "Emoticons und Symbole (Strg+Umschalt+Leertaste)".into()), ("gif_16", "GIFs hinzufügen".into()),
-            ("mention_16_em", "@Erwähnungen".into()), ("sparkle-bold", "KI-Assistent".into())];
-        let mut emoji_anchor = Rect::NOTHING;
-        let mut gif_anchor = Rect::NOTHING;
-        for (icon, tip) in tools {
+        use crate::ui::customize::{self as cz, COMPOSER as G};
+        // A popup opened by its shortcut while its button is hidden opens at the toolbar's first slot.
+        let first = Rect::from_min_size(tb.min, Vec2::splat(28.0));
+        let mut emoji_anchor = first;
+        let mut gif_anchor = first;
+        st.legend_anchor = Some(first);
+        for e in cz::visible(&self.settings, &G) {
+            let (icon, tip): (&'static str, &str) = match e.id {
+                "attach" => ("attachment_16_em", "Datei anhängen (Strg+O)"), "screenshot" => ("screenshot_16_em", "Screenshot"), "markdown" => ("markdown_16_em", md_tip),
+                "emoji" => ("emoticons_16_em", "Emoticons und Symbole (Strg+Umschalt+Leertaste)"), "gif" => ("gif_16", "GIFs hinzufügen"),
+                "mention" => ("mention_16_em", "@Erwähnungen"), _ => ("sparkle-bold", "KI-Assistent"),
+            };
             if icon == "sparkle-bold" && id == super::super::new_message::DRAFT_ID { continue; } // no AI button in "Neue Nachricht"
             // The M button keeps the normal icon colour in both states (no accent).
             let tint = if icon == "sparkle-bold" { hex(0x6F6F6F) } else { hex(0xF3F3F3) };
@@ -35,7 +42,7 @@ impl App {
                 self.icons.paint(&mut c, icon, Rect::from_center_size(r.center(), Vec2::splat(TOOL_GLYPH)), tint);
                 continue;
             }
-            let bresp = self.icons.button(&mut c, icon, 28.0, TOOL_GLYPH, tint, t.hover).on_hover_text(crate::shortcuts::native_hint(&tip));
+            let bresp = self.icons.button(&mut c, icon, 28.0, TOOL_GLYPH, tint, t.hover).on_hover_text(crate::shortcuts::native_hint(tip));
             if icon == "emoticons_16_em" { emoji_anchor = bresp.rect; }
             if icon == "gif_16" { gif_anchor = bresp.rect; if super::super::gif_picker::gif_picker_open() { c.painter().circle_filled(bresp.rect.center(), 14.0, t.ink_a(0.12)); } }
             if icon == "markdown_16_em" { st.legend_anchor = Some(bresp.rect); }

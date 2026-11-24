@@ -142,17 +142,19 @@ impl App {
             ui.set_max_width(ui.available_width() - crate::ui::autoscroll::BAR_W);
             ui.spacing_mut().item_spacing = Vec2::ZERO;
             ui.add_space(dm.list_scroll_top);
-            // "Empfohlene Nachrichten" entry at the top of the list: mint disc with a blue bolt.
-            let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), dm.recommended_h), Sense::hover());
-            let r = Rect::from_min_max(full.min + Vec2::new(12.0, 0.0), full.max - Vec2::new(4.0, 0.0));
-            let resp = ui.interact(r, ui.id().with("recommended"), Sense::click());
-            if resp.hovered() { ui.painter().rect_filled(r, dm.recommended_h / 2.0, t.hover); }
-            let c = r.left_center() + Vec2::new(dm.recommended_disc / 2.0 - 4.0, 0.0);
-            // highlights_avatar_120.svg: #BEFADE disc with the blue bolt.
-            self.icons.art(ui, "highlights_avatar_120", Rect::from_center_size(c, Vec2::splat(dm.recommended_disc)));
-            ui.painter().text(r.left_center() + Vec2::new(dm.recommended_disc + 8.0, 0.0), egui::Align2::LEFT_CENTER, tr("Recommended messages"), FontId::proportional(16.4), t.text2);
-            if resp.clicked() { self.filter = if self.filter == Filter::Notifications { Filter::None } else { Filter::Notifications } }
-            ui.add_space(dm.recommended_gap);
+            // "Empfohlene Nachrichten" entry at the top of the list: mint disc with a blue bolt (Settings > Oberfläche anpassen can hide it).
+            if self.ui_shown(&super::customize::LIST, "recommended") {
+                let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), dm.recommended_h), Sense::hover());
+                let r = Rect::from_min_max(full.min + Vec2::new(12.0, 0.0), full.max - Vec2::new(4.0, 0.0));
+                let resp = ui.interact(r, ui.id().with("recommended"), Sense::click());
+                if resp.hovered() { ui.painter().rect_filled(r, dm.recommended_h / 2.0, t.hover); }
+                let c = r.left_center() + Vec2::new(dm.recommended_disc / 2.0 - 4.0, 0.0);
+                // highlights_avatar_120.svg: #BEFADE disc with the blue bolt.
+                self.icons.art(ui, "highlights_avatar_120", Rect::from_center_size(c, Vec2::splat(dm.recommended_disc)));
+                ui.painter().text(r.left_center() + Vec2::new(dm.recommended_disc + 8.0, 0.0), egui::Align2::LEFT_CENTER, tr("Recommended messages"), FontId::proportional(16.4), t.text2);
+                if resp.clicked() { self.filter = if self.filter == Filter::Notifications { Filter::None } else { Filter::Notifications } }
+                ui.add_space(dm.recommended_gap);
+            }
             if self.skeleton_rows(ui, t) { return; }
             let list = self.visible_idx();
             let (fav, other): (Vec<usize>, Vec<usize>) = list.into_iter().partition(|&i| self.spaces[i].favorite);

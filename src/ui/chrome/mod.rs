@@ -252,29 +252,35 @@ impl App {
             if chev(self, ui, "nav-fwd", "arrow-right-optical_10", hl.fwd, can_fwd).on_hover_text(tr("Forward")).clicked() { self.act(Act::Forward, ctx) }
             // globalHeader-SearchEditField-background: #3B3B3B / #DEDEDE, hovered #545454 / #C9C9C9, pressed = checked; outline
             // appHeader-searchBar-outline-active #3B3B3B.
-            let sfill = if ui.rect_contains_pointer(sr) { if ui.input(|i| i.pointer.primary_down()) { t.tk("globalHeader-SearchEditField-background:checked") } else { t.tk("globalHeader-SearchEditField-background:hovered") } } else { t.search };
-            ui.painter().rect_filled(sr, 14.0, sfill);
-            ui.painter().rect_stroke(sr, 14.0, Stroke::new(1.0_f32, t.tk("appHeader-searchBar-outline-active")), egui::StrokeKind::Inside);
-            self.icons.paint(ui, "search-regular", Rect::from_center_size(sr.left_center() + Vec2::new(24.0, 0.0), Vec2::splat(16.0)), t.tk("globalHeader-textfield-searchIcon"));
-            // The shortcut hint only while the field has its full width (a zoomed UI below the minimum window shrinks it).
-            let hint = if sr.width() >= header_layout::SEARCH_W { ui.painter().text(sr.right_center() - Vec2::new(11.0, 0.0), egui::Align2::RIGHT_CENTER, crate::shortcuts::native_hint(&tr("Ctrl+F")), FontId::proportional(14.0), t.text2).width() + 19.0 } else { 12.0 };
-            // The pill is a button; a click / Strg+F opens the global search popup (ui/global_search.rs).
-            fit_text(ui.painter(), sr.left() + 40.0, cy, tr("Search, meet, and call"), FontId::proportional(14.5), t.text2, sr.width() - 40.0 - hint);
-            let sresp = ui.interact(sr, egui::Id::new("search-pill"), Sense::click());
-            super::global_search::set_pill(ctx, sr);
-            if sresp.clicked() { super::global_search::toggle(ctx); }
+            // Settings > Oberfläche anpassen can hide the search field, +, the device button and the AI mark (Strg+F still searches).
+            use crate::ui::customize::HEADER as HG;
+            if self.ui_shown(&HG, "search") {
+                let sfill = if ui.rect_contains_pointer(sr) { if ui.input(|i| i.pointer.primary_down()) { t.tk("globalHeader-SearchEditField-background:checked") } else { t.tk("globalHeader-SearchEditField-background:hovered") } } else { t.search };
+                ui.painter().rect_filled(sr, 14.0, sfill);
+                ui.painter().rect_stroke(sr, 14.0, Stroke::new(1.0_f32, t.tk("appHeader-searchBar-outline-active")), egui::StrokeKind::Inside);
+                self.icons.paint(ui, "search-regular", Rect::from_center_size(sr.left_center() + Vec2::new(24.0, 0.0), Vec2::splat(16.0)), t.tk("globalHeader-textfield-searchIcon"));
+                // The shortcut hint only while the field has its full width (a zoomed UI below the minimum window shrinks it).
+                let hint = if sr.width() >= header_layout::SEARCH_W { ui.painter().text(sr.right_center() - Vec2::new(11.0, 0.0), egui::Align2::RIGHT_CENTER, crate::shortcuts::native_hint(&tr("Ctrl+F")), FontId::proportional(14.0), t.text2).width() + 19.0 } else { 12.0 };
+                // The pill is a button; a click / Strg+F opens the global search popup (ui/global_search.rs).
+                fit_text(ui.painter(), sr.left() + 40.0, cy, tr("Search, meet, and call"), FontId::proportional(14.5), t.text2, sr.width() - 40.0 - hint);
+                let sresp = ui.interact(sr, egui::Id::new("search-pill"), Sense::click());
+                if sresp.clicked() { super::global_search::toggle(ctx); }
+            }
+            super::global_search::set_pill(ctx, sr); // the popup's anchor, also while the field is hidden
             if std::mem::take(&mut self.focus_search) { super::global_search::open(ctx); }
             // The + circle (26 px, light outline).
             let pr = hl.plus;
-            let presp = ui.interact(pr, egui::Id::new("top-plus"), Sense::click());
-            // globalHeader-buttonIcon-background: hovered 7 %, pressed 20 %. Ring #CFCFCF dark, #454545 light.
-            if presp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); ui.painter().circle_filled(pr.center(), 13.0, if presp.is_pointer_button_down_on() { t.tk("globalHeader-buttonIcon-background:pressed") } else { t.tk("globalHeader-buttonIcon-background:hovered") }); }
-            ui.painter().circle_stroke(pr.center(), 12.4, Stroke::new(1.2_f32, if t.light { hex(0x454545) } else { hex(0xCFCFCF) }));
-            self.icons.paint(ui, "plus-regular", Rect::from_center_size(pr.center(), Vec2::splat(14.0)), t.tk("globalHeader-buttonIcon-icon"));
-            // The + opens the global menu (ui/header_plus.rs); tooltip "Eine Unterhaltung starten".
-            let plus_open = super::menu::menu_is_open(ctx, super::header_plus::KEY);
-            let presp = if plus_open { presp } else { presp.on_hover_text(crate::trq!("Start a conversation")) };
-            if presp.clicked() { super::menu::menu_toggle(ctx, super::header_plus::KEY) }
+            if self.ui_shown(&HG, "plus") {
+                let presp = ui.interact(pr, egui::Id::new("top-plus"), Sense::click());
+                // globalHeader-buttonIcon-background: hovered 7 %, pressed 20 %. Ring #CFCFCF dark, #454545 light.
+                if presp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); ui.painter().circle_filled(pr.center(), 13.0, if presp.is_pointer_button_down_on() { t.tk("globalHeader-buttonIcon-background:pressed") } else { t.tk("globalHeader-buttonIcon-background:hovered") }); }
+                ui.painter().circle_stroke(pr.center(), 12.4, Stroke::new(1.2_f32, if t.light { hex(0x454545) } else { hex(0xCFCFCF) }));
+                self.icons.paint(ui, "plus-regular", Rect::from_center_size(pr.center(), Vec2::splat(14.0)), t.tk("globalHeader-buttonIcon-icon"));
+                // The + opens the global menu (ui/header_plus.rs); tooltip "Eine Unterhaltung starten".
+                let plus_open = super::menu::menu_is_open(ctx, super::header_plus::KEY);
+                let presp = if plus_open { presp } else { presp.on_hover_text(crate::trq!("Start a conversation")) };
+                if presp.clicked() { super::menu::menu_toggle(ctx, super::header_plus::KEY) }
+            }
             self.header_plus_menu(ctx, t, pr, now);
 
             // Window controls: glyph centres 14.0 / 54.4 / 94.4 pt from the right edge (40 pt pitch), close X 8.8 pt centred at y 18.8,
@@ -314,18 +320,20 @@ impl App {
             // "Mit einem Gerät verbinden" with its device icon (label elided when narrow, icon only at the narrowest, the label
             // then as tooltip), then the AI assistant.
             let tr_rect = hl.device;
-            let resp = ui.interact(tr_rect, egui::Id::new("connect-device"), Sense::click());
-            header_chip_fill(ui, t, &resp, tr_rect, forced == "device");
-            let dev_ink = t.tk("globalHeader-buttonDevice-text-inactive");
-            let (icon_c, full_label) = if hl.device_label {
-                let shown = fit_text(ui.painter(), tr_rect.left() + 32.0, cy, dev_txt, semibold(14.0), dev_ink, tr_rect.width() - 44.0);
-                (pos2(tr_rect.left() + 20.0, cy), shown.width() + 0.5 >= gw)
-            } else { (tr_rect.center(), false) };
-            self.icons.paint(ui, "device-connection-regular", Rect::from_center_size(icon_c, Vec2::splat(16.0)), dev_ink);
-            let resp = if full_label { resp } else { resp.on_hover_text(dev_txt) };
-            if resp.clicked() { super::menu::menu_toggle(ctx, super::app_dialogs::DEVICE) } // device list (ui/app_dialogs.rs)
-            let _ = now;
+            if self.ui_shown(&HG, "device") {
+                let resp = ui.interact(tr_rect, egui::Id::new("connect-device"), Sense::click());
+                header_chip_fill(ui, t, &resp, tr_rect, forced == "device");
+                let dev_ink = t.tk("globalHeader-buttonDevice-text-inactive");
+                let (icon_c, full_label) = if hl.device_label {
+                    let shown = fit_text(ui.painter(), tr_rect.left() + 32.0, cy, dev_txt, semibold(14.0), dev_ink, tr_rect.width() - 44.0);
+                    (pos2(tr_rect.left() + 20.0, cy), shown.width() + 0.5 >= gw)
+                } else { (tr_rect.center(), false) };
+                self.icons.paint(ui, "device-connection-regular", Rect::from_center_size(icon_c, Vec2::splat(16.0)), dev_ink);
+                let resp = if full_label { resp } else { resp.on_hover_text(dev_txt) };
+                if resp.clicked() { super::menu::menu_toggle(ctx, super::app_dialogs::DEVICE) } // device list (ui/app_dialogs.rs)
+            }
             // The Webex AI assistant mark (cisco-ai-assistant-color-gradient.svg), 18 pt, its own colours.
+            if !self.ui_shown(&HG, "ai") { return; }
             let ai = hl.ai;
             let air = ui.interact(ai, egui::Id::new("ai-assistant"), Sense::click());
             header_chip_fill(ui, t, &air, ai, forced == "ai");

@@ -2,6 +2,12 @@
 #![allow(clippy::too_many_arguments)]
 use super::*;
 
+/// The rail tab of a Settings > Oberfläche anpassen rail id (`RAIL` in main.rs: tab, icons, label).
+pub(crate) fn rail_tab(id: &str) -> Option<(Tab, &'static str, &'static str, &'static str)> {
+    let tab = match id { "messaging" => Tab::Messaging, "meetings" => Tab::Meetings, "calling" => Tab::Calling, "whiteboards" => Tab::Whiteboards, "contacts" => Tab::Contacts, "teams" => Tab::Teams, _ => return None };
+    RAIL.iter().find(|r| r.0 == tab).copied()
+}
+
 impl App {
     /// One rail entry: wide = rounded pill (172 x 42) with label; narrow = round highlight.
     /// `badge`: None = none, `Some("")` = the dot (unread messages), `Some("3")` = a count (missed calls).
@@ -55,54 +61,81 @@ impl App {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
             let unread = self.spaces.iter().any(|s| s.unread);
             let missed = self.missed_badge();
-            for (i, (tab, off, on_icon, label)) in RAIL.iter().enumerate() {
-                // Settings > App-Seitenleiste: unticked entries leave the rail.
-                let sb = match tab { Tab::Messaging => "sb_messaging", Tab::Meetings => "sb_meetings", Tab::Calling => "sb_calling", Tab::Whiteboards => "sb_whiteboards", Tab::Contacts => "sb_contacts", _ => "" };
-                if !sb.is_empty() && self.settings[sb] == false { if i == 2 { let (sr, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 6.0), Sense::hover()); ui.painter().hline((sr.left() + 6.0)..=(sr.right() - 4.0), sr.center().y - 1.0, Stroke::new(1.0_f32, t.ink_a(0.06))); } continue; }
-                let on = self.tab == *tab;
-                // Messaging: a dot for unread spaces. Anrufe: the number of calls missed since the tab was last open (calls_page).
-                let (badge, tip) = match tab {
-                    Tab::Messaging => (unread.then(String::new), tr(label).to_string()),
-                    Tab::Calling if missed > 0 => (Some(crate::ui::calls_page::badge_text(missed)), format!("{}, {}", tr(label), crate::ui::calls_page::missed_tip(missed))),
-                    _ => (None, tr(label).to_string()),
-                };
-                let shown = if self.rail_wide { tr(label) } else { tip.as_str() }; // wide: the label stays the label, the badge says the rest
-                if self.rail_item(ui, t, if on { on_icon } else { off }, shown, on, badge.as_deref(), h).clicked() { self.set_tab(*tab) }
-                ui.add_space(gap);
-                // Thin divider between the call/meeting entries and the rest.
-                if i == 2 {
-                    let (sr, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 6.0), Sense::hover());
-                    ui.painter().hline((sr.left() + 6.0)..=(sr.right() - 4.0), sr.center().y - 1.0, Stroke::new(1.0_f32, t.ink_a(0.06)));
+            // Settings > Oberfläche anpassen: the entries in the user's order, hidden ones left out (they move into the "…" menu).
+            use crate::ui::customize::{self as cz, RAIL as G};
+            let mut more_rect = None;
+            for e in cz::visible(&self.settings, &G) {
+                match e.id {
+                    // Thin divider (by default between the call / meeting entries and the rest).
+                    "separator" => {
+                        let (sr, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 6.0), Sense::hover());
+                        ui.painter().hline((sr.left() + 6.0)..=(sr.right() - 4.0), sr.center().y - 1.0, Stroke::new(1.0_f32, t.ink_a(0.06)));
+                    }
+                    "more" => { more_rect = Some(self.rail_more(ui, ctx, t, h)); ui.add_space(gap); }
+                    id => if let Some((tab, off, on_icon, label)) = rail_tab(id) {
+                        let on = self.tab == tab;
+                        // Messaging: a dot for unread spaces. Anrufe: the number of calls missed since the tab was last open (calls_page).
+                        let (badge, tip) = match tab {
+                            Tab::Messaging => (unread.then(String::new), tr(label).to_string()),
+                            Tab::Calling if missed > 0 => (Some(crate::ui::calls_page::badge_text(missed)), format!("{}, {}", tr(label), crate::ui::calls_page::missed_tip(missed))),
+                            _ => (None, tr(label).to_string()),
+                        };
+                        let shown = if self.rail_wide { tr(label) } else { tip.as_str() }; // wide: the label stays the label, the badge says the rest
+                        if self.rail_item(ui, t, if on { on_icon } else { off }, shown, on, badge.as_deref(), h).clicked() { self.set_tab(tab) }
+                        ui.add_space(gap);
+                    },
                 }
             }
-            let more = self.rail_item(ui, t, "more-regular", tr("More"), false, None, h);
-            if more.clicked() { super::super::menu::menu_toggle(ctx, "more"); }
-            let more_items = vec![
-                super::super::menu::Item::new("voicemail", "Voicemail").icon("voicemail-regular").entry(),
-                super::super::menu::Item::new("plugins", "Plugins & Themes").icon("apps-regular").entry(),
-                // The "Info" entry; the settings page can show `credits_ui` itself and drop this item.
-                super::super::menu::Item::new("about", "Info über Webox").icon("info-circle-regular").entry(),
-                super::super::menu::Entry::Sep,
-                super::super::menu::Item::new("rail", if self.rail_wide { "Beschriftungen ausblenden" } else { "Beschriftungen anzeigen" }).icon("application-panel-regular").shortcut("Alt+Umschalt+Q").entry(),
-            ];
-            if let Some(a) = super::super::menu::webex_menu(ctx, &mut self.icons, t, "more", more.rect, super::super::menu::Side::Right, super::super::menu::Align::Left, false, &more_items) {
-                match a.as_str() {
-                    "voicemail" => self.set_tab(Tab::Voicemail),
-                    // The plugin list lives in Settings > Plugins.
-                    "plugins" => { self.set_tab(Tab::Settings); ctx.data_mut(|d| d.insert_temp(egui::Id::new("settings-goto"), super::super::settings::nav::Page::Plugins)); }
-                    "about" => super::super::menu::menu_open(ctx, "about"),
-                    _ => self.act(Act::ToggleRail, ctx),
-                }
-            }
+            if let Some(r) = more_rect { self.rail_more_menu(ctx, t, r); }
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
                 let bh = 40.0;
-                if self.rail_item(ui, t, "help-circle-filled", tr("Help"), false, None, bh).clicked() { system::open(super::super::profile_menu::HELP_CENTER_URL) }
+                if self.ui_shown(&G, "help") && self.rail_item(ui, t, "help-circle-filled", tr("Help"), false, None, bh).clicked() { system::open(super::super::profile_menu::HELP_CENTER_URL) }
                 let on = self.tab == Tab::Settings;
-                if self.rail_item(ui, t, "settings-filled", tr("Settings"), on, None, bh).clicked() { self.set_tab(Tab::Settings) }
+                if self.ui_shown(&G, "settings") && self.rail_item(ui, t, "settings-filled", tr("Settings"), on, None, bh).clicked() { self.set_tab(Tab::Settings) }
                 self.rail_update_button(ui, t, bh); // above the gear while a newer version is known (ui/update_dialog.rs)
             });
         });
+    }
+
+    /// The "…" rail entry; returns its rect (the menu's anchor).
+    fn rail_more(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, t: &Th, h: f32) -> Rect {
+        let more = self.rail_item(ui, t, "more-regular", tr("More"), false, None, h);
+        if more.clicked() { super::super::menu::menu_toggle(ctx, "more"); }
+        more.rect
+    }
+
+    /// The "…" menu: rail entries the user hid (Settings > Oberfläche anpassen), then its own entries that aren't hidden.
+    /// Built only while it is open.
+    fn rail_more_menu(&mut self, ctx: &egui::Context, t: &Th, anchor: Rect) {
+        use super::super::menu::{Entry, Item};
+        use crate::ui::customize::{self as cz, MORE};
+        if !super::super::menu::menu_is_open(ctx, "more") { return; }
+        let mut items: Vec<Entry> = cz::rail_overflow(&self.settings).map(|e| Item::new(e.id, e.label).icon(e.icon).entry()).collect();
+        if !items.is_empty() { items.push(Entry::Sep); }
+        let shown = |id: &str| cz::shown(&self.settings, &MORE, id);
+        if shown("voicemail") { items.push(Item::new("voicemail", "Voicemail").icon("voicemail-regular").entry()); }
+        if shown("plugins") { items.push(Item::new("plugins", "Plugins & Themes").icon("apps-regular").entry()); }
+        // The "Info" entry; the settings page can show `credits_ui` itself and drop this item.
+        if shown("about") { items.push(Item::new("about", "Info über Webox").icon("info-circle-regular").entry()); }
+        if shown("labels") {
+            if items.last().is_some_and(|e| !matches!(e, Entry::Sep)) { items.push(Entry::Sep); }
+            items.push(Item::new("rail", if self.rail_wide { "Beschriftungen ausblenden" } else { "Beschriftungen anzeigen" }).icon("application-panel-regular").shortcut("Alt+Umschalt+Q").entry());
+        }
+        if matches!(items.last(), Some(Entry::Sep)) { items.pop(); }
+        if items.is_empty() { items.push(Item::new("none", "Alle Einträge sind ausgeblendet").disabled().entry()); }
+        if let Some(a) = super::super::menu::webex_menu(ctx, &mut self.icons, t, "more", anchor, super::super::menu::Side::Right, super::super::menu::Align::Left, false, &items) {
+            match a.as_str() {
+                "voicemail" => self.set_tab(Tab::Voicemail),
+                // The plugin list lives in Settings > Plugins.
+                "plugins" => { self.set_tab(Tab::Settings); ctx.data_mut(|d| d.insert_temp(egui::Id::new("settings-goto"), super::super::settings::nav::Page::Plugins)); }
+                "about" => super::super::menu::menu_open(ctx, "about"),
+                "rail" => self.act(Act::ToggleRail, ctx),
+                "help" => system::open(super::super::profile_menu::HELP_CENTER_URL),
+                "settings" => self.set_tab(Tab::Settings),
+                id => if let Some(e) = rail_tab(id) { self.set_tab(e.0) },
+            }
+        }
     }
 
     /// The nav toggle on the rail / list boundary: while the pointer is near the edge a 1 px #444444 line (white 20 %,

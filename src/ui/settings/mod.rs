@@ -6,11 +6,12 @@
 //! margins 16 / 32, footer "Auf Standard zurücksetzen" where the page has a reset.
 //! Search: a 32 high field, results popup radius 12, 500 ms debounce, rows with text / description / path.
 //! Screenshot env: `WEBOX_SHOT_SETTINGS=<page>` (general, audio, smartaudio, video, share, notifications, messages, calls, notifmeetings,
-//! appearance, accessibility, shortcuts, privacy, messaging, meetings, join, layout, lobby, calling, dock, block, devices, accessories, sidebar),
+//! appearance, accessibility, shortcuts, privacy, messaging, meetings, join, layout, lobby, calling, dock, block, devices, accessories, customize (or sidebar)),
 //! optional `WEBOX_SHOT_SETTINGS_SEARCH=<text>`.
 use crate::*;
 
 pub(crate) mod kit;
+mod customize_page;
 pub(crate) mod nav;
 pub(crate) mod pages_a;
 mod plugins_page;
@@ -167,7 +168,7 @@ impl App {
             Page::CallBlock => self.page_call_block(ui, t, now),
             Page::Devices => self.page_devices(ui, t, now),
             Page::Accessories => self.page_accessories(ui, t),
-            Page::Sidebar => self.page_sidebar(ui, t),
+            Page::Customize => self.page_customize(ui, t, now),
             Page::Plugins => self.page_plugins(ui, t, now),
         }
     }
