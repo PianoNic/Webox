@@ -404,6 +404,8 @@ impl Session {
         else if full_locus(d).is_some() { self.space_meeting_locus(locus_of(d), &locus_url_of(d)); }
         let (url, carried) = match self.calls.cur.as_mut() {
             Some(c) if tick => {
+                // the call statistics panel is open: a reading every 2 s (nothing while it is closed)
+                if let Some(m) = c.media.as_ref().filter(|_| crate::cloud::media_stats::due(now)) { crate::cloud::media_stats::publish(m.stats()); }
                 if c.stats_at.is_none_or(|t| now.saturating_duration_since(t) >= STATS_EVERY) {
                     c.stats_at = Some(now);
                     if let Some(m) = c.media.as_ref() {

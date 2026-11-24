@@ -61,11 +61,13 @@ pub struct Media {
     pub seen_slides_ssrc: Arc<AtomicU32>,
     /// The screen share's sending side, once `add_share` ran.
     share: std::sync::Mutex<Option<ShareTx>>,
+    /// Counters for the call statistics (`stats`).
+    live: Arc<super::media_stats::Live>,
 }
 
 /// The content ("slides") video track and the far end's key frame requests (RTCP PLI / FIR).
 #[derive(Clone)]
-struct ShareTx { track: Arc<TrackLocalStaticSample>, keyframe: Arc<AtomicBool> }
+struct ShareTx { track: Arc<TrackLocalStaticSample>, keyframe: Arc<AtomicBool>, live: Arc<super::media_stats::Live> }
 
 /// Feeds a running screen share into the call's content track (its own thread); dropping or `stop` ends it.
 pub struct ShareFeed { stop: Arc<AtomicBool>, thread: Option<std::thread::JoinHandle<()>>, pub sent: Arc<AtomicU64> }
@@ -205,7 +207,7 @@ fn settings(net: Net, seen_slides: Arc<AtomicU32>) -> Result<SettingEngine, Stri
 /// The far end's screen share on the `video/slides` line: RTP -> H.264 access units -> the decoder thread (`share_rx`).
 /// Key frames are asked for with RTCP PLI at the start, after a loss or a bad picture, and again while nothing decodes.
 async fn receive_share(track: Arc<webrtc::track::track_remote::TrackRemote>, stop: Arc<AtomicBool>, rx_video: Arc<AtomicU64>,
-    pc: Arc<std::sync::Mutex<Option<std::sync::Weak<RTCPeerConnection>>>>) {
+    pc: Arc<std::sync::Mutex<Option<std::sync::Weak<RTCPeerConnection>>>>, live: Arc<super::media_stats::Live>) {
     use webrtc::media::io::sample_builder::SampleBuilder;
     use webrtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication;
     use webrtc::rtp::codecs::h264::H264Packet;
@@ -230,6 +232,7 @@ async fn receive_share(track: Arc<webrtc::track::track_remote::TrackRemote>, sto
             Ok(Ok((pkt, _))) => pkt,
         };
         rx_video.fetch_add(1, Ordering::Relaxed);
+        live.rx(super::media_stats::SHARE, &pkt.header, pkt.payload.len(), super::media_stats::VIDEO_CLOCK);
         let seq = pkt.header.sequence_number;
         if last_seq.is_some_and(|p| seq != p.wrapping_add(1) && seq.wrapping_sub(p) < 0x8000) { dec.keyframe.store(true, Ordering::SeqCst); }
         last_seq = Some(last_seq.map_or(seq, |p| if seq.wrapping_sub(p) < 0x8000 { seq } else { p }));
@@ -258,8 +261,9 @@ impl Media {
         let rx_video = Arc::new(AtomicU64::new(0));
         let seen_slides_ssrc = Arc::new(AtomicU32::new(0));
         let seen = seen_slides_ssrc.clone();
+        let live = Arc::new(super::media_stats::Live::default());
         let pc = {
-            let (state, io, rxp, stop, rx_ssrc, rx_video) = (state.clone(), io.clone(), rx_packets.clone(), stop.clone(), rx_ssrc.clone(), rx_video.clone());
+            let (state, io, rxp, stop, rx_ssrc, rx_video, live) = (state.clone(), io.clone(), rx_packets.clone(), stop.clone(), rx_ssrc.clone(), rx_video.clone(), live.clone());
             rt.block_on(async move {
                 let mut m = MediaEngine::default();
                 m.register_codec(RTCRtpCodecParameters { capability: opus_cap(), payload_type: 111, ..Default::default() }, RTPCodecType::Audio).map_err(|e| e.to_string())?;
@@ -284,11 +288,14 @@ impl Media {
                 // track until the call ends blocks every later track (the share's, or audio from a new server SSRC after a
                 // renegotiation): the read loops run in tasks of their own and the handler returns at once.
                 let pc_slot: Arc<std::sync::Mutex<Option<std::sync::Weak<RTCPeerConnection>>>> = Arc::new(std::sync::Mutex::new(Some(Arc::downgrade(&pc))));
-                pc.on_track(Box::new(move |track, _, _| {
-                    let (io, rxp, stop, rx_ssrc, rx_video, slot) = (io.clone(), rxp.clone(), stop.clone(), rx_ssrc.clone(), rx_video.clone(), pc_slot.clone());
+                pc.on_track(Box::new(move |track, receiver, _| {
+                    let (io, rxp, stop, rx_ssrc, rx_video, slot, live) = (io.clone(), rxp.clone(), stop.clone(), rx_ssrc.clone(), rx_video.clone(), pc_slot.clone(), live.clone());
+                    // the far end's sender reports reach the report interceptor only when read: our receiver reports then
+                    // carry LSR / DLSR, so both sides learn the round trip (call statistics)
+                    tokio::spawn(async move { while receiver.read_rtcp().await.is_ok() {} });
                     tokio::spawn(async move {
                         if track.kind() == RTPCodecType::Video {
-                            receive_share(track, stop, rx_video, slot).await;
+                            receive_share(track, stop, rx_video, slot, live).await;
                             return;
                         }
                         dbg_conn(&format!("call: audio track from the far end (ssrc {})", if rx_ssrc.load(Ordering::Relaxed) == 0 { "first" } else { "changed" }));
@@ -298,6 +305,7 @@ impl Media {
                         while !stop.load(Ordering::Relaxed) {
                             let Ok((pkt, _)) = track.read_rtp().await else { break };
                             if rxp.fetch_add(1, Ordering::Relaxed) == 0 { dbg_conn("call: first RTP packet received"); }
+                            live.rx(super::media_stats::AUDIO, &pkt.header, pkt.payload.len(), super::media_stats::AUDIO_CLOCK);
                             if pkt.payload.is_empty() { continue; }
                             if let Ok(n) = dec.decode(&pkt.payload, &mut pcm, ropus::DecodeMode::Normal) {
                                 io.play(&pcm[..n]);
@@ -311,18 +319,22 @@ impl Media {
                 Ok::<_, String>(pc)
             })?
         };
-        let me = Media { rt, pc, state, muted, rx_packets, tx_frames, stop, v6, rx_ssrc, rx_video, seen_slides_ssrc, share: std::sync::Mutex::new(None) };
+        let me = Media { rt, pc, state, muted, rx_packets, tx_frames, stop, v6, rx_ssrc, rx_video, seen_slides_ssrc, share: std::sync::Mutex::new(None), live };
         me.start_sender(io)?;
         Ok(me)
     }
 
     /// Adds the microphone track and the 20 ms Opus send loop (runs from the start; packets flow once DTLS is up).
     fn start_sender(&self, io: Arc<Io>) -> Result<(), String> {
-        let (pc, muted, tx, stop) = (self.pc.clone(), self.muted.clone(), self.tx_frames.clone(), self.stop.clone());
+        let (pc, muted, tx, stop, live) = (self.pc.clone(), self.muted.clone(), self.tx_frames.clone(), self.stop.clone(), self.live.clone());
         self.rt.block_on(async move {
             let track = Arc::new(TrackLocalStaticSample::new(opus_cap(), "audio".to_owned(), "webox".to_owned()));
             let sender = pc.add_track(Arc::clone(&track) as Arc<dyn TrackLocal + Send + Sync>).await.map_err(|e| e.to_string())?;
-            tokio::spawn(async move { let mut b = vec![0u8; 1500]; while sender.read(&mut b).await.is_ok() {} }); // RTCP
+            // RTCP: the far end's receiver reports feed the call statistics
+            tokio::spawn(async move {
+                let own = sender.get_parameters().await.encodings.first().map(|e| e.ssrc);
+                while let Ok((pkts, _)) = sender.read_rtcp().await { live.rr(super::media_stats::AUDIO, own, &pkts, super::media_stats::AUDIO_CLOCK); }
+            });
             let mut enc = ropus::Encoder::builder(audio::RATE, ropus::Channels::Mono, ropus::Application::Voip).build().map_err(|e| format!("{e:?}"))?;
             tokio::spawn(async move {
                 let mut tick = tokio::time::interval(Duration::from_millis(20));
@@ -389,7 +401,7 @@ impl Media {
     /// (inactive) `audio/slides` line instead of a fifth one.
     pub fn add_share(&self) -> Result<String, String> {
         if self.has_share() { return Err("share lines exist already".into()); }
-        let pc = self.pc.clone();
+        let (pc, live) = (self.pc.clone(), self.live.clone());
         let tx = self.rt.block_on(async move {
             let init = |d| Some(RTCRtpTransceiverInit { direction: d, send_encodings: vec![] });
             // the transceiver webrtc-rs made for audio from an undeclared SSRC (no mid yet, no sender track)
@@ -406,19 +418,21 @@ impl Media {
                 Some(t) => t.set_direction(RTCRtpTransceiverDirection::Recvonly).await,
                 None => { pc.add_transceiver_from_kind(RTPCodecType::Audio, init(RTCRtpTransceiverDirection::Recvonly)).await.map_err(|e| e.to_string())?; }
             }
-            let track = Arc::new(TrackLocalStaticSample::new(h264_cap(), "slides".to_owned(), "webox-share".to_owned()));
+            let track = Arc::new(TrackLocalStaticSample::new(h264_cap(), super::media_stats::SHARE_TRACK.to_owned(), "webox-share".to_owned()));
             // sendrecv like the official client ("suggestedShareDirection: sendrecv"): the same line carries the far end's share
             let t = pc.add_transceiver_from_track(Arc::clone(&track) as Arc<dyn TrackLocal + Send + Sync>, init(RTCRtpTransceiverDirection::Sendrecv)).await.map_err(|e| e.to_string())?;
             // RTCP from the far end: a picture loss / full intra request asks for a key frame
             let keyframe = Arc::new(AtomicBool::new(false));
-            let (k, sender) = (keyframe.clone(), t.sender().await);
+            let (k, sender, l2) = (keyframe.clone(), t.sender().await, live.clone());
             tokio::spawn(async move {
                 use webrtc::rtcp::payload_feedbacks::{full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication};
+                let own = sender.get_parameters().await.encodings.first().map(|e| e.ssrc);
                 while let Ok((pkts, _)) = sender.read_rtcp().await {
+                    l2.rr(super::media_stats::SHARE, own, &pkts, super::media_stats::VIDEO_CLOCK);
                     if pkts.iter().any(|p| p.as_any().is::<PictureLossIndication>() || p.as_any().is::<FullIntraRequest>()) { k.store(true, Ordering::SeqCst); }
                 }
             });
-            Ok::<_, String>(ShareTx { track, keyframe })
+            Ok::<_, String>(ShareTx { track, keyframe, live })
         })?;
         if let Ok(mut s) = self.share.lock() { *s = Some(tx); }
         self.reoffer()
@@ -470,7 +484,12 @@ impl Media {
             while !s2.load(Ordering::SeqCst) {
                 // the lock is held only to take what is queued (the call thread reads the stream's status meanwhile)
                 let aus = match stream.lock() {
-                    Ok(s) => { if tx.keyframe.swap(false, Ordering::SeqCst) { s.request_keyframe(); } s.drain() }
+                    Ok(s) => {
+                        if tx.keyframe.swap(false, Ordering::SeqCst) { s.request_keyframe(); }
+                        let aus = s.drain();
+                        if !aus.is_empty() { if let crate::media::share::Status::Running { width, height, .. } = s.status() { tx.live.share_sent(width, height, n.load(Ordering::Relaxed) + aus.len() as u64); } }
+                        aus
+                    }
                     Err(_) => break,
                 };
                 if aus.is_empty() { std::thread::sleep(Duration::from_millis(5)); continue; }
@@ -483,6 +502,14 @@ impl Media {
             }
         }).map_err(|e| e.to_string())?;
         Ok(ShareFeed { stop, thread: Some(thread), sent })
+    }
+
+    /// The call statistics now (read-only: `get_stats` plus the packet counters; see `media_stats`). Blocks the
+    /// caller for the length of one `get_stats` (the call's thread, never the UI's).
+    pub fn stats(&self) -> super::media_stats::Snapshot {
+        let pc = self.pc.clone();
+        let report = self.rt.block_on(async move { pc.get_stats().await });
+        self.live.snapshot(&report)
     }
 
     pub fn state(&self) -> MediaState {
@@ -694,6 +721,41 @@ mod tests {
         assert_ne!(b.seen_slides_ssrc.load(Ordering::Relaxed), 0, "the ICE socket noted the share's SSRC");
         crate::cloud::share_rx::clear();
         assert!(crate::cloud::share_rx::latest().is_none(), "released: no picture left");
+        a.close();
+        b.close();
+    }
+
+    /// The call statistics of a loopback call (two local peers, audio both ways): bytes sent from `get_stats`, received
+    /// packets / loss / jitter from the RTP headers, the far end's receiver report about ours, and a round trip.
+    #[test]
+    fn stats_of_a_loopback_call() {
+        use super::super::media_stats::{AUDIO, SHARE};
+        let (io1, io2) = (Arc::new(Io::default()), Arc::new(Io::default()));
+        let a = Media::new(io1.clone(), None, Net::Loopback).unwrap();
+        let b = Media::new(io2.clone(), None, Net::Loopback).unwrap();
+        a.apply_answer(b.answer(a.offer().unwrap()).unwrap()).unwrap();
+        let tone = audio::tone(440.0, 30000, 0.5);
+        let (t0, mut fed) = (std::time::Instant::now(), 0);
+        let mut s = a.stats();
+        // receiver reports go out about once a second: wait for B's first one about A's audio
+        while t0.elapsed() < Duration::from_secs(30) {
+            for io in [&io1, &io2] { if io.captured.lock().unwrap().len() < 4800 && fed + FRAME <= tone.len() { io.captured.lock().unwrap().extend(tone[fed..fed + FRAME].iter()); } }
+            fed += FRAME;
+            if fed + FRAME > tone.len() { fed = 0; }
+            std::thread::sleep(Duration::from_millis(10));
+            if fed % (FRAME * 50) == 0 {
+                s = a.stats();
+                if s.tx[AUDIO].fraction_lost.is_some() && s.rx[AUDIO].packets > 50 && s.tx[AUDIO].bytes > 0 && s.rtt_ms.is_some() { break; }
+            }
+        }
+        let (tx, rx) = (s.tx[AUDIO], s.rx[AUDIO]);
+        assert!(tx.bytes > 0 && tx.packets > 0, "get_stats: audio sent {tx:?}");
+        assert!(rx.packets > 50 && rx.bytes > 0, "audio received {rx:?}");
+        assert_eq!(rx.lost, 0, "nothing lost on loopback: {rx:?}");
+        assert!(rx.jitter_ms.is_some_and(|j| j < 50.0), "{rx:?}");
+        assert!(tx.fraction_lost.is_some_and(|f| f < 0.05), "B's receiver report about A's audio: {tx:?}");
+        assert!(s.rtt_ms.is_some_and(|r| r < 500.0), "round trip {:?}", s.rtt_ms);
+        assert_eq!(s.tx[SHARE].packets + s.rx[SHARE].packets, 0, "no share");
         a.close();
         b.close();
     }

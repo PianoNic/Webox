@@ -13,6 +13,7 @@ pub mod features; // feature toggles + client policies (App::feature)
 mod images;
 pub mod locus;
 pub mod media;
+pub mod media_stats; // call statistics: packet counters, receiver reports and get_stats for the call window's panel
 pub mod share_rx; // a screen share received in a call: decode, newest picture for the call window
 mod sdp; // answer filtering and address-free summaries for the media leg
 mod sdp_compat; // remote descriptions rewritten into what webrtc-rs accepts
