@@ -44,15 +44,23 @@ impl App {
     }
 
     fn call_command(&mut self, id: &str) {
-        let Some(c) = self.call.cur.as_ref().filter(|c| c.ended_at.is_none()) else { return };
-        let mut a = CallActions::default();
-        match (id, &c.state) {
-            ("AnswerCall", CallState::Incoming) => a.answer = true,
-            ("DeclineCall", CallState::Incoming) => a.hang = true,
-            ("EndCall", s) if *s != CallState::Incoming => a.hang = true,
-            ("ToggleAudioMute", CallState::Connected) => a.mute = true,
-            _ => return,
-        }
-        self.apply_call_actions(a);
+        if let Some(a) = call_actions(id, self.live_call_state()) { self.apply_call_actions(a); }
     }
+
+    /// The state of the call on screen, if one is still going.
+    pub(super) fn live_call_state(&self) -> Option<&CallState> { self.call.cur.as_ref().filter(|c| c.ended_at.is_none()).map(|c| &c.state) }
+}
+
+/// What call command `id` does to a call in `state`; `None` when it does nothing (no call, or not the right moment), so its key
+/// is left to the rest of the app (Ctrl+Shift+C copies unless a call is ringing).
+pub(super) fn call_actions(id: &str, state: Option<&CallState>) -> Option<CallActions> {
+    let mut a = CallActions::default();
+    match (id, state?) {
+        ("AnswerCall", CallState::Incoming) => a.answer = true,
+        ("DeclineCall", CallState::Incoming) => a.hang = true,
+        ("EndCall", s) if *s != CallState::Incoming => a.hang = true,
+        ("ToggleAudioMute", CallState::Connected) => a.mute = true,
+        _ => return None,
+    }
+    Some(a)
 }

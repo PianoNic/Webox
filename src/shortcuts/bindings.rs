@@ -99,6 +99,8 @@ impl App {
                 let Some(k) = r.key else { return false };
                 if !k.matches_at(key, phys, &mods, loose) || c.kind_native() { return false; }
                 if clip && !matches!(c.kind, Kind::Run(_) | Kind::Cmd | Kind::Composer) { return false; }
+                // A call command that would do nothing now leaves the key alone (Ctrl+Shift+C still copies when no call rings).
+                if c.needs_call() && super::commands::call_actions(c.id, self.live_call_state()).is_none() { return false; }
                 #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
                 if self.sc.global.is_registered(i) { return false; } // delivered by the hotkey thread
                 if repeat && !matches!(c.id, "ZoomIn" | "ZoomOut" | "PreviousSpace" | "NextSpace") { return false; }
