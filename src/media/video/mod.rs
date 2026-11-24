@@ -184,6 +184,43 @@ pub fn first_frame(path: &Path) -> Result<(Frame, Info), String> {
     Err("no picture".into())
 }
 
+/// The pictures of a file without sound, starting over at the end: a video file as the camera or as a moving background of a
+/// plugin (media/camera/hook.rs). `pts` keeps growing across the loops. Not `Send`: open it on the thread that reads it.
+pub struct Looping { src: Box<dyn Source>, path: std::path::PathBuf, max: (u32, u32),
+    /// Seconds added to the file's own times (the length of the loops played so far); `end` the last time seen.
+    base: f64, end: f64, round: u64, pub loops: u32 }
+
+impl Looping {
+    pub fn open(path: &Path, max: (u32, u32)) -> Result<Looping, String> {
+        let (src, info) = backend::open(path, max, false)?;
+        if !info.has_video { return Err("keine Bildspur".into()); }
+        Ok(Looping { src, path: path.to_path_buf(), max, base: 0.0, end: 0.0, round: 0, loops: 0 })
+    }
+    /// The next picture (blocking while it decodes); after the last one the first one again.
+    pub fn next(&mut self) -> Result<Frame, String> {
+        loop {
+            match self.src.read()? {
+                Some(Packet::Video(mut f)) => {
+                    self.round += 1;
+                    f.pts += self.base;
+                    self.end = self.end.max(f.pts);
+                    return Ok(f);
+                }
+                Some(_) => continue,
+                None => {
+                    // a round without a single picture would loop for ever
+                    if self.round == 0 { return Err("kein Bild in der Datei".into()); }
+                    // the next round starts one frame after the last picture
+                    self.base = self.end + 1.0 / 30.0;
+                    self.loops += 1;
+                    self.round = 0;
+                    if self.src.seek(0.0).is_err() { self.src = backend::open(&self.path, self.max, false)?.0; }
+                }
+            }
+        }
+    }
+}
+
 /// Every picture of a file, without sound (tests of other modules, e.g. the screen share's encoder round trip).
 #[cfg(test)]
 pub(crate) fn decode_all(path: &Path) -> Result<(Info, Vec<Frame>), String> {
