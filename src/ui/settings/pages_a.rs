@@ -78,12 +78,6 @@ impl App {
             self.pcombo(ui, t, "time_zone", "system", &[("system", "Zeitzone des Computers verwenden")], 472.0);
         });
         section(ui, t, "Multitasking", "", false, |ui| { self.pcheck(ui, t, "multitasking", false, "Mein(en) Webex-Anruf oder -Meeting automatisch in einem unverankerten Minifenster anzeigen, wenn es von anderen Apps verdeckt wird."); });
-        section(ui, t, "CO₂-bewusster Modus", "Nutzen Sie den Betrieb mit geringem CO₂-Ausstoß, um Kohlendioxidemissionen zu minimieren, wenn der Strom aus einer Energiequelle mit hohem CO₂-Ausstoß stammt.", false, |ui| {
-            let mut v = self.sb("low_carbon", false);
-            if kit::check(ui, &mut self.icons, t, "CO₂-bewusster Modus", &mut v, true, false) { self.sset("low_carbon", json!(v)); }
-            let mut c = self.sb("low_carbon_video", false);
-            if kit::check(ui, &mut self.icons, t, "Videoauflösung bei Eins-zu-eins-Anrufen und -Meetings reduzieren, wenn kein nachhaltiger Strom zur Verfügung steht", &mut c, v, true) { self.sset("low_carbon_video", json!(c)); }
-        });
         // Webox-specific: language, close-to-tray, browser helper, account.
         section(ui, t, "Sprache", "Sprache der Oberfläche.", false, |ui| { // "Sprache" = pack word
             self.pcombo(ui, t, "language", "system", &[("system", "Systemstandard"), ("de", "Deutsch"), ("en", "English")], 280.0);

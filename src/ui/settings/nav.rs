@@ -76,7 +76,6 @@ pub(crate) const INDEX: &[(Page, &str, &str)] = &[
     (Page::General, "Standardmäßiger Dateispeicherort", "Ordner für heruntergeladene Dateien"),
     (Page::General, "Lokale Zeitzone", "Zeitzone für Ihr Profil und Ruhezeiten"),
     (Page::General, "Multitasking", "Unverankertes Minifenster für Anruf oder Meeting"),
-    (Page::General, "CO₂-bewusster Modus", "Videoauflösung reduzieren"),
     (Page::General, "Sprache", "Sprache der Oberfläche"),
     (Page::General, "Beim Schließen in den Infobereich minimieren", "Fenster schließen"),
     (Page::Audio, "Lautsprecher", "Ausgabegerät und Lautstärke"),
