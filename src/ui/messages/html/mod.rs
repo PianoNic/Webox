@@ -158,6 +158,8 @@ fn collapse(s: &str) -> String {
 struct Doc<'a> {
     b: JobBuilder, c: &'a Mc, me: &'a str,
     stack: Vec<(String, Style, Option<Color32>)>, color: Option<Color32>,
+    /// Opens ignored beyond MAX_DEPTH, per tag name: as many closes of that name are swallowed, so they can't pop a real element.
+    ignored: std::collections::HashMap<String, usize>,
     nls: u32, lists: Vec<(bool, u32)>, bullet: Option<String>,
     quote_depth: usize, quote_start: Vec<Option<usize>>, quotes: Vec<(usize, usize)>,
     pre: u32, link: Option<(String, Option<usize>)>, links: Vec<(Range<usize>, String)>,
@@ -252,6 +254,7 @@ impl Doc<'_> {
         // stack), so nesting can't make every line and every close tag cost more and more.
         if !VOID.contains(&name) && self.stack.len() >= MAX_DEPTH {
             if matches!(name, "p" | "div" | "section" | "table" | "tr" | "ul" | "ol" | "li" | "blockquote" | "pre" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6") { block(self); }
+            *self.ignored.entry(name.to_string()).or_default() += 1;
             return;
         }
         match name {
@@ -322,6 +325,7 @@ impl Doc<'_> {
     }
 
     fn close(&mut self, name: &str) {
+        if let Some(n) = self.ignored.get_mut(name).filter(|n| **n > 0) { *n -= 1; return; }
         let Some(pos) = self.stack.iter().rposition(|e| e.0 == name) else { return };
         while self.stack.len() > pos {
             let (n, st, col) = self.stack.pop().unwrap();
@@ -338,7 +342,7 @@ pub(super) fn html_job(html: &str, c: &Mc, me: &str, wrap: f32, sys: bool) -> Op
     let mut b = JobBuilder { job: egui::text::LayoutJob::default(), nchars: 0, runs: Vec::new(), sys,
         sysfont: FontId::new(BODY, egui::FontFamily::Name(emoji_text::FAMILY.into())), st: Style::default() };
     b.job.wrap.max_width = wrap;
-    let mut d = Doc { b, c, me, stack: Vec::new(), color: None, nls: 0, lists: Vec::new(), bullet: None, quote_depth: 0, quote_start: Vec::new(), quotes: Vec::new(), pre: 0, link: None, links: Vec::new(), author_pending: false, reply_depth: 0, reply_text: String::new(), reply_seen: false, absorb_br: false };
+    let mut d = Doc { b, c, me, stack: Vec::new(), color: None, ignored: Default::default(), nls: 0, lists: Vec::new(), bullet: None, quote_depth: 0, quote_start: Vec::new(), quotes: Vec::new(), pre: 0, link: None, links: Vec::new(), author_pending: false, reply_depth: 0, reply_text: String::new(), reply_seen: false, absorb_br: false };
     let events = tokenize(html);
     let mut author_checked = false; // the rest is scanned for an author line once, for the first candidate only
     for (i, ev) in events.iter().enumerate() {

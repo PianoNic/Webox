@@ -46,7 +46,8 @@ fn checked(u: &str) -> Option<url::Url> {
 
 /// An address a preview may connect to: none of loopback, private, link-local, unspecified, multicast, broadcast,
 /// CGNAT 100.64/10, "this network" 0/8, reserved 240/4, IPv6 unique-local fc00::/7, link-local fe80::/10, site-local
-/// fec0::/10, and no IPv4 embedded in IPv6 (mapped, compatible, NAT64 64:ff9b::/96, 6to4 2002::/16) that is one of those.
+/// fec0::/10, and no IPv4 embedded in IPv6 (mapped, compatible, NAT64 64:ff9b::/96, local-use NAT64
+/// 64:ff9b:1::/48, IPv4-translated ::ffff:0:0/96, 6to4 2002::/16) that is one of those.
 pub(crate) fn public_ip(ip: std::net::IpAddr) -> bool {
     use std::net::{IpAddr, Ipv4Addr};
     fn v4(a: Ipv4Addr) -> bool {
@@ -62,6 +63,15 @@ pub(crate) fn public_ip(ip: std::net::IpAddr) -> bool {
             if let Some(m) = a.to_ipv4_mapped() { return v4(m); }
             if s[..6].iter().all(|x| *x == 0) { return false; } // ::, ::1 and the deprecated IPv4-compatible ::a.b.c.d
             if s[..6] == [0x64, 0xFF9B, 0, 0, 0, 0] && !v4(embedded(s[6], s[7])) { return false; }
+            if s[..6] == [0, 0, 0, 0, 0xFFFF, 0] && !v4(embedded(s[6], s[7])) { return false; } // IPv4-translated ::ffff:0:a.b.c.d
+            if s[..3] == [0x64, 0xFF9B, 1] { // local-use NAT64 64:ff9b:1::/48, any RFC 6052 prefix length inside it
+                let b = |x: u16| [(x >> 8) as u8, x as u8];
+                let (s3, s4, s5, s6, s7) = (b(s[3]), b(s[4]), b(s[5]), b(s[6]), b(s[7]));
+                let layouts: &[[u8; 4]] = if s[3..6] == [0, 0, 0] { &[[s6[0], s6[1], s7[0], s7[1]]] } else {
+                    &[[s3[0], s3[1], s4[1], s5[0]], [s3[1], s4[1], s5[0], s5[1]], [s4[1], s5[0], s5[1], s6[0]]]
+                };
+                if layouts.iter().any(|o| !v4(Ipv4Addr::from(*o))) { return false; }
+            }
             if s[0] == 0x2002 && !v4(embedded(s[1], s[2])) { return false; }
             !(a.is_multicast() || (s[0] & 0xFE00) == 0xFC00 || (s[0] & 0xFFC0) == 0xFE80 || (s[0] & 0xFFC0) == 0xFEC0)
         }
@@ -284,10 +294,11 @@ mod tests {
     #[test]
     fn only_public_addresses_are_connected_to() {
         let ip = |s: &str| s.parse::<std::net::IpAddr>().unwrap();
-        for ok in ["93.184.216.34", "1.1.1.1", "100.63.255.255", "100.128.0.0", "2606:4700:4700::1111", "::ffff:8.8.8.8", "64:ff9b::808:808"] { assert!(public_ip(ip(ok)), "{ok}"); }
+        for ok in ["93.184.216.34", "1.1.1.1", "100.63.255.255", "100.128.0.0", "2606:4700:4700::1111", "::ffff:8.8.8.8", "64:ff9b::808:808", "::ffff:0:808:808", "64:ff9b:1::808:808"] { assert!(public_ip(ip(ok)), "{ok}"); }
         for no in ["127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "0.0.0.0", "0.1.2.3", "224.0.0.1", "255.255.255.255", "100.64.0.1",
             "100.127.255.255", "240.0.0.1", "::", "::1", "::127.0.0.1", "fc00::1", "fd12:3456::1", "fe80::1", "fec0::1", "ff02::1", "::ffff:127.0.0.1",
-            "::ffff:169.254.169.254", "::ffff:10.0.0.1", "64:ff9b::7f00:1", "2002:c0a8:101::1"] { assert!(!public_ip(ip(no)), "{no}"); }
+            "::ffff:169.254.169.254", "::ffff:10.0.0.1", "64:ff9b::7f00:1", "2002:c0a8:101::1",
+            "::ffff:0:a00:1", "::ffff:0:7f00:1", "64:ff9b:1::a00:1", "64:ff9b:1::a9fe:a9fe", "64:ff9b:1:a00:1::", "64:ff9b:1:a:1:1::"] { assert!(!public_ip(ip(no)), "{no}"); }
     }
 
     /// The resolver refuses literals with a non-public address before any connection (IP literals, no DNS lookup).
