@@ -19,6 +19,8 @@ pub(crate) struct Shown { pub state: CallState, pub name: String, pub email: Str
 pub(crate) struct CallUi {
     pub cur: Option<Shown>, pub history: Vec<(String, bool, &'static str)>,
     choice: Option<Choice>, pub(crate) muted: bool, pub(crate) open_menu: bool,
+    /// Our screen share runs (the cloud thread says so), or a pick went to it and the answer is pending.
+    pub(crate) sharing: bool, pub(crate) share_pending: bool,
     // Separate-window state, offline sample mode (no sound, no microphone), toast's ring switch.
     pub(crate) win: super::call_win::WinState, pub(crate) sample: bool, pub(crate) ring_muted: bool,
     /// Plays ringtone / ringback / test tones (its own streams, on the ringtone or speaker device).
@@ -57,6 +59,12 @@ pub(crate) fn state_text(s: &CallState, secs: u64) -> String {
     }
 }
 
+/// An ended call that only rang here (incoming, never answered on this device) closes without a call window, end
+/// screen or tone: I declined it, the caller cancelled, or another of my devices took it.
+pub(crate) fn ends_quietly(incoming: bool, shown: Option<&CallState>) -> bool {
+    incoming && shown.is_none_or(|s| *s == CallState::Incoming)
+}
+
 impl App {
     /// Places a call to `email` (checked again, and before any request, in the cloud thread).
     pub(crate) fn start_call(&mut self, email: &str, name: &str, now: f64) {
@@ -82,6 +90,25 @@ impl App {
     /// An error came from the cloud thread: if our dial never got confirmed, it failed, so close the card.
     pub(crate) fn call_failed(&mut self) {
         if self.call.cur.as_ref().is_some_and(|c| !c.confirmed) { self.call.cur = None; }
+        self.call.share_pending = false; // a share start that failed says so with its own error
+    }
+
+    /// The call window's share button: opens the screen / window picker, or stops our share.
+    pub(crate) fn share_button(&mut self, now: f64) {
+        if self.call.sharing { if let Some(c) = &self.client { c.req(Req::Call(CallReq::Share(None))); } self.call.sharing = false; return; }
+        if self.call.share_pending { return; }
+        if let Some(why) = crate::media::share::unavailable() { self.toast(why, now); return; }
+        super::share_picker::open();
+    }
+
+    /// The picker's choice goes to the call (each frame; nothing when the dialog was closed without a pick).
+    fn take_share_choice(&mut self, now: f64) {
+        let Some(ch) = super::share_picker::take_choice() else { return };
+        let live = self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none() && c.state == CallState::Connected);
+        if !live { self.toast("Bildschirmfreigabe ist erst möglich, wenn der Anruf verbunden ist.", now); return; }
+        let Some(c) = &self.client else { self.toast("Nicht verbunden", now); return };
+        c.req(Req::Call(CallReq::Share(Some(cloud::locus::share::ShareReq { source: ch.source, opts: ch.opts }))));
+        self.call.share_pending = true;
     }
 
     pub(crate) fn on_call_event(&mut self, ev: CallEvent, now: f64) {
@@ -92,12 +119,18 @@ impl App {
         let (mut since, was_connected) = prev.as_ref().map_or((now, false), |p| (p.since, p.state == CallState::Connected));
         if ev.state == CallState::Connected && !was_connected { since = now; }
         let ended_at = if let CallState::Ended(w) = &ev.state {
-            let r = match w.as_str() { "declined" => "Abgelehnt", "missed" => "Verpasst", "unanswered" => "Keine Antwort", _ => "Beendet" };
+            let r = match w.as_str() { "declined" => "Abgelehnt", "missed" => "Verpasst", "unanswered" => "Keine Antwort", "elsewhere" => "Anderswo angenommen", _ => "Beendet" };
             self.call.history.insert(0, (name.clone(), ev.incoming, r));
             self.call.history.truncate(30);
             self.call.muted = false;
+            self.call.sharing = false; self.call.share_pending = false;
+            super::share_picker::close();
             self.call.mc.keypad = false; self.call.mc.keypad_text.clear();
             if let Some(c) = &self.client { c.req(Req::CallHistory); } // the session is in janus now
+            // An incoming call that ends while it still rings here (I declined it, the caller cancelled, another of my
+            // devices took it) just stops ringing: no call window, no "Anruf abgelehnt" screen, no tone. Like the official
+            // client, which only removes its incoming-call notification.
+            if ends_quietly(ev.incoming, prev.as_ref().map(|p| &p.state)) { self.call.cur = None; return; }
             // Call-end tone (see sounds.rs).
             let tone = match w.as_str() { "declined" => Some("BusyTone"), "unanswered" => Some("FastBusy"), "left" if was_connected => Some("FastBusy"), _ => None };
             let p = self.prefs();
@@ -241,6 +274,7 @@ impl App {
         self.prune_once(ctx);
         let live = self.call.cur.as_ref().filter(|c| c.ended_at.is_none()).map(|c| c.state.clone());
         self.ring_sound(live.as_ref());
+        self.take_share_choice(now);
         let c = self.call.cur.as_ref()?;
         let (state, name, email, since, ended) = (c.state.clone(), c.name.clone(), c.email.clone(), c.since, c.ended_at.is_some());
         let secs = if state == CallState::Connected { (now - since).max(0.0) as u64 } else { 0 };
@@ -285,7 +319,7 @@ impl App {
             ui.label(RichText::new(state_text(&v.state, v.secs)).size(14.0).color(t.text2));
             ui.add_space(22.0);
             if v.ended { return; }
-            let row = Rect::from_center_size(ui.cursor().center_top() + Vec2::new(0.0, 26.0), Vec2::new(3.0 * 48.0 + 2.0 * 20.0, 52.0));
+            let row = Rect::from_center_size(ui.cursor().center_top() + Vec2::new(0.0, 26.0), Vec2::new(4.0 * 48.0 + 3.0 * 20.0, 52.0));
             let mut r = ui.new_child(egui::UiBuilder::new().max_rect(row).layout(egui::Layout::left_to_right(egui::Align::Center)));
             r.spacing_mut().item_spacing.x = 20.0;
             let muted = self.call.muted;
@@ -295,6 +329,11 @@ impl App {
             let open = menu_is_open(&ctx, "call-devices");
             let dev = round_fill(&mut r, &mut self.icons, "speaker-regular", if open { t.accent } else { t.selected }, 48.0).on_hover_text("Audiogeräte");
             if dev.clicked() { menu_toggle(&ctx, "call-devices"); }
+            if v.state == CallState::Connected {
+                let sharing = self.call.sharing;
+                if round_fill(&mut r, &mut self.icons, "share-screen-regular", if sharing { t.green } else { t.selected }, 48.0)
+                    .on_hover_text(if sharing { "Freigabe beenden" } else { "Inhalte freigeben" }).clicked() { self.share_button(now); }
+            }
             ui.allocate_rect(row, Sense::hover());
             ui.add_space(16.0);
             self.level_bar(ui, t, now, 220.0);
@@ -351,3 +390,16 @@ pub(crate) struct CallView { pub state: CallState, pub name: String, pub email: 
 pub(crate) struct CallActions { pub hang: bool, pub answer: bool, pub mute: bool, pub message: bool, pub contact: bool, pub toggle_ring: bool, pub dismiss: bool }
 
 mod devices;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn rejecting_or_a_cancelled_ring_opens_no_window() {
+        assert!(ends_quietly(true, Some(&CallState::Incoming)), "I declined / the caller cancelled / taken elsewhere");
+        assert!(ends_quietly(true, None));
+        assert!(!ends_quietly(true, Some(&CallState::Connected)), "an answered call shows its end");
+        assert!(!ends_quietly(true, Some(&CallState::Connecting)));
+        assert!(!ends_quietly(false, Some(&CallState::Ringing)), "my outgoing call the other side declined still says so");
+    }
+}

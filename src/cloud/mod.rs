@@ -261,6 +261,8 @@ pub enum Resp {
     OlderMessages(String, Vec<Message>, usize, bool),
     /// A change of the current call (outgoing ringing, incoming, connected, ended).
     Call(locus::CallEvent),
+    /// Our screen share in the call started (true) or ended (false).
+    CallShare(bool),
     /// Directory people for a search query (query, people, last batch).
     Directory(String, Vec<Person>, bool),
     /// All my flags: (space id or "" when the flag doesn't say, message id, flag url).

@@ -198,6 +198,7 @@ impl App {
         if vctx.input(|i| i.viewport().close_requested()) { vctx.send_viewport_cmd(egui::ViewportCommand::CancelClose); if v.ended { a.dismiss = true } else { a.hang = true } }
         if crate::ui::chrome::pointer_down(vctx) || vctx.input(|i| i.pointer.delta() != Vec2::ZERO || i.events.iter().any(|e| matches!(e, egui::Event::Key { .. }))) { self.call.win.last_move = now; }
         let connected = v.state == CallState::Connected;
+        let mut share = false;
         let autohide = self.settings["call_autohide_controls"].as_bool().unwrap_or(true);
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(vctx, |ui| {
             let full = ui.max_rect();
@@ -266,6 +267,11 @@ impl App {
                 let kp_on = self.call.mc.keypad;
                 if round_at(&mut bu, &mut self.icons, "bar-keypad", pos2(br.left() + 16.0 + 20.0 + 96.0, y), 40.0, "dialpad-regular", if kp_on { t.accent } else { t.selected }, Color32::WHITE, t.focus)
                     .on_hover_text("Tastenfeld").clicked() { self.call.mc.keypad = !kp_on; }
+                // Share ("Freigeben"): the picker, then the share runs in the call (cloud/locus/share.rs); again = stop.
+                let (sharing, pending) = (self.call.sharing, self.call.share_pending);
+                let tip = if sharing { "Freigabe beenden" } else if pending { "Freigabe wird gestartet…" } else { "Inhalte freigeben" };
+                if round_at(&mut bu, &mut self.icons, "bar-share", pos2(br.left() + 16.0 + 20.0 + 144.0, y), 40.0, "share-screen-regular", if sharing { t.green } else if pending { t.accent } else { t.selected }, Color32::WHITE, t.focus)
+                    .on_hover_text(tip).clicked() { share = true; }
                 // Red pill on the right (left / right margin 16).
                 let pill = Rect::from_min_max(pos2(br.right() - 16.0 - 132.0, y - 20.0), pos2(br.right() - 16.0, y + 20.0));
                 let pr = bu.interact(pill, bu.id().with("bar-end"), Sense::click());
@@ -283,6 +289,7 @@ impl App {
         });
         crate::ui::chrome::edge_overlay(vctx); // Linux: no server-side border to resize by (no-op while maximised)
         vctx.request_repaint_after(std::time::Duration::from_millis(200));
+        if share { if self.call.sample { self.call.sharing = !self.call.sharing; } else { self.share_button(now); } }
         a
     }
 }

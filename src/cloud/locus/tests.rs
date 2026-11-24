@@ -145,6 +145,134 @@ fn dtmf_body_matches_sdk() {
     assert_eq!(dtmf_body("https://wdm-a.wbx2.com/d/1", "5#", "c1"), json!({"deviceUrl": "https://wdm-a.wbx2.com/d/1", "dtmf": {"correlationId": "c1", "tones": "5#"}}));
     assert!(dtmf_ok("0123456789*#") && !dtmf_ok("") && !dtmf_ok("1a") && !dtmf_ok("+"));
 }
+/// A full locus with a sequence number, in the shape Mercury events carry it.
+fn seq_locus(self_state: &str, other_state: &str, active: bool, seq: u64) -> Value {
+    let mut l = locus(self_state, other_state, active);
+    l["sequence"] = json!({"entries": [seq], "rangeStart": 0, "rangeEnd": 0});
+    l
+}
+fn ev(kind: &str, l: Value) -> Value { json!({"eventType": kind, "locusUrl": "https://locus-a.wbx2.com/locus/api/v1/loci/abc", "locus": l}) }
+fn applied(a: Apply) -> Value { match a { Apply::Use(l) => l, other => panic!("expected Use, got {other:?}") } }
+
+#[test]
+fn remote_leave_while_connected_ends_the_call() {
+    // connected, then the peer's participant goes LEFT (locus still ACTIVE in the same event)
+    let held = seq_locus("JOINED", "JOINED", true, 10);
+    let l = applied(apply_event(&held, 10, &ev("locus.participant_left", seq_locus("JOINED", "LEFT", true, 11))));
+    assert_eq!(call_state(&parse_locus(&l, "me@example.com"), true), Some(CallState::Ended("left".into())));
+    // the peer's devices all LEFT while the participant still reads JOINED (official: otherPairedDevice->left)
+    let mut l = seq_locus("JOINED", "JOINED", true, 12);
+    l["participants"][1]["devices"] = json!([{"state": "LEFT", "url": "d1"}]);
+    assert_eq!(call_state(&parse_locus(&l, "me@example.com"), true), Some(CallState::Ended("left".into())));
+    // TERMINATING with `active` still true: over
+    let mut l = seq_locus("JOINED", "JOINED", true, 13);
+    l["fullState"]["state"] = json!("TERMINATING");
+    assert!(!parse_locus(&l, "").active);
+    assert!(matches!(call_state(&parse_locus(&l, "me@example.com"), true), Some(CallState::Ended(_))));
+    // an answered incoming call: the caller hangs up
+    assert_eq!(call_state(&parse_locus(&seq_locus("JOINED", "LEFT", false, 14), "me@example.com"), true), Some(CallState::Ended("left".into())));
+}
+#[test]
+fn remote_cancel_while_ringing_ends_the_incoming_call() {
+    let held = seq_locus("NOTIFIED", "JOINED", true, 5);
+    assert_eq!(call_state(&parse_locus(&held, "me@example.com"), false), Some(CallState::Incoming));
+    // the caller cancels: LEFT and the locus INACTIVE
+    let l = applied(apply_event(&held, 5, &ev("locus.participant_left", seq_locus("NOTIFIED", "LEFT", false, 6))));
+    assert_eq!(call_state(&parse_locus(&l, "me@example.com"), false), Some(CallState::Ended("missed".into())));
+    // ... or only LEFT, the locus not yet inactive
+    let l = applied(apply_event(&held, 5, &ev("locus.participant_left", seq_locus("NOTIFIED", "LEFT", true, 6))));
+    assert_eq!(call_state(&parse_locus(&l, "me@example.com"), false), Some(CallState::Ended("missed".into())));
+}
+#[test]
+fn remote_decline_ends_the_outgoing_call() {
+    let held = seq_locus("JOINED", "NOTIFIED", true, 3);
+    let l = applied(apply_event(&held, 3, &ev("locus.participant_declined", seq_locus("JOINED", "DECLINED", true, 4))));
+    assert_eq!(call_state(&parse_locus(&l, "me@example.com"), true), Some(CallState::Ended("declined".into())));
+    let l = applied(apply_event(&held, 3, &ev("locus.participant_declined", seq_locus("JOINED", "DECLINED", false, 4))));
+    assert_eq!(call_state(&parse_locus(&l, "me@example.com"), true), Some(CallState::Ended("declined".into())));
+}
+#[test]
+fn deltas_merge_only_onto_their_base() {
+    let held = seq_locus("JOINED", "JOINED", true, 20);
+    // a delta naming only the peer: merged into what we hold, self stays as it was
+    let delta = json!({"baseSequence": {"entries": [20]}, "sequence": {"entries": [21]},
+        "participants": [{"id": "peer-1", "type": "USER", "state": "LEFT", "person": {"email": "peer@example.com", "name": "Peer Person"}}]});
+    let l = applied(apply_event(&held, 20, &ev("locus.difference", delta.clone())));
+    assert_eq!(locus_seq(&l), 21);
+    let v = parse_locus(&l, "me@example.com");
+    assert_eq!((v.self_state.as_str(), v.others.len(), v.others[0].state.as_str()), ("JOINED", 1, "LEFT"));
+    assert!(l.get("baseSequence").is_none());
+    assert_eq!(call_state(&v, true), Some(CallState::Ended("left".into())));
+    // a delta that only lists self must not make the peer vanish (the old code took it as the whole locus)
+    let self_only = json!({"baseSequence": {"entries": [20]}, "sequence": {"entries": [21]}, "fullState": {"type": "CALL", "state": "ACTIVE", "active": true},
+        "self": {"id": "self-1", "state": "JOINED"}, "participants": [{"id": "self-1", "type": "USER", "state": "JOINED", "person": {"email": "me@example.com"}}]});
+    let l = applied(apply_event(&held, 20, &ev("locus.self_changed", self_only)));
+    assert_eq!(call_state(&parse_locus(&l, "me@example.com"), true), Some(CallState::Connected));
+}
+#[test]
+fn missed_or_out_of_order_delta_resyncs() {
+    let held = seq_locus("JOINED", "JOINED", true, 20);
+    let delta = |base: u64, seq: u64| ev("locus.difference", json!({"baseSequence": {"entries": [base]}, "sequence": {"entries": [seq]}, "participants": []}));
+    // 21 was missed: the delta on top of 21 can't be applied -> read the whole locus
+    assert_eq!(apply_event(&held, 20, &delta(21, 22)), Apply::Read);
+    assert_eq!(compare_seq(20, &delta(21, 22)["locus"]), SeqCmp::Desync);
+    // an older / repeated event is dropped
+    assert_eq!(apply_event(&held, 20, &delta(19, 20)), Apply::Discard);
+    assert_eq!(apply_event(&held, 20, &ev("locus.participant_joined", seq_locus("JOINED", "NOTIFIED", true, 18))), Apply::Discard);
+    // the first event being a delta (nothing held) -> read
+    assert_eq!(apply_event(&Value::Null, 0, &delta(5, 6)), Apply::Read);
+    // a newer full locus always replaces ours, whatever we missed
+    assert!(matches!(apply_event(&held, 20, &ev("locus.participant_left", seq_locus("JOINED", "LEFT", true, 30))), Apply::Use(_)));
+    // an event without the locus -> read
+    assert_eq!(apply_event(&held, 20, &json!({"eventType": "locus.self_changed", "locusUrl": "x"})), Apply::Read);
+    // rangeEnd counts as the newest number too
+    assert_eq!(locus_seq(&json!({"sequence": {"entries": [], "rangeStart": 3, "rangeEnd": 9}})), 9);
+}
+#[test]
+fn locus_urls_match_across_hosts() {
+    assert!(same_locus("https://locus-a.wbx2.com/locus/api/v1/loci/abc", "https://locus-us-east-1.wbx2.com/locus/api/v1/loci/abc"));
+    assert!(same_locus("https://locus-a.wbx2.com/locus/api/v1/loci/abc", "https://locus-a.wbx2.com/locus/api/v1/loci/abc?x=1"));
+    assert!(!same_locus("https://locus-a.wbx2.com/locus/api/v1/loci/abc", "https://locus-a.wbx2.com/locus/api/v1/loci/abd"));
+    assert!(!same_locus("https://a/x", "https://b/x"));
+}
+#[test]
+fn stalled_media_is_reported() {
+    let t0 = Instant::now();
+    let now = |s: u64| t0 + Duration::from_secs(s);
+    // no ROAP answer
+    assert!(media_stall(now(5), Some(t0), None, None, 0, Some(MediaState::New)).is_none());
+    assert!(media_stall(now(11), Some(t0), None, None, 0, Some(MediaState::New)).unwrap().contains("ROAP"));
+    // the other side joined, ICE never comes up
+    assert!(media_stall(now(10), None, Some(t0), None, 0, Some(MediaState::Connecting)).is_none());
+    assert!(media_stall(now(16), None, Some(t0), None, 0, Some(MediaState::Connecting)).unwrap().contains("ICE"));
+    // "connected" but not one packet: that is no connection
+    assert!(media_stall(now(9), None, Some(t0), Some(t0), 0, Some(MediaState::Connected)).unwrap().contains("kein Ton"));
+    assert!(media_stall(now(9), None, Some(t0), Some(t0), 50, Some(MediaState::Connected)).is_none());
+    assert!(media_stall(now(1), None, None, None, 0, Some(MediaState::Failed)).is_some());
+}
+#[test]
+fn share_floor_and_refusals() {
+    let mut l = locus("JOINED", "JOINED", true);
+    assert!(share::content_share_url(&l).is_none());
+    l["mediaShares"] = json!([{"name": "whiteboard", "url": "https://locus-a.wbx2.com/locus/api/v1/loci/abc/mediashares/w"},
+        {"name": "content", "url": "https://locus-a.wbx2.com/locus/api/v1/loci/abc/mediashares/c", "floor": {"disposition": "GRANTED", "beneficiary": {"url": "https://self"}}}]);
+    assert_eq!(share::content_share_url(&l).as_deref(), Some("https://locus-a.wbx2.com/locus/api/v1/loci/abc/mediashares/c"));
+    assert_eq!(share::content_floor(&l), ("GRANTED".to_string(), "https://self".to_string()));
+    let b = share::floor_body("GRANTED", "https://self", "https://dev", "DESKTOP");
+    assert_eq!(b["floor"]["disposition"], "GRANTED");
+    assert_eq!(b["floor"]["beneficiary"]["devices"][0], json!({"deviceType": "DESKTOP", "url": "https://dev"}));
+    assert_eq!(b["floor"]["requester"]["url"], "https://self");
+    // every refusal has a reason for the toast
+    let c = Some(&CallState::Connected);
+    assert!(share::share_blocked(Some(&CallState::Ringing), true, true, false, Some("u")).unwrap().contains("verbunden"));
+    assert!(share::share_blocked(c, true, true, false, None).unwrap().contains("content"));
+    assert!(share::share_blocked(c, true, true, true, Some("u")).unwrap().contains("ausgehandelt"));
+    assert!(share::share_blocked(c, true, true, false, Some("u")).is_none());
+    assert!(share::floor_error("PUT https://x → 409 {}").contains("jemand anderes"));
+    assert!(share::floor_error("PUT https://x → 403 {}").contains("Richtlinie"));
+    assert!(share::floor_error("PUT https://x → 500 {}").contains("fehlgeschlagen"));
+}
+
 #[test]
 fn scrub_hides_addresses() {
     assert!(!scrub("user a@b.example not found").contains('@'));

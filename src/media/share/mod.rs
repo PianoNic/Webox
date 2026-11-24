@@ -14,7 +14,7 @@
 //!
 //! Not built yet: the "you are sharing" border around the shared screen / window and the floating share control bar; the
 //! system's own capture border (yellow on Windows) is left on until then.
-// The call's content stream is the consumer of most of this API; until it is wired up only the picker and the tests use it.
+// The call's content stream (cloud/locus/share.rs) uses part of this API; the rest (bitrate / fps changes) is for later.
 #![allow(dead_code)]
 pub mod convert;
 pub mod h264;
@@ -191,6 +191,8 @@ impl ShareStream {
     pub fn dropped(&self) -> u32 { self.ctl.dropped.load(Ordering::Relaxed) }
     /// Stops capturing and waits for the worker.
     pub fn stop(mut self) { self.halt(); }
+    /// Asks the worker to stop without waiting (a shared stream; the last owner's drop waits for it).
+    pub fn cancel(&self) { self.ctl.stop.store(true, Ordering::SeqCst); }
     fn halt(&mut self) {
         self.ctl.stop.store(true, Ordering::SeqCst);
         if let Some(t) = self.thread.take() { let _ = t.join(); }
