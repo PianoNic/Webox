@@ -2,17 +2,22 @@
 use super::*;
 
 impl App {
-    /// Reaction chips (emoji | count) with 4 pt spacing, then the add-reaction pill.
-    pub(super) fn reactions_row(&mut self, ui: &mut egui::Ui, c: &Mc, at: egui::Pos2, m: &Message) {
+    /// Reaction chips (emoji | count, then who reacted when a plugin asks for it) with 4 pt spacing, then the add-reaction pill.
+    pub(super) fn reactions_row(&mut self, ui: &mut egui::Ui, t: &Th, c: &Mc, at: egui::Pos2, m: &Message) {
         let mut x = at.x;
+        let avatars = self.plugins.reaction_avatars(); // None (no plugin): the chips look as they always did
         for (ri, r) in m.reactions.clone().into_iter().enumerate() {
             let sq = cur_seq(ui.ctx());
             let Some(glyph) = chip_emoji(&r.name) else { continue }; // a name that isn't an emoji is never shown as text
             let count = ui.painter().layout_no_wrap(r.count.to_string(), FontId::proportional(13.0), if r.mine.is_some() { c.accent } else { c.body });
-            let (lw, rw) = (8.0 + 16.0 + 6.0, 6.0 + count.size().x + 8.0); // emoji padding 6 / 8; count padding 6 / 8
+            let who = self.chip_layout(ui, c, &r, avatars); // who_reacted.rs
+            let (cw, aw) = (count.size().x, who.as_ref().map_or(0.0, |w| w.width));
+            let (lw, rw) = (8.0 + 16.0 + 6.0, 6.0 + cw + aw + 8.0); // emoji padding 6 / 8; count padding 6 / 8
             let rect = Rect::from_min_size(pos2(x, at.y), Vec2::new(lw + 1.0 + rw, REACT_H));
             let (left, right) = (Rect::from_min_size(rect.min, Vec2::new(lw, REACT_H)), Rect::from_min_max(pos2(rect.left() + lw + 1.0, rect.top()), rect.max));
-            let (l, rr) = (ui.interact(left, Id::new(("react-l", &m.id, &r.name, ri, sq)), Sense::click()), ui.interact(right, Id::new(("react-r", &m.id, &r.name, ri, sq)), Sense::click()));
+            // With avatars the count part ends just after the count: the avatars name their people themselves.
+            let hit = if who.is_some() { Rect::from_min_max(right.min, pos2(right.left() + 6.0 + cw + 2.0, right.bottom())) } else { right };
+            let (l, rr) = (ui.interact(left, Id::new(("react-l", &m.id, &r.name, ri, sq)), Sense::click()), ui.interact(hit, Id::new(("react-r", &m.id, &r.name, ri, sq)), Sense::click()));
             let half = (REACT_H / 2.0) as u8;
             if l.hovered() { ui.painter().rect_filled(left, egui::CornerRadius { nw: half, sw: half, ne: 0, se: 0 }, c.chip_hover); }
             if rr.hovered() { ui.painter().rect_filled(right, egui::CornerRadius { nw: 0, sw: 0, ne: half, se: half }, c.chip_hover); }
@@ -21,13 +26,14 @@ impl App {
             let er = Rect::from_center_size(pos2(rect.left() + 8.0 + 8.0, rect.center().y), Vec2::splat(16.0));
             if !self.icons.emoji(ui, &glyph, er) { ui.painter().text(er.center(), Align2::CENTER_CENTER, &glyph, FontId::proportional(14.0), c.body); }
             ui.painter().galley(pos2(right.left() + 6.0, rect.center().y - count.size().y / 2.0), count, c.body);
+            if let Some(w) = &who { self.chip_avatars_draw(ui, t, c, m, &r, ri, w, right.left() + 6.0 + cw, rect.center().y); }
             // The emoji adds or takes back my reaction; the count shows who reacted (the reactors popover, no tooltip).
             let tip = crate::i18n::tr("ReactionsContentList", if r.mine.is_some() { "Remove reaction" } else { "Add reaction" });
             if l.on_hover_text(tip.as_ref()).clicked() {
                 if r.mine.is_none() { crate::ui::theme::fx::reacted(rect); } // adding one: a design plugin's ripple
                 self.toggle_reaction(&m.id, &r.name);
             }
-            self.reactors_hover(&ui.ctx().clone(), m, &r, right, &rr);
+            self.reactors_hover(&ui.ctx().clone(), m, &r, hit, &rr);
             x = rect.right() + 4.0;
         }
         // Add-reaction pill (reactions_12): height = row height, width = height + 8.

@@ -76,6 +76,7 @@ plugin can check for something newer than its own contract and degrade when the 
 | `space.send` | `{"space": "...", "text": "..."}` | `{}`; posted into that space as a new plain-text message on the next frame, through the plugins' send hooks like a typed one. Dropped for a space you cannot write in; the composer is not touched. |
 | `space.history` | `{"space": "...", "limit": n}` | `{"messages": [{"author": "...", "mine": true, "text": "..."}]}`, the last `limit` (at most 200) messages Webox has loaded, oldest first, system lines left out. No network request: a space never opened holds only what arrived live. Filled only while a plugin subscribes to `message.received`. Safe to call from any thread. |
 | `message.keep` | `{"deleted": [...], "edited": [...], "replace": bool}` | `{}`; what the answers to `message.deleted` / `message.edited` keep, given again, e.g. after a restart: `deleted` entries are `message.deleted` payloads plus `"style"`, `edited` entries `{"id", "history": [...]}`. `replace` first drops everything kept so far (also to forget it all: `{"replace": true}`). Lists already on screen are drawn again. See "Deleted and edited messages". |
+| `reactions.show_avatars` | `{"enabled": true, "max": 3, "size": "small", "hide_self": false}`, every field optional (these are the defaults) | `{}`; from now on Webox draws small round avatars of the people who reacted inside each reaction chip, after the count: the first `max` (1–10, clamped) in the service's order, overlapping, then "+K" for the rest of the count. `size`: `small` (14 pt) or `medium` (18 pt), anything else answers `{"error"}` and changes nothing. `hide_self` leaves my own reaction out. Hovering an avatar shows the name (the reactors popover's lookup). Avatars come from the people and photo caches, no network request. `{"enabled": false}` turns them off. Webox remembers the call per plugin; a plugin that is switched off or unloaded stops counting, and with several the last enabled one wins. Without any, the chips look as before. Safe to call from any thread. |
 
 | Event | Payload | Answer |
 |---|---|---|
@@ -101,6 +102,10 @@ display hook (the message list calls it for the rows on screen on every repaint,
 `send` hook posts into whichever space is open: a plugin that reacts to messages uses `message.received` and `space.send`.
 
 The [Auto-Antwort](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/auto-reply) plugin uses all three.
+[Wer hat reagiert](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/who-reacted) calls `reactions.show_avatars` in
+`start` and on every settings change. It is a method rather than a decoration bit: decorations belong to design plugins
+(the last enabled design plugin wins, and a bit cannot carry `max` or `size`), while a method needs no table change, is
+versioned by name and can be checked with `host.has`.
 
 ### Deleted and edited messages
 
@@ -353,5 +358,7 @@ repository list, the ETag cache, refusal of a SHA-256 or size mismatch and of fo
 update, tamper check and uninstall of the example plugin. `src/extras/plugin_settings/tests.rs` covers the settings: schema parsing (what plugin-api writes, broken and odd schemas), validation, defaults, persistence with keyring and file fallback, a native plugin notified on every change and before start, buttons, the search, and the built-in GIF-Extras schema. `src/extras/plugins` covers the table gating (a 1.4 plugin loads and gets no events), events reaching subscribers only, `call` (unknown methods answer null, `host.capabilities` lists the registry), panics in events and host methods, `message.received` firing once per message id and only to subscribers, `space.send` / `space.history`, `message.deleted` /
 `message.edited` firing once, a kept deleted message staying (with its style, also when it vanished without a tombstone),
 edit history attaching, `message.keep` restoring and replacing, everything kept going when the plugin is switched off, and
-lists staying as received without such a plugin. `os_keyring_roundtrip` (`--ignored`) checks the real OS keyring. The repository tests run against an in-process HTTP server on 127.0.0.1, which a
+lists staying as received without such a plugin, and `reactions.show_avatars` (off without a plugin, follows the plugin's switch,
+`max` / `size` clamped or refused); `src/ui/messages/who_reacted.rs` covers which reactors a chip shows, "+K", hiding your
+own reaction and the width. `os_keyring_roundtrip` (`--ignored`) checks the real OS keyring. The repository tests run against an in-process HTTP server on 127.0.0.1, which a
 test-only policy allows. The app itself never allows plain HTTP.
