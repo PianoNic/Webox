@@ -179,7 +179,7 @@ impl App {
                         ui.set_width(w - 42.0);
                         ui.label(RichText::new("Anruf-Dock schließen?").font(semibold(16.0)).color(t.text1));
                         ui.add_space(8.0);
-                        ui.label(RichText::new("Mit der Tastenkombination Strg+Umschalt+X können Sie es sofort wieder öffnen.").size(14.0).color(t.text2));
+                        ui.label(RichText::new(crate::shortcuts::native_hint("Mit der Tastenkombination Strg+Umschalt+X können Sie es sofort wieder öffnen.")).size(14.0).color(t.text2));
                         ui.add_space(12.0);
                         let mut chk = self.call.win.dock_chk;
                         ui.checkbox(&mut chk, "Nicht erneut nachfragen");

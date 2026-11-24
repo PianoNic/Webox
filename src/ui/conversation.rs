@@ -55,7 +55,7 @@ impl App {
         let sr = Rect::from_center_size(pos2(title_g.right() + 21.0, banner.top() + dm.banner_actions_y), Vec2::splat(24.0));
         let sresp = ui.interact(sr, ui.id().with("fav-star"), Sense::click());
         self.icons.paint(ui, if space.favorite { "favorite-filled" } else { "favorite-regular" }, Rect::from_center_size(sr.center(), Vec2::splat(17.0)), if space.favorite { t.star } else { t.text2 });
-        if sresp.on_hover_text("Favorit (Strg+Umschalt+F)").clicked() { self.set_favorite(&space.id, !space.favorite) }
+        if sresp.on_hover_text(crate::shortcuts::native_hint("Favorit (Strg+Umschalt+F)")).clicked() { self.set_favorite(&space.id, !space.favorite) }
         let line = person.as_ref().map(|p| self.person_line(p, super::chrome::now_ms()));
         let (sub, sub_col) = header_subline(t, line, &space, &self.teams, t.text2);
         if !sub.is_empty() { ui.painter().text(pos2(banner.left() + 21.0, banner.top() + dm.banner_sub_y), egui::Align2::LEFT_CENTER, sub, FontId::proportional(13.0), sub_col); }

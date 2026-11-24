@@ -45,7 +45,7 @@ impl Item {
     pub(crate) fn enabled(mut self, on: bool) -> Self { self.enabled = on; self }
     pub(crate) fn danger(mut self) -> Self { self.danger = true; self }
     pub(crate) fn checked(mut self, on: bool) -> Self { self.checked = on; self }
-    pub(crate) fn shortcut(mut self, s: &str) -> Self { self.shortcut = Some(s.into()); self }
+    pub(crate) fn shortcut(mut self, s: &str) -> Self { self.shortcut = Some(crate::shortcuts::native_hint(s)); self }
     pub(crate) fn submenu(mut self) -> Self { self.submenu = true; self }
     pub(crate) fn avatar(mut self, name: &str, photo: Option<egui::TextureId>) -> Self { self.avatar = Some((name.into(), photo)); self }
     pub(crate) fn dot(mut self, c: Color32) -> Self { self.dot = Some(c); self }

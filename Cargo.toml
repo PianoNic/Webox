@@ -107,11 +107,20 @@ gtk = "0.18"
 glib = "0.18"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-# WKWebView sign-in window (src/platform/webview/platform_mac.rs). objc2 0.6 / the 0.3 framework crates are the line winit, rfd and
-# arboard already pull on macOS; only objc2-web-kit is new, with just the headers that window uses.
+# macOS integration (src/platform/macos/, the WKWebView sign-in window, media backends). objc2 0.6 / the 0.3 framework crates are
+# the line winit, rfd and arboard already pull on macOS; each with just the headers Webox uses.
 objc2 = "0.6"
-objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL", "NSURLRequest", "NSGeometry", "NSNotification", "NSObject"] }
-objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWindow", "NSResponder", "NSView", "NSGraphics"] }
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSString", "NSURL", "NSURLRequest", "NSGeometry", "NSNotification",
+  "NSObject", "NSData", "NSBundle", "NSArray", "NSSet", "NSError", "NSDictionary"] }
+# Status item, menus, Dock badge, the sign-in window.
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "NSWindow", "NSResponder", "NSView", "NSGraphics",
+  "NSApplication", "NSMenu", "NSMenuItem", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSImage", "NSDockTile", "NSEvent",
+  "NSRunningApplication"] }
+# Notification Center banners with buttons (inside Webox.app).
+objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNUserNotificationCenter",
+  "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotification", "UNNotificationAction", "UNNotificationCategory",
+  "UNNotificationSound", "UNNotificationTrigger"] }
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "objc2-app-kit", "objc2-core-foundation", "WKWebView", "WKWebViewConfiguration",
   "WKUserContentController", "WKUserScript", "WKScriptMessage", "WKScriptMessageHandler", "WKNavigationDelegate", "WKNavigation"] }
 

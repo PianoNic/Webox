@@ -3,6 +3,8 @@ pub(crate) mod call;
 pub(crate) mod typing; // typing indicators (protocol: cloud/typing.rs)
 pub(crate) mod call_win;
 pub(crate) mod call_toast;
+#[cfg(target_os = "macos")]
+pub(crate) mod call_note_macos; // the incoming-call banner (Annehmen / Ablehnen)
 pub(crate) mod toast_pos;
 pub(crate) mod chrome;
 pub(crate) mod theme; // the Momentum themes and their colour tokens

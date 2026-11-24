@@ -99,7 +99,16 @@ pub fn register(config: &Path, on: bool) -> Result<(), String> {
         let _ = config;
         use std::path::PathBuf;
         let home = PathBuf::from(std::env::var_os("HOME").ok_or("no home folder")?);
+        // macOS: each browser's folder under Application Support.
+        #[cfg(target_os = "macos")]
+        let dirs: Vec<(PathBuf, bool, &[&str])> = {
+            let s = home.join("Library/Application Support");
+            vec![(s.join("Google/Chrome/NativeMessagingHosts"), false, &set[0].2[..]), (s.join("Chromium/NativeMessagingHosts"), false, &set[0].2[..]),
+                (s.join("Microsoft Edge/NativeMessagingHosts"), false, &set[1].2[..]), (s.join("Mozilla/NativeMessagingHosts"), true, &[][..])]
+        };
+        #[cfg(not(target_os = "macos"))]
         let cfg = crate::system::xdg_config_home().unwrap_or_else(|| home.join(".config"));
+        #[cfg(not(target_os = "macos"))]
         let dirs: Vec<(PathBuf, bool, &[&str])> = vec![
             (cfg.join("google-chrome/NativeMessagingHosts"), false, &set[0].2[..]), (cfg.join("chromium/NativeMessagingHosts"), false, &set[0].2[..]),
             (cfg.join("microsoft-edge/NativeMessagingHosts"), false, &set[1].2[..]), (home.join(".mozilla/native-messaging-hosts"), true, &[][..]),

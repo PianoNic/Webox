@@ -389,7 +389,9 @@ pub fn autostart_registered() -> Option<bool> {
         let text = autostart_dirs().iter().find_map(|d| std::fs::read_to_string(d.join(AUTOSTART_FILE)).ok());
         Some(text.is_some_and(|t| !desktop_hidden(&t)))
     }
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(target_os = "macos")]
+    { Some(crate::platform::macos::login::registered()) }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     None
 }
 
@@ -412,13 +414,11 @@ fn desktop_hidden(text: &str) -> bool {
     text.lines().map(str::trim).any(|l| l.eq_ignore_ascii_case("Hidden=true") || l.eq_ignore_ascii_case("X-GNOME-Autostart-enabled=false"))
 }
 
-/// Start with the computer: the Run key on Windows, an XDG autostart entry on Linux. Not on macOS yet (`SMAppService.mainApp`).
+/// Start with the computer: the Run key on Windows, an XDG autostart entry on Linux, a login item on macOS
+/// (`SMAppService.mainApp`, else a LaunchAgent: platform/macos/login.rs).
 pub fn set_autostart(on: bool) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    {
-        let _ = on;
-        Err("Autostart ist unter macOS noch nicht verfügbar".into())
-    }
+    { crate::platform::macos::login::set(on) }
     #[cfg(windows)]
     {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;

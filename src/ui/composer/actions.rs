@@ -161,7 +161,7 @@ impl App {
                 let resp = ui.interact(r, ui.id().with(("rich", *icon)), Sense::click());
                 if resp.hovered() { ui.painter().rect_filled(r.shrink(1.0), 8.0, t.hover); }
                 self.icons.paint(ui, icon, Rect::from_center_size(r.center(), Vec2::splat(16.0)), ink);
-                if resp.on_hover_text(*tip).clicked() { pending = Some(*f); }
+                if resp.on_hover_text(crate::shortcuts::native_hint(tip)).clicked() { pending = Some(*f); }
             }
             x += w + 5.0;
         }
@@ -171,7 +171,7 @@ impl App {
             if resp.hovered() { ui.painter().circle_filled(r.center(), size / 2.0, t.hover); }
             s.icons.paint(ui, icon, Rect::from_center_size(r.center(), Vec2::splat(16.0)), ink);
             *x += size + 5.0;
-            resp.on_hover_text(tip)
+            resp.on_hover_text(crate::shortcuts::native_hint(tip))
         };
         if single(self, ui, &mut x, "link-regular", "Link (Strg+K)", 24.0).clicked() { pending = Some(Format::Link); }
         let more = single(self, ui, &mut x, "more-regular", "Weitere Formatierungsoptionen", 28.0);

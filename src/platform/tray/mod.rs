@@ -13,7 +13,7 @@ pub static HIDDEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool
 
 /// What the tray icon reports back to the app. `Item(i)`: row i of the tray menu was picked in the panel's own menu (Linux dbusmenu).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum TrayEvent { Left, Menu(i32, i32), #[cfg(target_os = "linux")] Item(u32) }
+pub enum TrayEvent { Left, Menu(i32, i32), #[cfg(any(target_os = "linux", target_os = "macos"))] Item(u32) }
 
 // Icon pixels (platform independent).
 
@@ -141,8 +141,45 @@ mod imp_linux {
 #[cfg(target_os = "linux")]
 pub use imp_linux::*;
 
+// macOS: the menu-bar status item and the Dock badge (src/platform/macos/appkit.rs). Toasts go to Notification Center, so the
+// toast-window helpers are no-ops like the stubs below.
+#[cfg(target_os = "macos")]
+mod imp_macos {
+    use super::*;
+    use crate::platform::macos::appkit::{self, StatusEvent, StatusItem};
+    pub use appkit::MenuRow;
+
+    pub struct Tray(StatusItem);
+    impl Tray {
+        pub fn new(ctx: &eframe::egui::Context) -> Option<Tray> { StatusItem::new(ctx).map(Tray) }
+        pub fn set_unread(&mut self, n: usize) { self.0.set_unread(n) }
+        /// The status item's menu draws the same rows as the other platforms' tray menus.
+        pub fn set_menu(&mut self, rows: Vec<MenuRow>) { self.0.set_menu(rows) }
+        pub fn poll(&mut self) -> Vec<TrayEvent> {
+            appkit::take_status().into_iter().map(|e| match e { StatusEvent::Show => TrayEvent::Left, StatusEvent::Item(i) => TrayEvent::Item(i) }).collect()
+        }
+    }
+    /// Hidden = `ViewportCommand::Visible(false)` (macOS really hides the window; the app keeps running in the menu bar).
+    pub fn hide_to_tray(_: isize) {}
+    pub fn restore_from_tray(_: isize) -> bool { appkit::activate(); false }
+    /// The unread count on the Dock icon.
+    pub fn overlay(_: isize, unread: usize) { appkit::dock_badge(unread) }
+    pub fn work_area() -> Option<(i32, i32, i32, i32)> { None }
+    pub fn find_window(_: &str) -> Option<isize> { None }
+    pub fn make_toast_window(_: isize) {}
+    pub fn place(_: isize, _: i32, _: i32, _: i32, _: i32) {}
+    pub fn dpi_scale(_: isize) -> f32 { 1.0 }
+    pub fn window_rect(_: isize) -> Option<(i32, i32, i32, i32)> { None }
+    pub fn capture(_: isize, _: &Path) -> bool { false }
+    pub fn see_through(_: isize) {}
+    pub fn composited() -> bool { true }
+    pub fn popup_shape(_: isize, _: &[(i32, i32, i32, i32)], _: i32) {}
+}
+#[cfg(target_os = "macos")]
+pub use imp_macos::*;
+
 // Other platforms: no-ops.
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 mod stub {
     use super::*;
     pub struct Tray;
@@ -165,7 +202,7 @@ mod stub {
     pub fn composited() -> bool { true }
     pub fn popup_shape(_: isize, _: &[(i32, i32, i32, i32)], _: i32) {}
 }
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub use stub::*;
 
 #[cfg(all(test, windows))]

@@ -102,7 +102,7 @@ impl App {
                 ui.add(egui::Label::new(RichText::new("Es wurden keine Tastenkombinationen gefunden, die Ihren Suchkriterien entsprechen.").color(text2).size(14.0)).wrap());
             });
         }
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             ui.add_space(12.0);
             let mut on = self.settings[shortcuts::GLOBAL_KEY].as_bool().unwrap_or(false);

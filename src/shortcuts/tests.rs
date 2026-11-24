@@ -36,9 +36,12 @@ fn parses_qt_key_strings() {
 #[test]
 fn round_trips_and_displays_in_german() {
     for s in ["Ctrl+Alt+Shift+D", "Alt+LeftArrow", "Ctrl+Shift+Spacebar", "PgUp", "Ctrl++", "F1", "Ctrl+Shift+Return"] { assert_eq!(c(s).qt(), s); assert_eq!(c(&c(s).qt()), c(s)); }
-    assert_eq!(c("Ctrl+Shift+N").display(), "Strg+Umschalt+N");
-    assert_eq!(c("Ctrl+Alt+Shift+D").display(), "Strg+Alt+Umschalt+D");
-    assert_eq!(c("PgUp").display(), "Bild↑");
+    #[cfg(not(target_os = "macos"))] // macOS: keys_macos.rs
+    {
+        assert_eq!(c("Ctrl+Shift+N").display(), "Strg+Umschalt+N");
+        assert_eq!(c("Ctrl+Alt+Shift+D").display(), "Strg+Alt+Umschalt+D");
+        assert_eq!(c("PgUp").display(), "Bild↑");
+    }
 }
 
 #[test]
