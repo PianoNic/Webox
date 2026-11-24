@@ -238,7 +238,7 @@ impl Icons {
             let Some(img) = raster_px(data, false, px, None) else { return false };
             self.2.insert((key, px), ui.ctx().load_texture(format!("{key}@{px}"), img, egui::TextureOptions::LINEAR));
         }
-        ui.painter().image(self.2[&(key, px)].id(), grow(rect, px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
+        ui.painter().image(self.2[&(key, px)].id(), grow(on_grid(rect, px, ui.ctx().pixels_per_point()), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
         true
     }
 
@@ -248,7 +248,7 @@ impl Icons {
             let Ok(img) = image::load_from_memory(LOGO_256) else { return };
             let img = img.to_rgba8();
             let ci = egui::ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.as_raw());
-            self.0.insert("logo", ui.ctx().load_texture("logo", ci, egui::TextureOptions::LINEAR));
+            self.0.insert("logo", ui.ctx().load_texture("logo", ci, SCALED)); // 256 px drawn at 15 pt: mipmapped, or its round edge steps
         }
         let id = self.0["logo"].id();
         ui.painter().image(id, rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
@@ -259,7 +259,7 @@ impl Icons {
         if !self.0.contains_key(key) {
             let img = image::load_from_memory(bytes).ok()?.to_rgba8();
             let ci = egui::ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.as_raw());
-            self.0.insert(key, ui.ctx().load_texture(key, ci, egui::TextureOptions::LINEAR));
+            self.0.insert(key, ui.ctx().load_texture(key, ci, SCALED)); // usually drawn smaller than its pixels
         }
         let t = &self.0[key];
         Some((t.id(), t.size()))
@@ -279,7 +279,7 @@ impl Icons {
             };
             self.2.insert((name, px), ui.ctx().load_texture(format!("{name}@{px}"), img, egui::TextureOptions::LINEAR));
         }
-        ui.painter().image(self.2[&(name, px)].id(), grow(rect, px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
+        ui.painter().image(self.2[&(name, px)].id(), grow(on_grid(rect, px, ui.ctx().pixels_per_point()), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
     }
 
     /// An icon button: `size` is the clickable square, the icon is drawn at `icon` px inside it.
@@ -289,6 +289,16 @@ impl Icons {
         self.paint(ui, name, Rect::from_center_size(r.center(), Vec2::splat(icon)), tint);
         resp
     }
+}
+
+/// `rect` moved onto the device pixel grid with its side exactly `px` device pixels (same centre within half a pixel), so a
+/// raster made at `px` is drawn 1:1; at a fractional position the GPU's bilinear filter smeared every edge over two pixels.
+/// A rect that isn't square (the picture stretched on purpose) is left as it is.
+fn on_grid(rect: Rect, px: u32, ppp: f32) -> Rect {
+    if (rect.width() - rect.height()).abs() > 0.5 { return rect }
+    let side = px as f32 / ppp;
+    let min = rect.center() - egui::Vec2::splat(side / 2.0);
+    Rect::from_min_size(egui::pos2((min.x * ppp).round() / ppp, (min.y * ppp).round() / ppp), egui::Vec2::splat(side))
 }
 
 /// True if the emoji set has a picture for this character sequence (same lookup as `Icons::emoji`).
