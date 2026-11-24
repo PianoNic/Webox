@@ -107,11 +107,11 @@ The [Auto-Antwort](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/au
 Webox compares every list of a space it receives with the one it replaces. A message that turned into the "… hat … gelöscht"
 row (same id), or that is missing although the new list reaches back to it, was deleted; a message whose text changed was
 edited. Only messages Webox had loaded count: what was deleted or edited while Webox was closed, or in a space never opened
-since start, fires nothing. Lists are reloaded when a space is opened and after edits, deletes and reactions, so the events
-come with those loads, not necessarily the moment it happens elsewhere.
+since start, fires nothing. In a loaded space a live delete or edit folds the list again at once (the service's `tombstone`,
+cloud/activities), so the events come right away there.
 
-The plugin decides by its answer. `{"keep": true, "style": "text"}` keeps a deleted message where it was (in place of the
-"gelöscht" row), its text in the danger red with "(gelöscht)" below it; `"overlay"` keeps the text colour and lays a red wash
+The plugin decides by its answer. `{"keep": true, "style": "text"}` keeps a deleted message where it was written (the
+"gelöscht" row, which stands at the deletion time, goes), its text in the danger red with "(gelöscht)" below it; `"overlay"` keeps the text colour and lays a red wash
 over the message. Such a message has no toolbar and its menu only copies. `{"history": [...]}` on `message.edited` shows the
 earlier texts struck through in the secondary grey above the text, with "(bearbeitet)" below it. Without such a plugin
 Webox draws every list exactly as received.

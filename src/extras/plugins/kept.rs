@@ -4,7 +4,7 @@
 //! the two: a message that turned into a tombstone (the "… deleted …" row with the same id) or vanished inside the range the
 //! new list covers was deleted; one whose text changed was edited. The events fire once per id (an edit once per new text).
 //! A plugin's answer (`{"keep": true, "style": ...}` / `{"history": [...]}`) or the method `message.keep` puts the message
-//! into `Kept`, and `apply` draws it into every later list of that space: in place of its tombstone, or where it stood.
+//! into `Kept`, and `apply` draws it into every later list of that space where it was written (the tombstone row goes).
 //! Kept messages live in memory only; persisting them is the plugin's business.
 use crate::cloud::Message;
 use serde_json::{json, Value};
@@ -112,7 +112,12 @@ impl Kept {
         if let Some(kept) = self.deleted.get(space) {
             for k in kept {
                 match list.iter().position(|m| m.id == k.id) {
-                    Some(i) if !list[i].notice.is_empty() => { self.tombs.insert(k.id.clone(), std::mem::replace(&mut list[i], k.clone())); }
+                    // The tombstone stands at the deletion time: the message goes back where it was written.
+                    Some(i) if !list[i].notice.is_empty() => {
+                        self.tombs.insert(k.id.clone(), list.remove(i));
+                        let at = if k.published_ms > 0 { list.iter().position(|m| m.published_ms > k.published_ms).unwrap_or(list.len()) } else { i };
+                        list.insert(at, k.clone());
+                    }
                     Some(_) => {} // there (again) as a normal message, or already drawn
                     None => {
                         let reaches = k.published_ms > 0 && list.iter().any(|m| m.published_ms > 0 && m.published_ms <= k.published_ms);

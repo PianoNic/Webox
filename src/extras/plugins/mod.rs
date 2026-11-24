@@ -841,8 +841,8 @@ mod tests {
         let (mut p, dir) = load_in_process::<Logger>(6);
         assert!(p.logs_messages());
         let old = vec![msg("m1", "eins", 1000), msg("m2", "zwei", 2000), msg("m3", "drei", 3000)];
-        // m2 became a tombstone, m3 was edited.
-        let mut new = vec![msg("m1", "eins", 1000), tomb("m2", 2000), msg("m3", "drei!", 3000)];
+        // m2 became a tombstone (the service puts it at the deletion time, its row has no `published_ms`), m3 was edited.
+        let mut new = vec![msg("m1", "eins", 1000), msg("m3", "drei!", 3000), tomb("m2", 0)];
         p.list_arrived("s1", "Team", Some(&old), &mut new);
         assert_eq!(rows(&new), [row("m1", "eins", "", 0, &[]), row("m2", "zwei", "", super::kept::STYLE_OVERLAY, &[]), row("m3", "drei!", "", 0, &["drei"])]);
         {
@@ -854,12 +854,12 @@ mod tests {
                 "old_text": "drei", "new_text": "drei!" })));
         }
         // The next load of the space (the tombstone again): no second event, the kept rows are drawn again.
-        let mut again = vec![msg("m1", "eins", 1000), tomb("m2", 2000), msg("m3", "drei!", 3000)];
+        let mut again = vec![msg("m1", "eins", 1000), msg("m3", "drei!", 3000), tomb("m2", 0)];
         p.list_arrived("s1", "Team", Some(&new), &mut again);
         assert_eq!(rows(&again), rows(&new));
         assert_eq!(LOGGED.lock().unwrap().len(), 2);
         // m1 vanished (a delete without a tombstone) inside the range the new list covers: kept where it stood.
-        let mut gone = vec![msg("m0", "null", 500), tomb("m2", 2000), msg("m3", "drei!", 3000)];
+        let mut gone = vec![msg("m0", "null", 500), msg("m3", "drei!", 3000), tomb("m2", 0)];
         p.list_arrived("s1", "Team", Some(&again), &mut gone);
         assert_eq!(gone.iter().map(|m| (m.id.as_str(), m.deleted)).collect::<Vec<_>>(), [("m0", 0), ("m1", 2), ("m2", 2), ("m3", 0)]);
         assert_eq!(LOGGED.lock().unwrap().len(), 3);
