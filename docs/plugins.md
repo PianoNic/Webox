@@ -75,11 +75,14 @@ plugin can check for something newer than its own contract and degrade when the 
 | `settings.get` | none | the plugin's setting values (same as `settings_get`) |
 | `space.send` | `{"space": "...", "text": "..."}` | `{}`; posted into that space as a new plain-text message on the next frame, through the plugins' send hooks like a typed one. Dropped for a space you cannot write in; the composer is not touched. |
 | `space.history` | `{"space": "...", "limit": n}` | `{"messages": [{"author": "...", "mine": true, "text": "..."}]}`, the last `limit` (at most 200) messages Webox has loaded, oldest first, system lines left out. No network request: a space never opened holds only what arrived live. Filled only while a plugin subscribes to `message.received`. Safe to call from any thread. |
+| `message.keep` | `{"deleted": [...], "edited": [...], "replace": bool}` | `{}`; what the answers to `message.deleted` / `message.edited` keep, given again, e.g. after a restart: `deleted` entries are `message.deleted` payloads plus `"style"`, `edited` entries `{"id", "history": [...]}`. `replace` first drops everything kept so far (also to forget it all: `{"replace": true}`). Lists already on screen are drawn again. See "Deleted and edited messages". |
 
 | Event | Payload | Answer |
 |---|---|---|
 | `settings.changed` | all setting values (as `settings.get`); also once before every start | ignored |
 | `message.received` | `{"space", "id", "author", "text", "mine", "direct", "mentioned"}`: a message arrived live, once per message id, also your own (`mine`, from any client). `direct` = a 1:1 space, `mentioned` = it @-mentions you. Fired on the UI thread: return at once and do slow work on a thread of your own. | ignored |
+| `message.deleted` | `{"space", "space_name", "id", "author", "email", "text", "mine", "parent", "published_ms", "date", "time"}`: a message Webox had loaded was deleted (from any client), once per id. `text` is the last known plain text, `date` / `time` are UTC. UI thread. | `{"keep": true, "style": "text"\|"overlay"}` keeps it on screen, drawn as deleted; anything else: it goes as before |
+| `message.edited` | `{"space", "space_name", "id", "author", "mine", "old_text", "new_text"}`: a loaded message's text changed, once per id and new text. UI thread. | `{"history": ["...", ...]}`: earlier texts, oldest first, shown above the text; anything else: nothing shown |
 
 Naming and versioning rules:
 
@@ -98,6 +101,25 @@ display hook (the message list calls it for the rows on screen on every repaint,
 `send` hook posts into whichever space is open: a plugin that reacts to messages uses `message.received` and `space.send`.
 
 The [Auto-Antwort](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/auto-reply) plugin uses all three.
+
+### Deleted and edited messages
+
+Webox compares every list of a space it receives with the one it replaces. A message that turned into the "… hat … gelöscht"
+row (same id), or that is missing although the new list reaches back to it, was deleted; a message whose text changed was
+edited. Only messages Webox had loaded count: what was deleted or edited while Webox was closed, or in a space never opened
+since start, fires nothing. Lists are reloaded when a space is opened and after edits, deletes and reactions, so the events
+come with those loads, not necessarily the moment it happens elsewhere.
+
+The plugin decides by its answer. `{"keep": true, "style": "text"}` keeps a deleted message where it was (in place of the
+"gelöscht" row), its text in the danger red with "(gelöscht)" below it; `"overlay"` keeps the text colour and lays a red wash
+over the message. Such a message has no toolbar and its menu only copies. `{"history": [...]}` on `message.edited` shows the
+earlier texts struck through in the secondary grey above the text, with "(bearbeitet)" below it. Without such a plugin
+Webox draws every list exactly as received.
+
+Kept messages are local: Webox keeps them in memory for as long as a plugin that listens to either event is switched on,
+and never sends them anywhere. To keep them across restarts the plugin stores the payloads itself (`host.set`) and gives
+them back with `message.keep` on start. The [Nachrichtenprotokoll](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/message-logger)
+plugin does this.
 
 ## Plugin settings
 
@@ -328,5 +350,8 @@ request. CI builds it for every platform and publishes it to the `repo` branch.
 `cargo build` (it builds the example plugins), then `cargo test`. `src/extras/plugin_repo/tests.rs` covers index parsing
 (array and object form, invalid entries), the contract and platform checks, the transport rules, the persistence of the
 repository list, the ETag cache, refusal of a SHA-256 or size mismatch and of foreign redirects, and a full install,
-update, tamper check and uninstall of the example plugin. `src/extras/plugin_settings/tests.rs` covers the settings: schema parsing (what plugin-api writes, broken and odd schemas), validation, defaults, persistence with keyring and file fallback, a native plugin notified on every change and before start, buttons, the search, and the built-in GIF-Extras schema. `src/extras/plugins` covers the table gating (a 1.4 plugin loads and gets no events), events reaching subscribers only, `call` (unknown methods answer null, `host.capabilities` lists the registry), panics in events and host methods, `message.received` firing once per message id and only to subscribers, and `space.send` / `space.history`. `os_keyring_roundtrip` (`--ignored`) checks the real OS keyring. The repository tests run against an in-process HTTP server on 127.0.0.1, which a
+update, tamper check and uninstall of the example plugin. `src/extras/plugin_settings/tests.rs` covers the settings: schema parsing (what plugin-api writes, broken and odd schemas), validation, defaults, persistence with keyring and file fallback, a native plugin notified on every change and before start, buttons, the search, and the built-in GIF-Extras schema. `src/extras/plugins` covers the table gating (a 1.4 plugin loads and gets no events), events reaching subscribers only, `call` (unknown methods answer null, `host.capabilities` lists the registry), panics in events and host methods, `message.received` firing once per message id and only to subscribers, `space.send` / `space.history`, `message.deleted` /
+`message.edited` firing once, a kept deleted message staying (with its style, also when it vanished without a tombstone),
+edit history attaching, `message.keep` restoring and replacing, everything kept going when the plugin is switched off, and
+lists staying as received without such a plugin. `os_keyring_roundtrip` (`--ignored`) checks the real OS keyring. The repository tests run against an in-process HTTP server on 127.0.0.1, which a
 test-only policy allows. The app itself never allows plain HTTP.

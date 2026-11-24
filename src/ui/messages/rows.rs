@@ -157,6 +157,18 @@ impl App {
             (Some(ui.fonts(|f| f.layout_job(job))), links, emojis, Vec::new(), None)
         };
         let mut h = 0.0;
+        // Earlier texts (`message.edited`), each struck through in the secondary grey, above everything else of the body.
+        let history: Vec<Arc<Galley>> = m.history.iter().map(|old| {
+            let mut job = egui::text::LayoutJob::default();
+            job.wrap.max_width = wrap;
+            let font = FontId::proportional(SECOND * super::super::widgets::msg_scale());
+            job.append(normalize_breaks(old).trim(), 0.0, egui::TextFormat { font_id: font, color: c.head, strikethrough: Stroke::new(1.0_f32, c.head), ..Default::default() });
+            ui.fonts(|f| f.layout_job(job))
+        }).collect();
+        for g in &history { h += g.size().y + HISTORY_GAP; }
+        let tag = if m.deleted != 0 { Some(("(gelöscht)", c.danger)) } else if !m.history.is_empty() { Some(("(bearbeitet)", c.head)) } else { None };
+        let tag = tag.map(|(s, col)| ui.painter().layout_no_wrap(s.to_string(), FontId::proportional(SECOND), col));
+        if let Some(g) = &tag { h += g.size().y; }
         let mut first = true;
         let (files, file_atts, videos) = split_files(m, files);
         h += self.attachments_height(ui, c, m, &videos, files.len(), wrap, &mut first);
@@ -164,7 +176,7 @@ impl App {
         if attach { h += ATTACH_BOTTOM; } // bottom padding of the attachments column
         if let Some(g) = &galley { if attach { h += CAPTION_GAP; } h += g.size().y; }
         if !m.reactions.is_empty() { h += 2.0 + REACT_H; } // 2 pt spacer + reactions row
-        Content { text: galley, links, emojis, quotes, jump, files, file_atts, videos, h }
+        Content { text: galley, links, emojis, quotes, jump, files, file_atts, videos, history, tag, h }
     }
 
     /// `measure`, reused across frames: the key covers everything `measure` reads (message id, text, rich text, the plugin's
@@ -179,11 +191,11 @@ impl App {
         if m.rev != 0 && std::ptr::eq(shown, m.text.as_str()) {
             (1u8, &m.id, m.rev).hash(&mut h);
         } else {
-            (0u8, &m.id, shown, &m.text, &m.html).hash(&mut h);
+            (0u8, &m.id, shown, &m.text, &m.html, m.deleted, &m.history).hash(&mut h);
             for p in &m.previews { (&p.title, &p.description, &p.site).hash(&mut h); }
             m.reactions.is_empty().hash(&mut h);
         }
-        (wrap.to_bits(), c.body, c.white, c.accent, crate::ui::theme::density::get()).hash(&mut h); // density: the attachment gap
+        (wrap.to_bits(), c.body, c.white, c.accent, c.head, c.danger, crate::ui::theme::density::get()).hash(&mut h); // density: the attachment gap
         (&self.me.id, &self.me.name, emoji_text::ensure_font(&ctx), super::super::widgets::msg_scale().to_bits(), ctx.pixels_per_point().to_bits()).hash(&mut h);
         for a in &m.images { (&a.key, a.width, a.height, self.photos.image_size(&ctx, &a.key)).hash(&mut h); }
         // a video card's height follows its poster once the first frame is decoded
@@ -255,6 +267,8 @@ impl App {
             }
             // Multi-selection (checked) wins over hovered.
             if picked { p.rect_filled(boxr, RADIUS, c.checked); } else if hovered { p.rect_filled(boxr, RADIUS, c.hover_bg); }
+            // A deleted message kept by a plugin in the overlay style: a red wash over the whole box.
+            if m.deleted == crate::extras::plugins::kept::STYLE_OVERLAY { p.rect_filled(boxr, RADIUS, wa(c.danger, 0.15)); }
             // "Zur Originalnachricht springen": the target flashes for a moment
             if let Some((fid, t0)) = ui.ctx().data(|d| d.get_temp::<(String, f64)>(Id::new("msg-flash"))) {
                 if fid == m.id { let k = ((ui.input(|i| i.time) - t0) / 1.8) as f32; if k < 1.0 { p.rect_filled(boxr, RADIUS, wa(c.accent, 0.28 * (1.0 - k))); ui.ctx().request_repaint(); } }
@@ -289,6 +303,7 @@ impl App {
                 if self.flags.contains(&(id.to_string(), m.id.clone())) { self.icons.paint(ui, "flag-active_12", Rect::from_min_size(pos2(x, hy + (hdr_h - 14.0) / 2.0), Vec2::splat(14.0)), c.accent); }
                 y += hdr_h + header_to_body();
             }
+            for g in &ct.history { p.galley(pos2(tx, y), g.clone(), c.head); y += g.size().y + HISTORY_GAP; }
             let n_attach = self.draw_attachments(ui, t, c, m, &ct, pos2(tx, y), wrap, &mut y);
             if let Some(g) = &ct.text {
                 if n_attach > 0 { y += CAPTION_GAP; }
@@ -334,7 +349,8 @@ impl App {
                 if let Some((a, b)) = my_sel.filter(|(a, b)| a != b) {
                     for r in sel_rects(g, a, b) { p.rect_filled(r.translate(origin.to_vec2()), 0.0, c.select); } // text-highlight
                 }
-                p.galley(origin, g.clone(), c.body);
+                // A deleted message kept in the text style is drawn in the danger red (links and mentions too).
+                if m.deleted == crate::extras::plugins::kept::STYLE_TEXT { p.galley_with_override_text_color(origin, g.clone(), c.danger); } else { p.galley(origin, g.clone(), c.body); }
                 // Block quotes: a bar at the left of their lines (separator-primary).
                 for &(qa, qb) in &ct.quotes {
                     let rows = sel_rects(g, qa, qb);
@@ -384,7 +400,7 @@ impl App {
                         if selected.is_some() { items.push(menu::Item::new("copy", "Kopieren").icon("copy-regular").shortcut("Strg+C").entry()); }
                         items.push(menu::Item::new("select-all", "Alles auswählen").icon("select-all-regular").shortcut("Strg+A").entry());
                         items.push(menu::Entry::Sep);
-                        items.extend(self.message_entries(&ctx, id, m));
+                        if m.deleted == 0 { items.extend(self.message_entries(&ctx, id, m)); } // a kept deleted message only copies
                     }
                     if let Some(a) = menu::webex_menu(&ctx, &mut self.icons, t, &k_menu, Rect::from_min_size(at, Vec2::ZERO), menu::Side::Below, menu::Align::Left, false, &items) {
                         match a.as_str() {
@@ -396,9 +412,11 @@ impl App {
                 }
                 y += g.size().y;
             }
+            if let Some(g) = &ct.tag { p.galley(pos2(tx, y), g.clone(), c.head); y += g.size().y; }
             if !m.reactions.is_empty() { self.reactions_row(ui, c, pos2(tx, y + 2.0), m); }
         }
         // A closed (read-only) chat has no reply / react / edit toolbar (ui/closed.rs).
-        if hovered && !self.space_closed(id) { self.message_toolbar(ui, t, c, id, m, boxr, head, bar_key, ui.clip_rect().top()); }
+        // Nor has a deleted message a plugin keeps: it is gone on the service.
+        if hovered && !self.space_closed(id) && m.deleted == 0 { self.message_toolbar(ui, t, c, id, m, boxr, head, bar_key, ui.clip_rect().top()); }
     }
 }

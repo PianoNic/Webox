@@ -240,7 +240,7 @@ pub(crate) fn utc_date_time(m: &Message) -> (&str, &str) {
 pub(crate) fn content_rev(m: &Message) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    (&m.id, &m.author, &m.text, &m.html, m.edited, &m.notice, m.reactions.is_empty()).hash(&mut h);
+    (&m.id, &m.author, &m.text, &m.html, m.edited, &m.notice, m.reactions.is_empty(), m.deleted, &m.history).hash(&mut h);
     for a in &m.images { (&a.key, a.width, a.height).hash(&mut h); }
     for f in &m.files { (&f.key, &f.name, f.size).hash(&mut h); }
     for p in &m.previews { (&p.title, &p.description, &p.site, &p.image_key).hash(&mut h); }

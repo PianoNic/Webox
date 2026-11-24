@@ -100,6 +100,12 @@ pub struct Message {
     /// Content revision for the message list's layout cache: a hash of what the list draws of this message, stamped on
     /// arrival; 0 = unknown (the list then hashes the content itself). Whatever edits a message in place sets it to 0.
     pub rev: u64,
+    /// Non-zero: a deleted message a plugin keeps showing (`message.deleted`, extras/plugins/kept.rs): 1 = red text,
+    /// 2 = red overlay. Local only.
+    pub deleted: u8,
+    /// Earlier texts of an edited message, oldest first, that a plugin attached (`message.edited`); drawn struck through
+    /// above the text. Local only.
+    pub history: Vec<String>,
 }
 /// A link preview: page title, description, site name and a thumbnail (OpenGraph data).
 #[derive(Clone, Debug, Default)]
