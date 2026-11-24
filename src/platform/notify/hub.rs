@@ -203,7 +203,7 @@ impl App {
         let (can_hide, can_restore) = (crate::platform::linux::session() != crate::platform::linux::Session::Wayland, crate::platform::linux::activation::available());
         #[cfg(not(target_os = "linux"))]
         let (can_hide, can_restore) = (true, true);
-        if ctx.input(|i| i.viewport().close_requested()) && !self.notify.quitting && self.notify.tray.is_some() && self.nb("close_to_tray", true) && (can_hide || can_restore) {
+        if ctx.input(|i| i.viewport().close_requested()) && !self.notify.quitting && self.notify.tray.is_some() && self.nb("close_to_tray", tray::close_to_tray_default()) && (can_hide || can_restore) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             if can_hide { self.hide_main(ctx); } else { ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)); }
         }

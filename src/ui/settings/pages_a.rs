@@ -89,7 +89,7 @@ impl App {
             self.pcombo(ui, t, "language", "system", &[("system", "Systemstandard"), ("de", "Deutsch"), ("en", "English")], 280.0);
         });
         section(ui, t, "Fenster", "", false, |ui| { // key shared with notify.rs
-            self.pcheck(ui, t, "close_to_tray", true, "Beim Schließen in den Infobereich minimieren");
+            self.pcheck(ui, t, "close_to_tray", crate::platform::tray::close_to_tray_default(), "Beim Schließen in den Infobereich minimieren");
         });
         // Webox's own updates (platform/updater): checked once a day; installing always asks first.
         section(ui, t, "Updates", "Sucht einmal täglich auf GitHub nach einer neuen Version. Installiert wird erst, wenn Sie zustimmen, und nie während eines Anrufs.", false, |ui| {

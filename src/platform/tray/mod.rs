@@ -11,6 +11,15 @@ use std::path::Path;
 /// frames), so animations check this to stop redrawing a window nobody sees.
 pub static HIDDEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+/// Default of "Beim Schließen in den Infobereich minimieren". Off on Wayland: a window can't be hidden there, only minimized,
+/// so X / Alt+F4 would seem to do nothing. Who wants Webox to keep running there switches it on.
+pub fn close_to_tray_default() -> bool {
+    #[cfg(target_os = "linux")]
+    { crate::platform::linux::session() != crate::platform::linux::Session::Wayland }
+    #[cfg(not(target_os = "linux"))]
+    { true }
+}
+
 /// What the tray icon reports back to the app. `Item(i)`: row i of the tray menu was picked in the panel's own menu (Linux dbusmenu).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum TrayEvent { Left, Menu(i32, i32), #[cfg(target_os = "linux")] Item(u32) }
