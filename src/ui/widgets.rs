@@ -10,17 +10,87 @@ pub(crate) fn initials(name: &str, space: bool) -> String {
 
 /// Round avatar with initials and, for people, the presence badge.
 
-/// A round photo (texture from `App::photo(..)`) filling the circle: a triangle fan with the texture's centre-mapped UVs.
+/// A round photo (texture from `App::photo(..)`) filling the circle, with an antialiased edge (`fill_convex_aa`).
 fn circle_photo(p: &egui::Painter, c: egui::Pos2, radius: f32, tex: egui::TextureId) {
-    let mut m = egui::Mesh::with_texture(tex);
-    m.vertices.push(egui::epaint::Vertex { pos: c, uv: pos2(0.5, 0.5), color: Color32::WHITE });
     const N: usize = 48;
-    for i in 0..=N {
-        let a = i as f32 / N as f32 * std::f32::consts::TAU;
-        m.vertices.push(egui::epaint::Vertex { pos: c + Vec2::angled(a) * radius, uv: pos2(0.5 + 0.5 * a.cos(), 0.5 + 0.5 * a.sin()), color: Color32::WHITE });
-        if i > 0 { m.indices.extend([0, i as u32, i as u32 + 1]); }
+    let pts: Vec<egui::Pos2> = (0..N).map(|i| c + Vec2::angled(i as f32 / N as f32 * std::f32::consts::TAU) * radius).collect();
+    fill_convex_aa(p, &pts, tex, 1, |q| (Color32::WHITE, pos2(0.5 + (q.x - c.x) / (2.0 * radius), 0.5 + (q.y - c.y) / (2.0 * radius))));
+}
+
+/// Fills the convex polygon `pts` (its perimeter in order, either direction) with an antialiased edge, the way egui feathers
+/// its own shapes: the fill ends half a device pixel inside the edge and fades to transparent half a pixel outside it.
+/// Hand-built meshes (`Shape::mesh`) skip egui's feathering, so their curved edges showed hard pixel steps.
+/// `at(point)` gives the colour (premultiplied; multiplied with the texture) and the texture coordinate there. `rings` > 1
+/// subdivides the fan into concentric rings, for colours that are not linear across the shape (multi-stop gradients).
+pub(crate) fn fill_convex_aa(p: &egui::Painter, pts: &[egui::Pos2], tex: egui::TextureId, rings: u32, at: impl Fn(egui::Pos2) -> (Color32, egui::Pos2)) {
+    use egui::epaint::Vertex;
+    let mut v: Vec<egui::Pos2> = Vec::with_capacity(pts.len());
+    for &q in pts { if v.last().is_none_or(|l: &egui::Pos2| l.distance(q) > 1e-3) { v.push(q) } }
+    while v.len() > 2 && v[0].distance(v[v.len() - 1]) <= 1e-3 { v.pop(); }
+    let n = v.len();
+    if n < 3 { return; }
+    let area: f32 = (0..n).map(|i| { let (a, b) = (v[i], v[(i + 1) % n]); a.x * b.y - b.x * a.y }).sum();
+    if area.abs() < 1e-6 { return; }
+    let sign = area.signum();
+    let edge_n = |i: usize| { let d = (v[(i + 1) % n] - v[i]).normalized(); Vec2::new(d.y, -d.x) * sign }; // outward
+    let half = 0.5 / p.ctx().pixels_per_point();
+    let c = v.iter().fold(Vec2::ZERO, |s, q| s + q.to_vec2()) / n as f32;
+    let c = c.to_pos2();
+    let rings = rings.max(1);
+    let mut m = egui::Mesh::with_texture(tex);
+    let vert = |m: &mut egui::Mesh, q: egui::Pos2, transparent: bool| {
+        let (col, uv) = at(q);
+        m.vertices.push(Vertex { pos: q, uv, color: if transparent { Color32::TRANSPARENT } else { col } });
+    };
+    vert(&mut m, c, false);
+    // Per perimeter point: `rings` points from the centre outwards (the last one half a pixel inside the edge), then the
+    // transparent one half a pixel outside it.
+    let stride = rings + 1;
+    for i in 0..n {
+        let nv = edge_n((i + n - 1) % n) + edge_n(i);
+        let nv = if nv.length_sq() > 1e-6 { nv.normalized() * (2.0 / nv.length()).min(2.0) } else { edge_n(i) }; // miter, capped
+        let inner = v[i] - nv * half;
+        for k in 1..=rings { vert(&mut m, c + (inner - c) * (k as f32 / rings as f32), false); }
+        vert(&mut m, v[i] + nv * half, true);
+    }
+    let idx = |i: usize, k: u32| 1 + i as u32 * stride + k; // k = 0..rings-1 fill rings, k = rings: outer
+    for i in 0..n {
+        let j = (i + 1) % n;
+        m.add_triangle(0, idx(i, 0), idx(j, 0));
+        for k in 0..rings { m.add_triangle(idx(i, k), idx(i, k + 1), idx(j, k)); m.add_triangle(idx(j, k), idx(i, k + 1), idx(j, k + 1)); }
     }
     p.add(egui::Shape::mesh(m));
+}
+
+/// The perimeter of `r` with per-corner radii (top-left, bottom-left, bottom-right, top-right), clockwise from the top-left
+/// corner's start: arcs with enough points for a smooth curve at `ppp`, straight edges cut into pieces of at most `max_seg`.
+pub(crate) fn rounded_rect_points(r: Rect, radii: [f32; 4], ppp: f32, max_seg: f32) -> Vec<egui::Pos2> {
+    let max = r.width().min(r.height()) / 2.0;
+    // (corner, direction from the arc centre to the corner, start angle in screen degrees), clockwise on screen.
+    let corners = [(r.left_top(), Vec2::new(-1.0, -1.0), 180.0f32), (r.right_top(), Vec2::new(1.0, -1.0), 270.0), (r.right_bottom(), Vec2::new(1.0, 1.0), 0.0), (r.left_bottom(), Vec2::new(-1.0, 1.0), 90.0)];
+    let rad = [radii[0], radii[3], radii[2], radii[1]];
+    let mut pts: Vec<egui::Pos2> = Vec::new();
+    let push_line = |pts: &mut Vec<egui::Pos2>, to: egui::Pos2| {
+        if let Some(&from) = pts.last() {
+            let k = ((from.distance(to) / max_seg.max(1.0)).ceil() as usize).max(1);
+            for s in 1..k { pts.push(from + (to - from) * (s as f32 / k as f32)); }
+        }
+        pts.push(to);
+    };
+    for ((corner, dir, a0), rd) in corners.into_iter().zip(rad) {
+        let rd = rd.clamp(0.0, max);
+        let centre = corner - dir * rd;
+        // Segments so the chord stays within ~0.1 device pixel of the arc.
+        let steps = if rd * ppp < 0.5 { 0 } else { ((rd * ppp).sqrt() * 1.6).ceil().clamp(2.0, 48.0) as usize };
+        for s in 0..=steps {
+            let a = (a0 + 90.0 * s as f32 / steps.max(1) as f32).to_radians();
+            let q = if steps == 0 { corner } else { centre + Vec2::new(a.cos(), a.sin()) * rd };
+            push_line(&mut pts, q);
+            if steps == 0 { break }
+        }
+    }
+    if let Some(&first) = pts.first() { push_line(&mut pts, first); pts.pop(); }
+    pts
 }
 
 /// The avatar's presence badge for a status (as `cloud::people` files it): the icon (empty = a plain filled dot) and its colour.
@@ -153,27 +223,13 @@ pub(crate) fn vgrad_corners(p: &egui::Painter, r: Rect, radii: [f32; 4], top: Co
             (top.b() as f32 + (bottom.b() as f32 - top.b() as f32) * k) as u8,
         )
     };
-    let max = r.width().min(r.height()) / 2.0;
-    let c = r.center();
-    let steps = 7;
-    // Perimeter, counter-clockwise on screen: each corner arc around its centre (sx / sy point from the centre to the corner).
-    let corners = [(-1.0, -1.0, 90.0f32), (-1.0, 1.0, 180.0), (1.0, 1.0, 270.0), (1.0, -1.0, 0.0)];
-    let mut pts: Vec<egui::Pos2> = Vec::new();
-    for ((sx, sy, a0), rad) in corners.into_iter().zip(radii) {
-        let rad = rad.clamp(0.0, max);
-        let corner = egui::pos2(if sx < 0.0 { r.left() } else { r.right() }, if sy < 0.0 { r.top() } else { r.bottom() });
-        let center = corner - egui::vec2(sx, sy) * rad;
-        for s in 0..=steps {
-            let ang = (a0 + 90.0 * s as f32 / steps as f32).to_radians();
-            pts.push(egui::pos2(center.x + rad * ang.cos(), center.y - rad * ang.sin()));
-        }
-    }
-    let mut m = egui::Mesh::default();
-    m.colored_vertex(c, lerp(c.y));
-    for pt in pts { m.colored_vertex(pt, lerp(pt.y)); }
-    let n = m.vertices.len() as u32;
-    for i in 1..n { m.add_triangle(0, i, i % (n - 1) + 1); }
-    p.add(m);
+    // On the pixel grid like egui's own rects (round_rects_to_pixels), with an antialiased rim: the plain fan had stair-stepped
+    // corners.
+    use egui::emath::GuiRounding;
+    let ppp = p.ctx().pixels_per_point();
+    let r = r.round_to_pixels(ppp);
+    let pts = rounded_rect_points(r, radii, ppp, f32::INFINITY);
+    fill_convex_aa(p, &pts, egui::TextureId::default(), 1, |q| (lerp(q.y), egui::epaint::WHITE_UV));
 }
 
 pub(crate) fn panel(fill: Color32) -> egui::Frame { egui::Frame::default().fill(fill) }
@@ -295,6 +351,52 @@ mod avatar_grid_tests {
         }
         assert!(sizes.contains(&[40, 40]), "{sizes:?}"); // the avatar
         assert!(sizes.contains(&[14, 14]), "{sizes:?}"); // its presence dot: 0.34 × 32 pt × 1.25
+    }
+}
+
+#[cfg(test)]
+mod aa_fill_tests {
+    use super::*;
+
+    #[test]
+    fn rounded_rect_points_follow_the_arcs() {
+        let r = Rect::from_min_size(pos2(10.0, 20.0), Vec2::new(100.0, 60.0));
+        for ppp in [1.0, 1.25, 1.5, 2.0] {
+            let pts = rounded_rect_points(r, [10.0, 0.0, 10.0, 4.0], ppp, 24.0);
+            assert!(pts.iter().all(|q| r.expand(1e-3).contains(*q)), "{ppp}");
+            // Top-left arc: every point of it is 10 pt from its centre; the square corner is a point itself.
+            let c = pos2(20.0, 30.0);
+            assert!(pts.iter().filter(|q| q.x < 20.0 && q.y < 30.0).all(|q| (q.distance(c) - 10.0).abs() < 1e-3));
+            assert!(pts.iter().any(|q| q.distance(r.left_bottom()) < 1e-3));
+            // Straight edges are cut into pieces of at most 24 pt, arcs into chords within ~0.1 device pixel.
+            for (a, b) in pts.iter().zip(pts.iter().cycle().skip(1)) { assert!(a.distance(*b) <= 24.0 + 1e-3); }
+            let arc: Vec<_> = pts.iter().filter(|q| q.x < 20.0 && q.y < 30.0).collect();
+            for w in arc.windows(2) { let mid = pos2((w[0].x + w[1].x) / 2.0, (w[0].y + w[1].y) / 2.0); assert!((10.0 - mid.distance(c)) * ppp < 0.15, "{ppp}"); }
+        }
+    }
+
+    /// The fill has egui's antialiased rim: the outermost ring is transparent and lies half a device pixel outside the edge,
+    /// the coloured one half a pixel inside it.
+    #[test]
+    fn convex_fill_has_a_feathered_rim() {
+        let ctx = egui::Context::default();
+        ctx.set_pixels_per_point(1.5);
+        let r = Rect::from_min_size(pos2(0.0, 0.0), Vec2::new(60.0, 40.0));
+        let mut meshes = vec![];
+        let _ = ctx.run(egui::RawInput::default(), |ctx| {
+            let p = ctx.layer_painter(egui::LayerId::background());
+            let pts = rounded_rect_points(r, [10.0; 4], 1.5, 24.0);
+            fill_convex_aa(&p, &pts, egui::TextureId::default(), 2, |_| (Color32::RED, egui::epaint::WHITE_UV));
+            ctx.graphics(|g| for s in g.get(egui::LayerId::background()).unwrap().all_entries() { if let egui::Shape::Mesh(m) = &s.shape { meshes.push(m.clone()) } });
+        });
+        let m = &meshes[0];
+        let (clear, red): (Vec<&egui::epaint::Vertex>, Vec<_>) = m.vertices.iter().partition(|v| v.color == Color32::TRANSPARENT);
+        assert!(!clear.is_empty() && red.len() > clear.len());
+        let half = 0.5 / 1.5;
+        // The straight top edge: transparent vertices at y = -half, coloured outermost ones at y = +half.
+        assert!(clear.iter().any(|v| (v.pos.y + half).abs() < 1e-3 && v.pos.x > 20.0 && v.pos.x < 40.0));
+        assert!(red.iter().any(|v| (v.pos.y - half).abs() < 1e-3 && v.pos.x > 20.0 && v.pos.x < 40.0));
+        assert!(m.indices.iter().all(|&i| (i as usize) < m.vertices.len()) && m.indices.len() % 3 == 0);
     }
 }
 

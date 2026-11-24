@@ -4,20 +4,12 @@ use crate::*;
 /// The cover picture across the chat banner, drawn as the image itself: cropped to fill, rounded top corners (the card's
 /// 10 pt), no overlay. Dark.png is used for both themes.
 fn cover_banner(p: &egui::Painter, tex: egui::TextureId, r: Rect, uv: Rect, radius: f32, _card: Color32) {
-    let mut pts: Vec<egui::Pos2> = Vec::new();
-    let steps = 8;
-    for i in 0..=steps { let a = std::f32::consts::PI + std::f32::consts::FRAC_PI_2 * i as f32 / steps as f32; pts.push(pos2(r.left() + radius + radius * a.cos(), r.top() + radius + radius * a.sin())); }
-    for i in 0..=steps { let a = std::f32::consts::PI * 1.5 + std::f32::consts::FRAC_PI_2 * i as f32 / steps as f32; pts.push(pos2(r.right() - radius + radius * a.cos(), r.top() + radius + radius * a.sin())); }
-    pts.push(r.right_bottom());
-    pts.push(r.left_bottom());
+    use egui::emath::GuiRounding;
+    let r = r.round_to_pixels(p.ctx().pixels_per_point());
     let map = |q: egui::Pos2| pos2(egui::lerp(uv.left()..=uv.right(), (q.x - r.left()) / r.width()), egui::lerp(uv.top()..=uv.bottom(), (q.y - r.top()) / r.height()));
-    let mut m = egui::Mesh::with_texture(tex);
-    let c = r.center();
-    m.vertices.push(egui::epaint::Vertex { pos: c, uv: map(c), color: Color32::WHITE });
-    for q in &pts { m.vertices.push(egui::epaint::Vertex { pos: *q, uv: map(*q), color: Color32::WHITE }); }
-    let n = m.vertices.len() as u32;
-    for i in 1..n { m.add_triangle(0, i, i % (n - 1) + 1); }
-    p.add(egui::Shape::mesh(m));
+    // Antialiased rounded top corners (a plain triangle fan had stair-stepped ones).
+    let pts = crate::ui::widgets::rounded_rect_points(r, [radius, 0.0, 0.0, radius], p.ctx().pixels_per_point(), f32::INFINITY);
+    crate::ui::widgets::fill_convex_aa(p, &pts, tex, 1, |q| (Color32::WHITE, map(q)));
 }
 impl App {
     pub(crate) fn conversation(&mut self, ui: &mut egui::Ui, t: &Th, now: f64) {
