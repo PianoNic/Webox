@@ -13,6 +13,7 @@ pub static HIDDEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool
 
 /// What the tray icon reports back to the app. `Item(i)`: row i of the tray menu was picked in the panel's own menu (Linux dbusmenu).
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(target_os = "macos", allow(dead_code))] // Menu(x, y): the menu-bar item opens its own menu
 pub enum TrayEvent { Left, Menu(i32, i32), #[cfg(any(target_os = "linux", target_os = "macos"))] Item(u32) }
 
 // Icon pixels (platform independent).
@@ -99,6 +100,7 @@ pub fn tooltip(n: usize) -> String {
     match n { 0 => "Webox".into(), 1 => "1 ungelesene Benachrichtigung".into(), n => format!("{n} ungelesene Benachrichtigungen") }
 }
 
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 pub fn save_png(rgba: Vec<u8>, w: u32, h: u32, path: &Path) {
     if let Some(parent) = path.parent() { let _ = std::fs::create_dir_all(parent); }
     if let Some(img) = image::RgbaImage::from_raw(w, h, rgba) { let _ = img.save(path); }

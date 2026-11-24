@@ -126,7 +126,8 @@ fn conflict_detection_and_fates() {
     // Ctrl+Shift+N is CreateSpace: assigning it to another customizable command conflicts, the other is disabled.
     let cf = find_conflict(cmds, &res, i("ShowAll"), c("Ctrl+Shift+N")).unwrap();
     assert_eq!((cf.other, cf.fate), (i("CreateSpace"), Fate::Disable));
-    assert!(conflict_message(cmds, &cf, c("Ctrl+Shift+N"), false).starts_with("Strg+Umschalt+N wird von Bereich erstellen verwendet. Wenn Sie fortfahren möchten, wird die Tastenkombination für Bereich erstellen deaktiviert."));
+    // the key as this platform writes it ("Strg+Umschalt+N", macOS "⇧⌘N")
+    assert!(conflict_message(cmds, &cf, c("Ctrl+Shift+N"), false).starts_with(&format!("{} wird von Bereich erstellen verwendet. Wenn Sie fortfahren möchten, wird die Tastenkombination für Bereich erstellen deaktiviert.", c("Ctrl+Shift+N").display())));
     assert!(conflict_message(cmds, &cf, c("Ctrl+Shift+N"), true).contains("Wenn Sie die Werte auf die Standardwerte zurücksetzen"));
     // No conflict for a free combination, none with itself.
     assert!(find_conflict(cmds, &res, i("ShowAll"), c("Ctrl+Alt+Shift+F9")).is_none());
@@ -138,7 +139,8 @@ fn conflict_detection_and_fates() {
     let (res, cmds) = state_with(&[("ShowAll", Ov { key: Some(Some(c("Ctrl+Alt+Shift+F9"))), global: None })]);
     let cf = find_conflict(cmds, &res, i("ShowDrafts"), c("Ctrl+Alt+Shift+F9")).unwrap();
     assert_eq!((cf.other, cf.fate), (i("ShowAll"), Fate::ResetTo(c("Alt+Shift+A"))));
-    assert!(conflict_message(cmds, &cf, c("Ctrl+Alt+Shift+F9"), false).ends_with("auf Strg+Alt+Umschalt+F9 zurückgesetzt.") || conflict_message(cmds, &cf, c("Ctrl+Alt+Shift+F9"), false).contains("auf Alt+Umschalt+A zurückgesetzt."));
+    let m = conflict_message(cmds, &cf, c("Ctrl+Alt+Shift+F9"), false);
+    assert!(m.ends_with(&format!("auf {} zurückgesetzt.", c("Ctrl+Alt+Shift+F9").display())) || m.contains(&format!("auf {} zurückgesetzt.", c("Alt+Shift+A").display())));
 }
 
 #[test]

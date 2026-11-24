@@ -1,13 +1,15 @@
 # Webox on macOS
 
-macOS support is a preview: messaging, sign-in, notifications and call audio work; several desktop integrations are still missing
-(list below). Builds are for Apple Silicon (arm64), macOS 11 or newer.
+One app for Apple Silicon and Intel Macs (a universal binary), macOS 12.3 or newer.
 
 ## Install
 
-1. Download `webox-<version>-macos-arm64.zip` from the [latest release](https://github.com/PianoNic/Webox/releases) (the `.sha256` file
-   next to it holds its checksum: `shasum -a 256 -c webox-<version>-macos-arm64.zip.sha256`).
+1. Download `webox-<version>-macos-universal.zip` from the [latest release](https://github.com/PianoNic/Webox/releases) (the `.sha256`
+   file next to it holds its checksum: `shasum -a 256 -c webox-<version>-macos-universal.zip.sha256`).
 2. Unzip it and move `Webox.app` to `/Applications`.
+
+Later versions install themselves: the update button downloads the new zip, checks its SHA-256 and signature, replaces
+`Webox.app` and restarts it (not during a call). That needs write access to the folder the app is in.
 
 ## First launch
 
@@ -18,7 +20,9 @@ start with "Webox can't be opened because Apple cannot check it for malicious so
   **System Settings → Privacy & Security → Open Anyway**; or
 - remove the quarantine flag in Terminal: `xattr -dr com.apple.quarantine /Applications/Webox.app`
 
-After that it starts like any other app. macOS asks for the microphone the first time a call starts.
+macOS then asks once for each permission when it is first needed: notifications (at start), the microphone (first call), the
+camera (Settings > Video or the first video call) and Screen Recording (the first screen share; Webox must be restarted after
+allowing it in **System Settings → Privacy & Security → Screen Recording**).
 
 ## Where things are
 
@@ -26,41 +30,47 @@ After that it starts like any other app. macOS asks for the microphone the first
 | --- | --- |
 | Settings, sign-in, plugins | `~/Library/Application Support/WebOx` |
 | Downloads | `~/Downloads` |
-| Sign-in cookies (the WebKit sign-in window) | WebKit's data store for the app, `~/Library/WebKit` |
-| Plugins | `libcollabhost_<name>.dylib`; plugin repositories use the platform key `macos-aarch64` |
+| Secret plugin settings | the login Keychain (service "Webox"); the settings file when the Keychain refuses |
+| Start at login | System Settings → General → Login Items (or `~/Library/LaunchAgents/io.github.pianonic.webox.plist` outside the app bundle / before macOS 13) |
+| Browser meeting helper | `NativeMessagingHosts` in each browser's folder under `~/Library/Application Support` |
+| Plugins | `libcollabhost_<name>.dylib`; plugin repositories use the platform keys `macos-aarch64` / `macos-x86_64` |
 
-## What works
+## How it fits in
 
-- Sign-in in a WebKit window (WKWebView), the same flow as WebView2 on Windows and WebKitGTK on Linux.
-- Messaging, files, emoji, GIFs, plugins, the 34 languages (the system language is taken from the macOS language list).
-- Notifications in Notification Center (they show as coming from "Script Editor"; a click does not open the space yet).
-- Call audio through Core Audio (microphone, speakers, Smart Audio noise removal, echo cancellation).
-- Opening links and files with their default app, "Show in Finder" for downloads.
-- Update check: a new release is reported with a link to the download (no self-updating of the app bundle).
+- **Menu bar:** a status item with the unread dot and count, and the same menu as the tray elsewhere. Closing the window hides
+  Webox there (Settings > "close to tray"); a click on the Dock icon brings it back. The Dock icon shows the unread count and
+  bounces once for a new message while Webox is in the background.
+- **App menu:** Webox (Einstellungen ⌘,, Ausblenden ⌘H, Beenden ⌘Q), Bearbeiten (undo, cut, copy, paste, select all), Fenster
+  (Schließen ⌘W, Im Dock ablegen ⌘M).
+- **Shortcuts** use ⌘ where Windows and Linux use Ctrl, and are written the macOS way (⇧⌘N). Global hotkeys are opt-in
+  (Settings > Tastenkombinationen), as on Linux.
+- **Notifications** come from Webox in Notification Center; a click opens the space, reminders keep their buttons and an incoming
+  call has Annehmen / Ablehnen. Started outside `Webox.app` (`cargo run`) they fall back to plain banners from "Script Editor".
+- **Sign-in** is a WebKit window (WKWebView), the same flow as WebView2 on Windows and WebKitGTK on Linux.
+- **Media:** call audio through Core Audio, cameras and video playback through AVFoundation, screen sharing through
+  ScreenCaptureKit with the H.264 encoder of VideoToolbox.
 
 ## Not supported yet
 
-| Feature | What it would take |
+| What | Why |
 | --- | --- |
-| Menu-bar icon (tray), closing to it | `NSStatusItem`; the window's close button quits for now |
-| Unread badge on the Dock icon | `NSDockTile` badge label |
-| Global hotkeys | `RegisterEventHotKey` / `CGEventTap` |
-| Screen sharing | ScreenCaptureKit + VideoToolbox (H.264) |
-| Camera | AVFoundation (`AVCaptureSession`) |
-| Playing shared videos inline | AVFoundation (`AVAssetReader`); download and open them in QuickTime meanwhile |
-| Start at login | `SMAppService.mainApp` |
-| Secret plugin settings in the Keychain | Security framework; they fall back to the settings file |
-| Browser meeting helper (native messaging) | manifests in `~/Library/Application Support/<browser>/NativeMessagingHosts` |
-| Intel Macs | an `x86_64-apple-darwin` build (the code has nothing arm64-specific) |
+| Notarization, a Developer ID signature | needs a paid Apple Developer account; hence the first-launch step above |
+| Playing MPEG-TS files inline | AVFoundation doesn't read `.ts` (MP4 / MOV / M4V play) |
+| A larger Dock / Finder icon than 256 px | the icon source in `assets/icon` is 256 px |
+| `webexteams://` / `collabhost://` links from the browser | macOS hands links to an app through Apple Events, which Webox doesn't receive yet |
 
 ## Building from source
 
-Xcode's command line tools (`xcode-select --install`) and Rust are all it needs; WebKit, Core Audio and AppKit are part of macOS.
+Xcode's command line tools (`xcode-select --install`) and Rust are all it needs; WebKit, AVFoundation, ScreenCaptureKit and
+the other frameworks are part of macOS.
 
 ```sh
 cargo run -- --sample                   # offline, made-up data
-sh packaging/macos/make-app.sh          # dist/Webox.app and dist/webox-<version>-macos-arm64.zip
+sh packaging/macos/make-app.sh          # dist/Webox.app and dist/webox-<version>-macos-universal.zip (both architectures)
 ```
 
+The camera, notifications and the login item only work from `Webox.app` (macOS needs the bundle's Info.plist and identity for
+them); a bare `cargo run` binary is ended by macOS when it asks for the camera.
+
 CI builds and tests on `macos-latest` and keeps a start-up screenshot (`--sample --screenshot`) as an artifact; the
-`macOS package (dry run)` workflow builds the zip without publishing anything.
+`macOS package (dry run)` workflow builds the universal zip without publishing anything.

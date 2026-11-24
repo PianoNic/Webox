@@ -152,6 +152,7 @@ fn run_install(rel: &Release) -> Result<(), String> {
 
 /// Starts the new program (with `--updated`). On failure the old program is put back and the error returned.
 pub fn restart() -> Result<(), String> {
+    #[cfg(not(target_os = "macos"))]
     let exe = exe()?;
     let args: Vec<String> = std::env::args().skip(1).filter(|a| a != UPDATED_FLAG).collect();
     #[cfg(target_os = "macos")]
@@ -161,7 +162,7 @@ pub fn restart() -> Result<(), String> {
         set(|s| s.phase = Phase::Failed(msg.clone()));
         return back.and(Err(msg));
     } else { return Ok(()); }
-    #[allow(unreachable_code)]
+    #[cfg(not(target_os = "macos"))]
     match std::process::Command::new(&exe).arg(UPDATED_FLAG).args(args).spawn() {
         Ok(_) => Ok(()),
         Err(e) => {
