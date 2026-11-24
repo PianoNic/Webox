@@ -274,6 +274,10 @@ impl App {
             ui.horizontal(|ui| { ui.add_space(32.0); ui.add_enabled_ui(on, |ui| {
                 self.pcombo(ui, t, "spell_lang", "de", &[("de", "Deutsch"), ("en", "English (US)"), ("fr", "Français")], 260.0); }); }); // dictionary list
         });
+        // Typed emoticons such as :) or xD become emoji when a space follows and when sending (ui/composer, `emoticons_on`).
+        section(ui, t, "Emoticons", "", false, |ui| {
+            self.pcheck(ui, t, "emoticons_to_emojis", true, "Emoticons wie :) oder xD in Emojis umwandeln");
+        });
         // Bereichsliste: the compact view (ui/chrome/compact_list.rs).
         section(ui, t, &crate::trq!("Space list"), "", false, |ui| {
             self.pcheck(ui, t, crate::ui::chrome::compact_list::KEY, false, &crate::trq!("Show compact view"));
