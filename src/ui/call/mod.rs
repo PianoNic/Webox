@@ -46,6 +46,44 @@ pub(crate) struct CallUi {
     pub(crate) mc: super::meetcall::McState,
     /// Settings > Video: camera list and the live preview (released when the page is left).
     pub(crate) cam: super::settings::video_page::CamUi,
+    /// The ringing call was ignored ("Anruf ignorieren"): toast gone, no local ring, the call is not declined (my other
+    /// devices keep ringing until the caller gives up). Per call, like `ring_muted` and `reply_open`.
+    pub(crate) ignored: bool,
+    /// The toast shows the quick replies ("Anruf ablehnen und mit Textnachricht antworten") instead of its buttons.
+    pub(crate) reply_open: bool,
+    /// The caller whose ringing call was declined because of the block list (once per call; cleared when it ends).
+    blocked: Option<String>,
+}
+
+/// Quick replies of "Anruf ablehnen und mit Textnachricht antworten". The official desktop app has the action (keyboard
+/// shortcut "Decline call and reply with a text") but ships no reply texts, so these are Webox's own; the toast's last
+/// entry opens the chat for a custom message ("Schreiben Sie eine benutzerdefinierte Nachricht.").
+pub(crate) const QUICK_REPLIES: [&str; 3] = ["Kann gerade nicht sprechen.", "Ich rufe gleich zurück.", "Bin gerade in einem Meeting."];
+
+/// Which sound plays: 0 none, 1 ringtone (incoming), 2 ringback (my outgoing call rings). An incoming call stays silent when
+/// call sounds are off, the toast's bell muted it, it was ignored, or "Bitte nicht stören" / Ruhezeiten are on (`silenced`,
+/// which mutes notifications in the official app); my own outgoing ringback is not a notification and still plays.
+pub(crate) fn ring_kind(call_sounds: bool, sample: bool, muted: bool, ignored: bool, silenced: bool, state: Option<&CallState>) -> u8 {
+    if !call_sounds || sample { return 0; }
+    match state {
+        Some(CallState::Incoming) if !(muted || ignored || silenced) => 1,
+        Some(CallState::Dialing | CallState::Ringing) => 2,
+        _ => 0,
+    }
+}
+
+/// The caller is on the local block list (Einstellungen > Anrufe > Sperrliste): an entry with an @ matches the e-mail
+/// (case-insensitive); any other entry is a phone number and matches a caller address whose user part is that number
+/// (digits compared, so "+41 44 123 45 67" matches "+41441234567@example.com").
+pub(crate) fn is_blocked(list: &[String], email: &str) -> bool {
+    let email = email.trim();
+    if email.is_empty() { return false; }
+    let user = email.split('@').next().unwrap_or("");
+    let digits = |s: &str| s.chars().filter(char::is_ascii_digit).collect::<String>();
+    let phone_like = !user.is_empty() && user.chars().all(|c| c.is_ascii_digit() || " +-()./".contains(c));
+    list.iter().map(|e| e.trim()).filter(|e| !e.is_empty()).any(|e| {
+        if e.contains('@') { e.eq_ignore_ascii_case(email) } else { let d = digits(e); phone_like && d.len() >= 3 && d == digits(user) }
+    })
 }
 
 /// German status text of the card / toast.
@@ -65,7 +103,27 @@ pub(crate) fn ends_quietly(incoming: bool, shown: Option<&CallState>) -> bool {
     incoming && shown.is_none_or(|s| *s == CallState::Incoming)
 }
 
+/// The caller's existing 1:1 space (where a quick reply goes), if there is one.
+pub(crate) fn direct_space_with(spaces: &[Space], email: &str) -> Option<String> {
+    if email.is_empty() { return None; }
+    spaces.iter().find(|s| s.direct && s.participants.iter().any(|p| p.email.eq_ignore_ascii_case(email))).map(|s| s.id.clone())
+}
+
 impl App {
+    /// "Anruf ablehnen und mit Textnachricht antworten": declines the ringing call, then sends `text` to the caller's 1:1
+    /// space (created when there is none yet). Offline sample: the made-up call just goes, nothing is sent.
+    pub(crate) fn decline_with_reply(&mut self, email: &str, text: &str, now: f64) {
+        if self.call.sample { self.call.cur = None; return; }
+        self.hang_up();
+        let Some(c) = &self.client else { return };
+        if email.is_empty() { return; }
+        match direct_space_with(&self.spaces, email) {
+            Some(id) => c.req(Req::Send(id, text.to_string())),
+            None => c.req(Req::Direct { who: email.to_string(), text: text.to_string(), invite: false }),
+        }
+        self.toast("Nachricht gesendet", now);
+    }
+
     /// Places a call to `email` (checked again, and before any request, in the cloud thread).
     pub(crate) fn start_call(&mut self, email: &str, name: &str, now: f64) {
         if self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none()) { self.toast("Es läuft bereits ein Anruf.", now); return; }
@@ -111,7 +169,22 @@ impl App {
         self.call.share_pending = true;
     }
 
+    /// "Bitte nicht stören" or Ruhezeiten: an incoming call does not ring (the toast still shows, silent).
+    pub(crate) fn calls_silenced(&self) -> bool { self.me.status == "DoNotDisturb" || self.quiet_now() }
+
     pub(crate) fn on_call_event(&mut self, ev: CallEvent, now: f64) {
+        let prev_incoming = self.call.cur.as_ref().is_some_and(|c| c.state == CallState::Incoming && c.ended_at.is_none());
+        if ev.incoming && ev.state == CallState::Incoming {
+            // Block list: declined before anything rings or shows (once per call; the locus repeats the ringing state).
+            let list: Vec<String> = self.settings["block_list"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default();
+            if is_blocked(&list, &ev.email) {
+                if self.call.blocked.as_deref() != Some(ev.email.as_str()) { self.call.blocked = Some(ev.email.clone()); self.hang_up(); }
+                self.call.cur = None;
+                return;
+            }
+            // A new ringing call: the toast's per-call switches start fresh.
+            if !prev_incoming { self.call.ignored = false; self.call.reply_open = false; self.call.ring_muted = false; }
+        }
         let known = self.people.iter().chain(self.spaces.iter().flat_map(|s| s.participants.iter())).find(|p| !ev.email.is_empty() && p.email.eq_ignore_ascii_case(&ev.email)).map(|p| p.name.clone());
         let name = [known, Some(ev.name.clone()).filter(|n| !n.is_empty()), self.call.cur.as_ref().map(|c| c.name.clone()).filter(|n| !n.is_empty()), Some(ev.email.clone())]
             .into_iter().flatten().find(|n| !n.is_empty()).unwrap_or_else(|| "Unbekannt".into());
@@ -119,7 +192,8 @@ impl App {
         let (mut since, was_connected) = prev.as_ref().map_or((now, false), |p| (p.since, p.state == CallState::Connected));
         if ev.state == CallState::Connected && !was_connected { since = now; }
         let ended_at = if let CallState::Ended(w) = &ev.state {
-            let r = match w.as_str() { "declined" => "Abgelehnt", "missed" => "Verpasst", "unanswered" => "Keine Antwort", "elsewhere" => "Anderswo angenommen", _ => "Beendet" };
+            let blocked = self.call.blocked.take().is_some_and(|b| b.eq_ignore_ascii_case(&ev.email));
+            let r = match w.as_str() { _ if blocked => "Blockiert", "declined" => "Abgelehnt", "missed" => "Verpasst", "unanswered" => "Keine Antwort", "elsewhere" => "Anderswo angenommen", _ => "Beendet" };
             self.call.history.insert(0, (name.clone(), ev.incoming, r));
             self.call.history.truncate(30);
             self.call.muted = false;
@@ -144,7 +218,7 @@ impl App {
     fn ring_sound(&mut self, state: Option<&CallState>) {
         use std::sync::mpsc::TryRecvError;
         let p = self.prefs();
-        let kind = if !p.call_sounds || self.call.sample || self.call.ring_muted { 0 } else { match state { Some(CallState::Incoming) => 1, Some(CallState::Dialing | CallState::Ringing) => 2, _ => 0 } };
+        let kind = ring_kind(p.call_sounds, self.call.sample, self.call.ring_muted, self.call.ignored, self.calls_silenced(), state);
         if kind != self.call.ring_kind { self.call.ring.clear(); self.call.ring_devs = None; self.call.ring_kind = kind; } // stops on answer / decline / hang-up / end
         if kind == 0 { self.call.ring_fail_at = None; return; }
         // A failed start (sound file unreadable, no output device opened) is retried at most every MIC_RETRY_SECS: retrying it
@@ -387,7 +461,9 @@ impl App {
 pub(crate) struct CallView { pub state: CallState, pub name: String, pub email: String, pub secs: u64, pub ended: bool, pub photo: Option<egui::TextureId> }
 /// What the user pressed.
 #[derive(Default)]
-pub(crate) struct CallActions { pub hang: bool, pub answer: bool, pub mute: bool, pub message: bool, pub contact: bool, pub toggle_ring: bool, pub dismiss: bool }
+pub(crate) struct CallActions { pub hang: bool, pub answer: bool, pub mute: bool, pub message: bool, pub contact: bool, pub toggle_ring: bool, pub dismiss: bool,
+    /// A quick reply was picked: decline, then send this text to the caller's 1:1 space.
+    pub reply: Option<String> }
 
 mod devices;
 
@@ -401,5 +477,42 @@ mod tests {
         assert!(!ends_quietly(true, Some(&CallState::Connected)), "an answered call shows its end");
         assert!(!ends_quietly(true, Some(&CallState::Connecting)));
         assert!(!ends_quietly(false, Some(&CallState::Ringing)), "my outgoing call the other side declined still says so");
+    }
+
+    #[test]
+    fn dnd_quiet_hours_and_ignore_silence_only_the_incoming_ring() {
+        let inc = Some(&CallState::Incoming);
+        assert_eq!(ring_kind(true, false, false, false, false, inc), 1, "a normal incoming call rings");
+        assert_eq!(ring_kind(true, false, false, false, true, inc), 0, "Bitte nicht stören / Ruhezeiten: no ringtone");
+        assert_eq!(ring_kind(true, false, false, true, false, inc), 0, "Anruf ignorieren stops the local ring");
+        assert_eq!(ring_kind(true, false, true, false, false, inc), 0, "the toast's bell");
+        assert_eq!(ring_kind(true, false, false, false, true, Some(&CallState::Ringing)), 2, "my own outgoing ringback still plays under DND");
+        assert_eq!(ring_kind(false, false, false, false, false, inc), 0);
+        assert_eq!(ring_kind(true, true, false, false, false, inc), 0, "--sample makes no sound");
+        assert_eq!(ring_kind(true, false, false, false, false, Some(&CallState::Connected)), 0);
+    }
+
+    #[test]
+    fn block_list_matches_email_or_phone_number() {
+        let l = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(is_blocked(&l(&["Spam@Example.com"]), "spam@example.com"));
+        assert!(!is_blocked(&l(&["spam@example.com"]), "spammer@example.com"));
+        assert!(is_blocked(&l(&["+41 44 123 45 67"]), "+41441234567@example.com"));
+        assert!(!is_blocked(&l(&["+41 44 123 45 67"]), "max.muster@example.com"), "a number never matches a name address");
+        assert!(!is_blocked(&l(&["12"]), "12@example.com"), "too short to be a number");
+        assert!(!is_blocked(&l(&["", "  "]), "a@example.com"));
+        assert!(!is_blocked(&l(&["a@example.com"]), ""), "an unknown caller is not blocked");
+    }
+
+    #[test]
+    fn quick_reply_goes_to_the_existing_direct_space() {
+        let p = |e: &str| Person { email: e.into(), ..Default::default() };
+        let spaces = vec![
+            Space { id: "group".into(), direct: false, participants: vec![p("me@example.com"), p("max@example.com"), p("eva@example.com")], ..Default::default() },
+            Space { id: "dm".into(), direct: true, participants: vec![p("me@example.com"), p("Max@Example.com")], ..Default::default() },
+        ];
+        assert_eq!(direct_space_with(&spaces, "max@example.com").as_deref(), Some("dm"));
+        assert_eq!(direct_space_with(&spaces, "eva@example.com"), None, "no 1:1 yet: a new one is created");
+        assert_eq!(direct_space_with(&spaces, ""), None);
     }
 }

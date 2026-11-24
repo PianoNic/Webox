@@ -19,7 +19,8 @@ impl App {
         let mut seen = SEEN.lock().unwrap();
         if seen.is_none() && !self.window_active() {
             let body = [state_text(&CallState::Incoming, 0), v.email.clone()].iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join("\n");
-            un::send(CALL_ID, &v.name, &body, &[("answer", "Annehmen"), ("decline", "Ablehnen")], true);
+            // Under "Bitte nicht stören" / Ruhezeiten the banner comes without its sound.
+            un::send(CALL_ID, &v.name, &body, &[("answer", "Annehmen"), ("decline", "Ablehnen")], !self.calls_silenced());
             *seen = Some(pass);
         }
         if seen.is_some() { *seen = Some(pass); }

@@ -1,7 +1,10 @@
 //! The incoming-call toast as its own frameless, always-on-top, non-activating OS window at the bottom-right of the work
 //! area: content width 320, fade-out 400 ms, Esc closes, tab cycle answer -> answer on computer -> decline -> message ->
 //! avatar -> mute -> close. The window margin (`toast_pos::EDGE_GAP`), button diameters and content height are Webox's own.
-use super::call::{state_text, CallActions, CallView};
+//! Like the official `CallDelegate`: the bell is "Anruf stummschalten" (Benachrichtigungston an / aus), the close button is
+//! "Anruf ignorieren" (toast and local ring go, the call is not declined). The message button opens the quick replies
+//! ("Anruf ablehnen und mit Textnachricht antworten"). Under "Bitte nicht stören" / Ruhezeiten the toast shows without ringing.
+use super::call::{state_text, CallActions, CallView, QUICK_REPLIES};
 use super::toast_pos::toast_anchor;
 use crate::cloud::locus::CallState;
 use crate::*;
@@ -10,6 +13,8 @@ use crate::*;
 pub(crate) const CONTENT_W: f32 = 320.0;
 /// 8 top margin + 32 title row + 16 + 40 avatar/text row + 16 + 40 round buttons + 12 + 40 answer-on-computer pill + 16 bottom.
 pub(crate) const CONTENT_H: f32 = 220.0;
+/// Row height of the quick-reply list (5 rows fit below the title row).
+const REPLY_ROW_H: f32 = 32.0;
 /// Fade-out duration (s).
 const FADE_SECS: f64 = 0.4;
 pub(crate) const TOAST_TITLE: &str = "Webox - Eingehender Anruf";
@@ -41,10 +46,11 @@ pub(crate) fn ghost_at(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th, id: &st
 impl App {
     /// Shows (or fades out) the toast window; returns what the user pressed. Called once per frame while a call rings.
     pub(crate) fn incoming_toast_window(&mut self, ctx: &egui::Context, t: &Th, now: f64, v: &CallView) -> CallActions {
-        let mut actions = self.call_note(ctx, v);
+        // Ignored: no notification banner either (`call_note_frame` takes it away when `call_note` isn't called).
+        let mut actions = if self.call.ignored { CallActions::default() } else { self.call_note(ctx, v) };
         let w = &mut self.call.win;
         let fade = w.toast_closed.map(|s| 1.0 - ((now - s) / FADE_SECS) as f32);
-        if fade.is_some_and(|f| f <= 0.0) { return actions; } // faded out: window gone, the call keeps ringing (sound) until answered
+        if fade.is_some_and(|f| f <= 0.0) { return actions; } // faded out: window gone; the call rings on my other devices
         let note = std::mem::take(&mut actions);
         // Exactly the card: no shadow, so no shadow padding.
         let size = Vec2::new(CONTENT_W, CONTENT_H);
@@ -67,7 +73,9 @@ impl App {
             }
         }
         if fade.is_some() { ctx.request_repaint(); }
-        if actions.dismiss { self.call.win.toast_closed = Some(now); }
+        // "Anruf ignorieren": the toast fades out and the local ring stops; the call is not declined.
+        if actions.dismiss { self.call.win.toast_closed = Some(now); self.call.ignored = true; self.call.reply_open = false; }
+        if let Some(text) = actions.reply.take() { self.decline_with_reply(&v.email, &text, now); }
         actions.answer |= note.answer; actions.hang |= note.hang;
         actions
     }
@@ -78,12 +86,14 @@ impl App {
         let mut a = CallActions::default();
         if crate::platform::linux::session() == crate::platform::linux::Session::Wayland && self.shot.is_none() {
             let pass = ctx.cumulative_pass_nr();
+            let urgency = if self.calls_silenced() { 1 } else { 2 };
             let action = {
                 let mut g = CALL_NOTE.lock().unwrap();
                 let n = g.get_or_insert_with(|| {
                     let body = [state_text(&CallState::Incoming, 0), v.email.clone()].iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join("\n");
                     let acts = [("default", "Öffnen"), ("answer", "Annehmen"), ("decline", "Ablehnen")];
-                    CallNote { sent: crate::platform::linux::notifications::send(ctx, &v.name, &body, &acts, 2), seen: pass, action: None }
+                    // Critical rings through the desktop's own do-not-disturb; under Bitte nicht stören / Ruhezeiten it is a normal one.
+                    CallNote { sent: crate::platform::linux::notifications::send(ctx, &v.name, &body, &acts, urgency), seen: pass, action: None }
                 });
                 n.seen = pass;
                 n.action.take()
@@ -102,8 +112,10 @@ impl App {
 
     fn toast_content(&mut self, vctx: &egui::Context, t: &Th, v: &CallView, opacity: f32) -> CallActions {
         let mut a = CallActions::default();
-        if vctx.input(|i| i.key_pressed(Key::Escape)) { a.dismiss = true; } // Esc closes
-        let muted = self.call.ring_muted;
+        let replies = self.call.reply_open;
+        if vctx.input(|i| i.key_pressed(Key::Escape)) { if replies { self.call.reply_open = false; } else { a.dismiss = true; } } // Esc: back, or ignore
+        let silenced = self.calls_silenced();
+        let muted = self.call.ring_muted || silenced;
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(vctx, |ui| {
             ui.set_opacity(opacity);
             let full = ui.max_rect();
@@ -120,6 +132,21 @@ impl App {
             let mid_y = 8.0 + 32.0 + 16.0 + 20.0; // centre of the avatar row
             let row_y = 8.0 + 32.0 + 16.0 + 40.0 + 16.0 + 20.0; // centre of the round buttons
             let pill = Rect::from_min_size(at(16.0, row_y + 20.0 + 12.0), Vec2::new(CONTENT_W - 32.0, 40.0));
+            if replies {
+                // Quick replies, then the custom message (declines and opens the chat) and Abbrechen (back to the buttons).
+                let mut y = 8.0 + 32.0 + 8.0;
+                let rows = QUICK_REPLIES.iter().map(|r| (*r, 0u8)).chain([("Schreiben Sie eine benutzerdefinierte Nachricht.", 1), ("Abbrechen", 2)]);
+                for (i, (text, kind)) in rows.enumerate() {
+                    let r = Rect::from_min_size(at(8.0, y), Vec2::new(CONTENT_W - 16.0, REPLY_ROW_H));
+                    let resp = ui.interact(r, ui.id().with(("reply", i)), Sense::click());
+                    if resp.hovered() || resp.has_focus() { ui.painter().rect_filled(r, 6.0, if resp.is_pointer_button_down_on() { t.pill } else { t.hover }); }
+                    if resp.has_focus() { ui.painter().rect_stroke(r, 6.0, Stroke::new(2.0_f32, ring), egui::StrokeKind::Inside); }
+                    if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+                    crate::ui::chrome::fit_text(ui.painter(), r.min.x + 8.0, r.center().y - 9.0, text, FontId::proportional(14.0), if kind == 0 { t.text1 } else { t.text2 }, r.width() - 16.0);
+                    if resp.clicked() { match kind { 0 => a.reply = Some(text.to_string()), 1 => a.message = true, _ => self.call.reply_open = false } }
+                    y += REPLY_ROW_H;
+                }
+            } else {
             // 1. Answer (round).
             if round_at(ui, &mut self.icons, "answer", at(CONTENT_W / 2.0 + 52.0, row_y), 40.0, "handset-regular", t.green, Color32::WHITE, ring).on_hover_text("Antworten").clicked() { a.answer = true; }
             // 2. Answer on this computer (pill, secondary because the round answer button is shown too).
@@ -134,8 +161,8 @@ impl App {
             }
             // 3. Decline (round).
             if round_at(ui, &mut self.icons, "decline", at(CONTENT_W / 2.0, row_y), 40.0, "handset-down-slash-regular", t.badge, Color32::WHITE, ring).on_hover_text("Ablehnen").clicked() { a.hang = true; }
-            // 4. Message back (round, secondary).
-            if round_at(ui, &mut self.icons, "message", at(CONTENT_W / 2.0 - 52.0, row_y), 40.0, "chat-regular", t.selected, t.text1, ring).on_hover_text("Zurückschreiben").clicked() { a.message = true; }
+            // 4. Decline with a text (round, secondary): opens the quick replies.
+            if round_at(ui, &mut self.icons, "message", at(CONTENT_W / 2.0 - 52.0, row_y), 40.0, "chat-regular", t.selected, t.text1, ring).on_hover_text("Anruf ablehnen und mit Textnachricht antworten").clicked() { self.call.reply_open = true; }
             // 5. Avatar (click -> contact card).
             {
                 let ar = Rect::from_center_size(at(32.0, mid_y - 4.0), Vec2::splat(32.0));
@@ -146,15 +173,19 @@ impl App {
                 if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 if resp.on_hover_text("Visitenkarte anzeigen").clicked() { a.contact = true; }
             }
-            // 6. Notification sound on / off, 7. close (title row, ghost XS 32).
-            let (mute_icon, mute_tip) = if muted { ("alert-muted-bold", "Benachrichtigungston, aus") } else { ("alert-bold", "Benachrichtigungston, ein") };
-            if ghost_at(ui, &mut self.icons, t, "mute", at(CONTENT_W - 16.0 - 32.0 - 8.0 - 16.0, 8.0 + 16.0), 32.0, mute_icon, if muted { t.badge } else { t.text1 }).on_hover_text(mute_tip).clicked() { a.toggle_ring = true; }
-            if ghost_at(ui, &mut self.icons, t, "close", at(CONTENT_W - 16.0 - 16.0, 8.0 + 16.0), 32.0, "cancel-regular", t.text1).on_hover_text("Schließen").clicked() { a.dismiss = true; }
+            }
+            // 6. "Anruf stummschalten" (notification sound on / off; off while Bitte nicht stören / Ruhezeiten), 7. "Anruf ignorieren".
+            let mute_icon = if muted { "alert-muted-bold" } else { "alert-bold" };
+            let mute_tip = if silenced { "Bitte nicht stören" } else if muted { "Benachrichtigungston, aus" } else { "Benachrichtigungston, an" };
+            if ghost_at(ui, &mut self.icons, t, "mute", at(CONTENT_W - 16.0 - 32.0 - 8.0 - 16.0, 8.0 + 16.0), 32.0, mute_icon, if muted { t.badge } else { t.text1 }).on_hover_text(mute_tip).clicked() && !silenced { a.toggle_ring = true; }
+            if ghost_at(ui, &mut self.icons, t, "close", at(CONTENT_W - 16.0 - 16.0, 8.0 + 16.0), 32.0, "cancel-regular", t.text1).on_hover_text("Anruf ignorieren").clicked() { a.dismiss = true; }
             // Static content.
             let p = ui.painter().clone();
             p.text(at(16.0, 8.0 + 16.0), egui::Align2::LEFT_CENTER, state_text(&CallState::Incoming, 0), semibold(14.0), t.text1);
-            crate::ui::chrome::fit_text(&p, 16.0 + o.x + 44.0, o.y + mid_y - 12.0, &v.name, semibold(15.0), t.text1, CONTENT_W - 32.0 - 44.0);
-            if !v.email.is_empty() { crate::ui::chrome::fit_text(&p, 16.0 + o.x + 44.0, o.y + mid_y + 6.0, &v.email, FontId::proportional(13.0), t.text2, CONTENT_W - 32.0 - 44.0); }
+            if !replies {
+                crate::ui::chrome::fit_text(&p, 16.0 + o.x + 44.0, o.y + mid_y - 12.0, &v.name, semibold(15.0), t.text1, CONTENT_W - 32.0 - 44.0);
+                if !v.email.is_empty() { crate::ui::chrome::fit_text(&p, 16.0 + o.x + 44.0, o.y + mid_y + 6.0, &v.email, FontId::proportional(13.0), t.text2, CONTENT_W - 32.0 - 44.0); }
+            }
         });
         vctx.request_repaint_after(std::time::Duration::from_millis(100));
         a
