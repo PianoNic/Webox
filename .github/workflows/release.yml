@@ -147,10 +147,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
-      # Webox.app, signed ad hoc (no Apple Developer certificate; docs/MACOS.md), zipped. Same script as macos-package.yml.
+      # Webox.app (one universal program for Apple Silicon and Intel), signed ad hoc (no Apple Developer certificate; docs/MACOS.md), zipped. Same script as macos-package.yml.
       - name: Build and pack Webox.app
         env:
           WEBOX_CLIENT_ID: ${{ secrets.WEBOX_CLIENT_ID }}

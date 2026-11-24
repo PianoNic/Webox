@@ -1,20 +1,28 @@
 #!/bin/sh
-# Builds a release binary and packs Webox.app (Info.plist, .icns made from assets/icon, German + English permission texts), signed
-# ad hoc (no Apple Developer certificate: Gatekeeper asks once, see docs/MACOS.md), zipped with ditto so the signature survives.
-#   packaging/macos/make-app.sh               -> dist/Webox.app, dist/webox-<version>-macos-<arch>.zip
-#   WEBOX_SKIP_BUILD=1 packaging/macos/make-app.sh   packs an existing target/release/webox
+# Builds release binaries for Apple Silicon and Intel, joins them into one universal program (lipo) and packs Webox.app
+# (Info.plist, .icns made from assets/icon, German + English permission texts), signed ad hoc (no Apple Developer certificate:
+# Gatekeeper asks once, see docs/MACOS.md), zipped with ditto so the signature survives.
+#   packaging/macos/make-app.sh               -> dist/Webox.app, dist/webox-<version>-macos-universal.zip
+#   WEBOX_SKIP_BUILD=1 packaging/macos/make-app.sh   packs existing target/{aarch64,x86_64}-apple-darwin/release/webox
 set -eu
 cd "$(dirname "$0")/../.."
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-case "$(uname -m)" in arm64|aarch64) ARCH=arm64 ;; *) ARCH=$(uname -m) ;; esac
-NAME="webox-$VERSION-macos-$ARCH"
+NAME="webox-$VERSION-macos-universal"
 TARGET=${CARGO_TARGET_DIR:-target}
-[ -n "${WEBOX_SKIP_BUILD:-}" ] || cargo build --release --locked -p webox --bin webox
+ARCHS="aarch64-apple-darwin x86_64-apple-darwin"
+if [ -z "${WEBOX_SKIP_BUILD:-}" ]; then
+  command -v rustup >/dev/null && rustup target add $ARCHS
+  for t in $ARCHS; do cargo build --release --locked -p webox --bin webox --target "$t"; done
+fi
+mkdir -p dist
+lipo -create -output dist/webox-universal $(for t in $ARCHS; do echo "$TARGET/$t/release/webox"; done)
+lipo -info dist/webox-universal
 
 APP=dist/Webox.app
 rm -rf "$APP" "dist/$NAME.zip"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/en.lproj" "$APP/Contents/Resources/de.lproj"
-install -m755 "$TARGET/release/webox" "$APP/Contents/MacOS/webox"
+install -m755 dist/webox-universal "$APP/Contents/MacOS/webox"
+rm -f dist/webox-universal
 strip -x "$APP/Contents/MacOS/webox" 2>/dev/null || true
 sed "s/@VERSION@/$VERSION/g" packaging/macos/Info.plist > "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"

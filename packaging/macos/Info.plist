@@ -28,15 +28,15 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>11.0</string>
+	<string>12.3</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.business</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
-	<!-- Calls use the microphone; the camera is asked for by the AVFoundation capture still to come. Localised in
-	     de.lproj / en.lproj (InfoPlist.strings). -->
+	<!-- Calls use the microphone, video calls the camera (AVFoundation). Screen sharing (ScreenCaptureKit) has no usage text:
+	     macOS asks for "Screen Recording" in System Settings itself. Localised in de.lproj / en.lproj (InfoPlist.strings). -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Webox uses the microphone for calls and meetings.</string>
 	<key>NSCameraUsageDescription</key>

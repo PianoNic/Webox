@@ -1,6 +1,6 @@
 //! App updates from the GitHub releases: the check (by hand, and once a day in the background), and on Windows the download,
 //! checksum test and program swap (`swap`). Linux only reports a new version: packages update through Nix or the distribution.
-//! macOS only reports it too and links to the GitHub download (`webox-<v>-macos-arm64.zip`; no self-replacing of the .app).
+//! macOS replaces the whole Webox.app (`macos.rs`, from `webox-<v>-macos-universal.zip`).
 //! The state lives here; the UI reads it every frame (`status`) and the workers wake the window when it changes.
 pub mod release;
 pub mod net;
@@ -8,6 +8,8 @@ pub mod swap;
 pub mod zip;
 #[cfg(windows)]
 mod registry;
+#[cfg(target_os = "macos")]
+pub mod macos; // replacing Webox.app
 #[cfg(test)]
 mod tests;
 
@@ -66,8 +68,8 @@ pub fn sample(downloading: bool) {
     set(|s| { s.release = Some(rel); s.phase = if downloading { Phase::Downloading } else { Phase::Available }; });
 }
 
-/// Windows replaces its own program file; elsewhere the system's package manager does.
-pub const fn self_update() -> bool { cfg!(windows) }
+/// Windows replaces its own program file, macOS its app bundle; on Linux the system's package manager does.
+pub const fn self_update() -> bool { cfg!(any(windows, target_os = "macos")) }
 
 /// Running from the Nix store: the flake / NixOS module decides the version, so no release nag in the background.
 pub fn from_nix_store() -> bool {
@@ -122,6 +124,9 @@ pub fn install() {
 }
 
 fn run_install(rel: &Release) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    return macos::run_install(rel, &DONE, &TOTAL);
+    #[allow(unreachable_code)]
     let exe = exe()?;
     if !swap::folder_writable(&exe) {
         return Err("Der Programmordner ist schreibgeschützt. Installieren Sie die neue Version mit dem Setup von der Release-Seite.".into());
@@ -149,6 +154,14 @@ fn run_install(rel: &Release) -> Result<(), String> {
 pub fn restart() -> Result<(), String> {
     let exe = exe()?;
     let args: Vec<String> = std::env::args().skip(1).filter(|a| a != UPDATED_FLAG).collect();
+    #[cfg(target_os = "macos")]
+    if let Err(e) = macos::restart(&args) {
+        let back = macos::rollback();
+        let msg = format!("Neustart fehlgeschlagen: {e}");
+        set(|s| s.phase = Phase::Failed(msg.clone()));
+        return back.and(Err(msg));
+    } else { return Ok(()); }
+    #[allow(unreachable_code)]
     match std::process::Command::new(&exe).arg(UPDATED_FLAG).args(args).spawn() {
         Ok(_) => Ok(()),
         Err(e) => {
@@ -165,6 +178,8 @@ pub fn restart() -> Result<(), String> {
 pub fn after_start() {
     #[cfg(not(windows))]
     { let cfg = crate::system::config_dir(); std::thread::spawn(move || crate::platform::nmhost::refresh(&cfg)); } // browser helper manifests follow the launcher path
+    #[cfg(target_os = "macos")]
+    std::thread::spawn(macos::cleanup); // Webox.app.old, unfinished downloads
     let Ok(exe) = exe() else { return };
     #[cfg(windows)]
     registry::sync_display_version(&exe, VERSION);
