@@ -19,7 +19,7 @@ mod gst;
 #[cfg(target_os = "linux")]
 use gst as backend;
 #[cfg(target_os = "macos")]
-mod macos; // not built yet (AVFoundation): every file reports that it cannot play
+mod macos; // AVFoundation (AVAssetReader)
 #[cfg(target_os = "macos")]
 use macos as backend;
 #[cfg(test)]

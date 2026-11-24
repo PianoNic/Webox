@@ -112,7 +112,7 @@ glib = "0.18"
 objc2 = "0.6"
 block2 = "0.6"
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSString", "NSURL", "NSURLRequest", "NSGeometry", "NSNotification",
-  "NSObject", "NSData", "NSBundle", "NSArray", "NSSet", "NSError", "NSDictionary"] }
+  "NSObject", "NSData", "NSBundle", "NSArray", "NSSet", "NSError", "NSDictionary", "NSEnumerator", "NSValue"] }
 # Status item, menus, Dock badge, the sign-in window.
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "NSWindow", "NSResponder", "NSView", "NSGraphics",
   "NSApplication", "NSMenu", "NSMenuItem", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSImage", "NSDockTile", "NSEvent",
@@ -121,6 +121,21 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNUserNotificationCenter",
   "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotification", "UNNotificationAction", "UNNotificationCategory",
   "UNNotificationSound", "UNNotificationTrigger"] }
+# Media (src/media/*/macos.rs, camera/avf.rs): AVFoundation for video playback, the test videos and cameras; ScreenCaptureKit +
+# VideoToolbox for screen sharing (H.264).
+dispatch2 = { version = "0.3", default-features = false, features = ["std", "objc2"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFBase", "CFDictionary", "CFString"] }
+objc2-core-audio-types = { version = "0.3", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
+objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "dispatch2", "objc2-core-media", "objc2-core-video", "objc2-core-foundation",
+  "AVAsset", "AVAssetReader", "AVAssetReaderOutput", "AVAssetTrack", "AVAssetWriter", "AVAssetWriterInput", "AVMediaFormat", "AVVideoSettings",
+  "AVCaptureDevice", "AVCaptureInput", "AVCaptureOutputBase", "AVCaptureSession", "AVCaptureVideoDataOutput"] }
+objc2-core-media = { version = "0.3", default-features = false, features = ["std", "objc2-core-audio-types", "objc2-core-video", "CMBase", "CMBlockBuffer",
+  "CMFormatDescription", "CMSampleBuffer", "CMTime", "CMTimeRange"] }
+objc2-core-video = { version = "0.3", default-features = false, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
+objc2-video-toolbox = { version = "0.3", default-features = false, features = ["std", "objc2-core-media", "objc2-core-video", "VTBase", "VTCompressionProperties",
+  "VTCompressionSession", "VTErrors", "VTSession"] }
+objc2-screen-capture-kit = { version = "0.3", default-features = false, features = ["std", "block2", "dispatch2", "objc2-core-media", "objc2-core-foundation",
+  "objc2-core-graphics", "libc", "SCShareableContent", "SCStream"] }
 objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "objc2-app-kit", "objc2-core-foundation", "WKWebView", "WKWebViewConfiguration",
   "WKUserContentController", "WKUserScript", "WKScriptMessage", "WKScriptMessageHandler", "WKNavigationDelegate", "WKNavigation"] }
 

@@ -1,6 +1,7 @@
 //! Decode tests on a video made by the test itself (no real file in the repository): 2 s, 160 x 120 at 10 fps, the first second
 //! red, the second blue, with a 440 Hz tone. Windows encodes it with Media Foundation's own H.264 + AAC encoders into MP4;
-//! Linux with GStreamer (videotestsrc / audiotestsrc -> MJPEG + PCM in AVI, plugins -base and -good).
+//! macOS with AVAssetWriter (the same H.264 + AAC in MP4); Linux with GStreamer (videotestsrc / audiotestsrc -> MJPEG + PCM in AVI,
+//! plugins -base and -good).
 use super::*;
 use std::path::PathBuf;
 
@@ -36,13 +37,17 @@ fn make(path: &std::path::Path) -> Result<(), String> {
     let caps = format!("video/x-raw,width={W},height={H},framerate={FPS}/1");
     synth::write_gst(path, spec(), &format!("concat name=c videotestsrc num-buffers={half} pattern=red ! {caps} ! c. videotestsrc num-buffers={half} pattern=blue ! {caps} ! c. c."))
 }
-/// macOS: no encoder (and no decoder) yet, see `media/video/macos.rs`: the decode tests skip.
-#[cfg(not(any(windows, target_os = "linux")))]
+/// macOS: AVAssetWriter (H.264 + AAC in MP4), like Media Foundation on Windows.
+#[cfg(target_os = "macos")]
+fn make(path: &std::path::Path) -> Result<(), String> {
+    synth::write(path, spec(), &|i, rgba| { let [r, g, b] = want(i as f64 / FPS as f64); for p in rgba.chunks_exact_mut(4) { p.copy_from_slice(&[r, g, b, 255]); } })
+}
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 fn make(_path: &std::path::Path) -> Result<(), String> { Err("no video encoder on this platform".into()) }
 /// The test video, or None when this machine has no encoder (Windows N without the Media Feature Pack, Linux without
 /// gst-plugins-good): the test then says so and passes.
 fn synthetic() -> Option<PathBuf> {
-    let p = temp(if cfg!(windows) { "mp4" } else { "avi" });
+    let p = temp(if cfg!(any(windows, target_os = "macos")) { "mp4" } else { "avi" });
     match make(&p) {
         Ok(()) if std::fs::metadata(&p).is_ok_and(|m| m.len() > 0) => Some(p),
         r => { eprintln!("SKIPPED: cannot make a test video here: {r:?}"); None }
@@ -55,7 +60,7 @@ fn decodes_frames_and_sound_of_a_synthetic_video() {
     let mut head = vec![0u8; 64];
     { use std::io::Read; let n = std::fs::File::open(&path).unwrap().read(&mut head).unwrap(); head.truncate(n); }
     let c = format::detect(&head, &path.to_string_lossy(), "").expect("container");
-    assert_eq!(c, if cfg!(windows) { format::Container::Mp4 } else { format::Container::Avi });
+    assert_eq!(c, if cfg!(any(windows, target_os = "macos")) { format::Container::Mp4 } else { format::Container::Avi });
     let (mut src, info) = backend::open(&path, sync::MAX_SIZE, true).expect("open");
     assert!(info.has_video && info.has_audio, "{info:?}");
     assert_eq!((info.width, info.height), (W, H), "{info:?}");

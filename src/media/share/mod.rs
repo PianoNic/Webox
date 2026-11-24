@@ -6,6 +6,7 @@
 //!   software encoder). Pictures go through the CPU (staging texture -> BGRA -> scaled NV12, `convert.rs`).
 //! * Linux (`linux/`): the xdg-desktop-portal ScreenCast (PipeWire node) or, on X11 without the portal, `ximagesrc`; GStreamer
 //!   converts, scales and encodes (x264enc / openh264enc / vah264enc / vaapih264enc, whichever is installed).
+//! * macOS (`macos.rs`): ScreenCaptureKit for displays and windows, BGRA through `convert.rs`, VideoToolbox's H.264 encoder.
 //!
 //! The output is what an RTP packetizer for packetization-mode 1 wants: one access unit per picture in Annex B form
 //! (start codes), Constrained Baseline, no B-frames, SPS + PPS in front of every key frame (`h264.rs`). The stream picks a
@@ -26,7 +27,7 @@ mod linux;
 #[cfg(target_os = "linux")]
 use self::linux as backend;
 #[cfg(target_os = "macos")]
-mod macos; // not built yet (ScreenCaptureKit + VideoToolbox): nothing to share
+mod macos; // ScreenCaptureKit + VideoToolbox
 #[cfg(target_os = "macos")]
 use self::macos as backend;
 #[cfg(test)]
@@ -201,10 +202,11 @@ impl Drop for ShareStream { fn drop(&mut self) { self.halt(); } }
 /// Screens first (primary first), then windows in Z order; Webox's own windows are never listed.
 pub fn sources() -> Vec<ShareSource> { backend::sources() }
 
-/// Why nothing can be shared (German, for the picker), or None. Linux: Wayland without a ScreenCast portal.
+/// Why nothing can be shared (German, for the picker), or None. Linux: Wayland without a ScreenCast portal; macOS: no Screen
+/// Recording permission.
 pub fn unavailable() -> Option<String> {
-    #[cfg(target_os = "linux")] { backend::unavailable() }
-    #[cfg(not(target_os = "linux"))] { None }
+    #[cfg(any(target_os = "linux", target_os = "macos"))] { backend::unavailable() }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))] { None }
 }
 
 /// A small picture of the source (RGBA, fitted into `max`), for the picker; None when there is none (minimised, Wayland).

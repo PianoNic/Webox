@@ -1,5 +1,6 @@
 //! Videos made on this machine, for the tests and for the offline sample data (`--sample`): nothing recorded, no file in the
-//! repository. Windows encodes with Media Foundation's own encoders (H.264 + AAC in MP4, sink writer); Linux with GStreamer
+//! repository. Windows encodes with Media Foundation's own encoders (H.264 + AAC in MP4, sink writer), macOS with AVAssetWriter (the
+//! same in MP4); Linux with GStreamer
 //! (test sources -> MJPEG + PCM in AVI, gst-plugins-good).
 use std::path::{Path, PathBuf};
 
@@ -90,6 +91,10 @@ pub fn write(path: &Path, spec: Spec, paint: &dyn Fn(u32, &mut [u8])) -> Result<
 
 /// Runs `video` (a gst-launch description producing raw video, ending without a sink) for its buffers, muxed with a 440 Hz tone
 /// of the same length.
+/// macOS: H.264 + AAC in MP4 through AVAssetWriter (`macos.rs`).
+#[cfg(target_os = "macos")]
+pub fn write(path: &Path, spec: Spec, paint: &dyn Fn(u32, &mut [u8])) -> Result<(), String> { super::macos::write(path, spec, paint) }
+
 #[cfg(target_os = "linux")]
 pub fn write_gst(path: &Path, spec: Spec, video: &str) -> Result<(), String> {
     use gst::prelude::*;
@@ -123,14 +128,16 @@ pub fn sample_clip() -> Option<PathBuf> {
         let (p, r) = { let p = dir.join("Demo-Clip.mp4"); let r = if p.exists() { Ok(()) } else { write(&p, spec, &paint_demo) }; (p, r) };
         #[cfg(target_os = "linux")]
         let (p, r) = { let p = dir.join("Demo-Clip.avi"); let r = if p.exists() { Ok(()) } else { write_gst(&p, spec, &format!("videotestsrc num-buffers={} pattern=ball", spec.frames)) }; (p, r) };
-        #[cfg(not(any(windows, target_os = "linux")))]
+        #[cfg(target_os = "macos")]
+        let (p, r) = { let p = dir.join("Demo-Clip.mp4"); let r = if p.exists() { Ok(()) } else { write(&p, spec, &paint_demo) }; (p, r) };
+        #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
         let (p, r): (PathBuf, Result<(), String>) = { let _ = spec; (dir.join("Demo-Clip"), Err("no video encoder on this platform".into())) };
         match r { Ok(()) => Some(p), Err(e) => { let _ = std::fs::remove_file(&p); eprintln!("sample video: {e}"); None } }
     }).clone()
 }
 
 /// Frame `i` of the demo clip (640 x 360 RGBA): a slowly turning hue, a white bar crossing every 2 s, a progress strip.
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "macos"))]
 fn paint_demo(i: u32, rgba: &mut [u8]) {
     let (w, h) = (640usize, 360usize);
     let t = i as f32 / 25.0;
