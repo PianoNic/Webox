@@ -14,9 +14,13 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-/// What plugins asked the host to do; the window drains it every frame.
+/// What plugins asked the host to do; the window drains it every frame. Plugins call from their own threads too, so every push
+/// wakes the window (`ui::wake`): it has no periodic redraw, and a toast or `space.send` would wait for the next input otherwise.
 #[derive(Default)]
-pub struct Outbox { pub toasts: Vec<String>, pub sends: Vec<String>, pub logs: Vec<String>,
+pub struct Outbox {
+    /// (plugin name, text).
+    pub toasts: Vec<(String, String)>,
+    pub sends: Vec<String>, pub logs: Vec<String>,
     /// `space.send`: (space id, text).
     pub sends_to: Vec<(String, String)> }
 
@@ -30,7 +34,8 @@ const RECENT_MAX: usize = 200;
 /// How many message ids `message_received` remembers to fire once per id.
 const SEEN_MAX: usize = 4096;
 
-struct Ctx { plugin: String, out: Arc<Mutex<Outbox>>, data: Arc<Mutex<Map<String, Value>>>, data_file: PathBuf, settings: Arc<Mutex<Map<String, Value>>>,
+/// `plugin` is the key (plugin-data.json, log lines), `name` the shown name (toasts).
+struct Ctx { plugin: String, name: String, out: Arc<Mutex<Outbox>>, data: Arc<Mutex<Map<String, Value>>>, data_file: PathBuf, settings: Arc<Mutex<Map<String, Value>>>,
     recent: Recents }
 
 type Ptr = *mut c_void;
@@ -126,9 +131,13 @@ fn guard<R>(c: Ptr, fallback: R, f: impl FnOnce(&Ctx) -> R) -> R {
     if c.is_null() { return fallback; }
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(unsafe { &*(c as *const Ctx) }))).unwrap_or(fallback)
 }
-extern "C" fn h_toast(c: Ptr, t: *const c_char) { guard(c, (), |c| lock(&c.out).toasts.push(format!("{}: {}", c.plugin, s(t)))) }
-extern "C" fn h_send(c: Ptr, t: *const c_char) { guard(c, (), |c| lock(&c.out).sends.push(s(t))) }
-extern "C" fn h_log(c: Ptr, t: *const c_char) { guard(c, (), |c| lock(&c.out).logs.push(format!("[{}] {}", c.plugin, s(t)))) }
+/// Puts something in the outbox and wakes the window to handle it.
+fn post(c: &Ctx, f: impl FnOnce(&mut Outbox)) { f(&mut lock(&c.out)); crate::ui::wake(); }
+fn toast(c: &Ctx, t: String) { post(c, |o| o.toasts.push((c.name.clone(), t))) }
+fn log(c: &Ctx, t: &str) { post(c, |o| o.logs.push(format!("[{}] {t}", c.plugin))) }
+extern "C" fn h_toast(c: Ptr, t: *const c_char) { guard(c, (), |c| toast(c, s(t))) }
+extern "C" fn h_send(c: Ptr, t: *const c_char) { guard(c, (), |c| post(c, |o| o.sends.push(s(t)))) }
+extern "C" fn h_log(c: Ptr, t: *const c_char) { guard(c, (), |c| log(c, &s(t))) }
 extern "C" fn h_get(c: Ptr, k: *const c_char) -> *mut c_char {
     guard(c, std::ptr::null_mut(), |c| match lock(&c.data).get(&c.plugin).and_then(|m| m.get(s(k))).and_then(|v| v.as_str()) {
         Some(v) => cs(v).into_raw(), None => std::ptr::null_mut(),
@@ -155,13 +164,13 @@ type Method = fn(&Ctx, &Value) -> Value;
 /// What `HostApi::call` answers: (name, version, handler).
 const METHODS: &[(&str, u32, Method)] = &[
     ("host.capabilities", 1, |_, _| capabilities()),
-    ("ui.toast", 1, |c, a| with_text(a, |t| lock(&c.out).toasts.push(format!("{}: {t}", c.plugin)))),
-    ("log.write", 1, |c, a| with_text(a, |t| lock(&c.out).logs.push(format!("[{}] {t}", c.plugin)))),
+    ("ui.toast", 1, |c, a| with_text(a, |t| toast(c, t.to_string()))),
+    ("log.write", 1, |c, a| with_text(a, |t| log(c, t))),
     ("settings.get", 1, |c, _| Value::Object(lock(&c.settings).clone())),
     // `{"space","text"}`: posted as a new plain-text message on the next frame (through the plugins' send hooks; dropped for a
     // space I cannot write in). The composer is not touched.
     ("space.send", 1, |c, a| match (a.get("space").and_then(Value::as_str), a.get("text").and_then(Value::as_str)) {
-        (Some(sp), Some(t)) => { lock(&c.out).sends_to.push((sp.to_string(), t.to_string())); Value::Object(Map::new()) }
+        (Some(sp), Some(t)) => { post(c, |o| o.sends_to.push((sp.to_string(), t.to_string()))); Value::Object(Map::new()) }
         _ => serde_json::json!({ "error": "space und text erforderlich" }),
     }),
     // `{"space","limit"}`: the last `limit` loaded messages, oldest first, without system lines. No network request.
@@ -330,7 +339,8 @@ impl Plugins {
         if v.instance.is_null() { return Err("Plugin hat keine Instanz angelegt".into()); }
         e.name = s(v.name); e.author = s(v.author); e.version = s(v.version); e.description = s(v.description);
         e.commands = s(v.commands).split_whitespace().map(String::from).collect();
-        let ctx = Box::new(Ctx { plugin: key.to_string(), out: self.out.clone(), data: self.data.clone(), data_file: self.data_file.clone(),
+        let name = if e.name.trim().is_empty() { key.to_string() } else { e.name.clone() };
+        let ctx = Box::new(Ctx { plugin: key.to_string(), name, out: self.out.clone(), data: self.data.clone(), data_file: self.data_file.clone(),
             settings: e.settings.values.clone(), recent: self.recent.clone() });
         let host = Box::new(HostApi { ctx: &*ctx as *const Ctx as Ptr, toast: Some(h_toast), send: Some(h_send), log: Some(h_log),
             data_get: Some(h_get), data_set: Some(h_set), free_str: Some(h_free), settings_get: Some(h_settings),
@@ -530,6 +540,9 @@ fn unload(e: &mut Entry) {
 impl Drop for Plugins { fn drop(&mut self) { for e in &mut self.list { unload(e) } } }
 
 #[cfg(test)]
+mod e2e;
+
+#[cfg(test)]
 mod tests {
     #[derive(Default)]
     struct P;
@@ -614,7 +627,8 @@ mod tests {
         assert_eq!(caps.as_object().unwrap().len(), super::METHODS.len() + super::EVENTS.len());
         assert_eq!(ev.toast.as_deref(), Some("{}"));
         assert_eq!(ev.nope, None);
-        assert_eq!(p.out.lock().unwrap().toasts, vec!["ev: hi".to_string()]);
+        // Toasts carry the plugin's shown name, not its key.
+        assert_eq!(p.out.lock().unwrap().toasts, vec![("Ev".to_string(), "hi".to_string())]);
         drop(p);
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -622,7 +636,7 @@ mod tests {
     #[test]
     fn host_methods_answer_and_never_unwind() {
         use std::ffi::CStr;
-        let ctx = super::Ctx { plugin: "k".into(), out: Default::default(), data: Default::default(), data_file: Default::default(),
+        let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: Default::default(), data: Default::default(), data_file: Default::default(),
             settings: std::sync::Arc::new(std::sync::Mutex::new(serde_json::json!({ "x": true }).as_object().unwrap().clone())), recent: Default::default() };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |m: &str, j: &str| {
@@ -697,7 +711,7 @@ mod tests {
         let msg = |author: &str, mine: bool, text: &str| crate::cloud::Message { author: author.into(), mine, text: text.into(), ..Default::default() };
         let notice = crate::cloud::Message { notice: "Anna ist beigetreten".into(), ..Default::default() };
         p.note_space("s1", &[msg("Anna", false, "eins"), notice, msg("Ich", true, "zwei"), msg("Anna", false, "drei")]);
-        let ctx = super::Ctx { plugin: "k".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(), recent: p.recent.clone() };
+        let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(), recent: p.recent.clone() };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |m: &str, j: serde_json::Value| {
             let (m, j) = (collabhost_plugin_api::cs(m), collabhost_plugin_api::cs(&j.to_string()));

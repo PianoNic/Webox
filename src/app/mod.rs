@@ -175,7 +175,7 @@ impl App {
             }
         }
         let out = std::mem::take(&mut *self.plugins.out.lock().unwrap());
-        for t in out.toasts { self.toast(t, now); }
+        for (plugin, t) in out.toasts { self.plugin_toast(plugin, t, now); }
         for t in out.sends { self.send_text(t, now); }
         for (space, t) in out.sends_to { self.post_to(space, t); }
         self.ack_on_activation(); // the window came to the front with an unread chat open
