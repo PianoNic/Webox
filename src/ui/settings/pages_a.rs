@@ -185,6 +185,9 @@ impl App {
             let opts: Vec<(&str, &str)> = Density::ALL.iter().map(|d| (d.key(), d.label())).collect();
             self.pradio(ui, t, "density", Density::Standard.key(), &opts);
         });
+        section(ui, t, "GIFs", "", false, |ui| {
+            self.pcheck(ui, t, "gifs_pause_unfocused", false, "GIFs nur abspielen, wenn Webox das aktive Fenster ist");
+        });
         section(ui, t, "Meetings", "", false, |ui| {
             self.pcheck(ui, t, "always_dark_calls", false, "Immer dunkles Thema verwenden");
         });

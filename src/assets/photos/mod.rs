@@ -39,6 +39,9 @@ impl Decoder {
 }
 
 /// A sanity cap only; `MAX_ANIM_BYTES` is what normally limits a GIF.
+/// Setting "GIFs nur abspielen, wenn Webox das aktive Fenster ist" (`gifs_pause_unfocused`), mirrored once per frame (frame.rs).
+pub static GIFS_ONLY_FOCUSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub const MAX_FRAMES: usize = 600;
 pub const MAX_FRAME_SIDE: u32 = 512;
 /// Largest side of a static image texture (typical GPU limit is 8192–16384).
@@ -300,7 +303,8 @@ impl Photos {
         // Every animation frame redraws the whole window: none while it's hidden (tray, minimized), at most 30 fps in front,
         // 20 fps behind another window.
         let (minimized, focused) = ctx.input(|i| (i.viewport().minimized == Some(true), i.viewport().focused != Some(false)));
-        if !minimized && !crate::platform::tray::HIDDEN.load(std::sync::atomic::Ordering::Relaxed) {
+        let paused = !focused && GIFS_ONLY_FOCUSED.load(std::sync::atomic::Ordering::Relaxed);
+        if !minimized && !paused && !crate::platform::tray::HIDDEN.load(std::sync::atomic::Ordering::Relaxed) {
             ctx.request_repaint_after(std::time::Duration::from_secs_f32(left.max(if focused { 1.0 / 30.0 } else { 0.05 })));
         }
         Some((a.frames[idx].0.id(), a.size))

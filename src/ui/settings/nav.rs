@@ -107,6 +107,7 @@ pub(crate) const INDEX: &[(Page, &str, &str)] = &[
     (Page::Appearance, "Immer dunkles Thema verwenden", "Meetings"),
     (Page::Appearance, "Handgesten erkennen", "Meetings und Anrufe"),
     (Page::Appearance, "Darstellungsdichte", "Standard, Kompakt"),
+    (Page::Appearance, "GIFs anhalten", "nur abspielen, wenn Webox das aktive Fenster ist"),
     (Page::Accessibility, "Schriftgröße", "Größe der Nachrichten"),
     (Page::Shortcuts, "Tastenkombinationen", "Beschreibung, Tastenkombination, Global"),
     (Page::Privacy, "Verfügbarkeit und Status anzeigen", "Privatfunktion"),

@@ -75,6 +75,7 @@ impl eframe::App for App {
         self.typing_frame(ctx); // my typing → the service (throttled), typers' overlay animation (ui/typing.rs)
         self.poll_webview();
         if self.webview.is_some() { ctx.request_repaint(); }
+        crate::assets::photos::GIFS_ONLY_FOCUSED.store(self.settings["gifs_pause_unfocused"].as_bool().unwrap_or(false), std::sync::atomic::Ordering::Relaxed);
         // Darstellungsdichte (ui/theme/density.rs): read every frame, so a change applies at once
         if self.frames == 1 && self.shot.is_some() { if let Ok(v) = std::env::var("WEBOX_SHOT_DENSITY") { self.settings["density"] = json!(v); }
             if let Ok(v) = std::env::var("WEBOX_SHOT_COMPACT_VIEW") { self.settings["compact_view"] = json!(v == "1"); } }
