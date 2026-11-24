@@ -45,6 +45,9 @@ tokio = { version = "1", default-features = false, features = ["rt-multi-thread"
 cpal = "0.15"
 bytes = "1"
 ropus = "0.12"
+# Decoding a screen share received in a call (H.264, the slides line): OpenH264, the decoder the official client ships too
+# (openh264.dll), built from source (BSD-2-Clause) so it works the same on Windows, Linux and macOS.
+openh264 = { version = "0.9", default-features = false, features = ["source"] }
 # Smart Audio noise removal on the microphone. Primary: DeepFilterNet 3 (libDF, MIT/Apache-2.0) with tract, a pure-Rust ONNX
 # runtime. The real-time API is not on crates.io (only the old 0.2.5 is), so libDF is pinned to the v0.5.6 release commit, the
 # version built for tract 0.19 (upstream main moved to tract 0.21, which fails to compile the DFN3 graph: "duplicate name

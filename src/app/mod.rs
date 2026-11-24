@@ -142,6 +142,7 @@ impl App {
                 Resp::Error(e) => { self.call_failed(); self.toast(e, now) }
                 Resp::Call(ev) => self.on_call_event(ev, now),
                 Resp::CallShare(on) => { self.call.sharing = on; self.call.share_pending = false; }
+                Resp::RemoteShare(who) => self.on_remote_share(who),
                 Resp::Cover(b) => { self.cover_bytes = Some(b); self.cover = None; }
                 Resp::Avatars(v) => self.photos.add(v),
                 Resp::Images(v) => self.photos.add_images(v),

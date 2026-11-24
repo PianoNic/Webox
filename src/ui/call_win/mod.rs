@@ -79,4 +79,5 @@ impl WinState {
 }
 
 mod call;
+pub(crate) use call::fit_size;
 mod dock;

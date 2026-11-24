@@ -19,10 +19,11 @@
 //! * **Media transport** (`media.rs`): webrtc-rs peer connection (ICE, DTLS-SRTP, RTP), Opus 48 kHz via `ropus`, devices via `cpal` (`audio.rs`).
 //! * **Not done:** media over TCP / TLS 443 (the server's TCP and `xTLS` candidates are dropped, webrtc-rs only does UDP
 //!   ICE) and TURN discovery (`TURN_DISCOVERY_REQUEST`), both only needed when UDP to the media cluster is blocked; the
-//!   `reachability` data (media cluster choice), camera video, showing a share the other side sends. Interop with Locus'
-//!   media servers is only tested against a second local webrtc-rs peer.
-//! * **Screen share** (sending): `share.rs` (capture, ROAP re-OFFER with the `slides` lines, floor request on the locus'
-//!   `content` media share).
+//!   `reachability` data (media cluster choice), camera video. Interop with Locus' media servers is only tested against a
+//!   second local webrtc-rs peer.
+//! * **Screen share**, sending: `share.rs` (capture, ROAP re-OFFER with the `slides` lines, floor request on the locus'
+//!   `content` media share). Receiving: the `content` floor GRANTED to the other side (`share_rx::remote_sharer`) makes
+//!   sure the `slides` lines exist; their H.264 is decoded in `cloud/share_rx.rs` and shown as the call window's stage.
 //! * **Locus state** follows the official client's `SequenceManager`: full loci newer than ours replace it, deltas
 //!   (`baseSequence`) are merged onto the sequence they name, a delta we can't place (missed / out-of-order event) makes
 //!   us re-read the whole locus (`apply_event`). The call ends as soon as the other side declined or left
@@ -279,14 +280,20 @@ struct Active {
     /// When our OFFER went out and no ANSWER has come yet (`ROAP_TIMEOUT`).
     offer_at: Option<Instant>,
     /// Screen share of this call (`share.rs`), and whether the other side's share was already announced.
-    share: Option<share::Share>, remote_share: bool,
+    share: Option<share::Share>,
+    /// The ROAP seq of our OFFER that (re)negotiates the share's lines while its ANSWER is awaited, and since when.
+    lines_seq: Option<u32>, lines_at: Option<Instant>,
+    /// The far end shares (its name), since when, and whether the lines were negotiated once more to declare the SSRC
+    /// its share really arrives from (`share_rx_tick`).
+    remote_share: Option<String>, remote_since: Option<Instant>, rx_reoffered: bool, rx_warned: bool,
 }
 
 impl Active {
     fn new(url: String, self_id: String, self_url: String, outgoing: bool, name: String, email: String) -> Active {
         Active { url, self_id, self_url, media_id: String::new(), correlation_id: String::new(), outgoing, name, email, last: None, answered: outgoing,
             media: None, roap_seq: 0, roap_done: false, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None,
-            locus: Value::Null, joined_at: None, media_up_at: None, offer_at: None, share: None, remote_share: false }
+            locus: Value::Null, joined_at: None, media_up_at: None, offer_at: None, share: None,
+            lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false }
     }
 }
 
