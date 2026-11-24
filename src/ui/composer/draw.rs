@@ -98,8 +98,10 @@ impl App {
                     if i.consume_key(Modifiers::NONE, Key::ArrowUp) { ms = ms.saturating_sub(1); }
                     if i.consume_key(Modifiers::NONE, Key::Enter) || i.consume_key(Modifiers::NONE, Key::Tab) { accept_ment = true; }
                 } else {
-                    if i.consume_key(Modifiers::NONE, Key::Enter) { want_send = true; }
-                    else if i.consume_key(Modifiers::SHIFT, Key::Enter) { want_newline = true; }
+                    // Shift+Enter first: consume_key ignores an extra Shift, so a plain-Enter check ahead of it took Shift+Enter
+                    // too and sent the message instead of breaking the line.
+                    if i.consume_key(Modifiers::SHIFT, Key::Enter) { want_newline = true; }
+                    else if i.consume_key(Modifiers::NONE, Key::Enter) { want_send = true; }
                 }
                 if i.consume_key(Modifiers::NONE, Key::Escape) { want_esc = true; }
                 // Emoji clusters (ZWJ sequences, flags, skin tones, variation selectors) are one unit for the caret keys.
