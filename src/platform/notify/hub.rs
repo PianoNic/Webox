@@ -226,9 +226,14 @@ impl App {
             let shown = if self.nb("notif_taskbar_flash", true) { unread } else { 0 };
             if self.notify.shown_unread != Some(shown) { self.notify.shown_unread = Some(shown); tray::overlay(h, shown); }
         }
-        // Linux: another start handed over (launcher click while hidden in the tray, a link): show the window, open the space.
+        // Linux: another start handed over (launcher click while hidden in the tray, a link); macOS: a link (Apple Event, also the
+        // one that launched the app). Show the window, open the space.
         #[cfg(target_os = "linux")]
-        for uri in crate::platform::linux::instance::take(ctx) {
+        let links = crate::platform::linux::instance::take(ctx);
+        #[cfg(target_os = "macos")]
+        let links = crate::platform::macos::links::take(ctx);
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        for uri in links {
             self.notify.menu = None;
             self.show_main(ctx);
             if let Some(id) = system::space_from_uri(&uri) { if self.spaces.iter().any(|s| s.id == id) { self.set_tab(Tab::Messaging); self.open_space(id); } else { self.pending_space = Some(id); } }

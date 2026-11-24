@@ -352,6 +352,9 @@ fn main() -> eframe::Result<()> {
     #[cfg(target_os = "linux")]
     if platform::linux::x11::argb_visual() { vp = vp.with_transparent(true); }
     let opts = eframe::NativeOptions { viewport: vp, ..Default::default() };
+    // macOS: links from the browser arrive as Apple Events, the one that launched the app included (registered before NSApplication runs).
+    #[cfg(target_os = "macos")]
+    platform::macos::links::install();
     eframe::run_native("Webox", opts, Box::new(move |cc| {
         set_fonts(&cc.egui_ctx);
         // Mouse wheel: 60 pt per notch instead of egui's 40.

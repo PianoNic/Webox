@@ -3,6 +3,7 @@
 //! `shortcuts/global_macos.rs`, cameras / video / screen sharing live in `media/`, the self-update in `updater/macos.rs`.
 pub mod appkit; // menu-bar status item, Dock badge, the app menu bar
 pub mod keychain; // secret plugin settings
+pub mod links; // webexteams:// / collabhost:// links (Apple Events)
 pub mod login; // start at login
 pub mod notifications; // UNUserNotificationCenter (in Webox.app), else osascript
 
