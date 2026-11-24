@@ -116,7 +116,8 @@ impl App {
             Item::new("settings", "Einstellungen").entry(),
             Item::new("help", "Hilfe").submenu().entry(),
             Entry::Sep,
-            Item::new("signout", "Abmelden").entry(),
+            // Signed in: "Abmelden". In the sample data there is no account: "Anmelden" like on the settings page.
+            if self.client.is_some() { Item::new("signout", "Abmelden").entry() } else { Item::new("signin", "Anmelden").entry() },
             Item::new("exit", crate::tr!("ApplicationMenuController", "Exit %1").replace("%1", crate::i18n::APP_NAME)).entry(), // %1 = the app
         ];
         if let Some(a) = menu::menu_impl(ctx, &mut self.icons, t, "status", avatar, Side::Below, Align::Left, true, &items, Some(318.0)) {
@@ -129,8 +130,8 @@ impl App {
                 "help" => { menu::menu_open(ctx, "status"); menu::menu_close(ctx, "status-avail"); menu::menu_close(ctx, "status-dnd"); menu::menu_open(ctx, "status-help"); }
                 "edit" => menu::menu_open(ctx, super::app_dialogs::EDIT_PROFILE),
                 "settings" => self.set_tab(Tab::Settings),
-                // The sign-out confirmation (the shortcut module's dialog); nothing to sign out of in --sample.
-                "signout" => if self.client.is_some() { self.sc.sign_out_ask = true } else { self.toast("Sie sind nicht angemeldet.", now) },
+                "signout" => self.sc.sign_out_ask = true, // the sign-out confirmation (the shortcut module's dialog)
+                "signin" => { self.need_login = true; self.login_error.clear(); }
                 "exit" => self.act(Act::Quit, ctx),
                 _ => {}
             }
