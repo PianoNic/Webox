@@ -180,7 +180,7 @@ impl App {
             (None, mine) => {
                 let Some(m) = self.messages.get_mut(&id).and_then(|l| l.iter_mut().find(|m| m.id == msg)) else { return };
                 m.rev = 0; // edited in place: the list's layout cache hashes it again
-                let me = cloud::Reactor { id: self.me.id.clone(), published: String::new() };
+                let me = cloud::Reactor { id: self.me.id.clone(), ..Default::default() };
                 match (m.reactions.iter().position(|r| r.name == name), mine.flatten()) {
                     (Some(i), Some(_)) => {
                         let r = &mut m.reactions[i];

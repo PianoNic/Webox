@@ -14,7 +14,11 @@ impl Session {
         if !act.is_empty() && answer["verb"].is_string() {
             // A delete whose target isn't in the cache is a reaction counted only inside a summary: its name isn't known
             // here, so the newest page (with the service's new summary) is loaded instead.
-            if answer["verb"] == "delete" && !self.cached(space, &st(&answer["object"], "id")) { return self.reload_newest(space) }
+            if answer["verb"] == "delete" {
+                let (target, hit) = (st(&answer["object"], "id"), self.cached(space, &st(&answer["object"], "id")));
+                dbg_conn(&format!("my delete {act} of {target} (object verb {:?}) in {space}: target cached {hit}", st(&answer["object"], "verb")));
+                if !hit { return self.reload_newest(space) }
+            }
             // Its live event came first (already merged and shown): nothing left to wait for.
             if self.merge_acts(space, vec![answer]) == 0 { return Ok(()) }
             self.refold(space);
@@ -187,5 +191,96 @@ mod tests {
         assert!(membership_change(&json!({"verb": "leave", "object": {"objectType": "person"}})));
         assert!(!membership_change(&json!({"verb": "add", "object": {"objectType": "reaction2"}})));
         assert!(!membership_change(&json!({"verb": "post", "object": {"objectType": "comment"}})));
+    }
+
+    /// The `delete` as the service sends it (live event, the answer to my own delete, an entry of a history page): it points
+    /// at the deleted activity, whose verb is already `tombstone`.
+    fn delete(id: &str, of: &str, at: &str, actor: &str) -> Value {
+        json!({"id": id, "verb": "delete", "published": at, "actor": {"id": actor, "entryUUID": actor}, "target": {"id": "sp"},
+            "object": {"id": of, "objectType": "activity", "verb": "tombstone"}})
+    }
+    fn notices(m: &[Message]) -> Vec<(&str, &str)> { m.iter().map(|m| (m.id.as_str(), if m.notice.is_empty() { m.text.as_str() } else { m.notice.as_str() })).collect() }
+
+    #[test]
+    fn a_live_delete_of_a_loaded_message_leaves_the_deleted_row() {
+        let (mut s, rx) = session();
+        s.merge_acts("sp", vec![post("a1", "bleibt", "2026-11-17T09:00:00.000Z", "other"), post("a2", "weg", "2026-11-17T09:01:00.000Z", "me")]);
+        assert!(s.incoming(&delete("d1", "a2", "2026-11-17T09:05:00.000Z", "me")).is_ok(), "no request");
+        let (n, msgs) = lists(&rx);
+        assert_eq!(n, 1);
+        let gone = crate::trq!("You deleted your message.").into_owned();
+        assert_eq!(notices(&msgs), [("a1", "bleibt"), ("a2", gone.as_str())]);
+        assert_eq!((msgs[1].date.as_str(), msgs[1].time.as_str()), ("2026-11-17", "09:05"), "stamped with the deletion time");
+        // Someone else deleting their message on another device: the same.
+        let mut ev = delete("d2", "a1", "2026-11-17T09:06:00.000Z", "other");
+        ev["actor"]["displayName"] = json!("Ann");
+        assert!(s.incoming(&ev).is_ok());
+        let (_, msgs) = lists(&rx);
+        assert_eq!(msgs[1].notice, crate::trq!("{{0}} deleted their own message.", "Ann"));
+        assert!(msgs.iter().all(|m| m.text.is_empty()), "no deleted text stays visible");
+    }
+
+    #[test]
+    fn my_own_delete_is_applied_from_the_answer() {
+        let (mut s, rx) = session();
+        s.merge_acts("sp", vec![post("a1", "weg", "2026-11-17T09:00:00.000Z", "me")]);
+        s.hist.posted = Some((delete("d1", "a1", "2026-11-17T09:02:00.000Z", "me"), "t".into()));
+        assert!(s.after_write("sp").is_ok(), "no reload");
+        let (_, msgs) = lists(&rx);
+        assert_eq!(notices(&msgs), [("a1", crate::trq!("You deleted your message.").as_ref())]);
+        // Its live event: only de-duplicated.
+        assert!(s.incoming(&delete("d1", "a1", "2026-11-17T09:02:00.000Z", "me")).is_ok());
+        assert!(s.hist.echo.is_empty());
+        assert_eq!(lists(&rx).0, 0);
+    }
+
+    #[test]
+    fn a_reload_replaces_the_cached_message_by_its_tombstone() {
+        let (mut s, _rx) = session();
+        s.merge_acts("sp", vec![post("a1", "weg", "2026-11-17T09:00:00.000Z", "other")]);
+        // The newest page after the delete happened elsewhere (e.g. while offline): the tombstone with the same id.
+        let tomb = json!({"id": "a1", "verb": "tombstone", "published": "2026-11-17T10:00:00.000Z", "actor": {"id": "other", "displayName": "Ann"},
+            "object": {"id": "a1", "objectType": "activity", "verb": "post", "actor": {"id": "other"}}});
+        assert_eq!(s.merge_acts("sp", vec![tomb.clone()]), 1);
+        assert_eq!(s.merge_acts("sp", vec![tomb]), 0, "once");
+        let m = s.fold_in("sp", &s.hist.acts["sp"].clone(), "");
+        assert_eq!(notices(&m), [("a1", crate::trq!("{{0}} deleted their own message.", "Ann").as_ref())]);
+    }
+
+    #[test]
+    fn a_delete_known_before_its_message_still_applies() {
+        let (mut s, rx) = session();
+        // The newest page holds the delete; the message itself is in an older page, merged later.
+        s.merge_acts("sp", vec![post("a0", "neu", "2026-11-17T09:10:00.000Z", "other"), delete("d1", "a1", "2026-11-17T09:05:00.000Z", "me")]);
+        assert_eq!(s.merge_acts("sp", vec![post("a1", "alt", "2026-11-17T09:00:00.000Z", "me")]), 2, "added and turned into its tombstone");
+        let m = s.fold_in("sp", &s.hist.acts["sp"].clone(), "");
+        assert_eq!(notices(&m), [("a1", crate::trq!("You deleted your message.").as_ref()), ("a0", "neu")]);
+        // A live post that was deleted before its event arrived: folded, not shown as a new message.
+        s.merge_acts("sp", vec![delete("d2", "a3", "2026-11-17T09:12:00.000Z", "me")]);
+        assert!(s.incoming(&post("a3", "kurz", "2026-11-17T09:11:00.000Z", "me")).is_ok());
+        let all: Vec<Resp> = rx.try_iter().collect();
+        assert!(!all.iter().any(|r| matches!(r, Resp::Incoming(..))));
+        assert!(all.iter().any(|r| matches!(r, Resp::Messages(_, m) if m.iter().any(|m| m.id == "a3" && !m.notice.is_empty()))));
+    }
+
+    #[test]
+    fn reactors_get_the_names_the_session_knows() {
+        let (mut s, rx) = session();
+        s.my_email = "me@example.com".into();
+        // A participant listed by its e-mail-style id, its uuid known from the list; a writer known only as an actor; a
+        // reactor known only from the reaction activities (`Req::ReactorNames`).
+        s.spaces.insert("sp".into(), crate::cloud::Space { id: "sp".into(), participants: vec![Person { id: "erika@example.com".into(), name: "Erika Beispiel".into(), email: "erika@example.com".into(), status: String::new() }], ..Default::default() });
+        s.uuids.insert("erika@example.com".into(), "11111111-1111-1111-1111-111111111111".into());
+        let mut by_max = post("a1", "hi", "2026-11-17T09:00:00.000Z", "22222222-2222-2222-2222-222222222222");
+        by_max["actor"] = json!({"id": "22222222-2222-2222-2222-222222222222", "displayName": "Max Probe", "emailAddress": "max@example.com"});
+        let users = ["11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "33333333-3333-3333-3333-333333333333", "me", "44444444-4444-4444-4444-444444444444"];
+        let summary = json!({"id": "s1", "verb": "add", "published": "2026-11-17T09:01:00.000Z", "parent": {"id": "a1", "type": "reactionSummary"},
+            "object": {"objectType": "reaction2Summary", "reactions": [{"displayName": "heart", "count": 5, "users": users.iter().map(|u| json!({"id": u, "published": "2026-11-17T09:01:00.000Z"})).collect::<Vec<_>>()}]}});
+        super::super::fold::remember_actors(&mut s.hist.names, &[json!({"actor": {"id": "33333333-3333-3333-3333-333333333333", "displayName": "Lea Weg", "emailAddress": "lea@example.com"}})]);
+        s.merge_acts("sp", vec![by_max, summary]);
+        s.refold("sp");
+        let (_, msgs) = lists(&rx);
+        let got: Vec<(&str, &str)> = msgs[0].reactions[0].users.iter().map(|u| (u.name.as_str(), u.email.as_str())).collect();
+        assert_eq!(got, [("Erika Beispiel", "erika@example.com"), ("Max Probe", "max@example.com"), ("Lea Weg", "lea@example.com"), ("", "me@example.com"), ("", "")]);
     }
 }

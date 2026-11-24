@@ -124,9 +124,11 @@ pub struct ReadMark { pub person: String, pub email: String, pub activity: Strin
 pub struct Reaction { pub name: String, pub count: u32, pub mine: Option<String>,
     /// Who reacted, in the order the service lists them (the reactors popover).
     pub users: Vec<Reactor> }
-/// One person behind a reaction: the participant id (uuid) and when they reacted (ISO, UTC; may be empty).
+/// One person behind a reaction: the participant id (uuid) and when they reacted (ISO, UTC; may be empty). `name` / `email`:
+/// what the session knows about that uuid (the space's participants, actors of loaded activities, `Req::ReactorNames`); the
+/// UI's people lists are keyed by the e-mail-style participant id, which a uuid never matches.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Reactor { pub id: String, pub published: String }
+pub struct Reactor { pub id: String, pub published: String, pub name: String, pub email: String }
 #[derive(Clone, Debug, Default)]
 pub struct Person { pub id: String, pub name: String, pub email: String, pub status: String }
 #[derive(Clone, Debug, Default)]
@@ -154,6 +156,9 @@ pub enum Req {
     Delete(String, String), Ack(String, String),
     /// (space, message, reaction name); Unreact takes the reaction's own id
     React(String, String, String), Unreact(String, String),
+    /// (space, message): the names of the people who reacted to it (read-only; their reaction activities name the actor). Asked
+    /// by the reactors popover when a reactor isn't known; answered by folding the space again (`Resp::Messages`).
+    ReactorNames(String, String),
     /// Load the original file behind an inline image thumbnail (`Attachment.key`); arrives as `Resp::Images` key `full:<key>`.
     FullImage(String),
     /// Load the page of activities before the oldest one known in this space (history); answered with `Resp::OlderMessages`.
