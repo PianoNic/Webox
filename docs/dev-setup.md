@@ -10,7 +10,7 @@
 
 Sign-in needs the OAuth client of the Webex desktop app and the GIF picker a Giphy API key. They are in `secrets.toml` at the repo root (the layout is in `secrets.example.toml`).
 
-`build.rs` embeds the file at compile time. The variables `WEBOX_CLIENT_ID`, `WEBOX_CLIENT_SECRET` and `WEBOX_GIPHY_API_KEY` override it, both when building and when running. After creating or deleting `secrets.toml`, run `cargo clean -p webox` once so the build script runs again; edits to an existing file are picked up on their own.
+`build.rs` embeds the file at compile time. The variables `WEBOX_CLIENT_ID`, `WEBOX_CLIENT_SECRET` and `WEBOX_GIPHY_API_KEY` override it, both when building and when running. Changes to the file are picked up by the next build.
 
 Without the file the app builds and runs: the sign-in screen says sign-in is not configured, and the GIF picker shows its error state.
 

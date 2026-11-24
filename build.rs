@@ -76,7 +76,9 @@ fn secrets(out: &mut String) {
     let file = manifest_dir().join("secrets.toml");
     // Only watched when it exists: a missing path would rerun this script on every build. So after creating
     // or deleting the file, run `cargo clean -p webox` once (edits to an existing file are picked up).
-    if file.exists() { println!("cargo:rerun-if-changed=secrets.toml"); }
+    // Always watched: registered only when present, a checkout built before secrets.toml existed never picked it up after a
+    // pull (sign-in stayed "not configured" until `cargo clean`).
+    println!("cargo:rerun-if-changed=secrets.toml");
     let text = fs::read_to_string(&file).unwrap_or_default();
     for (key, var, name) in SECRETS {
         println!("cargo:rerun-if-env-changed={var}");
