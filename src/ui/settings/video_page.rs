@@ -123,7 +123,7 @@ impl App {
         self.call.cam.seen = now;
         self.cam_refresh(now);
         let sample = self.cam_sample();
-        let key = PreviewKey { dev: self.cam_selected(), max_h: self.cam_max_h(), hw: self.sb("camera_hw_accel", true), sample };
+        let key = PreviewKey { dev: self.cam_selected(), max_h: self.cam_max_h(), hw: self.sb("camera_hw_accel", true), sample, src: camera::hook::source() };
         let look = self.cam_look();
         let ppp = ui.ctx().pixels_per_point();
         let px = ((r.width() * ppp).round() as usize, (r.height() * ppp).round() as usize);

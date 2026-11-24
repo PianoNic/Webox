@@ -4,7 +4,7 @@
 //! the colours it sends. Set once per frame by apply_theme; every drawing site asks `on(bit)` and does nothing when no design
 //! plugin is active.
 use collabhost_plugin_api::{deco, Decor, Wash as ApiWash};
-use eframe::egui::{epaint::{Mesh, PathShape, PathStroke, Vertex, WHITE_UV}, pos2, vec2, Color32, Painter, Pos2, Rect, Shape};
+use eframe::egui::{epaint::{PathShape, PathStroke, WHITE_UV}, pos2, vec2, Color32, Painter, Pos2, Rect};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -61,29 +61,14 @@ fn along(r: Rect, angle: f32, p: Pos2) -> f32 {
     ((proj(p) - lo) / (hi - lo).max(1e-3)).clamp(0.0, 1.0)
 }
 
-/// Moves a point of `r` that lies outside its rounded corners onto the corner's arc.
-fn round_in(r: Rect, radius: f32, p: Pos2) -> Pos2 {
-    if radius <= 0.0 { return p; }
-    let cx = if p.x < r.left() + radius { r.left() + radius } else if p.x > r.right() - radius { r.right() - radius } else { return p };
-    let cy = if p.y < r.top() + radius { r.top() + radius } else if p.y > r.bottom() - radius { r.bottom() - radius } else { return p };
-    let v = p - pos2(cx, cy);
-    if v.length() <= radius { p } else { pos2(cx, cy) + v.normalized() * radius }
-}
-
 /// Fills `r` (rounded by `radius`) with the gradient of `stops` along `angle`, at `opacity`.
 pub(crate) fn fill(p: &Painter, r: Rect, radius: f32, stops: &[Color32], angle: f32, opacity: f32) {
     if stops.is_empty() || opacity <= 0.0 || r.width() < 1.0 || r.height() < 1.0 { return; }
-    let (cols, rows) = (((r.width() / 24.0).ceil() as usize).clamp(4, 48), ((r.height() / 24.0).ceil() as usize).clamp(2, 24));
-    let mut m = Mesh::default();
-    for j in 0..=rows {
-        for i in 0..=cols {
-            let q = round_in(r, radius, pos2(r.left() + r.width() * i as f32 / cols as f32, r.top() + r.height() * j as f32 / rows as f32));
-            m.vertices.push(Vertex { pos: q, uv: WHITE_UV, color: crate::alpha(at(stops, along(r, angle, q)), opacity) });
-        }
-    }
-    let w = (cols + 1) as u32;
-    for j in 0..rows as u32 { for i in 0..cols as u32 { let a = j * w + i; m.add_triangle(a, a + 1, a + w); m.add_triangle(a + 1, a + w + 1, a + w); } }
-    p.add(Shape::mesh(m));
+    // A fan of rings from the centre (the gradient sampled every few points) with an antialiased rim; the grid with its
+    // corner points pulled onto the arc gave coarse, hard-edged corners.
+    let pts = crate::ui::widgets::rounded_rect_points(r, [radius; 4], p.ctx().pixels_per_point(), 24.0);
+    let rings = ((r.width().max(r.height()) / 48.0).ceil() as u32).clamp(2, 12);
+    crate::ui::widgets::fill_convex_aa(p, &pts, Default::default(), rings, |q| (crate::alpha(at(stops, along(r, angle, q)), opacity), WHITE_UV));
 }
 
 fn rounded_path(r: Rect, radius: f32) -> Vec<Pos2> {
@@ -168,8 +153,6 @@ mod tests {
         let r = Rect::from_min_size(pos2(0.0, 0.0), vec2(100.0, 50.0));
         assert!((along(r, 0.0, pos2(50.0, 10.0)) - 0.5).abs() < 1e-4);
         assert!((along(r, 90.0, pos2(0.0, 50.0)) - 1.0).abs() < 1e-4);
-        assert_eq!(round_in(r, 10.0, pos2(0.0, 0.0)).distance(pos2(10.0, 10.0)).round(), 10.0);
-        assert_eq!(round_in(r, 10.0, pos2(50.0, 25.0)), pos2(50.0, 25.0));
     }
     #[test]
     fn api_decor_is_sanitised() {

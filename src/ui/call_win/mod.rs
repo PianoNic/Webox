@@ -9,7 +9,8 @@
 //! `call_autohide_controls` (bool, default true = `desktop-auto-hide-call-control-enabled`), `call_win_rect` ([x,y,w,h]),
 //! `dock_auto_covered` (bool, default false: "Mein(en) Webex-Anruf oder -Meeting automatisch in einem unverankerten Minifenster
 //! anzeigen, wenn es von anderen Apps verdeckt wird"), `dock_keep_in_front` (bool, default false: "Anruf-Dock im Vordergrund
-//! beibehalten" = the pin button), `dock_dont_ask` (bool: "Nicht erneut nachfragen"), `dock_rect` ([x,y,w,h]).
+//! beibehalten" = the pin button), `calling_dock` (bool, default true: "Anruf-Dock aktivieren"; off = no automatic dock),
+//! `dock_dont_ask` (bool: "Nicht erneut nachfragen"), `dock_rect` ([x,y,w,h]).
 use super::call::{state_text, CallActions, CallView};
 use super::call_toast::{ghost_at, round_at};
 use super::menu::{menu_toggle, webex_menu, Align, Entry, Item, Side};
@@ -71,7 +72,12 @@ fn rect_setting(s: &serde_json::Value, key: &str) -> Option<[f32; 4]> {
 impl WinState {
     fn dock_last_pos(&self) -> Option<egui::Pos2> { self.dock_last }
     fn set_dock_last_pos(&mut self, p: egui::Pos2) { self.dock_last = Some(p); }
+    /// Strg+Umschalt+X: a shown dock closes and stays closed for this call, a hidden one opens.
+    fn toggle_dock(&mut self) {
+        if self.dock_shown { self.dock_open = false; self.dock_suppress = true; } else { self.dock_open = true; self.dock_suppress = false; }
+    }
 }
 
 mod call;
+pub(crate) use call::fit_size;
 mod dock;

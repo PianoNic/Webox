@@ -97,17 +97,27 @@ fn grid_from_name(name: &str) -> Option<u32> {
     name.split('_').skip(1).find_map(|p| p.parse::<u32>().ok()).filter(|n| (6..=64).contains(n))
 }
 
+/// Transparent texels around every raster. egui draws a texture as a quad without edge anti-aliasing, so artwork that reaches
+/// the edge of its view box (a full disc, a round badge) was cut flat where it touched the quad's border; with this margin
+/// the content never touches it. Draw the texture into `grow(rect, px)`, which keeps the content at `rect`'s size.
+const PAD: u32 = 2;
+
+/// The rect to draw a `raster_px` texture with content size `px` into, so its content fills `rect` exactly.
+fn grow(rect: Rect, px: u32) -> Rect { rect.expand(rect.width() * PAD as f32 / px.max(1) as f32) }
+
+/// Rasterises the SVG with its content `px_size` px wide, plus `PAD` transparent texels on every side.
 fn raster_px(data: &[u8], tint: bool, px_size: u32, name: Option<&str>) -> Option<egui::ColorImage> {
     let patched = glyph_with_view_box(data, name);
     let data = patched.as_deref().unwrap_or(data);
     let tree = resvg::usvg::Tree::from_data(data, &resvg::usvg::Options::default()).ok()?;
-    let mut pix = resvg::tiny_skia::Pixmap::new(px_size, px_size)?;
+    let side = px_size + 2 * PAD;
+    let mut pix = resvg::tiny_skia::Pixmap::new(side, side)?;
     let s = px_size as f32 / tree.size().width().max(tree.size().height());
-    resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(s, s), &mut pix.as_mut());
+    resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(s, s).post_translate(PAD as f32, PAD as f32), &mut pix.as_mut());
     // Icons: white with the icon's coverage as alpha, so any tint can be applied. Emoji keep their colours.
     let px: Vec<Color32> = pix.pixels().iter().map(|p| if tint { Color32::from_white_alpha(p.alpha()) }
         else { Color32::from_rgba_premultiplied(p.red(), p.green(), p.blue(), p.alpha()) }).collect();
-    Some(egui::ColorImage { size: [px_size as usize, px_size as usize], pixels: px })
+    Some(egui::ColorImage { size: [side as usize, side as usize], pixels: px })
 }
 pub const LOGO_256: &[u8] = include_bytes!("../../assets/logo-256.png");
 
@@ -187,7 +197,7 @@ fn take_prewarmed(kind: Kind, name: &'static str) -> Option<egui::ColorImage> {
 const SCALED: egui::TextureOptions = egui::TextureOptions { mipmap_mode: Some(egui::TextureFilter::Linear), ..egui::TextureOptions::LINEAR };
 
 #[derive(Default)]
-pub struct Icons(HashMap<&'static str, TextureHandle>, HashMap<&'static str, TextureHandle>, HashMap<(&'static str, u32), TextureHandle>);
+pub struct Icons(HashMap<&'static str, TextureHandle>, HashMap<(&'static str, u32), TextureHandle>, HashMap<(&'static str, u32), TextureHandle>);
 
 impl Icons {
     fn tex(&mut self, ctx: &egui::Context, name: &'static str) -> Option<egui::TextureId> {
@@ -205,13 +215,17 @@ impl Icons {
         // Single-colour black line art (the Momentum fallbacks contacts-320 / message-send-320, ...) is drawn in the theme's ink,
         // like the -black / -white art variants switch by theme.
         let mono = mono_black(data);
-        if !self.1.contains_key(name) {
-            let img = if mono { raster_px(data, true, 256, None) } else { take_prewarmed(Kind::Art, name).or_else(|| raster_px(data, false, 256, None)) };
-            let Some(img) = img else { return false };
-            self.1.insert(name, ui.ctx().load_texture(format!("art-{name}"), img, SCALED));
+        // Rasterised at the drawn size in device pixels (cached per size), snapped to the pixel grid, like `paint`: a 256 px raster
+        // shrunk with mipmaps also shrank the transparent margin below a pixel, so a full disc touched the quad's border again
+        // and was cut flat on whichever sides the sub-pixel position put on that border.
+        let ppp = ui.ctx().pixels_per_point();
+        let px = (rect.width() * ppp).round().clamp(1.0, 1024.0) as u32;
+        if !self.1.contains_key(&(name, px)) {
+            let Some(img) = raster_px(data, mono, px, None) else { return false };
+            self.1.insert((name, px), ui.ctx().load_texture(format!("art-{name}@{px}"), img, egui::TextureOptions::LINEAR));
         }
         let tint = if mono { art_ink() } else { Color32::WHITE };
-        ui.painter().image(self.1[name].id(), rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
+        ui.painter().image(self.1[&(name, px)].id(), grow(on_grid(rect, px, ppp), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
         true
     }
 
@@ -228,7 +242,7 @@ impl Icons {
             let Some(img) = raster_px(data, false, px, None) else { return false };
             self.2.insert((key, px), ui.ctx().load_texture(format!("{key}@{px}"), img, egui::TextureOptions::LINEAR));
         }
-        ui.painter().image(self.2[&(key, px)].id(), rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
+        ui.painter().image(self.2[&(key, px)].id(), grow(on_grid(rect, px, ui.ctx().pixels_per_point()), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
         true
     }
 
@@ -238,7 +252,7 @@ impl Icons {
             let Ok(img) = image::load_from_memory(LOGO_256) else { return };
             let img = img.to_rgba8();
             let ci = egui::ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.as_raw());
-            self.0.insert("logo", ui.ctx().load_texture("logo", ci, egui::TextureOptions::LINEAR));
+            self.0.insert("logo", ui.ctx().load_texture("logo", ci, SCALED)); // 256 px drawn at 15 pt: mipmapped, or its round edge steps
         }
         let id = self.0["logo"].id();
         ui.painter().image(id, rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
@@ -249,7 +263,7 @@ impl Icons {
         if !self.0.contains_key(key) {
             let img = image::load_from_memory(bytes).ok()?.to_rgba8();
             let ci = egui::ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.as_raw());
-            self.0.insert(key, ui.ctx().load_texture(key, ci, egui::TextureOptions::LINEAR));
+            self.0.insert(key, ui.ctx().load_texture(key, ci, SCALED)); // usually drawn smaller than its pixels
         }
         let t = &self.0[key];
         Some((t.id(), t.size()))
@@ -264,12 +278,12 @@ impl Icons {
         let px = (rect.width() * ui.ctx().pixels_per_point()).round().clamp(1.0, 256.0) as u32;
         if !self.2.contains_key(&(name, px)) {
             let Some(img) = lookup(name).and_then(|d| raster_px(d, true, px, Some(name))) else {
-                if let Some(id) = self.tex(ui.ctx(), name) { ui.painter().image(id, rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint); }
+                if let Some(id) = self.tex(ui.ctx(), name) { ui.painter().image(id, grow(rect, PX), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint); }
                 return;
             };
             self.2.insert((name, px), ui.ctx().load_texture(format!("{name}@{px}"), img, egui::TextureOptions::LINEAR));
         }
-        ui.painter().image(self.2[&(name, px)].id(), rect, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
+        ui.painter().image(self.2[&(name, px)].id(), grow(on_grid(rect, px, ui.ctx().pixels_per_point()), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
     }
 
     /// An icon button: `size` is the clickable square, the icon is drawn at `icon` px inside it.
@@ -279,6 +293,16 @@ impl Icons {
         self.paint(ui, name, Rect::from_center_size(r.center(), Vec2::splat(icon)), tint);
         resp
     }
+}
+
+/// `rect` moved onto the device pixel grid with its side exactly `px` device pixels (same centre within half a pixel), so a
+/// raster made at `px` is drawn 1:1; at a fractional position the GPU's bilinear filter smeared every edge over two pixels.
+/// A rect that isn't square (the picture stretched on purpose) is left as it is.
+fn on_grid(rect: Rect, px: u32, ppp: f32) -> Rect {
+    if (rect.width() - rect.height()).abs() > 0.5 { return rect }
+    let side = px as f32 / ppp;
+    let min = rect.center() - egui::Vec2::splat(side / 2.0);
+    Rect::from_min_size(egui::pos2((min.x * ppp).round() / ppp, (min.y * ppp).round() / ppp), egui::Vec2::splat(side))
 }
 
 /// True if the emoji set has a picture for this character sequence (same lookup as `Icons::emoji`).
@@ -325,7 +349,8 @@ mod emoji_tests {
         let on = |x: usize, y: usize| img.pixels[y * w + x].a() > 40;
         let rows: Vec<usize> = (0..h).filter(|y| (0..w).any(|x| on(x, *y))).collect();
         let cols: Vec<usize> = (0..w).filter(|x| (0..h).any(|y| on(*x, y))).collect();
-        Some(((*cols.first()?, *cols.last()?), (*rows.first()?, *rows.last()?)))
+        let p = PAD as usize; // positions in the content, without the transparent margin
+        Some(((*cols.first()? - p, *cols.last()? - p), (*rows.first()? - p, *rows.last()? - p)))
     }
 
     #[test]

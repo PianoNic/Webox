@@ -239,3 +239,56 @@ impl App {
 
 const SEARCH_HINT: &str = "Einstellungen durchsuchen"; // the pack only has "Sucheinstellungen"
 
+/// Anrufe > Anruf-Dock > "Anruf-Dock aktivieren" (bool, default true).
+pub(crate) const DOCK_ENABLED: &str = "calling_dock";
+/// Anrufe > Anruf-Dock > "Anruf-Dock im Vordergrund beibehalten" (bool, default false); also the dock's pin button.
+pub(crate) const DOCK_KEEP_IN_FRONT: &str = "dock_keep_in_front";
+/// Allgemein > Multitasking: the dock opens by itself while no Webox window is in front (bool, default false).
+pub(crate) const DOCK_AUTO_COVERED: &str = "dock_auto_covered";
+/// Unix ms of the last look at the "Anrufe" tab: missed calls after it make the rail badge (calls_page).
+pub(crate) const CALLS_SEEN_MS: &str = "calls_seen_ms";
+
+/// One-time fixes of stored settings, run on load. Returns true when something changed (then the file is written back).
+/// * Before 0.3.6 the settings pages wrote `dock_stay_on_top` / `multitasking`, which the dock never read: they move to
+///   [`DOCK_KEEP_IN_FRONT`] / [`DOCK_AUTO_COVERED`] (a value the dock itself already wrote wins).
+/// * [`CALLS_SEEN_MS`] starts at `now_ms`, so a first start does not badge every missed call of the last ten days.
+pub(crate) fn migrate(s: &mut serde_json::Value, now_ms: i64) -> bool {
+    let Some(o) = s.as_object_mut() else { return false };
+    let mut changed = false;
+    for (old, new) in [("dock_stay_on_top", DOCK_KEEP_IN_FRONT), ("multitasking", DOCK_AUTO_COVERED)] {
+        if let Some(v) = o.remove(old) {
+            if !o.contains_key(new) { o.insert(new.into(), v); }
+            changed = true;
+        }
+    }
+    if !o.get(CALLS_SEEN_MS).is_some_and(|v| v.is_i64()) { o.insert(CALLS_SEEN_MS.into(), json!(now_ms)); changed = true; }
+    changed
+}
+
+#[cfg(test)]
+mod migrate_tests {
+    use super::*;
+
+    #[test]
+    fn dock_keys_written_by_the_old_settings_pages_move_to_the_keys_the_dock_reads() {
+        let mut s = json!({"dock_stay_on_top": true, "multitasking": true, "calls_seen_ms": 5});
+        assert!(migrate(&mut s, 9));
+        assert_eq!(s, json!({"dock_keep_in_front": true, "dock_auto_covered": true, "calls_seen_ms": 5}));
+        assert!(!migrate(&mut s, 9), "runs once");
+    }
+
+    #[test]
+    fn a_value_the_dock_already_wrote_wins_over_the_old_key() {
+        let mut s = json!({"dock_stay_on_top": true, "dock_keep_in_front": false, "calls_seen_ms": 5});
+        assert!(migrate(&mut s, 9));
+        assert_eq!(s, json!({"dock_keep_in_front": false, "calls_seen_ms": 5}));
+    }
+
+    #[test]
+    fn missed_calls_from_before_the_first_start_are_not_badged() {
+        let mut s = json!({});
+        assert!(migrate(&mut s, 1234));
+        assert_eq!(s[CALLS_SEEN_MS], json!(1234));
+    }
+}
+

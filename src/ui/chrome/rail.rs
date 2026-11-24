@@ -4,14 +4,15 @@ use super::*;
 
 impl App {
     /// One rail entry: wide = rounded pill (172 x 42) with label; narrow = round highlight.
-    fn rail_item(&mut self, ui: &mut egui::Ui, t: &Th, icon: &'static str, label: &str, on: bool, badge: bool, h: f32) -> egui::Response {
+    /// `badge`: None = none, `Some("")` = the dot (unread messages), `Some("3")` = a count (missed calls).
+    fn rail_item(&mut self, ui: &mut egui::Ui, t: &Th, icon: &'static str, label: &str, on: bool, badge: Option<&str>, h: f32) -> egui::Response {
         self.rail_entry(ui, t, icon, label, on, badge, None, h)
     }
     /// A rail entry whose icon (and label) has its own colour, e.g. the update button.
     pub(crate) fn rail_item_tinted(&mut self, ui: &mut egui::Ui, t: &Th, icon: &'static str, label: &str, tint: Option<Color32>, h: f32) -> egui::Response {
-        self.rail_entry(ui, t, icon, label, false, false, tint, h)
+        self.rail_entry(ui, t, icon, label, false, None, tint, h)
     }
-    fn rail_entry(&mut self, ui: &mut egui::Ui, t: &Th, icon: &'static str, label: &str, on: bool, badge: bool, tint: Option<Color32>, h: f32) -> egui::Response {
+    fn rail_entry(&mut self, ui: &mut egui::Ui, t: &Th, icon: &'static str, label: &str, on: bool, badge: Option<&str>, tint: Option<Color32>, h: f32) -> egui::Response {
         let w = if self.rail_wide { ui.available_width() } else { 40.0_f32.min(ui.available_width()) }; // collapsed: the 40 pt circle itself
         let (r, resp) = ui.allocate_exact_size(Vec2::new(w, h), Sense::click());
         // navigationtab-background: hovered white/black 7 %, checked 20 % (pressed = checked).
@@ -23,7 +24,19 @@ impl App {
         let icon_col = tint.unwrap_or_else(|| if on { t.tk("navigationtab-text:checked") } else { t.tk("navigationtab-text") });
         self.icons.paint(ui, icon, Rect::from_center_size(ic, Vec2::splat(24.0) /* 24 pt icon box */), icon_col);
         // The rail badge is appNav-badge (red-60), not the blue mainList-indicator.
-        if badge { ui.painter().circle_filled(ic + Vec2::new(10.0, -10.0), 5.0, if crate::ui::theme::decor::on(collabhost_plugin_api::deco::BADGE_CYCLE) { crate::ui::theme::decor::cycle(0).unwrap_or(t.tk("appNav-badge")) } else { t.tk("appNav-badge") }); } // = t.badge unless an accent theme sets it
+        let badge_col = || if crate::ui::theme::decor::on(collabhost_plugin_api::deco::BADGE_CYCLE) { crate::ui::theme::decor::cycle(0).unwrap_or(t.tk("appNav-badge")) } else { t.tk("appNav-badge") }; // = t.badge unless an accent theme sets it
+        match badge {
+            Some("") => { ui.painter().circle_filled(ic + Vec2::new(10.0, -10.0), 5.0, badge_col()); }
+            Some(n) => {
+                // A count: a 16 pt red pill with white semibold digits, its left half over the icon's top-right corner.
+                let g = ui.painter().layout_no_wrap(n.to_string(), semibold(10.5), Color32::WHITE);
+                let w = (g.size().x + 8.0).max(16.0);
+                let r = Rect::from_min_size(ic + Vec2::new(4.0, -18.0), Vec2::new(w, 16.0));
+                ui.painter().rect_filled(r, 8.0, badge_col());
+                ui.painter().galley(r.center() - g.size() / 2.0, g, Color32::WHITE);
+            }
+            None => {}
+        }
         if self.rail_wide {
             ui.painter().text(pos2(r.left() + 44.0, r.center().y), egui::Align2::LEFT_CENTER, label, if on { semibold(14.3) } else { FontId::proportional(13.7) }, icon_col);
         }
@@ -41,12 +54,20 @@ impl App {
             .frame(egui::Frame::default().inner_margin(egui::Margin { left: m, right: mr, top: 8, bottom: 8 })).show(ctx, |ui| {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
             let unread = self.spaces.iter().any(|s| s.unread);
+            let missed = self.missed_badge();
             for (i, (tab, off, on_icon, label)) in RAIL.iter().enumerate() {
                 // Settings > App-Seitenleiste: unticked entries leave the rail.
                 let sb = match tab { Tab::Messaging => "sb_messaging", Tab::Meetings => "sb_meetings", Tab::Calling => "sb_calling", Tab::Whiteboards => "sb_whiteboards", Tab::Contacts => "sb_contacts", _ => "" };
                 if !sb.is_empty() && self.settings[sb] == false { if i == 2 { let (sr, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 6.0), Sense::hover()); ui.painter().hline((sr.left() + 6.0)..=(sr.right() - 4.0), sr.center().y - 1.0, Stroke::new(1.0_f32, t.ink_a(0.06))); } continue; }
                 let on = self.tab == *tab;
-                if self.rail_item(ui, t, if on { on_icon } else { off }, tr(label), on, *tab == Tab::Messaging && unread, h).clicked() { self.set_tab(*tab) }
+                // Messaging: a dot for unread spaces. Anrufe: the number of calls missed since the tab was last open (calls_page).
+                let (badge, tip) = match tab {
+                    Tab::Messaging => (unread.then(String::new), tr(label).to_string()),
+                    Tab::Calling if missed > 0 => (Some(crate::ui::calls_page::badge_text(missed)), format!("{}, {}", tr(label), crate::ui::calls_page::missed_tip(missed))),
+                    _ => (None, tr(label).to_string()),
+                };
+                let shown = if self.rail_wide { tr(label) } else { tip.as_str() }; // wide: the label stays the label, the badge says the rest
+                if self.rail_item(ui, t, if on { on_icon } else { off }, shown, on, badge.as_deref(), h).clicked() { self.set_tab(*tab) }
                 ui.add_space(gap);
                 // Thin divider between the call/meeting entries and the rest.
                 if i == 2 {
@@ -54,7 +75,7 @@ impl App {
                     ui.painter().hline((sr.left() + 6.0)..=(sr.right() - 4.0), sr.center().y - 1.0, Stroke::new(1.0_f32, t.ink_a(0.06)));
                 }
             }
-            let more = self.rail_item(ui, t, "more-regular", tr("More"), false, false, h);
+            let more = self.rail_item(ui, t, "more-regular", tr("More"), false, None, h);
             if more.clicked() { super::super::menu::menu_toggle(ctx, "more"); }
             let more_items = vec![
                 super::super::menu::Item::new("voicemail", "Voicemail").icon("voicemail-regular").entry(),
@@ -76,9 +97,9 @@ impl App {
             ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
                 ui.spacing_mut().item_spacing = Vec2::ZERO;
                 let bh = 40.0;
-                if self.rail_item(ui, t, "help-circle-filled", tr("Help"), false, false, bh).clicked() { system::open(super::super::profile_menu::HELP_CENTER_URL) }
+                if self.rail_item(ui, t, "help-circle-filled", tr("Help"), false, None, bh).clicked() { system::open(super::super::profile_menu::HELP_CENTER_URL) }
                 let on = self.tab == Tab::Settings;
-                if self.rail_item(ui, t, "settings-filled", tr("Settings"), on, false, bh).clicked() { self.set_tab(Tab::Settings) }
+                if self.rail_item(ui, t, "settings-filled", tr("Settings"), on, None, bh).clicked() { self.set_tab(Tab::Settings) }
                 self.rail_update_button(ui, t, bh); // above the gear while a newer version is known (ui/update_dialog.rs)
             });
         });

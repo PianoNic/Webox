@@ -30,6 +30,8 @@ pub(crate) struct McState {
     /// Sample voicemail player: (index, position in s when last paused / started, started at (app time) while playing).
     pub vm_pos: Option<(usize, f64, Option<f64>)>,
     pub requested_history: bool,
+    /// Unix ms of the incoming calls missed in this session, for the rail badge until janus lists them (calls_page).
+    pub missed_at: Vec<i64>,
 }
 
 /// Local wall-clock parts of a UTC timestamp.

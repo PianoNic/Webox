@@ -66,6 +66,13 @@ impl Schema {
     }
     /// A button; pressing it calls [`crate::Plugin::settings_action`] with `id`.
     pub fn button(self, id: &str, label: &str, description: &str) -> Schema { self.field("button", id, label, description, String::new()) }
+    /// A file path with a "Durchsuchen…" button that opens the system's file dialog, filtered to `extensions` (without dots;
+    /// empty = all files) under the name `filter`. The value is the absolute path ("" = none). Hosts from before this field
+    /// type leave the field out.
+    pub fn file(self, id: &str, label: &str, description: &str, filter: &str, extensions: &[&str]) -> Schema {
+        let ext: Vec<String> = extensions.iter().map(|e| json_str(e)).collect();
+        self.field("file", id, label, description, format!(",\"default\":\"\",\"filter\":{},\"extensions\":[{}]", json_str(filter), ext.join(",")))
+    }
 
     pub fn to_json(&self) -> String {
         let secs: Vec<String> = self.sections.iter().map(|(t, d, f)| format!("{{\"title\":{},\"description\":{},\"fields\":[{}]}}", json_str(t), json_str(d), f.join(","))).collect();

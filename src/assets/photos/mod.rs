@@ -51,8 +51,11 @@ const MAX_ANIM_BYTES: usize = 64 * 1024 * 1024;
 /// Largest side of a full-size image in the viewer (enough for a 4K screen; phone photos are larger and only cost memory).
 const MAX_FULL_SIDE: u32 = 4096;
 
-fn upload(ctx: &egui::Context, name: String, img: &image::RgbaImage) -> egui::TextureHandle {
-    ctx.load_texture(name, egui::ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.as_raw()), egui::TextureOptions::LINEAR)
+/// `mip`: with mipmaps, for pictures shown much smaller than they are (a photo in a message, the viewer fitting a large
+/// image): plain bilinear minification skips source pixels, so edges and fine detail came out jagged.
+fn upload(ctx: &egui::Context, name: String, img: &image::RgbaImage, mip: bool) -> egui::TextureHandle {
+    let opts = egui::TextureOptions { mipmap_mode: mip.then_some(egui::TextureFilter::Linear), ..egui::TextureOptions::LINEAR };
+    ctx.load_texture(name, egui::ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.as_raw()), opts)
 }
 
 /// Hard stop for pathological GIFs (decoding is sequential and costs time even for frames we drop).
@@ -139,7 +142,7 @@ fn decode_anim(ctx: &egui::Context, key: &str, bytes: &[u8]) -> Option<Anim> {
             },
             Err(e) => { crate::cloud::dbg_conn(&format!("image decode failed: gif header ({} bytes): {e}", bytes.len())); return None }
         }
-        let out: Vec<(egui::TextureHandle, f32)> = buf.into_iter().enumerate().map(|(i, (img, d))| (upload(ctx, format!("img:{key}:{i}"), &img), d)).collect();
+        let out: Vec<(egui::TextureHandle, f32)> = buf.into_iter().enumerate().map(|(i, (img, d))| (upload(ctx, format!("img:{key}:{i}"), &img, false), d)).collect();
         if out.is_empty() { crate::cloud::dbg_conn(&format!("image decode failed: gif without frames ({} bytes)", bytes.len())); return None }
         let total = out.iter().map(|f| f.1).sum();
         let bytes = out.len() * size[0] * size[1] * 4;
@@ -154,7 +157,7 @@ fn decode_anim(ctx: &egui::Context, key: &str, bytes: &[u8]) -> Option<Anim> {
                 img = image::imageops::resize(&img, ((img.width() as f32 * s) as u32).max(1), ((img.height() as f32 * s) as u32).max(1), image::imageops::FilterType::Triangle);
             }
             let size = [img.width() as usize, img.height() as usize];
-            let tex = upload(ctx, format!("img:{key}"), &img);
+            let tex = upload(ctx, format!("img:{key}"), &img, true);
             // A space's round picture: keep its pixels for the screen-resolution round textures (round.rs).
             if key.starts_with("spaceavatar:") { round::register(ctx, tex.id(), &img); }
             Some(Anim { frames: vec![(tex, 1.0)], size, total: 1.0, start: None, bytes: size[0] * size[1] * 4, used: 0 }) }

@@ -40,6 +40,18 @@ fn schema_edge_cases() {
 }
 
 #[test]
+fn file_fields() {
+    // What plugin-api writes; odd extensions are dropped, dots and case normalised.
+    let json = collabhost_plugin_api::Schema::new().file("bg", "Hintergrund", "", "Bilder", &["PNG", ".jpg", "a b", "webp"]).to_json();
+    let s = Schema::parse(&json).unwrap();
+    assert_eq!(s.field("bg").unwrap().kind, Kind::File { filter: "Bilder".into(), extensions: vec!["png".into(), "jpg".into(), "webp".into()] });
+    assert_eq!(s.effective(&Default::default(), &Default::default())["bg"], json!(""));
+    assert_eq!(s.validate("bg", &json!("C:\\Users\\a\\bg.png")), Ok(json!("C:\\Users\\a\\bg.png")));
+    assert!(s.validate("bg", &json!("a\nb")).is_err() && s.validate("bg", &json!(3)).is_err());
+    assert!(s.validate("bg", &json!("x".repeat(schema::PATH_MAX + 1))).is_err());
+}
+
+#[test]
 fn validation() {
     let s = full();
     assert!(s.validate("b", &json!(false)).is_ok() && s.validate("b", &json!("yes")).is_err());

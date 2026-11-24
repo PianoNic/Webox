@@ -90,6 +90,44 @@ fn decodes_frames_and_sound_of_a_synthetic_video() {
     let _ = std::fs::remove_dir_all(path.parent().unwrap());
 }
 
+/// A video as a plugin's camera source (`camera.source`) or background (`media.read`) starts over at the end, with times that
+/// keep growing, and the camera source made from it keeps delivering pictures past the end, paced at the file's rate.
+#[test]
+fn file_source_loops() {
+    let Some(path) = synthetic() else { return };
+    let mut l = Looping::open(&path, sync::MAX_SIZE).expect("open");
+    let (mut last, mut colours) = (-1.0, vec![]);
+    for _ in 0..FRAMES * 2 + 5 {
+        let f = l.next().expect("next");
+        assert!(f.pts > last, "times keep growing: {} after {last}", f.pts);
+        last = f.pts;
+        colours.push(centre(&f));
+    }
+    assert!(l.loops >= 2, "{} loops", l.loops);
+    // red, blue, then red again: the second round
+    let blue = colours.iter().position(|c| near(*c, [0, 0, 255])).expect("blue");
+    assert!(colours[blue..].iter().any(|c| near(*c, [255, 0, 0])), "{colours:?}");
+
+    use crate::media::camera::hook;
+    let mut s = hook::open_source(&path, 360).ok().expect("camera source");
+    assert_eq!((s.mode().w, s.mode().h), (640, 360));
+    let t = std::time::Instant::now();
+    let mut n = 0;
+    while n < 25 && t.elapsed() < Duration::from_secs(10) { if s.next().ok().flatten().is_some_and(|r| r.data.len() == 640 * 360 * 4) { n += 1; } }
+    // 25 pictures of a 10 fps file: more than its 2 s, so it looped, and not much faster than real time
+    assert_eq!(n, 25);
+    assert!(t.elapsed() >= Duration::from_millis(1900), "paced: {:?}", t.elapsed());
+    // a background clip at a size of its own: a new picture per read once decoded
+    let (id, still) = hook::media_open("t", &path, 32, 24).expect("clip");
+    assert!(!still);
+    let mut buf = vec![0u8; 32 * 24 * 4];
+    let a = hook::media_read("t", id, &mut buf, 32, 24, 128).unwrap();
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(hook::media_read("t", id, &mut buf, 32, 24, 128).unwrap() > a);
+    hook::media_close("t", None);
+    let _ = std::fs::remove_dir_all(path.parent().unwrap());
+}
+
 /// By hand: `WEBOX_VIDEO_PROBE="a.mp4;b.webm" cargo test --bin webox probe -- --ignored --nocapture` decodes each file (made-up
 /// test files only) and prints what this platform's framework makes of it.
 #[test]

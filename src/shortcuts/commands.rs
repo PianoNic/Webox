@@ -36,8 +36,10 @@ impl App {
             "ShowLinks" => if let Some(s) = self.selected.clone() { self.conv_tab = ConvTab::Content; crate::ui::space_tabs::set_content(ctx, &s, 1) },
             "SpaceSettings" | "ViewSpaceSettings" => if self.selected.is_some() && self.tab == Tab::Messaging { crate::ui::menu::menu_open(ctx, "gear") },
             "AddGif" => if self.selected.is_some() { self.gif_picker_toggle(ctx) },
-            // Webox has no separate call dock window; its calling features are on the "Anrufe" page.
-            "ShowHideCallingDock" | "CreateWhiteboard" => self.set_tab(if id == "CreateWhiteboard" { Tab::Whiteboards } else { Tab::Calling }),
+            // Strg+Umschalt+X: shows / hides the calling dock window (ui/call_win/dock.rs); without separate call windows the
+            // calling features are on the "Anrufe" page.
+            "ShowHideCallingDock" => if !self.toggle_calling_dock(ctx) { self.set_tab(Tab::Calling) },
+            "CreateWhiteboard" => self.set_tab(Tab::Whiteboards),
             "OpenDialpad" => { self.set_tab(Tab::Calling); let mut s = self.pst(ctx); s.dial_open = true; self.set_pst(ctx, s); }
             _ => {}
         }

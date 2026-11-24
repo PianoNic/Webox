@@ -10,6 +10,10 @@
 //! instead of showing the whole frame), and the video enhancements as plain image adjustments (`Look`): brightness /
 //! contrast / saturation, "Belichtung anpassen" as an automatic exposure gain, "Aussehen auffrischen" as a smoothing blur
 //! blended in by its level. None of this reaches a call: Webox calls are audio only.
+//!
+//! Plugins (`hook.rs`): every captured picture passes `hook::apply` right after decoding, where plugins' frame filters edit it
+//! under a time budget (`camera.filter`); a plugin can also put a video file or a picture in place of the device
+//! (`camera.source`, `PreviewKey::src`).
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -21,6 +25,7 @@ pub(crate) mod v4l2;
 #[cfg(target_os = "macos")]
 mod avf; // AVFoundation capture session
 pub(crate) mod v4l2_parse;
+pub mod hook; // plugin frame filters and file sources (camera.filter / camera.source / media.*)
 
 /// A camera as listed in the picker. `id`: MF symbolic link / V4L2 device path. The settings store the name (stable across
 /// USB ports, like the audio devices).
@@ -29,12 +34,13 @@ pub struct CamDev { pub id: String, pub name: String }
 
 /// Pixel formats the converters understand.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Pix { Nv12, Yuyv, Mjpg, Bgra, Rgb24 }
+/// `Rgba`: a frame after the plugins' frame filters (`hook`) or from a file source; no device delivers it.
+pub enum Pix { Nv12, Yuyv, Mjpg, Bgra, Rgb24, Rgba }
 
 impl Pix {
-    pub fn name(self) -> &'static str { match self { Pix::Nv12 => "NV12", Pix::Yuyv => "YUY2", Pix::Mjpg => "MJPG", Pix::Bgra => "RGB32", Pix::Rgb24 => "RGB24" } }
+    pub fn name(self) -> &'static str { match self { Pix::Nv12 => "NV12", Pix::Yuyv => "YUY2", Pix::Mjpg => "MJPG", Pix::Bgra => "RGB32", Pix::Rgb24 => "RGB24", Pix::Rgba => "RGBA" } }
     /// Preference among modes of equal size and rate: uncompressed first (cheapest to convert).
-    fn rank(self) -> u8 { match self { Pix::Nv12 => 0, Pix::Yuyv => 1, Pix::Bgra => 2, Pix::Rgb24 => 3, Pix::Mjpg => 4 } }
+    fn rank(self) -> u8 { match self { Pix::Nv12 => 0, Pix::Yuyv => 1, Pix::Bgra => 2, Pix::Rgba => 2, Pix::Rgb24 => 3, Pix::Mjpg => 4 } }
 }
 
 /// One capture mode of a camera.
@@ -82,6 +88,7 @@ impl Raw {
         match self.pix {
             Pix::Rgb24 => { let i = y * self.stride + x * 3; [d[i], d[i + 1], d[i + 2]] }
             Pix::Bgra => { let i = y * self.stride + x * 4; [d[i + 2], d[i + 1], d[i]] }
+            Pix::Rgba => { let i = y * self.stride + x * 4; [d[i], d[i + 1], d[i + 2]] }
             Pix::Yuyv => { let i = y * self.stride + (x & !1) * 2; yuv(d[i + (x & 1) * 2], d[i + 1], d[i + 3]) }
             Pix::Nv12 => { let c = self.uv_off + (y / 2) * self.stride + (x & !1); yuv(d[y * self.stride + x], d[c], d[c + 1]) }
             Pix::Mjpg => [0, 0, 0],
@@ -93,7 +100,7 @@ impl Raw {
         let (w, h, s) = (self.w as usize, self.h as usize, self.stride);
         match self.pix {
             Pix::Rgb24 => s >= w * 3 && self.data.len() >= s * (h - 1) + w * 3,
-            Pix::Bgra => s >= w * 4 && self.data.len() >= s * (h - 1) + w * 4,
+            Pix::Bgra | Pix::Rgba => s >= w * 4 && self.data.len() >= s * (h - 1) + w * 4,
             Pix::Yuyv => s >= w * 2 && self.data.len() >= s * (h - 1) + w * 2 && w % 2 == 0,
             // the last chroma pair read is at uv_off + s*((h-1)/2) + ((w-1) & !1), +1 (an exact w*h*3/2 frame must pass)
             Pix::Nv12 => s >= w && self.uv_off >= s * h && self.data.len() >= self.uv_off + s * ((h - 1) / 2) + ((w - 1) & !1) + 2,
@@ -325,7 +332,8 @@ pub struct Preview { sh: Arc<Shared>, pub key: PreviewKey }
 
 /// What the capture was opened with: a change reopens the device (look changes don't).
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PreviewKey { pub dev: Option<CamDev>, pub max_h: u32, pub hw: bool, pub sample: bool }
+/// `src`: a plugin's video file or image in place of the camera (`hook::source()`); a change reopens the preview.
+pub struct PreviewKey { pub dev: Option<CamDev>, pub max_h: u32, pub hw: bool, pub sample: bool, pub src: Option<std::path::PathBuf> }
 
 /// Preview rate: at most this many frames per second are converted and handed to the UI.
 const PREVIEW_FPS: f32 = 30.0;
@@ -364,6 +372,8 @@ impl Preview {
             let set = |s: State| { if let Ok(mut g) = sh2.state.lock() { if !matches!(*g, State::Failed(Fail::NoPicture)) { *g = s; } } };
             let finish = |f: Option<Fail>| { if let Some(f) = f { set(State::Failed(f)); } sh2.done.store(true, Ordering::Relaxed); (*wake2)(); };
             let src: Result<Box<dyn Source>, Fail> = if let Some(s) = test_src { Ok(s as Box<dyn Source>) }
+                // a plugin's video file or image instead of the camera (`camera.source`): the device stays closed
+                else if let Some(p) = &k2.src { hook::open_source(p, k2.max_h) }
                 else if k2.sample { Ok(Box::new(Pattern { t0: Instant::now(), next_at: Instant::now() })) }
                 else { match &k2.dev { Some(d) => open(d, k2.max_h, k2.hw), None => Err(Fail::NoCamera) } };
             let mut src = match src { Ok(s) => s, Err(f) => return finish(Some(f)) };
@@ -372,6 +382,7 @@ impl Preview {
             (*wake2)();
             let mut last = Instant::now() - Duration::from_secs(1);
             let mut dark_since: Option<Instant> = None;
+            let mut n = 0u64;
             while !sh2.stop.load(Ordering::Relaxed) {
                 let raw = match src.next() { Ok(Some(r)) => r, Ok(None) => continue, Err(f) => return finish(Some(f)) };
                 sh2.last_ms.store(t0.elapsed().as_millis().max(1) as u64, Ordering::Relaxed);
@@ -381,6 +392,10 @@ impl Preview {
                 let black = is_black(&raw);
                 let since = if black { *dark_since.get_or_insert_with(Instant::now) } else { dark_since = None; Instant::now() };
                 sh2.dark.store(black && since.elapsed().as_secs_f32() > DARK_SECS, Ordering::Relaxed);
+                // every camera picture passes the plugins' frame filters here (`camera.filter`), before anything uses it (the
+                // black check above looks at the camera itself)
+                n += 1;
+                let raw = hook::apply(raw, n, t0.elapsed().as_micros() as u64);
                 let look = sh2.look.lock().map(|l| *l).unwrap_or_default();
                 let (w, h) = sh2.size.lock().map(|s| *s).unwrap_or((424, 240));
                 let rgba = render(&raw, w, h, &look);
@@ -626,7 +641,7 @@ mod tests {
         while t0.elapsed().as_secs_f32() < secs { if f() { return true; } std::thread::sleep(Duration::from_millis(20)); }
         false
     }
-    fn key() -> PreviewKey { PreviewKey { dev: None, max_h: 1080, hw: false, sample: false } }
+    fn key() -> PreviewKey { PreviewKey { dev: None, max_h: 1080, hw: false, sample: false, src: None } }
 
     #[test]
     fn a_camera_without_frames_becomes_no_picture_and_is_released() {
@@ -673,7 +688,7 @@ mod tests {
 
     #[test]
     fn sample_preview_delivers_frames_and_stops() {
-        let key = PreviewKey { dev: None, max_h: 1080, hw: false, sample: true };
+        let key = PreviewKey { dev: None, max_h: 1080, hw: false, sample: true, src: None };
         let p = Preview::start(key, Look::default(), (64, 36), || {});
         let t0 = Instant::now();
         let mut got = None;
@@ -682,7 +697,7 @@ mod tests {
         assert_eq!((f.w, f.h, f.rgba.len()), (64, 36, 64 * 36 * 4));
         assert!(matches!(p.state(), State::Running { .. }));
         drop(p);
-        let none = Preview::start(PreviewKey { dev: None, max_h: 1080, hw: false, sample: false }, Look::default(), (8, 8), || {});
+        let none = Preview::start(PreviewKey { dev: None, max_h: 1080, hw: false, sample: false, src: None }, Look::default(), (8, 8), || {});
         let t0 = Instant::now();
         while none.state() == State::Opening && t0.elapsed() < Duration::from_secs(2) { std::thread::sleep(Duration::from_millis(5)); }
         assert_eq!(none.state(), State::Failed(Fail::NoCamera));

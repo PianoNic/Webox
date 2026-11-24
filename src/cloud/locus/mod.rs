@@ -19,10 +19,18 @@
 //! * **Media transport** (`media.rs`): webrtc-rs peer connection (ICE, DTLS-SRTP, RTP), Opus 48 kHz via `ropus`, devices via `cpal` (`audio.rs`).
 //! * **Not done:** media over TCP / TLS 443 (the server's TCP and `xTLS` candidates are dropped, webrtc-rs only does UDP
 //!   ICE) and TURN discovery (`TURN_DISCOVERY_REQUEST`), both only needed when UDP to the media cluster is blocked; the
-//!   `reachability` data (media cluster choice), video / screen share. Interop with Locus' media servers is only tested
-//!   against a second local webrtc-rs peer.
+//!   `reachability` data (media cluster choice), camera video. Interop with Locus' media servers is only tested against a
+//!   second local webrtc-rs peer.
+//! * **Screen share**, sending: `share.rs` (capture, ROAP re-OFFER with the `slides` lines, floor request on the locus'
+//!   `content` media share). Receiving: the `content` floor GRANTED to the other side (`share_rx::remote_sharer`) makes
+//!   sure the `slides` lines exist; their H.264 is decoded in `cloud/share_rx.rs` and shown as the call window's stage.
+//! * **Locus state** follows the official client's `SequenceManager`: full loci newer than ours replace it, deltas
+//!   (`baseSequence`) are merged onto the sequence they name, a delta we can't place (missed / out-of-order event) makes
+//!   us re-read the whole locus (`apply_event`). The call ends as soon as the other side declined or left
+//!   (`shouldDisconnectOne2OneCall`), and an incoming call answered on another of my devices stops ringing here.
 //!
-//! "Verbunden" is shown only when the callee's participant state is JOINED **and** our peer connection is `Connected`.
+//! "Verbunden" is shown only when the callee's participant state is JOINED **and** our peer connection is `Connected`;
+//! a call whose media doesn't come up (no ROAP answer, no ICE / DTLS, no RTP) is reported to the user (`media_stall`).
 //!
 //! Safety: `WEBOX_CALL_TEST_ONLY=<address>` makes every outgoing call to any other address fail before any network request,
 //! only e-mail style addresses can be dialled (no phone numbers), one call at a time, at most one dial every 10 s.
@@ -58,8 +66,82 @@ pub fn full_locus(d: &Value) -> Option<&Value> {
     (!st(&l["fullState"], "type").is_empty() && l["self"].is_object() && l["participants"].is_array()).then_some(l)
 }
 
-/// The locus' sequence number (last of `sequence.entries`): events can arrive out of order.
-pub fn locus_seq(l: &Value) -> u64 { l["sequence"]["entries"].as_array().and_then(|e| e.last()).and_then(Value::as_u64).unwrap_or(0) }
+/// The locus' sequence number (the newest of `sequence.entries` / `rangeEnd`): events can arrive out of order.
+pub fn locus_seq(l: &Value) -> u64 { seq_of(&l["sequence"]) }
+
+/// The newest number of a locus sequence object (`{entries:[…], rangeStart, rangeEnd}`; 0 = none).
+fn seq_of(s: &Value) -> u64 {
+    let last = s["entries"].as_array().and_then(|e| e.iter().filter_map(Value::as_u64).max()).unwrap_or(0);
+    last.max(s["rangeEnd"].as_u64().unwrap_or(0))
+}
+
+/// What to do with a locus that came with an event, like the official client's `SequenceManager::processEvent`
+/// (compareResult `Update` / `Discard` / `Desync`): a full locus newer than ours replaces it, a delta (`baseSequence`) is
+/// merged only when its base is exactly the sequence we hold, anything older is dropped, and a delta whose base we don't
+/// hold (a missed or out-of-order event, or the first event being a delta) means our copy is stale: re-read the locus.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SeqCmp { Update, Discard, Desync }
+
+pub fn compare_seq(current: u64, l: &Value) -> SeqCmp {
+    let incoming = locus_seq(l);
+    if current != 0 && incoming != 0 && incoming <= current { return SeqCmp::Discard; }
+    if !is_delta(l) { return SeqCmp::Update; }
+    if current != 0 && seq_of(&l["baseSequence"]) == current { SeqCmp::Update } else { SeqCmp::Desync }
+}
+
+/// A delta locus (only what changed since `baseSequence`).
+pub fn is_delta(l: &Value) -> bool { l["baseSequence"].is_object() }
+
+/// Applies a delta to the full locus we hold: top-level objects are replaced, participants are replaced or added by id.
+pub fn merge_delta(full: &Value, delta: &Value) -> Value {
+    let mut out = full.clone();
+    let (Some(o), Some(d)) = (out.as_object_mut(), delta.as_object()) else { return delta.clone() };
+    for (k, v) in d {
+        match k.as_str() {
+            "baseSequence" => {}
+            "participants" => {
+                let mut ps = o.get("participants").and_then(Value::as_array).cloned().unwrap_or_default();
+                for p in v.as_array().into_iter().flatten() {
+                    match ps.iter_mut().find(|q| !st(p, "id").is_empty() && st(q, "id") == st(p, "id")) { Some(q) => *q = p.clone(), None => ps.push(p.clone()) }
+                }
+                o.insert(k.clone(), Value::Array(ps));
+            }
+            _ => { o.insert(k.clone(), v.clone()); }
+        }
+    }
+    out
+}
+
+/// What a Mercury `locus.*` event does to the locus we hold (`held`, sequence `held_seq`).
+#[derive(Debug, PartialEq)]
+pub enum Apply {
+    /// The locus to apply now (the event's full locus, or the delta merged into ours).
+    Use(Value),
+    /// Older than (or the same as) what we hold.
+    Discard,
+    /// The event isn't enough (no full locus, or a delta whose base we don't hold): re-read the locus with a GET.
+    Read,
+}
+
+pub fn apply_event(held: &Value, held_seq: u64, d: &Value) -> Apply {
+    let l = locus_of(d);
+    if l["sequence"].is_object() {
+        match compare_seq(held_seq, l) {
+            SeqCmp::Discard => return Apply::Discard,
+            SeqCmp::Desync => return Apply::Read,
+            SeqCmp::Update if is_delta(l) => return if held.is_object() { Apply::Use(merge_delta(held, l)) } else { Apply::Read },
+            SeqCmp::Update => {}
+        }
+    } else if is_delta(l) { return Apply::Read }
+    full_locus(d).map_or(Apply::Read, |l| Apply::Use(l.clone()))
+}
+
+/// Two locus urls name the same locus: equal, or the same `/loci/{id}` on another Locus host (events may carry the url
+/// of the host that sent them).
+pub fn same_locus(a: &str, b: &str) -> bool {
+    let id = |u: &str| u.split("/loci/").nth(1).map(|r| r.split(['/', '?']).next().unwrap_or("").to_string()).filter(|s| !s.is_empty());
+    a == b || matches!((id(a), id(b)), (Some(x), Some(y)) if x == y)
+}
 
 /// `Dialing` = request sent / invitee not alerted yet; `Ringing` = invitee's device is alerting; `Connecting` = the invitee
 /// joined but our media leg (ICE/DTLS) isn't up yet; `Connected` only when both are true.
@@ -71,7 +153,9 @@ pub struct CallEvent { pub state: CallState, pub name: String, pub email: String
 /// active calls that this very device (and nobody else) is joined to.
 pub enum CallReq { Dial(String, audio::Choice), Answer(audio::Choice), HangUp, Mute(bool), Devices(audio::Choice), SmartMic(audio::SmartMic), #[allow(dead_code)] Audit, Cleanup,
     // keypad tones during a connected call
-    Dtmf(String) }
+    Dtmf(String),
+    /// Start sharing the picked screen / window (`Some`), or stop (`None`); see `share.rs`.
+    Share(Option<share::ShareReq>) }
 
 /// `POST {locusUrl}/sendDtmf` body.
 pub fn dtmf_body(device_url: &str, tones: &str, correlation_id: &str) -> Value {
@@ -83,6 +167,11 @@ pub fn dtmf_ok(t: &str) -> bool { !t.is_empty() && t.chars().all(|c| c.is_ascii_
 /// One participant of a locus as far as the call UI cares.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Party { pub name: String, pub email: String, pub state: String, pub devices: Vec<String> }
+impl Party {
+    /// Left the call: participant state LEFT, or every one of its devices LEFT (the official client's
+    /// `otherPairedDevice->left`).
+    pub fn left(&self) -> bool { self.state == "LEFT" || (!self.devices.is_empty() && self.devices.iter().all(|d| d == "LEFT")) }
+}
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct LocusView { pub url: String, pub kind: String, pub active: bool, pub self_id: String, pub self_state: String, pub self_url: String, pub self_devices: Vec<(String, String)>, pub others: Vec<Party> }
 
@@ -99,7 +188,8 @@ pub fn parse_locus(l: &Value, my_email: &str) -> LocusView {
     LocusView {
         url: [st(l, "url"), st(l, "locusUrl")].into_iter().find(|u| !u.is_empty()).unwrap_or_default(),
         kind: st(full, "type"),
-        active: full["active"].as_bool().unwrap_or_else(|| full["state"].as_str() == Some("ACTIVE")),
+        // `fullState.state` INACTIVE / TERMINATING ends the call even while `active` still says true
+        active: full["active"].as_bool().unwrap_or_else(|| full["state"].as_str() == Some("ACTIVE")) && !matches!(full["state"].as_str(), Some("INACTIVE" | "TERMINATING")),
         self_id, self_state: st(&l["self"], "state"), self_url: st(&l["self"], "url"), others,
         self_devices: l["self"]["devices"].as_array().into_iter().flatten().map(|d| (st(d, "url"), st(d, "state"))).collect(),
     }
@@ -122,24 +212,30 @@ pub fn idle_event_needs_read(d: &Value, my_email: &str) -> bool {
 }
 
 /// The call's state from our side. `outgoing`: we placed it (we joined on creation).
+///
+/// Like the official client's `shouldDisconnectOne2OneCall` (`other->declinedOrLeft`, `otherPairedDevice->left`,
+/// `self->declinedOrLeft`): the call ends as soon as the other side declined or left, whatever `fullState` says yet.
 pub fn call_state(v: &LocusView, outgoing: bool) -> Option<CallState> {
+    let joined = |p: &Party| p.state == "JOINED" && !p.left();
     let any = |s: &str| v.others.iter().any(|p| p.state == s);
+    let all = |f: &dyn Fn(&Party) -> bool| !v.others.is_empty() && v.others.iter().all(f);
     let ended = |why: &str| Some(CallState::Ended(why.into()));
     if v.self_state == "DECLINED" { return ended("declined"); }
     if v.self_state == "LEFT" { return ended("left"); }
     if !v.active && !v.kind.is_empty() {
-        return ended(if any("DECLINED") { "declined" } else if outgoing { "unanswered" } else { "missed" });
+        let was_up = v.self_state == "JOINED" && v.others.iter().any(|p| p.left());
+        return ended(if any("DECLINED") { "declined" } else if was_up && outgoing { "left" } else if outgoing { "unanswered" } else { "missed" });
     }
     if v.self_state == "JOINED" {
-        if any("JOINED") { return Some(CallState::Connected); }
-        if !v.others.is_empty() && v.others.iter().all(|p| p.state == "DECLINED") { return ended("declined"); }
-        if !v.others.is_empty() && v.others.iter().all(|p| p.state == "LEFT") { return ended("left"); }
+        if v.others.iter().any(joined) { return Some(CallState::Connected); }
+        if all(&|p: &Party| p.state == "DECLINED") { return ended("declined"); }
+        if all(&|p: &Party| p.left() || p.state == "DECLINED") { return ended("left"); }
         let alerted = any("NOTIFIED") || v.others.iter().any(|p| p.devices.iter().any(|d| d == "NOTIFIED" || d == "ALERTING"));
         return Some(if alerted { CallState::Ringing } else { CallState::Dialing });
     }
     if !outgoing && matches!(v.self_state.as_str(), "IDLE" | "NOTIFIED" | "") {
-        if any("JOINED") { return Some(CallState::Incoming); }
-        if !v.others.is_empty() && v.others.iter().all(|p| p.state == "LEFT") { return ended("missed"); }
+        if v.others.iter().any(joined) { return Some(CallState::Incoming); }
+        if all(&|p: &Party| p.left() || p.state == "DECLINED") { return ended("missed"); }
     }
     None
 }
@@ -176,13 +272,47 @@ struct Active {
     /// Event-driven state: the last locus applied, its sequence, when it was last read by GET, whether an event asked
     /// for a read, and when the media counters were last logged.
     view: Option<LocusView>, seq: u64, read_at: Option<Instant>, stale: bool, stats_at: Option<Instant>,
+    /// The full locus the deltas are merged into (`Null` until one was seen).
+    locus: Value,
+    /// Since when the other side is joined but our media isn't up (`MEDIA_TIMEOUT`), and since when media is up without a
+    /// single RTP packet from the server (`RTP_TIMEOUT`).
+    joined_at: Option<Instant>, media_up_at: Option<Instant>,
+    /// When our OFFER went out and no ANSWER has come yet (`ROAP_TIMEOUT`).
+    offer_at: Option<Instant>,
+    /// Screen share of this call (`share.rs`), and whether the other side's share was already announced.
+    share: Option<share::Share>,
+    /// The ROAP seq of our OFFER that (re)negotiates the share's lines while its ANSWER is awaited, and since when.
+    lines_seq: Option<u32>, lines_at: Option<Instant>,
+    /// The far end shares (its name), since when, and whether the lines were negotiated once more to declare the SSRC
+    /// its share really arrives from (`share_rx_tick`).
+    remote_share: Option<String>, remote_since: Option<Instant>, rx_reoffered: bool, rx_warned: bool,
 }
 
 impl Active {
     fn new(url: String, self_id: String, self_url: String, outgoing: bool, name: String, email: String) -> Active {
         Active { url, self_id, self_url, media_id: String::new(), correlation_id: String::new(), outgoing, name, email, last: None, answered: outgoing,
-            media: None, roap_seq: 0, roap_done: false, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None }
+            media: None, roap_seq: 0, roap_done: false, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None,
+            locus: Value::Null, joined_at: None, media_up_at: None, offer_at: None, share: None,
+            lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false }
     }
+}
+
+/// The other side is joined but ICE / DTLS isn't up after this long: the user is told (the call stays, like the
+/// official client's no-media timers; the user decides to hang up).
+pub const MEDIA_TIMEOUT: Duration = Duration::from_secs(15);
+/// Media is up but not one RTP packet came from the server.
+pub const RTP_TIMEOUT: Duration = Duration::from_secs(8);
+/// Our ROAP OFFER got no ANSWER.
+pub const ROAP_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The notice for a call whose media never came up, or `None` while there is still time. Pure, for the tests.
+pub fn media_stall(now: Instant, offer_at: Option<Instant>, joined_at: Option<Instant>, media_up_at: Option<Instant>, rx: u64, media: Option<MediaState>) -> Option<&'static str> {
+    let over = |t: Option<Instant>, d: Duration| t.is_some_and(|t| now.saturating_duration_since(t) >= d);
+    if over(offer_at, ROAP_TIMEOUT) { return Some("Keine Antwort des Medienservers auf die Verbindungsanfrage (ROAP). Der Anruf hat möglicherweise keinen Ton."); }
+    if media == Some(MediaState::Failed) { return Some("Audioverbindung fehlgeschlagen (ICE/DTLS). Der Anruf hat keinen Ton."); }
+    if media != Some(MediaState::Connected) && over(joined_at, MEDIA_TIMEOUT) { return Some("Keine Audioverbindung zum Medienserver (ICE/DTLS kommt nicht zustande). Netzwerk oder Firewall prüfen."); }
+    if media == Some(MediaState::Connected) && rx == 0 && over(media_up_at, RTP_TIMEOUT) { return Some("Verbunden, aber es kommt kein Ton an (keine Audiodaten vom Medienserver)."); }
+    None
 }
 
 #[derive(Default)]
@@ -233,3 +363,4 @@ pub fn remote_roap(r: &Value) -> Option<(String, u32, Option<String>)> {
 mod tests;
 
 mod session;
+pub mod share;

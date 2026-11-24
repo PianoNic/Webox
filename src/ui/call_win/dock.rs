@@ -17,7 +17,7 @@ impl App {
         }
         let (pos, size) = self.call.win.dock_b.unwrap_or((pos2(100.0, 100.0), DOCK_DEFAULT));
         let thumb = matches!(self.call.win.dock_mode, DockMode::Docked(_));
-        let pin = self.settings["dock_keep_in_front"].as_bool().unwrap_or(false);
+        let pin = self.settings[crate::ui::settings::DOCK_KEEP_IN_FRONT].as_bool().unwrap_or(false);
         let (min, max) = if thumb { (Vec2::splat(DOCK_THUMB), Vec2::splat(DOCK_THUMB)) } else { (DOCK_MIN, DOCK_MAX) };
         let mut b = egui::ViewportBuilder::default().with_title(DOCK_TITLE).with_decorations(false).with_inner_size(size).with_min_inner_size(min).with_max_inner_size(max)
             .with_position(pos).with_taskbar(false).with_window_level(if pin { egui::WindowLevel::AlwaysOnTop } else { egui::WindowLevel::Normal });
@@ -101,7 +101,7 @@ impl App {
 
         let bg = t.tk("modal-secondary-background"); // #1A1A1A dark / #F7F7F7 light
         let border = t.sep; // modal-primary-border
-        let pin = self.settings["dock_keep_in_front"].as_bool().unwrap_or(false);
+        let pin = self.settings[crate::ui::settings::DOCK_KEEP_IN_FRONT].as_bool().unwrap_or(false);
         if vctx.input(|i| i.viewport().close_requested()) { vctx.send_viewport_cmd(egui::ViewportCommand::CancelClose); self.dock_close_request(); }
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(vctx, |ui| {
             let full = ui.max_rect();
@@ -138,7 +138,7 @@ impl App {
             if sett.clicked() { menu_toggle(vctx, "dock-settings"); }
             x -= 36.0;
             if !crate::ui::chrome::wayland() && ghost_at(ui, &mut self.icons, t, "dock-pin", pos2(x, y), 32.0, if pin { "pin-muted-bold" } else { "pin-bold" }, t.text1).on_hover_text(if pin { "Lösen" } else { "Anheften" }).clicked() {
-                self.settings["dock_keep_in_front"] = json!(!pin);
+                self.settings[crate::ui::settings::DOCK_KEEP_IN_FRONT] = json!(!pin);
                 if self.persist_ok() { system::save_settings(&self.cfg, &self.settings); }
             }
             let entries = vec![
@@ -148,7 +148,12 @@ impl App {
             if let Some(id) = webex_menu(vctx, &mut self.icons, t, "dock-settings", sett.rect, Side::Below, Align::Right, true, &entries) {
                 match id.as_str() {
                     "close" => self.dock_close_request(),
-                    _ => { self.set_tab(Tab::Settings); vctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Minimized(false)); vctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Focus); }
+                    other => {
+                        // Straight to Anrufe / Anruf-Dock in Settings (the page the entry names).
+                        use crate::ui::settings::nav::Page;
+                        let page = if other == "dock" { Page::CallDock } else { Page::Calling };
+                        vctx.data_mut(|d| d.insert_temp(egui::Id::new("settings-goto"), page));
+                        self.set_tab(Tab::Settings); vctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Minimized(false)); vctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Focus); }
                 }
             }
             ui.painter().line_segment([head.left_bottom(), head.right_bottom()], Stroke::new(1.0_f32, border));
@@ -208,5 +213,40 @@ impl App {
     pub(super) fn dock_close_now(&mut self) {
         let w = &mut self.call.win;
         w.dock_confirm = false; w.dock_open = false; w.dock_suppress = true; w.dock_shown = false; w.dock_chk = false;
+    }
+}
+
+/// Whether a live, answered call puts the dock on screen by itself: "Anruf-Dock aktivieren" (on by default) and the main
+/// window minimised, or - with Allgemein > Multitasking ticked - none of the Webox windows in front.
+pub(super) fn dock_auto(settings: &serde_json::Value, root_min: bool, any_focus: bool) -> bool {
+    let enabled = settings[crate::ui::settings::DOCK_ENABLED].as_bool().unwrap_or(true);
+    let covered = settings[crate::ui::settings::DOCK_AUTO_COVERED].as_bool().unwrap_or(false);
+    enabled && (root_min || (covered && !any_focus))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_settings_pages_keys_drive_the_automatic_dock() {
+        // Default: only while the main window is minimised.
+        assert!(dock_auto(&json!({}), true, false));
+        assert!(!dock_auto(&json!({}), false, false));
+        // Allgemein > Multitasking (the key that page writes) adds "covered by other apps".
+        assert!(dock_auto(&json!({"dock_auto_covered": true}), false, false));
+        assert!(!dock_auto(&json!({"dock_auto_covered": true}), false, true));
+        // "Anruf-Dock aktivieren" off: never by itself.
+        assert!(!dock_auto(&json!({"calling_dock": false, "dock_auto_covered": true}), true, false));
+    }
+
+    #[test]
+    fn ctrl_shift_x_opens_a_hidden_dock_and_closes_a_shown_one_for_the_call() {
+        let mut w = WinState::default();
+        w.toggle_dock();
+        assert!(w.dock_open && !w.dock_suppress);
+        w.dock_shown = true;
+        w.toggle_dock();
+        assert!(!w.dock_open && w.dock_suppress, "an automatic dock must not come straight back");
     }
 }

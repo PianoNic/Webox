@@ -163,7 +163,7 @@ pub(super) fn raw_from(pix: Pix, w: u32, h: u32, stride: i32, data: &[u8]) -> Op
             if s < wu * 2 || len < s * hu { return None; }
             Some(Raw { pix, w, h, stride: s, uv_off: 0, data: data.to_vec() })
         }
-        Pix::Bgra => {
+        Pix::Bgra | Pix::Rgba => {
             let s = if stride != 0 { stride.unsigned_abs() as usize } else { len / hu };
             if s < wu * 4 || len < s * hu { return None; }
             let d = if stride < 0 { data[..s * hu].chunks_exact(s).rev().flatten().copied().collect() } else { data.to_vec() };
@@ -251,6 +251,7 @@ mod tests {
                 Pix::Nv12 => r.data[y * r.stride + x],
                 Pix::Yuyv => r.data[y * r.stride + x * 2],
                 Pix::Bgra => { let i = y * r.stride + x * 4; ((r.data[i] as u32 * 29 + r.data[i + 1] as u32 * 150 + r.data[i + 2] as u32 * 77) >> 8) as u8 }
+                Pix::Rgba => { let i = y * r.stride + x * 4; ((r.data[i] as u32 * 77 + r.data[i + 1] as u32 * 150 + r.data[i + 2] as u32 * 29) >> 8) as u8 }
                 Pix::Rgb24 => { let i = y * r.stride + x * 3; ((r.data[i] as u32 * 77 + r.data[i + 1] as u32 * 150 + r.data[i + 2] as u32 * 29) >> 8) as u8 }
                 Pix::Mjpg => 0,
             });

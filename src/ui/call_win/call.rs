@@ -1,6 +1,18 @@
 //! The separate call window: opening, actions, remembered position and its content.
 use super::*;
 
+/// The person strip next to a received share (the official film strip: `pipMinWidth: 160 + 8`).
+const STRIP_W: f32 = 168.0;
+/// The bar above a received share (`shareBarHeight: 32`).
+const SHARE_BAR_H: f32 = 32.0;
+
+/// `pic` scaled to fit into `room`, aspect kept (never cropped; scaled up too, like the official stage).
+pub(crate) fn fit_size(pic: Vec2, room: Vec2) -> Vec2 {
+    if pic.x <= 0.0 || pic.y <= 0.0 || room.x <= 0.0 || room.y <= 0.0 { return Vec2::ZERO; }
+    let s = (room.x / pic.x).min(room.y / pic.y);
+    pic * s
+}
+
 impl App {
     /// "Separate windows" is on (setting, default true) and the backend can create OS windows.
     pub(crate) fn separate_call_windows(&self, ctx: &egui::Context) -> bool {
@@ -10,14 +22,22 @@ impl App {
     /// Nothing is written to the user's settings from offline sample / screenshot runs.
     pub(super) fn persist_ok(&self) -> bool { !self.call.sample && self.shot.is_none() }
 
-    /// Ctrl+Shift+X (bound in the shortcut registry): shows or hides the calling dock.
-    #[allow(dead_code)] // called by the shortcut registry (Ctrl+Shift+X)
-    pub(crate) fn toggle_calling_dock(&mut self) {
+    /// Ctrl+Shift+X ("ShowHideCallingDock", shortcuts/commands.rs): shows or hides the calling dock. Returns false when this
+    /// window setup has no dock (separate windows off, or a backend without OS windows); the caller falls back to "Anrufe".
+    pub(crate) fn toggle_calling_dock(&mut self, ctx: &egui::Context) -> bool {
+        if !self.separate_call_windows(ctx) { return false; }
+        self.call.win.toggle_dock();
+        true
+    }
+    /// Tray "Anruf-Dock einblenden": shows the dock (never hides it); false like [`Self::toggle_calling_dock`].
+    pub(crate) fn show_calling_dock(&mut self, ctx: &egui::Context) -> bool {
+        if !self.separate_call_windows(ctx) { return false; }
         let w = &mut self.call.win;
-        if w.dock_shown { w.dock_open = false; w.dock_suppress = true; } else { w.dock_open = true; w.dock_suppress = false; }
+        w.dock_open = true; w.dock_suppress = false;
+        true
     }
 
-    /// `WEBOX_SAMPLE_CALL=incoming|ringing|connected|dock` (offline `--sample` only: needs no signed-in client): shows the
+    /// `WEBOX_SAMPLE_CALL=incoming|ringing|connected|dock|share` (offline `--sample` only: needs no signed-in client): shows the
     /// call windows with made-up data. No sound, no microphone, nothing is sent, nothing is saved.
     pub(crate) fn sample_call_hook(&mut self, _ctx: &egui::Context, now: f64) {
         if self.call.win.sample_done || self.client.is_some() { return; }
@@ -26,6 +46,8 @@ impl App {
         self.call.sample = true;
         match k.as_str() {
             "dock" => { self.preview_call("connected", now); self.call.win.dock_open = true; }
+            // the other side shares its screen (a made-up picture): the stage layout
+            "share" => { self.preview_call("connected", now); self.call.remote_share = Some("Max Muster".into()); cloud::share_rx::show_sample(1280, 720); }
             "incoming" | "ringing" | "connected" => self.preview_call(&k, now),
             _ => {}
         }
@@ -61,8 +83,7 @@ impl App {
         let root_min = ctx.input(|i| i.viewport().minimized.unwrap_or(false));
         let root_focus = ctx.input(|i| i.viewport().focused.unwrap_or(true));
         let any_focus = root_focus || self.call.win.focus_call || self.call.win.focus_dock;
-        let covered = self.settings["dock_auto_covered"].as_bool().unwrap_or(false);
-        let auto = live && !incoming && !self.call.win.dock_suppress && (root_min || (covered && !any_focus));
+        let auto = live && !incoming && !self.call.win.dock_suppress && super::dock::dock_auto(&self.settings, root_min, any_focus);
         self.call.win.dock_shown = self.call.win.dock_open || auto;
         if self.call.win.dock_shown {
             let a = self.dock_window(ctx, t, now, v.as_ref());
@@ -191,6 +212,28 @@ impl App {
         (out[0], out[1], out[2])
     }
 
+    /// The received share as the stage of the call window: a 32 high bar "<Name> teilt den Bildschirm" on top, the picture
+    /// fitted into the rest (aspect kept, nothing cropped), a strip of `STRIP_W` on the right for the person. Returns the
+    /// strip. Draws nothing per frame that isn't there: a new picture is uploaded once (`remote_share_picture`).
+    fn share_stage(&mut self, ui: &mut egui::Ui, vctx: &egui::Context, t: &Th, body: Rect, v: &CallView) -> Rect {
+        let strip = Rect::from_min_max(pos2(body.right() - STRIP_W, body.top()), body.right_bottom());
+        let bar = Rect::from_min_size(body.left_top(), Vec2::new(body.width() - STRIP_W, SHARE_BAR_H));
+        let stage = Rect::from_min_max(bar.left_bottom(), pos2(strip.left(), body.bottom())).shrink(4.0);
+        let p = ui.painter();
+        p.rect_filled(bar, 0.0, t.win_b);
+        let who = self.call.remote_share.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| v.name.clone());
+        crate::ui::chrome::fit_text(p, bar.left() + 12.0, bar.center().y, &format!("{who} teilt den Bildschirm"), semibold(13.0), t.text1, bar.width() - 24.0);
+        p.rect_filled(stage, 4.0, Color32::BLACK);
+        match self.remote_share_picture(vctx) {
+            Some((id, size)) => {
+                let r = Rect::from_center_size(stage.center(), fit_size(size, stage.size()));
+                ui.painter().image(id, r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            }
+            None => { ui.painter().text(stage.center(), egui::Align2::CENTER_CENTER, "Freigabe wird geladen…", FontId::proportional(14.0), t.text2); }
+        }
+        strip
+    }
+
     pub(super) fn call_window_content(&mut self, vctx: &egui::Context, t: &Th, now: f64, v: &CallView) -> CallActions {
         let mut a = CallActions::default();
         let (maxed, focused) = vctx.input(|i| (i.viewport().maximized.unwrap_or(false), i.viewport().focused.unwrap_or(false)));
@@ -198,6 +241,7 @@ impl App {
         if vctx.input(|i| i.viewport().close_requested()) { vctx.send_viewport_cmd(egui::ViewportCommand::CancelClose); if v.ended { a.dismiss = true } else { a.hang = true } }
         if crate::ui::chrome::pointer_down(vctx) || vctx.input(|i| i.pointer.delta() != Vec2::ZERO || i.events.iter().any(|e| matches!(e, egui::Event::Key { .. }))) { self.call.win.last_move = now; }
         let connected = v.state == CallState::Connected;
+        let mut share = false;
         let autohide = self.settings["call_autohide_controls"].as_bool().unwrap_or(true);
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(vctx, |ui| {
             let full = ui.max_rect();
@@ -218,16 +262,24 @@ impl App {
             if cl { if v.ended { a.dismiss = true } else { a.hang = true } } // closing the call window ends the call
             // Content: interstitial (ringing screen for 1:1 calls) or the in-call view.
             let body = Rect::from_min_max(bar.left_bottom(), full.right_bottom() - Vec2::new(right_extra - BAR_SIDE, 0.0));
+            // The other side shares: their screen is the stage, the person moves to a strip on the right (the official
+            // MeetingView: share on the left stage, film strip at least 160 + 8 wide, a 32 high share bar).
+            let stage = connected && !v.ended && self.call.remote_share.is_some();
+            let body = if stage { self.share_stage(ui, vctx, t, body, v) } else { body };
             let cx = body.center().x;
-            let cy = body.center().y - if connected { 36.0 } else { 20.0 };
-            let av = if connected { 128.0 } else { 112.0 };
+            let cy = body.center().y - if stage { body.height() / 2.0 - 90.0 } else if connected { 36.0 } else { 20.0 };
+            let av = if stage { 72.0 } else if connected { 128.0 } else { 112.0 };
             {
                 let ar = Rect::from_center_size(pos2(cx, cy - av / 2.0 - 4.0), Vec2::splat(av));
                 let mut c = ui.new_child(egui::UiBuilder::new().max_rect(ar));
                 avatar_photo(&mut c, &mut self.icons, t, &v.name, av, false, None, None, v.photo);
             }
             let name_y = cy + av / 2.0 + 24.0;
-            ui.painter().text(pos2(cx, name_y), egui::Align2::CENTER_CENTER, &v.name, semibold(22.0), t.text1);
+            if stage {
+                crate::ui::chrome::fit_text(ui.painter(), body.left() + 8.0, name_y, &v.name, semibold(14.0), t.text1, body.width() - 16.0);
+            } else {
+                ui.painter().text(pos2(cx, name_y), egui::Align2::CENTER_CENTER, &v.name, semibold(22.0), t.text1);
+            }
             ui.painter().text(pos2(cx, name_y + 28.0), egui::Align2::CENTER_CENTER, state_text(&v.state, v.secs), FontId::proportional(14.0), t.text2);
             if v.ended { return; }
             if !connected {
@@ -241,9 +293,10 @@ impl App {
             }
             // Microphone level (capture-only engine, only while on screen).
             {
-                let lr = Rect::from_center_size(pos2(cx, name_y + 28.0 + 24.0), Vec2::new(220.0, 8.0));
+                let w = if stage { (body.width() - 24.0).max(40.0) } else { 220.0 };
+                let lr = Rect::from_center_size(pos2(cx, name_y + 28.0 + 24.0), Vec2::new(w, 8.0));
                 let mut c = ui.new_child(egui::UiBuilder::new().max_rect(lr));
-                self.level_bar(&mut c, t, now, 220.0);
+                self.level_bar(&mut c, t, now, w);
             }
             // Floating control bar (overlay: 56 high, 0.8 opacity, 4 side margin, 8 bottom gap, auto-hide).
             let hover_bar = ui.rect_contains_pointer(Rect::from_min_max(pos2(full.left(), full.bottom() - 120.0), full.right_bottom()));
@@ -266,6 +319,11 @@ impl App {
                 let kp_on = self.call.mc.keypad;
                 if round_at(&mut bu, &mut self.icons, "bar-keypad", pos2(br.left() + 16.0 + 20.0 + 96.0, y), 40.0, "dialpad-regular", if kp_on { t.accent } else { t.selected }, Color32::WHITE, t.focus)
                     .on_hover_text("Tastenfeld").clicked() { self.call.mc.keypad = !kp_on; }
+                // Share ("Freigeben"): the picker, then the share runs in the call (cloud/locus/share.rs); again = stop.
+                let (sharing, pending) = (self.call.sharing, self.call.share_pending);
+                let tip = if sharing { "Freigabe beenden" } else if pending { "Freigabe wird gestartet…" } else { "Inhalte freigeben" };
+                if round_at(&mut bu, &mut self.icons, "bar-share", pos2(br.left() + 16.0 + 20.0 + 144.0, y), 40.0, "share-screen-regular", if sharing { t.green } else if pending { t.accent } else { t.selected }, Color32::WHITE, t.focus)
+                    .on_hover_text(tip).clicked() { share = true; }
                 // Red pill on the right (left / right margin 16).
                 let pill = Rect::from_min_max(pos2(br.right() - 16.0 - 132.0, y - 20.0), pos2(br.right() - 16.0, y + 20.0));
                 let pr = bu.interact(pill, bu.id().with("bar-end"), Sense::click());
@@ -283,6 +341,7 @@ impl App {
         });
         crate::ui::chrome::edge_overlay(vctx); // Linux: no server-side border to resize by (no-op while maximised)
         vctx.request_repaint_after(std::time::Duration::from_millis(200));
+        if share { if self.call.sample { self.call.sharing = !self.call.sharing; } else { self.share_button(now); } }
         a
     }
 }

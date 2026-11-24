@@ -186,7 +186,7 @@ impl App {
     }
 
     /// Everyone a reactor can be: the open space's full participant list (asked for once, read-only), the people list, me.
-    fn reactor_people(&mut self) -> Vec<Person> {
+    pub(super) fn reactor_people(&mut self) -> Vec<Person> {
         let mut out = self.selected.clone().and_then(|id| self.spaces.iter().find(|s| s.id == id).cloned()).map(|s| self.space_people(&s)).unwrap_or_default();
         out.extend(self.people.iter().cloned());
         out

@@ -6,6 +6,8 @@ pub const MAX_FIELDS: usize = 64;
 pub const TEXT_MAX: usize = 1000;
 pub const MULTILINE_MAX: usize = 20_000;
 pub const SECRET_MAX: usize = 4096;
+/// Longest file path a `file` field takes.
+pub const PATH_MAX: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Kind {
@@ -15,6 +17,8 @@ pub enum Kind {
     Secret,
     Number { default: f64, min: f64, max: f64, step: f64 },
     Choice { default: String, options: Vec<(String, String)> },
+    /// A file path (`""` = none) picked with the system dialog, filtered to `extensions` named `filter`.
+    File { filter: String, extensions: Vec<String> },
     /// Calls the plugin back; holds no value.
     Button,
 }
@@ -60,6 +64,8 @@ fn field(v: &Value) -> Option<Field> {
             let d = s(v, "default");
             Kind::Choice { default: if options.iter().any(|o| o.0 == d) { d } else { options[0].0.clone() }, options }
         }
+        "file" => Kind::File { filter: cut(s(v, "filter"), 100), extensions: v.get("extensions").and_then(Value::as_array).into_iter().flatten()
+            .filter_map(Value::as_str).map(|e| e.trim_start_matches(".").to_ascii_lowercase()).filter(|e| !e.is_empty() && e.len() <= 16 && e.bytes().all(|b| b.is_ascii_alphanumeric())).take(32).collect() },
         "button" => Kind::Button,
         _ => return None,
     };
@@ -127,6 +133,12 @@ impl Schema {
                 let t = v.as_str().ok_or("muss eine der Optionen sein")?;
                 if options.iter().any(|o| o.0 == t) { Ok(Value::String(t.into())) } else { Err("muss eine der Optionen sein".into()) }
             }
+            Kind::File { .. } => {
+                let t = v.as_str().ok_or("muss ein Dateipfad sein")?;
+                if t.contains(['\n', '\r']) { return Err("darf keinen Zeilenumbruch enthalten".into()); }
+                if t.chars().count() > PATH_MAX { return Err(format!("höchstens {PATH_MAX} Zeichen")); }
+                Ok(Value::String(t.to_string()))
+            }
             Kind::Button => Err("eine Schaltfläche hat keinen Wert".into()),
         }
     }
@@ -152,7 +164,7 @@ pub fn default_of(k: &Kind) -> Value {
         Kind::Text { default, .. } => Value::String(default.clone()),
         Kind::Number { default, .. } => serde_json::json!(default),
         Kind::Choice { default, .. } => Value::String(default.clone()),
-        Kind::Secret | Kind::Button => Value::String(String::new()),
+        Kind::Secret | Kind::Button | Kind::File { .. } => Value::String(String::new()),
     }
 }
 

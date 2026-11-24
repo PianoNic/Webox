@@ -297,7 +297,10 @@ impl App {
         let resp = ui.interact(r, Id::new(("unfurl", salt.0, salt.1, cur_seq(ui.ctx()))), Sense::click());
         if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
         ui.painter().rect_filled(r, RADIUS, if resp.hovered() { c.tile_hover } else { c.tile });
-        let bx = Rect::from_min_size(r.min, Vec2::new(CARD_THUMB_W, CARD_THUMB_H));
+        // Wide: the picture box spans the card's full height (a text column taller than 105 makes the card taller, and a
+        // fixed-height box left a strip of the card and its rounded corner showing below it). Narrow: 200 x 105 on top.
+        let bh = if l.wide { l.h } else { CARD_THUMB_H };
+        let bx = Rect::from_min_size(r.min, Vec2::new(CARD_THUMB_W, bh));
         // The box shares the card's left (wide) / top (narrow) corners.
         let rr = RADIUS as u8;
         let fill = if l.wide { egui::CornerRadius { nw: rr, sw: rr, ne: 0, se: 0 } } else { egui::CornerRadius { nw: rr, ne: rr, sw: 0, se: 0 } };
@@ -306,15 +309,15 @@ impl App {
         if let Some((tid, [iw, ih])) = tex {
             // The picture always covers the whole box (no letterbox strips, as in the Webex desktop card): the visible part
             // is centred and cropped along whichever axis is too long.
-            let (u, v) = cover_fraction(iw as f32, ih as f32, CARD_THUMB_W, CARD_THUMB_H);
+            let (u, v) = cover_fraction(iw as f32, ih as f32, CARD_THUMB_W, bh);
             let (u0, v0) = ((1.0 - u) / 2.0, (1.0 - v) / 2.0);
             // drawn into a rounded rect that reaches past the box on the side without rounded corners, clipped to the box
             let (big, uv) = if l.wide {
-                let big = Rect::from_min_size(bx.min, Vec2::new(CARD_THUMB_W + 2.0 * RADIUS, CARD_THUMB_H));
+                let big = Rect::from_min_size(bx.min, Vec2::new(CARD_THUMB_W + 2.0 * RADIUS, bh));
                 (big, Rect::from_min_max(pos2(u0, v0), pos2(u0 + u * big.width() / CARD_THUMB_W, v0 + v)))
             } else {
-                let big = Rect::from_min_size(bx.min, Vec2::new(CARD_THUMB_W, CARD_THUMB_H + 2.0 * RADIUS));
-                (big, Rect::from_min_max(pos2(u0, v0), pos2(u0 + u, v0 + v * big.height() / CARD_THUMB_H)))
+                let big = Rect::from_min_size(bx.min, Vec2::new(CARD_THUMB_W, bh + 2.0 * RADIUS));
+                (big, Rect::from_min_max(pos2(u0, v0), pos2(u0 + u, v0 + v * big.height() / bh)))
             };
             round_image(&ui.painter().with_clip_rect(bx), big, RADIUS, uv, tid, Color32::WHITE);
         }

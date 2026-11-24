@@ -298,25 +298,13 @@ pub(super) fn wa(base: Color32, a: f32) -> Color32 {
     Color32::from_rgba_premultiplied(p(base.r()), p(base.g()), p(base.b()), al as u8)
 }
 
-/// A rounded rectangle filled with (a part of) a texture: perimeter fan with UVs mapped from the position.
+/// A rounded rectangle filled with (a part of) a texture, with antialiased corners (`widgets::fill_convex_aa`).
 pub(super) fn round_image(p: &egui::Painter, r: Rect, radius: f32, uv: Rect, tex: TextureId, tint: Color32) {
-    let mut m = Mesh::with_texture(tex);
+    use egui::emath::GuiRounding;
+    let r = r.round_to_pixels(p.ctx().pixels_per_point()); // straight edges on whole pixels, like egui's own rects
     let uv_at = |pt: egui::Pos2| pos2(uv.left() + (pt.x - r.left()) / r.width() * uv.width(), uv.top() + (pt.y - r.top()) / r.height() * uv.height());
-    m.vertices.push(Vertex { pos: r.center(), uv: uv_at(r.center()), color: tint });
-    let rad = radius.min(r.width() / 2.0).min(r.height() / 2.0);
-    let corners = [(r.right() - rad, r.top() + rad, -90.0f32), (r.right() - rad, r.bottom() - rad, 0.0), (r.left() + rad, r.bottom() - rad, 90.0), (r.left() + rad, r.top() + rad, 180.0)];
-    let mut n = 0u32;
-    for (cx, cy, a0) in corners {
-        for i in 0..=6 {
-            let a = (a0 + i as f32 * 15.0).to_radians();
-            let pt = pos2(cx + rad * a.cos(), cy + rad * a.sin());
-            m.vertices.push(Vertex { pos: pt, uv: uv_at(pt), color: tint });
-            n += 1;
-            if n > 1 { m.indices.extend([0, n - 1, n]); }
-        }
-    }
-    m.indices.extend([0, n, 1]);
-    p.add(Shape::mesh(m));
+    let pts = crate::ui::widgets::rounded_rect_points(r, [radius; 4], p.ctx().pixels_per_point(), f32::INFINITY);
+    crate::ui::widgets::fill_convex_aa(p, &pts, tex, 1, |q| (tint, uv_at(q)));
 }
 
 /// File category of a name. Categories: text (.rtf .txt .xml .one .docx .json .doc), spreadsheet (.xls .xlsx .csv),
