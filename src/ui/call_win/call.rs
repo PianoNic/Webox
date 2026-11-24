@@ -37,7 +37,7 @@ impl App {
         true
     }
 
-    /// `WEBOX_SAMPLE_CALL=incoming|ringing|connected|dock|share` (offline `--sample` only: needs no signed-in client): shows the
+    /// `WEBOX_SAMPLE_CALL=incoming|ringing|connected|dock|share|roster` (offline `--sample` only: needs no signed-in client): shows the
     /// call windows with made-up data. No sound, no microphone, nothing is sent, nothing is saved.
     pub(crate) fn sample_call_hook(&mut self, _ctx: &egui::Context, now: f64) {
         if self.call.win.sample_done || self.client.is_some() { return; }
