@@ -7,10 +7,12 @@
 //!   server (org.freedesktop.Notifications) with the same text and buttons. On X11 the app's own toast windows are used, as on Windows.
 //! * `x11.rs`: work area, window lookup / placement / capture and XGrabKey global hotkeys (pure-Rust x11rb, no libxcb).
 //! * `activation.rs`: raising the main window on Wayland (xdg-activation-v1 with the panel's / notification's / launcher's token).
+//! * `clipboard.rs`: image paste on Wayland through the data-control protocols (KDE, wlroots), XWayland as the fallback.
 //! * global hotkeys on Wayland: the xdg-desktop-portal GlobalShortcuts interface (ashpd), see `shortcuts/global_linux.rs`.
 //!
 //! Everything talks D-Bus through zbus on one small tokio runtime of its own (zbus/ashpd are already in the tree via rfd's portal).
 pub(crate) mod activation;
+pub(crate) mod clipboard;
 pub(crate) mod instance;
 pub(crate) mod launcher;
 pub(crate) mod notifications;

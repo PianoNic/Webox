@@ -159,6 +159,10 @@ raw-window-handle = "0.6"
 wayland-client = "0.31"
 wayland-backend = { version = "0.3", features = ["client_system"] }
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+# Image paste on native Wayland (src/platform/linux/clipboard.rs): reads the clipboard through the data-control protocols
+# (KDE, wlroots, Hyprland); pure Rust on the wayland-client above, no new native library. Only the paste side, so copying keeps
+# arboard's in-process X11 owner instead of wl-clipboard-rs's forked copy daemon.
+wl-clipboard-rs = "0.9"
 # Video playback (src/media/video/gst.rs): the system's GStreamer (playbin -> appsinks). 0.21 is the line built on glib 0.18, the
 # glib the gtk / webkit2gtk bindings already pull, so no second glib. Needs libgstreamer1.0-dev + -plugins-base1.0-dev to build.
 gstreamer = "0.21"
