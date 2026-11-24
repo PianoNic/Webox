@@ -73,6 +73,7 @@ impl App {
         }
         let mut got = vec![];
         if let Some(c) = &self.client { while let Ok(r) = c.rx.try_recv() { got.push(r); } }
+        let changed = !got.is_empty();
         for r in got {
             match r {
                 Resp::Status(s) => self.status = s,
@@ -183,6 +184,14 @@ impl App {
         if out.kept_changed {
             for (space, list) in self.messages.iter_mut() { self.plugins.reapply_kept(space, list); crate::ui::messages::prepare_arrived(list); }
         }
+        for (key, id, v) in out.settings_set {
+            let r = self.plugins.list.iter().position(|e| e.key == key).ok_or_else(|| "kein Plugin".to_string()).and_then(|i| self.plugins.set_setting(i, &id, v));
+            if let Err(e) = r { self.plugin_log.push(format!("[{key}] settings.set {id}: {e}")); }
+        }
+        if let Some(t) = out.clipboard { crate::ui::copy_text(t); }
+        // Plugin threads read spaces, people and messages from a copy (`spaces.list`, `space.history`, ...), kept only while a
+        // plugin listens to `message.received`.
+        self.plugins.feed(&self.spaces, &self.people, &self.messages, changed);
         self.ack_on_activation(); // the window came to the front with an unread chat open
         self.plugin_log.extend(out.logs);
         self.toasts.retain(|t| t.1 > now);
