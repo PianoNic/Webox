@@ -326,8 +326,13 @@ fn main() -> eframe::Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
     icons::prewarm(); // rasterise the first screens' icons on a worker while the window is created
     let args = system::args();
+    // Windows: one Webox at a time. A second start hands its link to the running copy (which comes to the front) and quits; test
+    // runs (--sample / --screenshot) neither hold nor check the mutex. WEBOX_MULTI_INSTANCE=1 allows several (development).
     #[cfg(windows)]
-    if args.screenshot.is_none() { system::hold_app_mutex(); } // the installer waits for Webox to close
+    if args.screenshot.is_none() && !args.sample && system::hold_app_mutex() && std::env::var_os("WEBOX_MULTI_INSTANCE").is_none()
+        && platform::tray::hand_off(args.protocol_uri.as_deref()) {
+        return Ok(());
+    }
     // Linux: a second start hands its link to the running copy (D-Bus) and quits; test runs (--sample / --screenshot) never do.
     #[cfg(target_os = "linux")]
     if args.screenshot.is_none() && !args.sample && std::env::var_os("WEBOX_MULTI_INSTANCE").is_none() && platform::linux::instance::hand_off(args.protocol_uri.as_deref()) {

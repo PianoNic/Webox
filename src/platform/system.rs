@@ -362,13 +362,16 @@ fn reg_run_value(name: &str, value: Option<&str>) -> bool {
     }
 }
 
-/// Held for the whole run: the installer (packaging/windows/webox.iss, `AppMutex`) asks to close Webox while it exists.
+/// Held for the whole run: the installer (packaging/windows/webox.iss, `AppMutex`) asks to close Webox while it exists, and a
+/// second start sees it and hands over to the running copy (main.rs). True when another Webox already holds it.
 #[cfg(windows)]
-pub fn hold_app_mutex() {
+pub fn hold_app_mutex() -> bool {
     use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
     let name = wide("WeboxAppMutex");
     // The handle is never closed; Windows releases it when the process ends.
     let _ = unsafe { windows::Win32::System::Threading::CreateMutexW(None, false, PCWSTR(name.as_ptr())) };
+    (unsafe { GetLastError() }) == ERROR_ALREADY_EXISTS
 }
 
 /// Whether Webox starts with the computer: the Run key on Windows (the installer's "start with Windows" writes the same value), an

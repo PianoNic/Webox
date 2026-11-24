@@ -233,6 +233,13 @@ impl App {
             self.show_main(ctx);
             if let Some(id) = system::space_from_uri(&uri) { if self.spaces.iter().any(|s| s.id == id) { self.set_tab(Tab::Messaging); self.open_space(id); } else { self.pending_space = Some(id); } }
         }
+        // Windows: another start handed over (tray/imp.rs `hand_off`): show the window, open the space of its link if it had one.
+        #[cfg(windows)]
+        for uri in tray::take_opened() {
+            self.notify.menu = None;
+            self.show_main(ctx);
+            if let Some(id) = system::space_from_uri(&uri) { if self.spaces.iter().any(|s| s.id == id) { self.set_tab(Tab::Messaging); self.open_space(id); } else { self.pending_space = Some(id); } }
+        }
         // Linux: the urgency hint (X11) / xdg-activation request (Wayland) through winit, the count on the launcher entry.
         #[cfg(not(windows))]
         {

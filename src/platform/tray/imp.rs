@@ -18,6 +18,37 @@ static EVENTS: Mutex<Vec<TrayEvent>> = Mutex::new(Vec::new());
 static CTX: OnceLock<eframe::egui::Context> = OnceLock::new();
 static TRAY_HWND: AtomicIsize = AtomicIsize::new(0);
 static TASKBAR_CREATED: AtomicU32 = AtomicU32::new(0);
+/// Links (or "" for a plain second start) another Webox start handed over, see `hand_off`.
+static OPENED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+/// `WM_COPYDATA` tag of a hand-over ("WEBX").
+const HAND_OFF_TAG: usize = 0x5745_4258;
+/// COPYDATASTRUCT (winuser.h); declared here so the windows crate needs no extra feature for it.
+#[repr(C)]
+struct CopyData { tag: usize, len: u32, data: *const c_void }
+
+/// A second start: finds the running Webox's tray window, lets it come to the front and hands it the link (or nothing). True
+/// when this start should quit. Waits up to 5 s for a copy that is itself still starting.
+pub fn hand_off(uri: Option<&str>) -> bool {
+    unsafe {
+        let mut win = None;
+        for _ in 0..50 {
+            if let Ok(h) = FindWindowW(w!("WeboxTrayWindow"), PCWSTR::null()) { if !h.is_invalid() { win = Some(h); break } }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        // Without a tray window there is nothing to hand to; the running copy still owns the account, so this start quits anyway.
+        let Some(h) = win else { return true };
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(h, Some(&mut pid));
+        let _ = AllowSetForegroundWindow(pid); // the running copy may raise its window
+        let text: Vec<u16> = uri.unwrap_or("").encode_utf16().collect();
+        let cd = CopyData { tag: HAND_OFF_TAG, len: (text.len() * 2) as u32, data: text.as_ptr() as *const c_void };
+        let _ = SendMessageTimeoutW(h, WM_COPYDATA, WPARAM(0), LPARAM(&cd as *const CopyData as isize), SMTO_ABORTIFHUNG, 3000, None);
+        true
+    }
+}
+
+/// The hand-overs received since the last call (hub.rs shows the window and opens the space).
+pub fn take_opened() -> Vec<String> { std::mem::take(&mut *OPENED.lock().unwrap()) }
 static ICON: AtomicIsize = AtomicIsize::new(0); // the HICON currently shown
 
 fn hwnd(h: isize) -> HWND { HWND(h as *mut c_void) }
@@ -59,6 +90,15 @@ unsafe extern "system" fn wndproc(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> 
             _ => {}
         }
         return LRESULT(0);
+    }
+    if msg == WM_COPYDATA {
+        let cd = &*(lp.0 as *const CopyData);
+        if cd.tag == HAND_OFF_TAG {
+            let text = if cd.data.is_null() { String::new() } else { String::from_utf16_lossy(std::slice::from_raw_parts(cd.data as *const u16, cd.len as usize / 2)) };
+            OPENED.lock().unwrap().push(text);
+            if let Some(c) = CTX.get() { c.request_repaint(); }
+            return LRESULT(1);
+        }
     }
     if msg != 0 && msg == TASKBAR_CREATED.load(Ordering::Relaxed) { // explorer restarted: put the icon back
         let (icon, tip) = (ICON.load(Ordering::Relaxed), crate::platform::tray::tooltip(0));
