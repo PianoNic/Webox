@@ -5,7 +5,7 @@
 //! * `State`: the user's overrides (settings JSON `shortcuts`), the resolved bindings and the UI state.
 //! * `App::shortcuts_frame`: per-frame dispatch.
 //! * `popup.rs`: "Suche nach Tastenkombination öffnen" (Ctrl+/). `commands.rs`: the commands implemented here.
-//! * `global.rs`: global hotkeys (Windows RegisterHotKey on a message-loop thread).
+//! * `global.rs`: global hotkeys (Windows RegisterHotKey on a message-loop thread; `global_linux.rs`, `global_macos.rs`).
 //! The settings page lives in `ui/settings_shortcuts.rs`.
 use crate::*;
 use std::sync::OnceLock;
@@ -17,8 +17,13 @@ pub(crate) mod global;
 #[cfg(target_os = "linux")]
 #[path = "global_linux.rs"]
 pub(crate) mod global;
+#[cfg(target_os = "macos")]
+#[path = "global_macos.rs"]
+pub(crate) mod global;
 pub(crate) mod popup;
 pub(crate) mod table;
+#[cfg(target_os = "macos")]
+mod keys_macos; // ⇧⌘N instead of Strg+Umschalt+N
 
 /// The shortcut table: the Webex `keyboardShortcuts.json` when it is in `assets/cisco/`, else the Webox
 /// table with the same commands, keys and flags (`assets/keyboard-shortcuts.json`, without the descriptions).
@@ -99,9 +104,12 @@ impl Combo {
     pub(crate) fn qt(&self) -> String {
         format!("{}{}{}{}", if self.ctrl { "Ctrl+" } else { "" }, if self.alt { "Alt+" } else { "" }, if self.shift { "Shift+" } else { "" }, key_name(self.key))
     }
-    /// How it is shown in German: "Strg+Umschalt+N".
+    /// How it is shown in German: "Strg+Umschalt+N" (macOS: "⇧⌘N").
     pub(crate) fn display(&self) -> String {
-        format!("{}{}{}{}", if self.ctrl { "Strg+" } else { "" }, if self.alt { "Alt+" } else { "" }, if self.shift { "Umschalt+" } else { "" }, key_name_de(self.key))
+        #[cfg(target_os = "macos")]
+        { keys_macos::display(self) }
+        #[cfg(not(target_os = "macos"))]
+        { format!("{}{}{}{}", if self.ctrl { "Strg+" } else { "" }, if self.alt { "Alt+" } else { "" }, if self.shift { "Umschalt+" } else { "" }, key_name_de(self.key)) }
     }
     pub(crate) fn from_event(key: Key, m: &Modifiers) -> Combo { Combo { ctrl: m.ctrl || m.command, alt: m.alt, shift: m.shift, key } }
     #[cfg(test)]
@@ -117,6 +125,14 @@ impl Combo {
     /// A modifier or a function key: the minimum for a user-chosen combination ("starting with Control, Option, Command or Shift").
     pub(crate) fn capturable(&self) -> bool { self.ctrl || self.alt || self.shift || FKEYS.contains(&self.key) }
     pub(crate) fn plain_modifier_free(&self) -> bool { !self.ctrl && !self.alt }
+}
+
+/// A fixed shortcut text of a menu or tooltip as this platform writes it ("Strg+Umschalt+P"; macOS "⇧⌘P").
+pub(crate) fn native_hint(s: &str) -> String {
+    #[cfg(target_os = "macos")]
+    { keys_macos::hint(s) }
+    #[cfg(not(target_os = "macos"))]
+    { s.to_string() }
 }
 
 /// Removes the key press at `pos` and, with Alt or Ctrl held, the text it typed (winit sends Alt+K as a K key and a "k" text on
@@ -252,7 +268,7 @@ pub(crate) struct State {
     pub composer_events: Vec<&'static str>,
     pub popup: popup::Popup, pub page: crate::ui::settings_shortcuts::Page,
     pub sign_out_ask: bool,
-    #[cfg(any(windows, target_os = "linux"))] pub global: global::Handle,
+    #[cfg(any(windows, target_os = "linux", target_os = "macos"))] pub global: global::Handle,
     global_sig: Vec<(usize, Combo)>,
 }
 

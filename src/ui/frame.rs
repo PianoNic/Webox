@@ -12,6 +12,8 @@ impl eframe::App for App {
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         if self.shot.is_some() { super::shot_input::inject(self.frames + 1, raw); }
         super::autoscroll::begin_frame(ctx, raw); // middle-click autoscroll: ends on Esc / click, frame time
+        #[cfg(target_os = "macos")]
+        crate::platform::macos::appkit::inject(raw); // Bearbeiten menu picked with the mouse (copy, paste, undo, ...)
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {

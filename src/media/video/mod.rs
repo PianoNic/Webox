@@ -18,6 +18,10 @@ use mf as backend;
 mod gst;
 #[cfg(target_os = "linux")]
 use gst as backend;
+#[cfg(target_os = "macos")]
+mod macos; // AVFoundation (AVAssetReader)
+#[cfg(target_os = "macos")]
+use macos as backend;
 #[cfg(test)]
 mod tests;
 

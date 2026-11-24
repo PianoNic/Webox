@@ -65,6 +65,8 @@ impl App {
         let page = s.release.as_ref().map(|r| r.page.clone()).unwrap_or_else(|| updater::release::RELEASES_PAGE.into());
         let can_install = updater::self_update() && s.release.as_ref().is_some_and(|r|
             updater::release::platform_asset(&r.assets, std::env::consts::OS, std::env::consts::ARCH).is_some());
+        #[cfg(target_os = "macos")]
+        let can_install = can_install && std::env::current_exe().ok().and_then(|e| updater::macos::bundle_of(&e)).is_some();
         let news = "Gute Neuigkeiten! Es ist ein Update verfügbar.";
         let with_notes = |head: &str| if notes.is_empty() { head.to_string() } else { format!("{head}\n\n{notes}") };
         let close = Button::primary("close", "Schließen");
@@ -76,6 +78,10 @@ impl App {
                 "Sie haben die aktuelle Version ({{0}}).".replace("{{0}}", updater::VERSION), vec![close]),
             Phase::Available if can_install => (format!("Version {version} ist verfügbar"), with_notes(news),
                 vec![Button::secondary("later", "Später"), Button::primary("install", "Jetzt aktualisieren")]),
+            // macOS outside Webox.app (`cargo run`): nothing to replace, the download page instead.
+            Phase::Available if cfg!(target_os = "macos") => (format!("Version {version} ist verfügbar"),
+                format!("{}\n\nLaden Sie Webox.app von der Release-Seite auf GitHub herunter und ersetzen Sie die bisherige App.", with_notes(news)),
+                vec![Button::secondary("page", "Herunterladen"), close]),
             Phase::Available => (format!("Version {version} ist verfügbar"),
                 format!("{}\n\nPakete von Nix oder Ihrer Distribution werden über die Systemaktualisierung auf den neuen Stand gebracht.", with_notes(news)),
                 vec![Button::secondary("page", "Versionshinweise"), close]),

@@ -1,6 +1,7 @@
 //! Where secret plugin settings (`password` fields) live: the OS keyring. Windows: the Credential Manager (generic credentials
 //! "Webox/plugin/<plugin>/<setting>", local machine). Linux: the Secret Service through `secret-tool` (libsecret) when it is
-//! installed. Elsewhere, or when the keyring refuses, the store falls back to the settings file and the page says so.
+//! installed. macOS: the login Keychain (generic password, service "Webox", account "Webox/plugin/<plugin>/<setting>").
+//! Elsewhere, or when the keyring refuses, the store falls back to the settings file and the page says so.
 pub trait Secrets: Send {
     fn get(&self, plugin: &str, id: &str) -> Option<String>;
     fn set(&mut self, plugin: &str, id: &str, value: &str) -> Result<(), String>;
@@ -65,7 +66,14 @@ impl Secrets for OsSecrets {
     }
 }
 
-#[cfg(not(any(windows, all(unix, not(target_os = "macos")))))]
+#[cfg(target_os = "macos")]
+impl Secrets for OsSecrets {
+    fn get(&self, plugin: &str, id: &str) -> Option<String> { crate::platform::macos::keychain::get(&target(plugin, id)) }
+    fn set(&mut self, plugin: &str, id: &str, value: &str) -> Result<(), String> { crate::platform::macos::keychain::set(&target(plugin, id), value) }
+    fn delete(&mut self, plugin: &str, id: &str) { crate::platform::macos::keychain::delete(&target(plugin, id)) }
+}
+
+#[cfg(not(any(windows, unix)))]
 impl Secrets for OsSecrets {
     fn get(&self, _: &str, _: &str) -> Option<String> { None }
     fn set(&mut self, _: &str, _: &str, _: &str) -> Result<(), String> { Err("kein Schlüsselbund".into()) }

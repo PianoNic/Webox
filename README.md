@@ -37,6 +37,7 @@ The official Webex app is a big Qt and Chromium bundle. Webox is one small Rust 
 
 - 🪟 **Windows**: run the installer from the [latest release](https://github.com/PianoNic/Webox/releases).
 - 🐧 **Linux**: unpack `webox-<version>-linux-x86_64.tar.gz` and run `install.sh` ([libraries](docs/LINUX.md)).
+- 🍎 **macOS** (Apple Silicon and Intel): unzip `webox-<version>-macos-universal.zip`, move `Webox.app` to Applications, right-click → Open the first time ([details](docs/MACOS.md)).
 - ❄️ **Nix**: `nix run github:PianoNic/Webox` ([modules](docs/INSTALL-NIX.md)).
 - 🛠️ **From source**: [developer setup](docs/dev-setup.md).
 

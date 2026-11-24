@@ -10,6 +10,8 @@ impl App {
     pub(crate) fn show_main(&mut self, ctx: &egui::Context) {
         tray::HIDDEN.store(false, std::sync::atomic::Ordering::Relaxed);
         if let Some(h) = self.hwnd { tray::restore_from_tray(h); }
+        #[cfg(target_os = "macos")]
+        tray::restore_from_tray(0); // the app to the front (from the menu bar, a banner, the Dock)
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
@@ -179,7 +181,7 @@ impl App {
 
         // Tray: events, unread icon, close-to-tray.
         let unread = self.spaces.iter().filter(|s| s.unread).count();
-        #[cfg(target_os = "linux")] // the panel draws the menu itself (dbusmenu): hand it the same rows
+        #[cfg(any(target_os = "linux", target_os = "macos"))] // the panel / menu bar draws the menu itself (dbusmenu, NSMenu): hand it the same rows
         let rows: Vec<tray::MenuRow> = self.tray_entries().iter().map(|e| match e {
             ui::menu::Entry::Item(i) => tray::MenuRow { label: i.label.clone(), enabled: i.enabled, sep: false },
             ui::menu::Entry::Title(s) => tray::MenuRow { label: s.clone(), enabled: false, sep: false },
@@ -191,13 +193,13 @@ impl App {
         if self.notify.tray.is_none() { self.notify.tray = tray::Tray::ready(); }
         if let Some(tr) = &mut self.notify.tray {
             tr.set_unread(unread);
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             tr.set_menu(rows);
             for e in tr.poll() {
                 match e {
                     tray::TrayEvent::Left => { self.notify.menu = None; self.show_main(ctx); }
                     tray::TrayEvent::Menu(x, y) => { ui::menu::menu_open(ctx, "tray"); self.notify.menu = Some(TrayMenu { pos: (x, y), opened: clock, focused: false, hwnd: None, placed: None }); }
-                    #[cfg(target_os = "linux")]
+                    #[cfg(any(target_os = "linux", target_os = "macos"))]
                     tray::TrayEvent::Item(i) => if let Some(ui::menu::Entry::Item(it)) = self.tray_entries().get(i as usize) {
                         if it.enabled { self.notify.out.push(Out::Menu(it.id.clone())); }
                     },
@@ -252,6 +254,8 @@ impl App {
         self.notify.toasts.retain(|ts| clock < ts.deadline + FADE);
         #[cfg(target_os = "linux")]
         { self.native_toasts(ctx); crate::ui::call_toast::call_note_frame(ctx); }
+        #[cfg(target_os = "macos")]
+        self.mac_frame(ctx, now); // the app menu, Notification Center banners and their answers
 
         if !self.notify.toasts.is_empty() && ctx.embed_viewports() {
             // No multi-viewport support: fall back to the in-window toast.
@@ -274,7 +278,7 @@ impl App {
                     "open" => { self.show_main(ctx); self.set_tab(Tab::Whiteboards); }
                     _ => self.show_main(ctx),
                 },
-                #[cfg(target_os = "linux")]
+                #[cfg(any(target_os = "linux", target_os = "macos"))]
                 Out::Menu(id) => self.pick_tray(&id, ctx, now),
             }
             // an action that didn't raise the window (snooze, join) leaves its token unused: it must not raise for a later one

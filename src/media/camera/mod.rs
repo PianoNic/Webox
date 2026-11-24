@@ -2,7 +2,8 @@
 //!
 //! Platform back ends: Windows Media Foundation (`mf.rs`: `MFEnumDeviceSources` + `IMFSourceReader`, the reader decodes
 //! MJPG / converts to NV12), Linux V4L2 (`v4l2.rs`: raw ioctls, mmap streaming; MJPG decoded with the in-tree `image` crate,
-//! whose zune-jpeg back end fills in the default Huffman tables webcams leave out). Everything runs on worker threads;
+//! whose zune-jpeg back end fills in the default Huffman tables webcams leave out), macOS AVFoundation (`avf.rs`: a capture session
+//! delivering BGRA). Everything runs on worker threads;
 //! the UI only uploads the finished RGBA preview frame as a texture.
 //!
 //! The preview applies what the page's options mean for the user's own view: mirror, rotate, zoom to fit (fill the preview
@@ -17,6 +18,8 @@ use std::time::{Duration, Instant};
 mod mf;
 #[cfg(target_os = "linux")]
 pub(crate) mod v4l2;
+#[cfg(target_os = "macos")]
+mod avf; // AVFoundation capture session
 pub(crate) mod v4l2_parse;
 
 /// A camera as listed in the picker. `id`: MF symbolic link / V4L2 device path. The settings store the name (stable across
@@ -276,12 +279,14 @@ pub trait Source {
 pub fn list() -> Vec<CamDev> {
     #[cfg(windows)] { mf::list() }
     #[cfg(target_os = "linux")] { v4l2::list() }
-    #[cfg(not(any(windows, target_os = "linux")))] { vec![] }
+    #[cfg(target_os = "macos")] { avf::list() }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))] { vec![] }
 }
 fn open(dev: &CamDev, max_h: u32, hw: bool) -> Result<Box<dyn Source>, Fail> {
     #[cfg(windows)] { mf::open(dev, max_h, hw).map(|s| Box::new(s) as Box<dyn Source>) }
     #[cfg(target_os = "linux")] { let _ = hw; v4l2::open(dev, max_h).map(|s| Box::new(s) as Box<dyn Source>) }
-    #[cfg(not(any(windows, target_os = "linux")))] { let _ = (dev, max_h, hw); Err(Fail::NoCamera) }
+    #[cfg(target_os = "macos")] { let _ = hw; avf::open(dev, max_h).map(|s| Box::new(s) as Box<dyn Source>) }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))] { let _ = (dev, max_h, hw); Err(Fail::NoCamera) }
 }
 
 /// The synthetic source of sample mode.

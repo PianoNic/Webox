@@ -47,10 +47,15 @@ pub fn arch_word(os: &str, arch: &str) -> String {
     match (os, arch) { ("windows", "x86_64") => "x64".into(), ("windows", "aarch64") => "arm64".into(), (_, a) => a.into() }
 }
 
-/// This platform's archive: `webox-<version>-windows-x64.zip` or `webox-<version>-linux-<arch>.tar.gz`.
+/// This platform's archive: `webox-<version>-windows-x64.zip`, `webox-<version>-linux-<arch>.tar.gz` or
+/// `webox-<version>-macos-universal.zip`.
 pub fn platform_asset<'a>(assets: &'a [Asset], os: &str, arch: &str) -> Option<&'a Asset> {
     let a = arch_word(os, arch);
-    let tail = match os { "windows" => format!("-windows-{a}.zip"), "linux" => format!("-linux-{a}.tar.gz"), _ => return None };
+    let tail = match os {
+        "windows" => format!("-windows-{a}.zip"), "linux" => format!("-linux-{a}.tar.gz"),
+        "macos" => "-macos-universal.zip".to_string(), // one app for Apple Silicon and Intel (lipo)
+        _ => return None,
+    };
     assets.iter().find(|x| x.name.starts_with("webox-") && x.name.ends_with(&tail))
 }
 

@@ -131,7 +131,16 @@ fn system_idle_ms() -> Option<u64> {
     if !unsafe { GetLastInputInfo(&mut li) }.as_bool() { return None }
     Some(unsafe { GetTickCount() }.wrapping_sub(li.dwTime) as u64)
 }
-#[cfg(not(windows))]
+/// macOS: seconds since the last input event of any kind in this login session (CoreGraphics, no permission needed).
+#[cfg(target_os = "macos")]
+fn system_idle_ms() -> Option<u64> {
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" { fn CGEventSourceSecondsSinceLastEventType(state: i32, event_type: u32) -> f64; }
+    // kCGEventSourceStateCombinedSessionState = 0, kCGAnyInputEventType = ~0
+    let s = unsafe { CGEventSourceSecondsSinceLastEventType(0, u32::MAX) };
+    (s.is_finite() && s >= 0.0).then(|| (s * 1000.0) as u64)
+}
+#[cfg(not(any(windows, target_os = "macos")))]
 fn system_idle_ms() -> Option<u64> { None }
 
 #[cfg(test)]

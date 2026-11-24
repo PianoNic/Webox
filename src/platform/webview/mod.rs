@@ -10,7 +10,8 @@
 //! - **Linux/Nix**: **WebKitGTK** (`webkit2gtk`, webkit2gtk-4.1) in a chromeless window we own.
 //!   eframe runs on winit, not GTK, so a GTK child *inside* the winit window isn't possible; a
 //!   dedicated top-level window is the fallback for this platform.
-//! - **macOS / other**: no embed → `start` returns `Err`, and the caller uses the browser+paste path.
+//! - **macOS**: **WKWebView** (`objc2-web-kit`) in a window of its own, like WebKitGTK.
+//! - **Other**: no embed → `start` returns `Err`, and the caller uses the browser+paste path.
 //!
 //! idbroker authorizes with `isHideAuthzCode=true`. In that mode idbroker does not render the code; it
 //! hands it to the embedded host, so capture is deliberately broad, catching the code from any of:
@@ -155,9 +156,9 @@ fn percent_decode(s: &str) -> String {
 mod tests;
 
 /// What the webview hands back: the authorization **code** for the native PKCE exchange, or that the user closed the sign-in
-/// window (Linux, a window of its own). A ready-made token is never accepted from a page: any page could post one, while a
+/// window (Linux and macOS, a window of its own). A ready-made token is never accepted from a page: any page could post one, while a
 /// foreign code fails the exchange (it lacks our PKCE verifier).
-pub enum Captured { Code(String), #[cfg(all(unix, not(target_os = "macos")))] Closed }
+pub enum Captured { Code(String), #[cfg(unix)] Closed }
 
 /// Classify a message the SCRAPER posted back: the code for the native out-of-process exchange.
 fn classify(s: &str) -> Option<Captured> {
@@ -202,10 +203,16 @@ mod platform_gtk;
 #[cfg(all(unix, not(target_os = "macos")))]
 use platform_gtk as platform;
 
+// macOS.
+#[cfg(target_os = "macos")]
+mod platform_mac;
+#[cfg(target_os = "macos")]
+use platform_mac as platform;
+
 // Other platforms.
-#[cfg(not(any(windows, all(unix, not(target_os = "macos")))))]
+#[cfg(not(any(windows, unix)))]
 mod platform {
-    //! macOS and anything else: no embedded webview; the caller falls back to browser + paste.
+    //! Anything else: no embedded webview; the caller falls back to browser + paste.
     use std::sync::mpsc::Receiver;
     pub struct WebView(#[allow(dead_code)] Receiver<super::Captured>);
     pub const EMBEDDED: bool = false;

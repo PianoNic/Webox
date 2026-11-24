@@ -106,7 +106,7 @@ impl App {
         self.webview = None;
         self.login_error.clear();
         match cap {
-            #[cfg(all(unix, not(target_os = "macos")))]
+            #[cfg(unix)]
             platform::webview::Captured::Closed => self.login_page = LoginPage::Email,
             platform::webview::Captured::Code(code) => {
                 self.login_page = LoginPage::Code;

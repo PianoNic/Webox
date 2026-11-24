@@ -106,6 +106,39 @@ webkit2gtk = { version = "2.0", features = ["v2_40"] }
 gtk = "0.18"
 glib = "0.18"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# macOS integration (src/platform/macos/, the WKWebView sign-in window, media backends). objc2 0.6 / the 0.3 framework crates are
+# the line winit, rfd and arboard already pull on macOS; each with just the headers Webox uses.
+objc2 = "0.6"
+block2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "NSString", "NSURL", "NSURLRequest", "NSGeometry", "NSNotification",
+  "NSObject", "NSData", "NSBundle", "NSArray", "NSSet", "NSError", "NSDictionary", "NSEnumerator", "NSValue"] }
+# Status item, menus, Dock badge, the sign-in window.
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "objc2-core-foundation", "NSWindow", "NSResponder", "NSView", "NSGraphics",
+  "NSApplication", "NSMenu", "NSMenuItem", "NSStatusBar", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSImage", "NSDockTile", "NSEvent",
+  "NSRunningApplication"] }
+# Notification Center banners with buttons (inside Webox.app).
+objc2-user-notifications = { version = "0.3", default-features = false, features = ["std", "block2", "UNUserNotificationCenter",
+  "UNNotificationContent", "UNNotificationRequest", "UNNotificationResponse", "UNNotification", "UNNotificationAction", "UNNotificationCategory",
+  "UNNotificationSound", "UNNotificationTrigger"] }
+# Media (src/media/*/macos.rs, camera/avf.rs): AVFoundation for video playback, the test videos and cameras; ScreenCaptureKit +
+# VideoToolbox for screen sharing (H.264).
+dispatch2 = { version = "0.3", default-features = false, features = ["std", "objc2"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFBase", "CFDictionary", "CFString"] }
+objc2-core-audio-types = { version = "0.3", default-features = false, features = ["std", "CoreAudioBaseTypes"] }
+objc2-av-foundation = { version = "0.3", default-features = false, features = ["std", "block2", "dispatch2", "objc2-core-media", "objc2-core-video", "objc2-core-foundation",
+  "AVAsset", "AVAssetReader", "AVAssetReaderOutput", "AVAssetTrack", "AVAssetWriter", "AVAssetWriterInput", "AVMediaFormat", "AVVideoSettings",
+  "AVCaptureDevice", "AVCaptureInput", "AVCaptureOutputBase", "AVCaptureSession", "AVCaptureVideoDataOutput"] }
+objc2-core-media = { version = "0.3", default-features = false, features = ["std", "objc2-core-audio-types", "objc2-core-video", "CMBase", "CMBlockBuffer",
+  "CMFormatDescription", "CMSampleBuffer", "CMTime", "CMTimeRange"] }
+objc2-core-video = { version = "0.3", default-features = false, features = ["std", "CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVReturn"] }
+objc2-video-toolbox = { version = "0.3", default-features = false, features = ["std", "objc2-core-media", "objc2-core-video", "VTBase", "VTCompressionProperties",
+  "VTCompressionSession", "VTErrors", "VTSession"] }
+objc2-screen-capture-kit = { version = "0.3", default-features = false, features = ["std", "block2", "dispatch2", "objc2-core-media", "objc2-core-foundation",
+  "objc2-core-graphics", "libc", "SCShareableContent", "SCStream"] }
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "objc2-app-kit", "objc2-core-foundation", "WKWebView", "WKWebViewConfiguration",
+  "WKUserContentController", "WKUserScript", "WKScriptMessage", "WKScriptMessageHandler", "WKNavigationDelegate", "WKNavigation"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 # Native desktop integration on Linux (src/platform/linux/): all of these are already in the tree through rfd's xdg-portal backend
 # (ashpd -> zbus 5 / zvariant 5 / futures-util / serde) and winit (x11rb, raw-window-handle), so they add no new crates.

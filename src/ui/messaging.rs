@@ -102,7 +102,7 @@ impl App {
                 let (r, resp) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::click());
                 ui.painter().circle_filled(r.center(), 14.0, if resp.hovered() { t.white_btn.gamma_multiply(0.85) } else { t.white_btn });
                 self.icons.paint(ui, "plus-regular", Rect::from_center_size(r.center(), Vec2::splat(16.0)), t.white_btn_text);
-                if resp.on_hover_text(format!("{} (Strg+Umschalt+N)", tr("Create a space"))).clicked() { self.new_space = Some(String::new()) }
+                if resp.on_hover_text(crate::shortcuts::native_hint(&format!("{} (Strg+Umschalt+N)", tr("Create a space")))).clicked() { self.new_space = Some(String::new()) }
                 // Filter glyph 10.4 x 8.8 pt centred 65.2 pt and the + centred 24 pt from the card's right edge (41.2 apart; here
                 // 28 / 2 + 5.2 + 8 spacing + 28 / 2), glyph drawn at 16.
                 ui.add_space(5.2);

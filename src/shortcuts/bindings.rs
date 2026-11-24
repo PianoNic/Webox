@@ -80,7 +80,7 @@ impl App {
         }
         let reg = registry();
         self.sc_sync_global(ctx);
-        #[cfg(any(windows, target_os = "linux"))]
+        #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
         for idx in self.sc.global.drain() { self.run_command(idx, ctx); }
 
         // The settings page is recording a key (it stamps the pass number every pass while in edit mode).
@@ -99,7 +99,7 @@ impl App {
                 let Some(k) = r.key else { return false };
                 if !k.matches_at(key, phys, &mods, loose) || c.kind_native() { return false; }
                 if clip && !matches!(c.kind, Kind::Run(_) | Kind::Cmd | Kind::Composer) { return false; }
-                #[cfg(any(windows, target_os = "linux"))]
+                #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
                 if self.sc.global.is_registered(i) { return false; } // delivered by the hotkey thread
                 if repeat && !matches!(c.id, "ZoomIn" | "ZoomOut" | "PreviousSpace" | "NextSpace") { return false; }
                 // Without Ctrl/Alt a key belongs to the focused text box / the message list (Shift+Up, PgUp, ...); stubs never take those.
@@ -125,7 +125,7 @@ impl App {
         let reg = registry();
         // Linux: opt-in (Ctrl+Shift+X / C, Ctrl+D are everyday keys in other apps), and the call commands stay bound for the whole
         // run, because every change rebuilds the portal session and the desktop may ask again.
-        let linux = cfg!(target_os = "linux");
+        let linux = cfg!(any(target_os = "linux", target_os = "macos")); // macOS: opt-in as well
         let call_on = linux || self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none());
         let mut want: Vec<(usize, Combo)> = Vec::new();
         for (i, c) in reg.cmds.iter().enumerate() {
@@ -141,6 +141,8 @@ impl App {
             self.sc.global.set(_ctx, want.clone());
             #[cfg(target_os = "linux")]
             if !self.sc.global.set(_ctx, want.clone()) { return; } // no session type known yet: try again next frame
+            #[cfg(target_os = "macos")]
+            self.sc.global.set(_ctx, want.clone());
             self.sc.global_sig = want;
         }
     }

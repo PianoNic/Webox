@@ -257,7 +257,7 @@ impl App {
             ui.painter().rect_stroke(sr, 14.0, Stroke::new(1.0_f32, t.tk("appHeader-searchBar-outline-active")), egui::StrokeKind::Inside);
             self.icons.paint(ui, "search-regular", Rect::from_center_size(sr.left_center() + Vec2::new(24.0, 0.0), Vec2::splat(16.0)), t.tk("globalHeader-textfield-searchIcon"));
             // The shortcut hint only while the field has its full width (a zoomed UI below the minimum window shrinks it).
-            let hint = if sr.width() >= header_layout::SEARCH_W { ui.painter().text(sr.right_center() - Vec2::new(11.0, 0.0), egui::Align2::RIGHT_CENTER, tr("Ctrl+F"), FontId::proportional(14.0), t.text2).width() + 19.0 } else { 12.0 };
+            let hint = if sr.width() >= header_layout::SEARCH_W { ui.painter().text(sr.right_center() - Vec2::new(11.0, 0.0), egui::Align2::RIGHT_CENTER, crate::shortcuts::native_hint(&tr("Ctrl+F")), FontId::proportional(14.0), t.text2).width() + 19.0 } else { 12.0 };
             // The pill is a button; a click / Strg+F opens the global search popup (ui/global_search.rs).
             fit_text(ui.painter(), sr.left() + 40.0, cy, tr("Search, meet, and call"), FontId::proportional(14.5), t.text2, sr.width() - 40.0 - hint);
             let sresp = ui.interact(sr, egui::Id::new("search-pill"), Sense::click());

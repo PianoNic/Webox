@@ -8,3 +8,5 @@ pub mod nmhost;
 pub mod updater; // app updates from the GitHub releases
 #[cfg(target_os = "linux")]
 pub mod linux; // tray (SNI), notifications, launcher badge, X11 helpers
+#[cfg(target_os = "macos")]
+pub mod macos; // open / reveal, Notification Center, the settings folder

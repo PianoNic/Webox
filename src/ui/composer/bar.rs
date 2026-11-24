@@ -35,7 +35,7 @@ impl App {
                 self.icons.paint(&mut c, icon, Rect::from_center_size(r.center(), Vec2::splat(TOOL_GLYPH)), tint);
                 continue;
             }
-            let bresp = self.icons.button(&mut c, icon, 28.0, TOOL_GLYPH, tint, t.hover).on_hover_text(tip.as_str());
+            let bresp = self.icons.button(&mut c, icon, 28.0, TOOL_GLYPH, tint, t.hover).on_hover_text(crate::shortcuts::native_hint(&tip));
             if icon == "emoticons_16_em" { emoji_anchor = bresp.rect; }
             if icon == "gif_16" { gif_anchor = bresp.rect; if super::super::gif_picker::gif_picker_open() { c.painter().circle_filled(bresp.rect.center(), 14.0, t.ink_a(0.12)); } }
             if icon == "markdown_16_em" { st.legend_anchor = Some(bresp.rect); }

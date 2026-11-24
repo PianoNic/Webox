@@ -90,7 +90,7 @@ impl Toast {
 }
 
 /// `Token` (Linux): the xdg-activation token of the notification action right behind it, for that action's `show_main` only.
-enum Out { Open(Option<String>), Button(Toast, &'static str), #[cfg(target_os = "linux")] Menu(String), #[cfg(target_os = "linux")] Token(String) }
+enum Out { Open(Option<String>), Button(Toast, &'static str), #[cfg(any(target_os = "linux", target_os = "macos"))] Menu(String), #[cfg(target_os = "linux")] Token(String) }
 
 struct TrayMenu { pos: (i32, i32), opened: f64, focused: bool, hwnd: Option<isize>, placed: Option<(i32, i32, i32, i32)> }
 
@@ -168,3 +168,5 @@ mod card;
 #[allow(unused_imports)]
 pub(crate) use card::*;
 mod hub;
+#[cfg(target_os = "macos")]
+pub(crate) mod macos; // the app menu, Notification Center banners

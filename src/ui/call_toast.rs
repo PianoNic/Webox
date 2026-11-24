@@ -96,8 +96,8 @@ impl App {
         }
         a
     }
-    /// No call notification off Linux (the toast window is placed and kept on top there).
-    #[cfg(not(target_os = "linux"))]
+    /// No call notification on Windows (the toast window is placed and kept on top there); macOS: `ui/call_note_macos.rs`.
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     pub(crate) fn call_note(&mut self, _ctx: &egui::Context, _v: &CallView) -> CallActions { CallActions::default() }
 
     fn toast_content(&mut self, vctx: &egui::Context, t: &Th, v: &CallView, opacity: f32) -> CallActions {

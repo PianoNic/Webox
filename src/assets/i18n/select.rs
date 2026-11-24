@@ -56,6 +56,18 @@ pub fn system_locale() -> String {
             }
         }
     }
+    // macOS: an app started from the Finder has no LANG; the first of the user's preferred languages ("de-CH").
+    // Asked once per run (`defaults` is a process start).
+    #[cfg(target_os = "macos")]
+    {
+        static MAC: OnceLock<Option<String>> = OnceLock::new();
+        let first = MAC.get_or_init(|| {
+            let out = std::process::Command::new("/usr/bin/defaults").args(["read", "-g", "AppleLanguages"]).stderr(std::process::Stdio::null()).output();
+            let text = out.map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+            text.split(['(', ',', '\n']).map(|s| s.trim().trim_matches('"')).find(|s| s.len() >= 2 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')).map(String::from)
+        });
+        if let Some(l) = first { return l.clone(); }
+    }
     "en-US".into()
 }
 
