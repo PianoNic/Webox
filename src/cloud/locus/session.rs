@@ -19,6 +19,7 @@ impl Session {
             CallReq::Dtmf(t) => self.dtmf(&t),
             CallReq::Share(r) => self.share_req(r),
             CallReq::JoinSpace(id, c) => self.join_space(&id, &c),
+            CallReq::Control(c) => self.control(c),
         }
     }
 
@@ -62,6 +63,8 @@ impl Session {
         let local = self.calls.muted;
         let Some(c) = self.calls.cur.as_ref() else { return };
         let Some(view) = v.or(c.view.as_ref()).cloned() else { return };
+        self.roster_sync(&view);
+        let Some(c) = self.calls.cur.as_ref() else { return };
         let (info, newly_remote) = mute_update(c.mute_info.as_ref(), &view, local);
         if newly_remote {
             dbg_conn("call: muted by others, microphone muted");

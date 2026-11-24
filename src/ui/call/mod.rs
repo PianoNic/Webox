@@ -26,6 +26,8 @@ pub(crate) struct CallUi {
     pub(crate) remote_share: Option<String>, share_tex: Option<egui::TextureHandle>, share_seq: u64,
     /// Mute as Locus has it: the other side's microphone, ours (muted by others, unmute allowed, asked to unmute).
     pub(crate) mute: cloud::locus::MuteInfo,
+    /// Everyone in the call (the participants panel, `call_win/roster.rs`), as Locus has them.
+    pub(crate) roster: cloud::locus::controls::Roster,
     // Separate-window state, offline sample mode (no sound, no microphone), toast's ring switch.
     pub(crate) win: super::call_win::WinState, pub(crate) sample: bool, pub(crate) ring_muted: bool,
     /// Plays ringtone / ringback / test tones (its own streams, on the ringtone or speaker device).

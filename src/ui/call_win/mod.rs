@@ -61,6 +61,8 @@ pub(crate) struct WinState {
     // Focus of our windows in the previous frame (main, call window, dock), for "covered by other apps".
     focus_call: bool, focus_dock: bool,
     pub sample_done: bool, rounded: u8, save_t: f64,
+    /// The participants panel (`roster.rs`).
+    pub roster: roster::RosterUi,
 }
 
 fn rect_setting(s: &serde_json::Value, key: &str) -> Option<[f32; 4]> {
@@ -81,3 +83,4 @@ impl WinState {
 mod call;
 pub(crate) use call::fit_size;
 mod dock;
+mod roster;
