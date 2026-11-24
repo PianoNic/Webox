@@ -86,7 +86,10 @@ impl Session {
             let sp = Space { id: st(c, "id"), title, direct, team, unread: last > st(c, "lastSeenActivityDate"),
                 favorite: tags.contains(&"FAVORITE"), public: is_public(&tags), hidden: tags.contains(&"HIDDEN"),
                 kms_resource: st(c, "kmsResourceObjectUrl"), last_seen: st(c, "lastSeenActivityDate"), last, key_url, participants: parts,
-                closed: false, announcement: false };
+                closed: false, announcement: false,
+                // the conversation's meeting locus ("sync conversation locus_url"); a running meeting seen before stays known
+                locus_url: Some(st(c, "locusUrl")).filter(|u| webex_host(u)).or_else(|| self.spaces.get(&st(c, "id")).map(|s| s.locus_url.clone())).unwrap_or_default(),
+                meeting: self.spaces.get(&st(c, "id")).is_some_and(|s| s.meeting) };
             // Set after building: `parts` moved into the struct above.
             let self_moderator = c["participants"]["items"].as_array().into_iter().flatten()
                 .any(|p| p["roomProperties"]["isModerator"].as_bool() == Some(true) && self.is_me(&Person { id: st(p, "id"), name: String::new(), email: st(p, "emailAddress"), status: String::new() }));
@@ -100,7 +103,9 @@ impl Session {
 
     pub(super) fn meetings(&mut self) -> Result<(), String> {
         let v = self.http("GET", &self.url("locus", "/loci?startingSoon=true&includePMRs=true"), None)?;
-        let list = v["loci"].as_array().cloned().unwrap_or_default().iter().map(|l| Meeting {
+        // a space meeting among them marks its space as "meeting in progress" (or not any more)
+        for l in v["loci"].as_array().into_iter().flatten() { self.space_meeting_locus(l, &locus::locus_url_of(l)); }
+        let list =v["loci"].as_array().cloned().unwrap_or_default().iter().map(|l| Meeting {
             title: [st(&l["info"], "webExMeetingName"), st(&l["meeting"], "title"), st(&l["info"], "topic")].into_iter().find(|t| !t.is_empty()).unwrap_or_else(|| "Meeting".into()),
             start: hhmm(&st(&l["meeting"], "startTime")),
             link: [st(&l["info"], "webExMeetingLink"), st(&l["info"], "sipUri")].into_iter().find(|t| !t.is_empty()).unwrap_or_default(),

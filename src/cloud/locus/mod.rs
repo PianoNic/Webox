@@ -155,7 +155,9 @@ pub enum CallReq { Dial(String, audio::Choice), Answer(audio::Choice), HangUp, M
     // keypad tones during a connected call
     Dtmf(String),
     /// Start sharing the picked screen / window (`Some`), or stop (`None`); see `share.rs`.
-    Share(Option<share::ShareReq>) }
+    Share(Option<share::ShareReq>),
+    /// "Treffen" / "Beitreten" in a group space (its id): join the space's meeting, or start it (session.rs `join_space`).
+    JoinSpace(String, audio::Choice) }
 
 /// `POST {locusUrl}/sendDtmf` body.
 pub fn dtmf_body(device_url: &str, tones: &str, correlation_id: &str) -> Value {
@@ -337,6 +339,8 @@ struct Active {
     remote_share: Option<String>, remote_since: Option<Instant>, rx_reoffered: bool, rx_warned: bool,
     /// The mute state last sent to the UI.
     mute_info: Option<MuteInfo>,
+    /// A group space's meeting (the space id): stays up while others come and go (session.rs `group_state`).
+    space: Option<String>,
 }
 
 impl Active {
@@ -344,7 +348,7 @@ impl Active {
         Active { url, self_id, self_url, media_id: String::new(), correlation_id: String::new(), outgoing, name, email, last: None, answered: outgoing,
             media: None, roap_seq: 0, roap_done: false, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None,
             locus: Value::Null, joined_at: None, media_up_at: None, offer_at: None, share: None,
-            lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false, mute_info: None }
+            lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false, mute_info: None, space: None }
     }
 }
 

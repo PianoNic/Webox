@@ -15,7 +15,7 @@ pub fn sample() -> (Person, Vec<Space>, Vec<Team>, Vec<Person>, Vec<Meeting>) {
         sp("s3", "Timo Steiner", true, "", "15:58", false, true),
         Space { public: true, ..sp("s4", "Onboarding Kickoff", false, "", "Mo", false, true) },
         sp("s5", "Nina Huber", true, "", "15:10", false, false),
-        sp("s6", "Development", false, "", "Mo", false, false),
+        Space { meeting: true, ..sp("s6", "Development", false, "", "Mo", false, false) }, // sample: a space meeting in progress ("Beitreten")
         sp("s7", "Allgemein", false, "t3", "Mo", false, false),
         sp("s8", "Status Update", false, "", "Mo", false, false),
         sp("s9", "Mara Lind", true, "", "Mo", false, false),
