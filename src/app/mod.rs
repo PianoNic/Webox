@@ -94,6 +94,7 @@ impl App {
                 }
                 Resp::Meetings(m) => self.meetings = m,
                 Resp::Messages(id, mut m) => {
+                    self.list_arrived(&id, &mut m); // plugins: message.deleted / message.edited, kept messages
                     crate::ui::messages::prepare_arrived(&mut m); // local date / time once, layout revision
                     let open = self.selected.as_deref() == Some(id.as_str());
                     if let Some(h) = self.photos.history.get_mut(&id) { h.first_failed = false; }
@@ -152,6 +153,7 @@ impl App {
                 },
                 // An older page arrived: the full list replaces the loaded one (reactions merged both ways).
                 Resp::OlderMessages(space, mut list, prepended, reached) => {
+                    self.list_arrived(&space, &mut list);
                     crate::ui::messages::prepare_arrived(&mut list);
                     let h = self.photos.history.entry(space.clone()).or_default();
                     h.requested = None; h.reached_start = reached; h.last_prepended = prepended; h.generation += 1;
@@ -178,9 +180,19 @@ impl App {
         for (plugin, t) in out.toasts { self.plugin_toast(plugin, t, now); }
         for t in out.sends { self.send_text(t, now); }
         for (space, t) in out.sends_to { self.post_to(space, t); }
+        if out.kept_changed {
+            for (space, list) in self.messages.iter_mut() { self.plugins.reapply_kept(space, list); crate::ui::messages::prepare_arrived(list); }
+        }
         self.ack_on_activation(); // the window came to the front with an unread chat open
         self.plugin_log.extend(out.logs);
         self.toasts.retain(|t| t.1 > now);
+    }
+
+    /// A new list of `space` replaces the loaded one: the plugins see what was deleted or edited in between and what they
+    /// keep is drawn into it (extras/plugins/kept.rs). Nothing happens without such a plugin.
+    fn list_arrived(&mut self, space: &str, list: &mut Vec<cloud::Message>) {
+        let name = self.spaces.iter().find(|s| s.id == space).map(|s| s.title.clone()).unwrap_or_default();
+        self.plugins.list_arrived(space, &name, self.messages.get(space).map(Vec::as_slice), list);
     }
 
     pub(crate) fn go(&mut self, tab: Tab, space: Option<String>) {

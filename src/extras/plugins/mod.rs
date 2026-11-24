@@ -6,6 +6,7 @@
 use super::plugin_repo::{index::check_contract, store};
 use super::plugin_settings as ps;
 pub mod settings;
+pub mod kept;
 use settings::push_settings;
 use collabhost_plugin_api::{cs, unpack_contract, Accents, Decor, HostApi, Palette, PluginVTable, ThemeInfo, ABI_VERSION, CONTRACT_SYMBOL, ENTRY_SYMBOL};
 use serde_json::{Map, Value};
@@ -22,7 +23,9 @@ pub struct Outbox {
     pub toasts: Vec<(String, String)>,
     pub sends: Vec<String>, pub logs: Vec<String>,
     /// `space.send`: (space id, text).
-    pub sends_to: Vec<(String, String)> }
+    pub sends_to: Vec<(String, String)>,
+    /// `message.keep` changed what is kept: the loaded lists are drawn again (`Plugins::reapply_kept`).
+    pub kept_changed: bool }
 
 /// One message of a space as `space.history` hands it out.
 struct Recent { author: String, mine: bool, text: String }
@@ -36,7 +39,7 @@ const SEEN_MAX: usize = 4096;
 
 /// `plugin` is the key (plugin-data.json, log lines), `name` the shown name (toasts).
 struct Ctx { plugin: String, name: String, out: Arc<Mutex<Outbox>>, data: Arc<Mutex<Map<String, Value>>>, data_file: PathBuf, settings: Arc<Mutex<Map<String, Value>>>,
-    recent: Recents }
+    recent: Recents, kept: Arc<Mutex<kept::Kept>> }
 
 type Ptr = *mut c_void;
 /// The plugin's function table after checking that no entry is null.
@@ -122,6 +125,10 @@ pub struct Plugins {
     recent: Recents,
     /// Message ids `message.received` already fired for (the set, and the same ids oldest first to forget them).
     seen: (HashSet<String>, VecDeque<String>),
+    /// Deleted messages and earlier texts plugins keep showing (`message.deleted` / `message.edited` / `message.keep`).
+    kept: Arc<Mutex<kept::Kept>>,
+    /// Keys `message.deleted` ("d" + id) / `message.edited` ("e" + id + new text) already fired for, like `seen`.
+    fired: (HashSet<String>, VecDeque<String>),
 }
 
 fn s(p: *const c_char) -> String { if p.is_null() { String::new() } else { unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned() } }
@@ -181,6 +188,13 @@ const METHODS: &[(&str, u32, Method)] = &[
         let l = r.get(sp).map_or(&[][..], |l| &l[l.len().saturating_sub(n)..]);
         serde_json::json!({ "messages": l.iter().map(|m| serde_json::json!({ "author": m.author, "mine": m.mine, "text": m.text })).collect::<Vec<_>>() })
     }),
+    // `{"deleted": [...], "edited": [...], "replace": bool}`: deleted messages to keep showing and earlier texts to attach
+    // (records as the events deliver them, plus "style" / "history"); used to restore them after a restart. Local only.
+    ("message.keep", 1, |c, a| {
+        let r = lock(&c.kept).keep(a);
+        post(c, |o| o.kept_changed = true);
+        r
+    }),
 ];
 /// The events Webox fires: (name, version). A plugin receives those it lists in `Plugin::EVENTS`.
 const EVENTS: &[(&str, u32)] = &[
@@ -189,6 +203,13 @@ const EVENTS: &[(&str, u32)] = &[
     // A message arrived live, once per message id, also my own. Payload: `{"space","id","author","text","mine","direct",
     // "mentioned"}` (`direct` = 1:1 space, `mentioned` = it @-mentions me). Fired on the UI thread: return at once.
     ("message.received", 1),
+    // A message was deleted (it became a tombstone or vanished), once per id. Payload: `{"space","space_name","id","author",
+    // "email","text","mine","parent","published_ms","date","time"}` (the last known text; date / time UTC). Answer
+    // `{"keep": true, "style": "text"|"overlay"}` to keep it on screen, drawn as deleted. Fired on the UI thread.
+    ("message.deleted", 1),
+    // A message's text changed, once per id and new text. Payload: `{"space","space_name","id","author","mine","old_text",
+    // "new_text"}`. Answer `{"history": [...]}` (earlier texts, oldest first) to show them above the text. UI thread.
+    ("message.edited", 1),
 ];
 /// `host.capabilities`: every method and event with its version, as one flat object.
 fn capabilities() -> Value {
@@ -240,7 +261,8 @@ impl Plugins {
         let _ = std::fs::create_dir_all(&dirs[0]);
         let data_file = config.join("plugin-data.json");
         let mut p = Plugins { dirs, list: vec![], out: Default::default(), install_root, data: Arc::new(Mutex::new(read_json(&data_file))),
-            state_file: config.join("plugins.json"), data_file, settings_store: ps::Store::new(config), recent: Default::default(), seen: Default::default() };
+            state_file: config.join("plugins.json"), data_file, settings_store: ps::Store::new(config), recent: Default::default(), seen: Default::default(),
+            kept: Default::default(), fired: Default::default() };
         store::clean(&p.install_root);
         p.rescan();
         p
@@ -341,7 +363,7 @@ impl Plugins {
         e.commands = s(v.commands).split_whitespace().map(String::from).collect();
         let name = if e.name.trim().is_empty() { key.to_string() } else { e.name.clone() };
         let ctx = Box::new(Ctx { plugin: key.to_string(), name, out: self.out.clone(), data: self.data.clone(), data_file: self.data_file.clone(),
-            settings: e.settings.values.clone(), recent: self.recent.clone() });
+            settings: e.settings.values.clone(), recent: self.recent.clone(), kept: self.kept.clone() });
         let host = Box::new(HostApi { ctx: &*ctx as *const Ctx as Ptr, toast: Some(h_toast), send: Some(h_send), log: Some(h_log),
             data_get: Some(h_get), data_set: Some(h_set), free_str: Some(h_free), settings_get: Some(h_settings),
             // 1.6
@@ -371,7 +393,18 @@ impl Plugins {
         }
         e.enabled = on && (e.loaded.is_some() || e.builtin);
         self.save_state();
+        self.drop_kept_unless_logging();
     }
+
+    /// With no plugin listening to `message.deleted` / `message.edited` any more (switched off, uninstalled), nothing stays kept.
+    fn drop_kept_unless_logging(&self) {
+        if self.logs_messages() { return; }
+        let mut k = lock(&self.kept);
+        if !k.is_empty() { k.clear(); drop(k); lock(&self.out).kept_changed = true; }
+    }
+
+    /// Whether an enabled plugin listens to `message.deleted` or `message.edited`.
+    pub fn logs_messages(&self) -> bool { self.subscribed("message.deleted") || self.subscribed("message.edited") }
 
     /// Whether the plugin with key is listed and switched on (the built-in plugins ask this every frame).
     pub fn is_enabled(&self, key: &str) -> bool { self.list.iter().any(|e| e.key == key && e.enabled) }
@@ -427,6 +460,7 @@ impl Plugins {
         let i = self.list.iter().position(|e| e.source.as_ref().is_some_and(|s| s.pkg == pkg)).ok_or("nicht installiert")?;
         let mut e = self.list.remove(i);
         unload(&mut e);
+        self.drop_kept_unless_logging();
         store::remove(&self.install_root, pkg)?;
         let mut state = read_json(&self.state_file);
         state.remove(pkg);
@@ -457,7 +491,7 @@ impl Plugins {
     /// Copies the newest messages of `space` (system lines left out) for `space.history`. The window calls it only while a
     /// plugin subscribes to `message.received`.
     pub fn note_space(&self, space: &str, list: &[crate::cloud::Message]) {
-        let l = list.iter().filter(|m| m.notice.is_empty()).rev().take(RECENT_MAX).collect::<Vec<_>>();
+        let l = list.iter().filter(|m| m.notice.is_empty() && m.deleted == 0).rev().take(RECENT_MAX).collect::<Vec<_>>();
         let l = l.into_iter().rev().map(|m| Recent { author: m.author.clone(), mine: m.mine, text: m.text.clone() }).collect();
         lock(&self.recent).insert(space.to_string(), l);
     }
@@ -470,6 +504,44 @@ impl Plugins {
         if self.seen.1.len() > SEEN_MAX { if let Some(old) = self.seen.1.pop_front() { self.seen.0.remove(&old); } }
         let p = serde_json::json!({ "space": space, "id": id, "author": author, "text": text, "mine": mine, "direct": direct, "mentioned": mentioned });
         self.emit("message.received", &p.to_string());
+    }
+
+    /// A new list of `space` arrived and replaces `old` (None: the space had none loaded): fires `message.deleted` /
+    /// `message.edited` for what changed (once per id / new text), keeps what the answers ask for, and draws everything kept
+    /// into `new`. Without a listening plugin and nothing kept it does nothing, so `new` stays exactly as received.
+    pub fn list_arrived(&mut self, space: &str, space_name: &str, old: Option<&[crate::cloud::Message]>, new: &mut Vec<crate::cloud::Message>) {
+        let (del, edit) = (self.subscribed("message.deleted"), self.subscribed("message.edited"));
+        if let Some(old) = old.filter(|_| del || edit) {
+            for ch in kept::changes(old, new) {
+                let (key, name, payload) = match ch {
+                    kept::Change::Deleted(m) if del => (format!("d{}", m.id), "message.deleted", kept::deleted_payload(space, space_name, m)),
+                    kept::Change::Edited(m, t) if edit => (format!("e{}
+{t}", m.id), "message.edited", kept::edited_payload(space, space_name, m, t)),
+                    _ => continue,
+                };
+                if !self.fired.0.insert(key.clone()) { continue; }
+                self.fired.1.push_back(key);
+                if self.fired.1.len() > SEEN_MAX { if let Some(o) = self.fired.1.pop_front() { self.fired.0.remove(&o); } }
+                let answers = self.emit(name, &payload.to_string());
+                let answers: Vec<Value> = answers.iter().filter_map(|a| serde_json::from_str(a).ok()).collect();
+                let mut k = lock(&self.kept);
+                match ch {
+                    kept::Change::Deleted(m) => if let Some(a) = answers.iter().find(|a| a["keep"] == true) {
+                        k.keep_deleted(space, m.clone(), if a["style"] == "overlay" { kept::STYLE_OVERLAY } else { kept::STYLE_TEXT });
+                    },
+                    kept::Change::Edited(m, _) => if let Some(h) = answers.iter().find(|a| a["history"].is_array()) { k.set_history(&m.id, &h["history"]) },
+                }
+            }
+        }
+        let mut k = lock(&self.kept);
+        if !k.is_empty() { k.apply(space, new); }
+    }
+
+    /// After `message.keep` (or when nothing is kept any more): takes the old state out of a loaded list and draws the current one.
+    pub fn reapply_kept(&self, space: &str, list: &mut Vec<crate::cloud::Message>) {
+        let mut k = lock(&self.kept);
+        k.strip(list);
+        k.apply(space, list);
     }
 
     /// Whether any loaded, enabled plugin can rewrite messages (`on_message` is the identity otherwise).
@@ -637,7 +709,7 @@ mod tests {
     fn host_methods_answer_and_never_unwind() {
         use std::ffi::CStr;
         let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: Default::default(), data: Default::default(), data_file: Default::default(),
-            settings: std::sync::Arc::new(std::sync::Mutex::new(serde_json::json!({ "x": true }).as_object().unwrap().clone())), recent: Default::default() };
+            settings: std::sync::Arc::new(std::sync::Mutex::new(serde_json::json!({ "x": true }).as_object().unwrap().clone())), recent: Default::default(), kept: Default::default() };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |m: &str, j: &str| {
             let (m, j) = (collabhost_plugin_api::cs(m), collabhost_plugin_api::cs(j));
@@ -711,7 +783,7 @@ mod tests {
         let msg = |author: &str, mine: bool, text: &str| crate::cloud::Message { author: author.into(), mine, text: text.into(), ..Default::default() };
         let notice = crate::cloud::Message { notice: "Anna ist beigetreten".into(), ..Default::default() };
         p.note_space("s1", &[msg("Anna", false, "eins"), notice, msg("Ich", true, "zwei"), msg("Anna", false, "drei")]);
-        let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(), recent: p.recent.clone() };
+        let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(), recent: p.recent.clone(), kept: Default::default() };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |m: &str, j: serde_json::Value| {
             let (m, j) = (collabhost_plugin_api::cs(m), collabhost_plugin_api::cs(&j.to_string()));
@@ -731,6 +803,135 @@ mod tests {
         let out = std::mem::take(&mut *p.out.lock().unwrap());
         assert_eq!(out.sends_to, [("s1".to_string(), "Bis gleich!".to_string())]);
         assert!(out.sends.is_empty(), "never the open space");
+        drop(p);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Records `message.deleted` / `message.edited` and asks to keep everything: deleted ones as overlay, edits with the old text.
+    static LOGGED: std::sync::Mutex<Vec<(String, serde_json::Value)>> = std::sync::Mutex::new(vec![]);
+    #[derive(Default)]
+    struct Logger;
+    impl collabhost_plugin_api::Plugin for Logger {
+        const NAME: &'static str = "Logger"; const AUTHOR: &'static str = ""; const VERSION: &'static str = ""; const DESCRIPTION: &'static str = "";
+        const EVENTS: &'static str = "message.deleted message.edited";
+        fn on_event(&mut self, name: &str, payload: &str) -> Option<String> {
+            let v: serde_json::Value = serde_json::from_str(payload).unwrap();
+            LOGGED.lock().unwrap().push((name.into(), v.clone()));
+            Some(match name {
+                "message.deleted" => serde_json::json!({ "keep": true, "style": "overlay" }),
+                _ => serde_json::json!({ "history": [v["old_text"]] }),
+            }.to_string())
+        }
+    }
+
+    fn msg(id: &str, text: &str, ms: i64) -> crate::cloud::Message {
+        crate::cloud::Message { id: id.into(), author: "Anna".into(), text: text.into(), published_ms: ms, date: "2026-11-24".into(), time: "10:00".into(), ..Default::default() }
+    }
+    fn tomb(id: &str, ms: i64) -> crate::cloud::Message { crate::cloud::Message { id: id.into(), notice: "Anna hat ihre Nachricht gelöscht.".into(), published_ms: ms, ..Default::default() } }
+    type Row = (String, String, String, u8, Vec<String>);
+    /// (id, text, notice, deleted, history) of every row.
+    fn rows(l: &[crate::cloud::Message]) -> Vec<Row> { l.iter().map(|m| (m.id.clone(), m.text.clone(), m.notice.clone(), m.deleted, m.history.clone())).collect() }
+    fn row(id: &str, text: &str, notice: &str, deleted: u8, history: &[&str]) -> Row {
+        (id.into(), text.into(), notice.into(), deleted, history.iter().map(|h| h.to_string()).collect())
+    }
+    const GONE: &str = "Anna hat ihre Nachricht gelöscht.";
+
+    #[test]
+    fn deleted_and_edited_fire_once_and_what_is_kept_stays() {
+        let (mut p, dir) = load_in_process::<Logger>(6);
+        assert!(p.logs_messages());
+        let old = vec![msg("m1", "eins", 1000), msg("m2", "zwei", 2000), msg("m3", "drei", 3000)];
+        // m2 became a tombstone (the service puts it at the deletion time, its row has no `published_ms`), m3 was edited.
+        let mut new = vec![msg("m1", "eins", 1000), msg("m3", "drei!", 3000), tomb("m2", 0)];
+        p.list_arrived("s1", "Team", Some(&old), &mut new);
+        assert_eq!(rows(&new), [row("m1", "eins", "", 0, &[]), row("m2", "zwei", "", super::kept::STYLE_OVERLAY, &[]), row("m3", "drei!", "", 0, &["drei"])]);
+        {
+            let l = LOGGED.lock().unwrap();
+            assert_eq!(l.len(), 2);
+            assert_eq!(l[0], ("message.deleted".to_string(), serde_json::json!({ "space": "s1", "space_name": "Team", "id": "m2", "author": "Anna", "email": "",
+                "text": "zwei", "mine": false, "parent": "", "published_ms": 2000, "date": "2026-11-24", "time": "10:00" })));
+            assert_eq!(l[1], ("message.edited".to_string(), serde_json::json!({ "space": "s1", "space_name": "Team", "id": "m3", "author": "Anna", "mine": false,
+                "old_text": "drei", "new_text": "drei!" })));
+        }
+        // The next load of the space (the tombstone again): no second event, the kept rows are drawn again.
+        let mut again = vec![msg("m1", "eins", 1000), msg("m3", "drei!", 3000), tomb("m2", 0)];
+        p.list_arrived("s1", "Team", Some(&new), &mut again);
+        assert_eq!(rows(&again), rows(&new));
+        assert_eq!(LOGGED.lock().unwrap().len(), 2);
+        // m1 vanished (a delete without a tombstone) inside the range the new list covers: kept where it stood.
+        let mut gone = vec![msg("m0", "null", 500), msg("m3", "drei!", 3000), tomb("m2", 0)];
+        p.list_arrived("s1", "Team", Some(&again), &mut gone);
+        assert_eq!(gone.iter().map(|m| (m.id.as_str(), m.deleted)).collect::<Vec<_>>(), [("m0", 0), ("m1", 2), ("m2", 2), ("m3", 0)]);
+        assert_eq!(LOGGED.lock().unwrap().len(), 3);
+        // A newer window that does not reach back to a message is not a delete of it.
+        let mut newer = vec![msg("m3", "drei!", 3000), msg("m4", "vier", 4000)];
+        p.list_arrived("s1", "Team", Some(&gone), &mut newer);
+        assert_eq!(LOGGED.lock().unwrap().len(), 3);
+        // The plugin gives its log back with another style (a settings change): the full copy stays, only the style changes.
+        p.kept.lock().unwrap().keep(&serde_json::json!({ "replace": true, "deleted": [{ "space": "s1", "id": "m2", "text": "aus dem Protokoll", "style": "text" }] }));
+        let mut l = again.clone();
+        p.reapply_kept("s1", &mut l);
+        assert_eq!(rows(&l), [row("m1", "eins", "", 0, &[]), row("m2", "zwei", "", super::kept::STYLE_TEXT, &[]), row("m3", "drei!", "", 0, &[])]);
+        // Switched off: nothing stays kept, the window draws its lists again (the tombstone comes back).
+        let i = p.list.len() - 1;
+        p.set_enabled(i, false);
+        assert!(std::mem::take(&mut p.out.lock().unwrap().kept_changed));
+        let mut l = again.clone();
+        p.reapply_kept("s1", &mut l);
+        assert_eq!(rows(&l), [row("m1", "eins", "", 0, &[]), row("m2", "", GONE, 0, &[]), row("m3", "drei!", "", 0, &[])]);
+        drop(p);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn without_a_logging_plugin_lists_stay_as_received() {
+        let dir = std::env::temp_dir().join(format!("collabhost-nolog-{}", std::process::id()));
+        let mut p = super::Plugins::with_root(&dir, dir.join("installed"));
+        assert!(!p.logs_messages());
+        let old = vec![msg("m1", "eins", 1000), msg("m2", "zwei", 2000)];
+        let mut new = vec![tomb("m1", 1000), msg("m2", "zwei?", 2000)];
+        p.list_arrived("s1", "", Some(&old), &mut new);
+        assert_eq!(rows(&new), [row("m1", "", GONE, 0, &[]), row("m2", "zwei?", "", 0, &[])]);
+        let mut vanished = vec![msg("m2", "zwei?", 2000)];
+        p.list_arrived("s1", "", Some(&new), &mut vanished);
+        assert_eq!(rows(&vanished), [row("m2", "zwei?", "", 0, &[])]);
+        drop(p);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn message_keep_restores_and_replaces() {
+        use std::ffi::CStr;
+        let dir = std::env::temp_dir().join(format!("collabhost-keep-{}", std::process::id()));
+        let p = super::Plugins::with_root(&dir, dir.join("installed"));
+        let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(),
+            recent: p.recent.clone(), kept: p.kept.clone() };
+        let c = &ctx as *const super::Ctx as super::Ptr;
+        let call = |j: serde_json::Value| {
+            let (m, j) = (collabhost_plugin_api::cs("message.keep"), collabhost_plugin_api::cs(&j.to_string()));
+            let r = super::h_call(c, m.as_ptr(), j.as_ptr());
+            let t = unsafe { CStr::from_ptr(r) }.to_string_lossy().into_owned();
+            super::h_free(r);
+            t
+        };
+        // After a restart: a deleted message (as `message.deleted` delivered it, plus a style) and an edit history.
+        assert_eq!(call(serde_json::json!({
+            "deleted": [{ "space": "s1", "id": "m2", "author": "Anna", "text": "zwei", "mine": false, "published_ms": 2000, "date": "2026-11-24", "time": "09:00", "style": "text" },
+                        { "id": "no-space" }],
+            "edited": [{ "id": "m3", "history": ["drei", "drei?"] }] })), "{}");
+        assert!(std::mem::take(&mut p.out.lock().unwrap().kept_changed));
+        let mut l = vec![msg("m1", "eins", 1000), msg("m3", "drei!", 3000)];
+        p.reapply_kept("s1", &mut l);
+        assert_eq!(rows(&l), [row("m1", "eins", "", 0, &[]), row("m2", "zwei", "", super::kept::STYLE_TEXT, &[]), row("m3", "drei!", "", 0, &["drei", "drei?"])]);
+        assert_eq!((l[1].date.as_str(), l[1].time.as_str(), l[1].published_ms), ("2026-11-24", "09:00", 2000));
+        // Another space is not touched.
+        let mut other = vec![msg("x", "y", 2500)];
+        p.reapply_kept("s2", &mut other);
+        assert_eq!(rows(&other), [row("x", "y", "", 0, &[])]);
+        // `replace` drops what was kept before: the rows go again.
+        assert_eq!(call(serde_json::json!({ "replace": true })), "{}");
+        p.reapply_kept("s1", &mut l);
+        assert_eq!(rows(&l), [row("m1", "eins", "", 0, &[]), row("m3", "drei!", "", 0, &[])]);
         drop(p);
         let _ = std::fs::remove_dir_all(dir);
     }
