@@ -68,6 +68,19 @@ impl App {
         self.notify.push(Toast::new(Kind::Info, plugin, text));
     }
 
+    /// An incoming call rang out unanswered ("Entgangener Anruf", "Sie haben einen Anruf verpasst."). The rail badge counts it
+    /// regardless (ui/calls_page); this is the toast: in the window while it is in front, otherwise on the desktop.
+    pub(crate) fn notify_missed_call(&mut self, name: &str, email: &str, now: f64) {
+        match missed_call_note(self.quiet_now(), self.dnd(), self.window_active(), self.nb("notif_desktop", true)) {
+            MissedNote::Silent => {}
+            MissedNote::InWindow => self.toast(format!("Entgangener Anruf: {name}"), now),
+            MissedNote::Desktop => {
+                if self.nb("notif_taskbar_flash", true) { self.notify.want_flash = true; }
+                self.notify.push(Toast::new(Kind::MissedCall, name, "Sie haben einen Anruf verpasst.").kicker("Entgangener Anruf").avatar(name, email).space(OPEN_CALLS));
+            }
+        }
+    }
+
     /// Meeting reminder toasts from the meeting list ("Meeting-Erinnerung"; start times are the list's HH:MM, UTC like the list shows them).
     pub(super) fn meeting_reminders(&mut self) {
         if self.client.is_none() || self.dnd() || !self.nb("meeting_toast_enabled", true) { return; }
@@ -104,6 +117,7 @@ impl App {
                 "recording" => Toast::new(Kind::Recording, "Ihre Aufzeichnung ist bereit.", ""),
                 "whiteboard" => Toast::new(Kind::Whiteboard, "Webex-Whiteboard", "Sprint-Planung").button("open", "Öffnen", true),
                 "info" => Toast::new(Kind::Info, "Webox", "Das Anruf-Dock ist nicht verfügbar."),
+                "missed" => Toast::new(Kind::MissedCall, "Jonas Weber", "Sie haben einen Anruf verpasst.").kicker("Entgangener Anruf").avatar("Jonas Weber", "jonas@example.com").space(OPEN_CALLS),
                 _ => continue,
             };
             self.notify.push(t);
@@ -121,8 +135,8 @@ impl App {
 
     pub(super) fn pick_tray(&mut self, id: &str, ctx: &egui::Context, now: f64) {
         match id {
-            // Webox has no separate call dock window: its calling features live on the "Anrufe" page.
-            "dock" => { self.show_main(ctx); self.set_tab(Tab::Calling); }
+            // The calling dock window; without separate call windows the calling features live on the "Anrufe" page.
+            "dock" => if !self.show_calling_dock(ctx) { self.show_main(ctx); self.set_tab(Tab::Calling); },
             "health" => { self.show_main(ctx); ui::menu::menu_open(ctx, ui::app_dialogs::HEALTH); }
             "feedback" => { self.show_main(ctx); ui::menu::menu_open(ctx, ui::app_dialogs::FEEDBACK); }
             "about" => { self.show_main(ctx); ui::menu::menu_open(ctx, "about"); }
@@ -283,6 +297,7 @@ impl App {
             match o {
                 #[cfg(target_os = "linux")]
                 Out::Token(t) => { self.notify.raise_token = Some(t); continue; }
+                Out::Open(Some(s)) if s == OPEN_CALLS => { self.show_main(ctx); self.set_tab(Tab::Calling); }
                 Out::Open(space) => { self.show_main(ctx); if let Some(id) = space { if self.spaces.iter().any(|s| s.id == id) { self.set_tab(Tab::Messaging); self.open_space(id); } } }
                 Out::Button(ts, id) => match id {
                     "join" => { if let Some(l) = &ts.link { system::open(l); } }
@@ -463,6 +478,15 @@ fn at_word(low: &str, word: &str) -> bool {
     })
 }
 
+#[derive(Debug, PartialEq)]
+enum MissedNote { Silent, InWindow, Desktop }
+
+/// Where a missed call is announced. Ruhezeiten and Nicht stören mute it (the badge still counts it), like message toasts;
+/// so does "Desktop-Benachrichtigungen" off while the window is behind other windows.
+fn missed_call_note(quiet: bool, dnd: bool, window_active: bool, desktop: bool) -> MissedNote {
+    if quiet || dnd { MissedNote::Silent } else if window_active { MissedNote::InWindow } else if desktop { MissedNote::Desktop } else { MissedNote::Silent }
+}
+
 /// Whether a message mentions me (`name` = my display name) or everybody: an @all mention in its rich text
 /// (`<spark-mention data-object-type="groupMention">`; a `<` in the sender's text always arrives escaped), else `@<name>`,
 /// `@<first name>`, `@all` (`@alle`) as whole words in the plain text.
@@ -477,7 +501,16 @@ fn mentions_me(text: &str, html: &str, name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::mentions_me;
+    use super::{mentions_me, missed_call_note, MissedNote};
+
+    #[test]
+    fn a_missed_call_is_a_desktop_toast_unless_muted_or_the_window_is_in_front() {
+        assert_eq!(missed_call_note(false, false, false, true), MissedNote::Desktop);
+        assert_eq!(missed_call_note(false, false, true, true), MissedNote::InWindow);
+        assert_eq!(missed_call_note(true, false, false, true), MissedNote::Silent, "Ruhezeiten");
+        assert_eq!(missed_call_note(false, true, false, true), MissedNote::Silent, "Nicht stören");
+        assert_eq!(missed_call_note(false, false, false, false), MissedNote::Silent, "desktop notifications off");
+    }
 
     #[test]
     fn mentions_are_whole_words() {

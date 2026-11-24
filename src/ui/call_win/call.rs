@@ -10,11 +10,19 @@ impl App {
     /// Nothing is written to the user's settings from offline sample / screenshot runs.
     pub(super) fn persist_ok(&self) -> bool { !self.call.sample && self.shot.is_none() }
 
-    /// Ctrl+Shift+X (bound in the shortcut registry): shows or hides the calling dock.
-    #[allow(dead_code)] // called by the shortcut registry (Ctrl+Shift+X)
-    pub(crate) fn toggle_calling_dock(&mut self) {
+    /// Ctrl+Shift+X ("ShowHideCallingDock", shortcuts/commands.rs): shows or hides the calling dock. Returns false when this
+    /// window setup has no dock (separate windows off, or a backend without OS windows); the caller falls back to "Anrufe".
+    pub(crate) fn toggle_calling_dock(&mut self, ctx: &egui::Context) -> bool {
+        if !self.separate_call_windows(ctx) { return false; }
+        self.call.win.toggle_dock();
+        true
+    }
+    /// Tray "Anruf-Dock einblenden": shows the dock (never hides it); false like [`Self::toggle_calling_dock`].
+    pub(crate) fn show_calling_dock(&mut self, ctx: &egui::Context) -> bool {
+        if !self.separate_call_windows(ctx) { return false; }
         let w = &mut self.call.win;
-        if w.dock_shown { w.dock_open = false; w.dock_suppress = true; } else { w.dock_open = true; w.dock_suppress = false; }
+        w.dock_open = true; w.dock_suppress = false;
+        true
     }
 
     /// `WEBOX_SAMPLE_CALL=incoming|ringing|connected|dock` (offline `--sample` only: needs no signed-in client): shows the
@@ -61,8 +69,7 @@ impl App {
         let root_min = ctx.input(|i| i.viewport().minimized.unwrap_or(false));
         let root_focus = ctx.input(|i| i.viewport().focused.unwrap_or(true));
         let any_focus = root_focus || self.call.win.focus_call || self.call.win.focus_dock;
-        let covered = self.settings["dock_auto_covered"].as_bool().unwrap_or(false);
-        let auto = live && !incoming && !self.call.win.dock_suppress && (root_min || (covered && !any_focus));
+        let auto = live && !incoming && !self.call.win.dock_suppress && super::dock::dock_auto(&self.settings, root_min, any_focus);
         self.call.win.dock_shown = self.call.win.dock_open || auto;
         if self.call.win.dock_shown {
             let a = self.dock_window(ctx, t, now, v.as_ref());

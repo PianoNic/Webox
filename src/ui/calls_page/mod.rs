@@ -74,6 +74,30 @@ impl App {
         }).collect()
     }
 
+    /// The number on the "Anrufe" rail entry: calls missed since the tab was last looked at (settings `calls_seen_ms`).
+    pub(crate) fn missed_badge(&self) -> usize {
+        let seen = self.settings[super::settings::CALLS_SEEN_MS].as_i64().unwrap_or(i64::MAX);
+        if self.client.is_none() { // offline sample: the made-up history
+            return self.call_log().iter().filter(|e| e.kind == CallKind::Missed && e.at_ms > seen).count();
+        }
+        unseen_missed(self.call.mc.records.as_deref(), &self.call.mc.missed_at, seen)
+    }
+
+    /// The "Anrufe" list is on screen in the window in front: its missed calls count as seen.
+    fn mark_calls_seen(&mut self) {
+        if !self.window_active() || self.missed_badge() == 0 { return; }
+        self.settings[super::settings::CALLS_SEEN_MS] = json!(super::chrome::now_ms());
+        if self.client.is_some() && self.shot.is_none() { system::save_settings(&self.cfg, &self.settings); }
+    }
+
+    /// An incoming call ended unanswered on every device (locus "missed"): badge it and announce it.
+    pub(crate) fn on_missed_call(&mut self, name: &str, email: &str, now: f64) {
+        let m = &mut self.call.mc.missed_at;
+        m.push(super::chrome::now_ms());
+        if m.len() > 50 { m.remove(0); }
+        self.notify_missed_call(name, email, now);
+    }
+
     pub(crate) fn voicemails(&self) -> Vec<VoicemailEntry> {
         if self.client.is_some() { return vec![]; } // no voicemail service (see the module comment)
         let now = super::chrome::now_ms();
@@ -121,6 +145,7 @@ impl App {
     }
 
     pub(crate) fn calls_list(&mut self, ui: &mut egui::Ui, t: &Th, now: f64) {
+        self.mark_calls_seen();
         let ctx = ui.ctx().clone();
         let mut st = self.pst(&ctx);
         let (plus, _) = self.list_header(ui, t, tr("Calling"), Some("Einen Anruf tätigen"), None);
@@ -340,4 +365,48 @@ impl App {
 
 }
 
+/// Calls missed after `seen` (Unix ms): the janus history's missed rows, or this session's own count (`local`, end times)
+/// while janus has not listed them yet. Both describe the same calls, so the larger number is the answer, not the sum.
+pub(crate) fn unseen_missed(records: Option<&[crate::cloud::meetcall::CallRecord]>, local: &[i64], seen: i64) -> usize {
+    let janus = records.map_or(0, |r| r.iter().filter(|r| r.missed() && r.start_ms > seen).count());
+    janus.max(local.iter().filter(|&&t| t > seen).count())
+}
+
+/// Text of the rail badge: the count, at most "99+".
+pub(crate) fn badge_text(n: usize) -> String { if n > 99 { "99+".into() } else { n.to_string() } }
+
+/// Hover text of the "Anrufe" rail entry with missed calls (pack: "{{0}} entgangener Anruf" / "{{0}} entgangene Anrufe").
+pub(crate) fn missed_tip(n: usize) -> String { if n == 1 { "1 entgangener Anruf".into() } else { format!("{n} entgangene Anrufe") } }
+
 mod voicemail;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cloud::meetcall::CallRecord;
+
+    fn rec(start_ms: i64, outgoing: bool, disposition: &str) -> CallRecord { CallRecord { start_ms, outgoing, disposition: disposition.into(), ..Default::default() } }
+
+    #[test]
+    fn only_incoming_unanswered_calls_after_the_last_visit_are_badged() {
+        let r = [rec(50, false, "MISSED"), rec(150, false, "CANCELED"), rec(160, false, "Answered"), rec(170, true, "Initiated"), rec(180, false, "MISSED")];
+        assert_eq!(unseen_missed(Some(&r), &[], 100), 2);
+        assert_eq!(unseen_missed(Some(&r), &[], 200), 0, "opening the tab clears the badge");
+    }
+
+    #[test]
+    fn a_call_missed_just_now_counts_before_janus_lists_it_and_is_not_counted_twice() {
+        assert_eq!(unseen_missed(None, &[120], 100), 1);
+        assert_eq!(unseen_missed(Some(&[]), &[120], 100), 1, "janus has not caught up");
+        assert_eq!(unseen_missed(Some(&[rec(110, false, "MISSED")]), &[120], 100), 1, "the same call from both sides");
+        assert_eq!(unseen_missed(None, &[90], 100), 0);
+    }
+
+    #[test]
+    fn badge_and_tooltip_texts() {
+        assert_eq!(badge_text(1), "1");
+        assert_eq!(badge_text(120), "99+");
+        assert_eq!(missed_tip(1), "1 entgangener Anruf");
+        assert_eq!(missed_tip(3), "3 entgangene Anrufe");
+    }
+}

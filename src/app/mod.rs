@@ -30,6 +30,10 @@ impl App {
             notify: Default::default(),
             msgx: Default::default(),
         };
+        // One-time key fixes (ui/settings); offline sample / screenshot runs change them in memory only.
+        if ui::settings::migrate(&mut app.settings, ui::chrome::now_ms()) && !a.sample && app.shot.is_none() { system::save_settings(&app.cfg, &app.settings); }
+        // Sample: the Anrufe tab was "last seen" an hour ago, so the made-up missed call of 25 minutes ago shows the rail badge.
+        if a.sample { app.settings[ui::settings::CALLS_SEEN_MS] = json!(ui::chrome::now_ms() - 3_600_000); }
         app.msgx_load(); // scheduled messages saved by an earlier run
         extras::gif_extras::register(); // built-in plugin behind the GIF picker's hook (off unless switched on in Settings > Plugins)
         app.rail_wide = app.settings["rail_wide"].as_bool().unwrap_or(false);
