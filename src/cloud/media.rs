@@ -320,7 +320,9 @@ mod tests {
         let tone = audio::tone(440.0, 4000, 0.5);
         let (t0, mut fed) = (std::time::Instant::now(), 0);
         let rx = |m: &Media| m.rx_packets.load(Ordering::Relaxed);
-        while t0.elapsed() < Duration::from_secs(10) {
+        // Leaves as soon as audio flows both ways; the long deadline only matters on an overloaded CI runner (ICE + DTLS on
+        // loopback once needed more than 10 s there).
+        while t0.elapsed() < Duration::from_secs(30) {
             for io in [&io1, &io2] { if io.captured.lock().unwrap().len() < 4800 && fed + FRAME <= tone.len() { io.captured.lock().unwrap().extend(tone[fed..fed + FRAME].iter()); } }
             fed += FRAME;
             if rx(&a) > 40 && rx(&b) > 40 { break; }
