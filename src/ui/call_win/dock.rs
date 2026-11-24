@@ -113,6 +113,7 @@ impl App {
                 if let Some(v) = v {
                     let mut c = ui.new_child(egui::UiBuilder::new().max_rect(ar));
                     avatar_photo(&mut c, &mut self.icons, t, &v.name, 44.0, false, None, None, v.photo);
+                    if v.state == CallState::Connected && !v.ended { self.peer_muted_badge(ui, t, ar); }
                 } else { self.icons.paint(ui, "handset-regular", Rect::from_center_size(full.center(), Vec2::splat(28.0)), t.text1); }
                 return;
             }

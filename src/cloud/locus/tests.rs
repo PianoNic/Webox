@@ -13,7 +13,7 @@ fn locus(self_state: &str, other_state: &str, active: bool) -> Value {
 fn parses_participants_and_self() {
     let v = parse_locus(&locus("JOINED", "NOTIFIED", true), "me@example.com");
     assert_eq!((v.kind.as_str(), v.active, v.self_id.as_str(), v.self_state.as_str()), ("CALL", true, "self-1", "JOINED"));
-    assert_eq!(v.others, vec![Party { name: "Peer Person".into(), email: "peer@example.com".into(), state: "NOTIFIED".into(), devices: vec![] }]);
+    assert_eq!(v.others, vec![Party { name: "Peer Person".into(), email: "peer@example.com".into(), state: "NOTIFIED".into(), devices: vec![], muted: false }]);
 }
 #[test]
 fn outgoing_progress() {
@@ -273,6 +273,52 @@ fn share_floor_and_refusals() {
     assert!(share::floor_error("PUT https://x → 500 {}").contains("fehlgeschlagen"));
 }
 
+#[test]
+fn local_mute_goes_to_locus_without_roap() {
+    let b = local_mute_body(json!({"url": "https://wdm/d/1", "deviceType": "DESKTOP"}), "corr-1", "media-1", true, true);
+    let m = &b["localMedias"][0];
+    assert_eq!(m["mediaId"], "media-1");
+    let sdp: Value = serde_json::from_str(m["localSdp"].as_str().unwrap()).unwrap();
+    assert_eq!(sdp, json!({"audioMuted": true, "videoMuted": true}), "mute state only, no roapMessage");
+    assert_eq!((b["device"]["deviceType"].as_str(), b["correlationId"].as_str(), b["respOnlySdp"].as_bool()), (Some("DESKTOP"), Some("corr-1"), Some(true)));
+    let u: Value = serde_json::from_str(local_mute_body(json!({}), "c", "m", false, true)["localMedias"][0]["localSdp"].as_str().unwrap()).unwrap();
+    assert_eq!(u["audioMuted"], false);
+    assert_eq!(unmute_controls_body(), json!({"audio": {"muted": false}}));
+}
+#[test]
+fn the_other_sides_mute_shows() {
+    let mut l = locus("JOINED", "JOINED", true);
+    assert!(!parse_locus(&l, "me@example.com").others[0].muted);
+    l["participants"][1]["status"] = json!({"audioStatus": "RECVONLY"});
+    assert!(parse_locus(&l, "me@example.com").others[0].muted, "muted by themselves: RECVONLY");
+    l["participants"][1]["status"] = json!({"audioStatus": "SENDRECV"});
+    assert!(!parse_locus(&l, "me@example.com").others[0].muted, "unmuted again");
+    l["participants"][1]["controls"] = json!({"audio": {"muted": true}});
+    assert!(parse_locus(&l, "me@example.com").others[0].muted, "muted by a host wins over SENDRECV");
+    let (info, _) = mute_update(None, &parse_locus(&l, "me@example.com"), false);
+    assert!(info.peer_muted && !info.local);
+}
+#[test]
+fn being_muted_by_others_mutes_us_once() {
+    let mut l = locus("JOINED", "JOINED", true);
+    let v0 = parse_locus(&l, "me@example.com");
+    assert_eq!(v0.mute, SelfMute { remote: false, unmute_allowed: true, unmute_requested: false });
+    let (i0, newly) = mute_update(None, &v0, false);
+    assert!(!newly && !i0.local);
+    // a host mutes us: our microphone goes mute
+    l["self"]["controls"] = json!({"audio": {"muted": true, "disallowUnmute": true}});
+    let v1 = parse_locus(&l, "me@example.com");
+    assert_eq!(v1.mute, SelfMute { remote: true, unmute_allowed: false, unmute_requested: false });
+    let (i1, newly) = mute_update(Some(&i0), &v1, false);
+    assert!(newly && i1.local && i1.me.remote, "remote mute mutes us locally");
+    let (_, again) = mute_update(Some(&i1), &v1, true);
+    assert!(!again, "only once");
+    // the host asks us to unmute: we stay muted until we do it ourselves
+    l["self"]["controls"] = json!({"audio": {"muted": false, "requestedToUnmute": true}});
+    let v2 = parse_locus(&l, "me@example.com");
+    let (i2, newly) = mute_update(Some(&i1), &v2, true);
+    assert!(!newly && i2.local && i2.me.unmute_requested && !i2.me.remote);
+}
 #[test]
 fn scrub_hides_addresses() {
     assert!(!scrub("user a@b.example not found").contains('@'));

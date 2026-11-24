@@ -166,14 +166,62 @@ pub fn dtmf_ok(t: &str) -> bool { !t.is_empty() && t.chars().all(|c| c.is_ascii_
 
 /// One participant of a locus as far as the call UI cares.
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct Party { pub name: String, pub email: String, pub state: String, pub devices: Vec<String> }
+pub struct Party { pub name: String, pub email: String, pub state: String, pub devices: Vec<String>, pub muted: bool }
 impl Party {
     /// Left the call: participant state LEFT, or every one of its devices LEFT (the official client's
     /// `otherPairedDevice->left`).
     pub fn left(&self) -> bool { self.state == "LEFT" || (!self.devices.is_empty() && self.devices.iter().all(|d| d == "LEFT")) }
 }
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct LocusView { pub url: String, pub kind: String, pub active: bool, pub self_id: String, pub self_state: String, pub self_url: String, pub self_devices: Vec<(String, String)>, pub others: Vec<Party> }
+pub struct LocusView { pub url: String, pub kind: String, pub active: bool, pub self_id: String, pub self_state: String, pub self_url: String, pub self_devices: Vec<(String, String)>, pub others: Vec<Party>,
+    /// Our audio as the locus has it: muted by someone else (host / moderator), whether we may unmute ourselves, and
+    /// whether we were asked to unmute (`self.controls.audio.{muted, disallowUnmute, requestedToUnmute}`).
+    pub mute: SelfMute }
+
+/// Our own mute state from the locus (`self.controls.audio`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SelfMute { pub remote: bool, pub unmute_allowed: bool, pub unmute_requested: bool }
+
+/// A participant's audio is muted: muted by someone else (`controls.audio.muted`), or muted by themselves, which the
+/// locus shows as `status.audioStatus` RECVONLY (they still hear, send nothing). The rule of webex-js-sdk's
+/// `MemberUtil.isMuted`; the official client's roster tracks the same pair (`isRemoteMuted` / `isLocalAudioMuted`).
+pub fn participant_muted(p: &Value) -> bool {
+    let remote = p["controls"]["audio"]["muted"].as_bool();
+    if remote == Some(true) { return true; }
+    match p["status"]["audioStatus"].as_str() { Some("RECVONLY" | "INACTIVE") => true, Some("SENDRECV" | "SENDONLY") => false, _ => remote.unwrap_or(false) }
+}
+
+/// Our own mute controls from the locus' `self`.
+pub fn self_mute(s: &Value) -> SelfMute {
+    let a = &s["controls"]["audio"];
+    SelfMute { remote: a["muted"].as_bool() == Some(true), unmute_allowed: a["disallowUnmute"].as_bool() != Some(true),
+        unmute_requested: a["requestedToUnmute"].as_bool() == Some(true) }
+}
+
+/// What the call window shows about mute (sent when it changes): the other side's microphone, ours as the locus has it
+/// (muted by others / unmute not allowed / asked to unmute), and whether our microphone is muted here (`local`).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MuteInfo { pub peer_muted: bool, pub me: SelfMute, pub local: bool }
+
+/// The mute state to show for a locus, and whether our microphone must go mute now: someone else just muted us (the
+/// official client: "muteAudio() when RemoteMuted and LocalAudioUnmuted"; it never unmutes us by itself).
+pub fn mute_update(prev: Option<&MuteInfo>, v: &LocusView, local: bool) -> (MuteInfo, bool) {
+    let newly_remote = v.mute.remote && !prev.is_some_and(|p| p.me.remote);
+    let local = local || v.mute.remote;
+    (MuteInfo { peer_muted: v.others.iter().any(|p| p.muted && !p.left()), me: v.mute, local }, newly_remote)
+}
+
+/// `PUT {self.url}/media` without a ROAP message: our audio / video mute state for the other participants (webex-js-sdk
+/// `remoteAudioVideoToggle`; the official client logs "<update_media>: normal flow" next to the ROAP one). Locus then
+/// shows our participant's `status.audioStatus` RECVONLY (muted) or SENDRECV.
+pub fn local_mute_body(device: Value, correlation_id: &str, media_id: &str, audio_muted: bool, video_muted: bool) -> Value {
+    json!({"device": device, "usingResource": null, "correlationId": correlation_id, "respOnlySdp": true,
+        "clientMediaPreferences": {"preferTranscoding": true},
+        "localMedias": [{"localSdp": json!({"audioMuted": audio_muted, "videoMuted": video_muted}).to_string(), "mediaId": media_id}]})
+}
+
+/// `PATCH {self.url}/controls` body that unmutes us after someone else muted us (allowed unless `disallowUnmute`).
+pub fn unmute_controls_body() -> Value { json!({"audio": {"muted": false}}) }
 
 /// Reads a locus object (the `locus` of a join answer, a full GET, or a mercury `locus.difference` payload).
 pub fn parse_locus(l: &Value, my_email: &str) -> LocusView {
@@ -184,7 +232,7 @@ pub fn parse_locus(l: &Value, my_email: &str) -> LocusView {
         let me = (!self_id.is_empty() && st(p, "id") == self_id) || (!my_email.is_empty() && email.eq_ignore_ascii_case(my_email));
         !me && p["type"].as_str().is_none_or(|t| t == "USER")
     }).map(|p| Party { name: st(&p["person"], "name"), email: st(&p["person"], "email"), state: st(p, "state"),
-        devices: p["devices"].as_array().into_iter().flatten().map(|d| st(d, "state")).collect() }).collect();
+        devices: p["devices"].as_array().into_iter().flatten().map(|d| st(d, "state")).collect(), muted: participant_muted(p) }).collect();
     LocusView {
         url: [st(l, "url"), st(l, "locusUrl")].into_iter().find(|u| !u.is_empty()).unwrap_or_default(),
         kind: st(full, "type"),
@@ -192,6 +240,7 @@ pub fn parse_locus(l: &Value, my_email: &str) -> LocusView {
         active: full["active"].as_bool().unwrap_or_else(|| full["state"].as_str() == Some("ACTIVE")) && !matches!(full["state"].as_str(), Some("INACTIVE" | "TERMINATING")),
         self_id, self_state: st(&l["self"], "state"), self_url: st(&l["self"], "url"), others,
         self_devices: l["self"]["devices"].as_array().into_iter().flatten().map(|d| (st(d, "url"), st(d, "state"))).collect(),
+        mute: self_mute(&l["self"]),
     }
 }
 
@@ -286,6 +335,8 @@ struct Active {
     /// The far end shares (its name), since when, and whether the lines were negotiated once more to declare the SSRC
     /// its share really arrives from (`share_rx_tick`).
     remote_share: Option<String>, remote_since: Option<Instant>, rx_reoffered: bool, rx_warned: bool,
+    /// The mute state last sent to the UI.
+    mute_info: Option<MuteInfo>,
 }
 
 impl Active {
@@ -293,7 +344,7 @@ impl Active {
         Active { url, self_id, self_url, media_id: String::new(), correlation_id: String::new(), outgoing, name, email, last: None, answered: outgoing,
             media: None, roap_seq: 0, roap_done: false, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None,
             locus: Value::Null, joined_at: None, media_up_at: None, offer_at: None, share: None,
-            lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false }
+            lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false, mute_info: None }
     }
 }
 

@@ -7,7 +7,7 @@ impl Session {
             CallReq::Dial(a, c) => self.dial(&a, &c),
             CallReq::Answer(c) => self.answer(&c),
             CallReq::HangUp => self.hang_up(),
-            CallReq::Mute(m) => { self.calls.muted = m; if let Some(a) = self.calls.cur.as_ref().and_then(|c| c.media.as_ref()) { a.muted.store(m, Ordering::Relaxed); } Ok(()) }
+            CallReq::Mute(m) => self.set_mute(m),
             CallReq::Devices(c) => {
                 if self.calls.cur.is_some() { if let Some(e) = &self.calls.engine { c.apply_smart(&e.io); e.open(&c.input, &c.output)?; e.io.set_volume(c.volume); } }
                 Ok(())
@@ -18,6 +18,61 @@ impl Session {
             CallReq::Cleanup => self.audit(true),
             CallReq::Dtmf(t) => self.dtmf(&t),
             CallReq::Share(r) => self.share_req(r),
+        }
+    }
+
+    /// Mute / unmute our microphone and tell Locus, so the other side sees it (`local_mute_body`, `PUT {self.url}/media`).
+    /// Unmuting after someone else muted us first lifts that (`PATCH {self.url}/controls`), unless the locus forbids it.
+    /// Before the call is answered here only the microphone changes (the join's ROAP OFFER carries `audioMuted`).
+    pub(super) fn set_mute(&mut self, m: bool) -> Result<(), String> {
+        self.mute_local(m);
+        let Some(c) = self.calls.cur.as_ref().filter(|c| c.answered && !c.media_id.is_empty()) else { return Ok(()) };
+        let (self_url, media_id, corr, me) = (c.self_url.clone(), c.media_id.clone(), c.correlation_id.clone(), c.view.as_ref().map(|v| v.mute).unwrap_or_default());
+        if !webex_host(&self_url) { return Ok(()); }
+        if !m && me.remote {
+            if !me.unmute_allowed {
+                self.mute_local(true);
+                self.mute_sync(None);
+                return Err("Du wurdest stummgeschaltet und kannst die Stummschaltung nicht selbst aufheben.".into());
+            }
+            let r = self.http("PATCH", &format!("{self_url}/controls"), Some(unmute_controls_body()));
+            dbg_conn(&format!("call: unmute after being muted by others -> {}", if r.is_ok() { "ok" } else { "failed" }));
+            if let Err(e) = r {
+                self.mute_local(true);
+                self.mute_sync(None);
+                return Err(format!("Stummschaltung aufheben fehlgeschlagen: {}", scrub(&e)));
+            }
+        }
+        let r = self.http("PUT", &format!("{self_url}/media"), Some(local_mute_body(self.device_body(), &corr, &media_id, m, true)));
+        dbg_conn(&format!("call: {} sent to locus -> {}", if m { "mute" } else { "unmute" }, if r.is_ok() { "ok" } else { "failed" }));
+        self.mute_sync(None);
+        r.map(|_| ()).map_err(|e| format!("{} konnte nicht an Webex gemeldet werden: {}", if m { "Stummschalten" } else { "Stummschaltung aufheben" }, scrub(&e)))
+    }
+
+    /// The microphone itself: silence instead of it while muted.
+    fn mute_local(&mut self, m: bool) {
+        self.calls.muted = m;
+        if let Some(a) = self.calls.cur.as_ref().and_then(|c| c.media.as_ref()) { a.muted.store(m, Ordering::Relaxed); }
+    }
+
+    /// Follows the mute state in the locus (`v`, or the last one we have): mutes our microphone when someone else muted
+    /// us, and tells the UI what changed (`Resp::CallMute`).
+    pub(super) fn mute_sync(&mut self, v: Option<&LocusView>) {
+        let local = self.calls.muted;
+        let Some(c) = self.calls.cur.as_ref() else { return };
+        let Some(view) = v.or(c.view.as_ref()).cloned() else { return };
+        let (info, newly_remote) = mute_update(c.mute_info.as_ref(), &view, local);
+        if newly_remote {
+            dbg_conn("call: muted by others, microphone muted");
+            self.mute_local(true);
+        }
+        if let Some(c) = self.calls.cur.as_mut() {
+            if c.mute_info.as_ref() != Some(&info) {
+                if c.mute_info.is_none_or(|p| p.peer_muted != info.peer_muted) { dbg_conn(&format!("call: the other side {}", if info.peer_muted { "muted" } else { "unmuted" })); }
+                if c.mute_info.is_none_or(|p| p.me.unmute_requested != info.me.unmute_requested) && info.me.unmute_requested { dbg_conn("call: asked to unmute"); }
+                c.mute_info = Some(info);
+                let _ = self.out.send(Resp::CallMute(info));
+            }
         }
     }
 
@@ -159,6 +214,7 @@ impl Session {
             c.view = Some(v.clone()); c.seq = locus_seq(l); c.read_at = Some(Instant::now()); c.locus = l.clone();
         }
         self.start_ticker();
+        self.mute_sync(Some(&v));
         if let Some(m) = remote_roap(r) { self.handle_roap(m); }
         self.evaluate(&v)
     }
@@ -362,6 +418,7 @@ impl Session {
         if let Some(c) = self.calls.cur.as_mut() {
             c.view = Some(v.clone());
             self.share_locus(&l);
+            self.mute_sync(Some(&v));
             return self.evaluate(&v);
         }
         // A call someone else started: only real 1:1 calls that are ringing for us (never meetings), and never while busy.

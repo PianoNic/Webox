@@ -264,6 +264,8 @@ pub enum Resp {
     Call(locus::CallEvent),
     /// Our screen share in the call started (true) or ended (false).
     CallShare(bool),
+    /// Mute in the call changed: the other side's microphone, ours as Locus has it, ours here.
+    CallMute(locus::MuteInfo),
     /// The other side shares its screen (their name), or stopped (None). The pictures: `share_rx::latest`.
     RemoteShare(Option<String>),
     /// Directory people for a search query (query, people, last batch).
