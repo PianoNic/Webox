@@ -106,8 +106,8 @@ jobs:
     name: Nix build
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 90
-    # buildRustPackage rebuilds all crates in one derivation (12-18 min) and Linux CI already compiles the same code: on pull
-    # requests only when the Nix packaging or the dependencies change; always on main; never as a release gate.
+    # Linux CI already compiles the same code: on pull requests only when the Nix packaging or the dependencies change; always
+    # on main; never as a release gate.
     if: ${{ github.event_name != 'release' }}
     steps:
       - uses: useblacksmith/checkout@75c49b6ed30ce59336e9252425796cfcfac155f8 # v1
@@ -125,5 +125,35 @@ jobs:
       - if: steps.need.outputs.run == '1'
         uses: cachix/install-nix-action@3dc140bfc76c49fbd4dd958429132e3746bcb086 # v31
 
+      # The Nix store between runs. The package builds the dependencies as their own derivation (crane cargoArtifacts), so a
+      # restored store only recompiles Webox itself. The key changes with the inputs of that derivation; a miss restores the
+      # newest store of an older key (nixpkgs and the toolchain stay) and saves a new one. No purge step: it needs
+      # `actions: write`, which release.yml (it calls this workflow) doesn't grant; GitHub evicts unused caches after 7 days.
       - if: steps.need.outputs.run == '1'
-        run: nix build -L .
+        uses: nix-community/cache-nix-action@7df957e333c1e5da7721f60227dbba6d06080569 # v7.0.2
+        with:
+          primary-key: nix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('flake.lock', 'Cargo.lock', '**/Cargo.toml', 'packaging/nix/package.nix') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-${{ runner.arch }}-
+          # Paths not reachable from the result links (see below) go first; stays well under GitHub's 10 GB per repository.
+          gc-max-store-size-linux: 5G
+
+      # result -> the package, result-1 -> the dependency artifacts: both stay GC roots, so the cache keeps them.
+      - if: steps.need.outputs.run == '1'
+        run: nix build -L .#default .#default.cargoArtifacts
+
+      - if: steps.need.outputs.run == '1'
+        name: Smoke test the package
+        run: |
+          result/bin/webox --version
+          # build.rs embeds secrets.toml; without it sign-in is "not configured".
+          grep -q C694e2 "$(nix path-info .#default.unwrapped)/bin/webox" || { echo "::error::sign-in client id not embedded"; exit 1; }
+          sudo apt-get install -y --no-install-recommends xvfb > /dev/null
+          WEBOX_NO_UPDATE_CHECK=1 timeout 300 xvfb-run -a -s "-screen 0 1600x1000x24" result/bin/webox --sample --screenshot shot.png
+          test -s shot.png
+
+      - if: always() && steps.need.outputs.run == '1'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: nix-screenshot
+          path: shot.png
+          if-no-files-found: warn

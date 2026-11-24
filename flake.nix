@@ -13,9 +13,11 @@
   description = "Webox - desktop client for Webex messaging, meetings and calls (Rust/egui, WebKitGTK sign-in on Linux)";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  # Builds the dependencies as their own derivation (cached until Cargo.lock / Cargo.toml change). No inputs of its own.
+  inputs.crane.url = "github:ipetkov/crane";
 
   outputs =
-    { self, nixpkgs }:
+    { self, nixpkgs, crane }:
     let
       systems = [
         "x86_64-linux"
@@ -34,7 +36,9 @@
         );
     in
     {
-      overlays.default = final: _prev: { webox = final.callPackage ./packaging/nix/package.nix { }; };
+      overlays.default = final: _prev: {
+        webox = final.callPackage ./packaging/nix/package.nix { craneLib = crane.mkLib final; };
+      };
 
       packages = forAll (pkgs: {
         default = pkgs.webox;
