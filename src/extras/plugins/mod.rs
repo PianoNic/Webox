@@ -39,7 +39,31 @@ const SEEN_MAX: usize = 4096;
 
 /// `plugin` is the key (plugin-data.json, log lines), `name` the shown name (toasts).
 struct Ctx { plugin: String, name: String, out: Arc<Mutex<Outbox>>, data: Arc<Mutex<Map<String, Value>>>, data_file: PathBuf, settings: Arc<Mutex<Map<String, Value>>>,
-    recent: Recents, kept: Arc<Mutex<kept::Kept>> }
+    recent: Recents, kept: Arc<Mutex<kept::Kept>>,
+    /// `reactions.show_avatars`: what this plugin last asked for (None = off).
+    avatars: Mutex<Option<ReactionAvatars>> }
+
+/// `reactions.show_avatars`: small round avatars of the people who reacted, drawn after each reaction chip's count
+/// (ui/messages/who_reacted.rs). Off until an enabled plugin turns it on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ReactionAvatars {
+    /// At most this many avatars per chip (1..=10), then "+K".
+    pub max: usize,
+    /// Avatar diameter in pt: `small` 14, `medium` 18.
+    pub size: f32,
+    /// Leave my own reaction out of the avatars.
+    pub hide_self: bool,
+}
+/// The most avatars a chip shows.
+pub const REACTION_AVATARS_MAX: usize = 10;
+/// Parses `{"enabled","max","size","hide_self"}` (all optional: on, 3, "small", false). `Ok(None)` = switched off.
+fn reaction_avatars(a: &Value) -> Result<Option<ReactionAvatars>, &'static str> {
+    let Some(o) = a.as_object() else { return Err("Objekt erwartet") };
+    if !o.get("enabled").and_then(Value::as_bool).unwrap_or(true) { return Ok(None) }
+    let max = o.get("max").and_then(Value::as_u64).unwrap_or(3).clamp(1, REACTION_AVATARS_MAX as u64) as usize;
+    let size = match o.get("size").and_then(Value::as_str).unwrap_or("small") { "small" => 14.0, "medium" => 18.0, _ => return Err("size: small oder medium") };
+    Ok(Some(ReactionAvatars { max, size, hide_self: o.get("hide_self").and_then(Value::as_bool).unwrap_or(false) }))
+}
 
 type Ptr = *mut c_void;
 /// The plugin's function table after checking that no entry is null.
@@ -194,6 +218,11 @@ const METHODS: &[(&str, u32, Method)] = &[
         let r = lock(&c.kept).keep(a);
         post(c, |o| o.kept_changed = true);
         r
+    }),
+    // `{"enabled","max","size","hide_self"}`: avatars of the people who reacted after each reaction chip's count. Safe from any thread.
+    ("reactions.show_avatars", 1, |c, a| match reaction_avatars(a) {
+        Ok(v) => { *lock(&c.avatars) = v; crate::ui::wake(); Value::Object(Map::new()) }
+        Err(e) => serde_json::json!({ "error": e }),
     }),
 ];
 /// The events Webox fires: (name, version). A plugin receives those it lists in `Plugin::EVENTS`.
@@ -363,7 +392,7 @@ impl Plugins {
         e.commands = s(v.commands).split_whitespace().map(String::from).collect();
         let name = if e.name.trim().is_empty() { key.to_string() } else { e.name.clone() };
         let ctx = Box::new(Ctx { plugin: key.to_string(), name, out: self.out.clone(), data: self.data.clone(), data_file: self.data_file.clone(),
-            settings: e.settings.values.clone(), recent: self.recent.clone(), kept: self.kept.clone() });
+            settings: e.settings.values.clone(), recent: self.recent.clone(), kept: self.kept.clone(), avatars: Mutex::new(None) });
         let host = Box::new(HostApi { ctx: &*ctx as *const Ctx as Ptr, toast: Some(h_toast), send: Some(h_send), log: Some(h_log),
             data_get: Some(h_get), data_set: Some(h_set), free_str: Some(h_free), settings_get: Some(h_settings),
             // 1.6
@@ -544,6 +573,9 @@ impl Plugins {
         k.apply(space, list);
     }
 
+    /// `reactions.show_avatars` of the last enabled plugin that turned it on; None (the default) draws no avatars.
+    pub fn reaction_avatars(&self) -> Option<ReactionAvatars> { self.active().filter_map(|l| *lock(&l._ctx.avatars)).last() }
+
     /// Whether any loaded, enabled plugin can rewrite messages (`on_message` is the identity otherwise).
     pub fn rewrites_messages(&self) -> bool { self.active().next().is_some() }
 
@@ -709,7 +741,8 @@ mod tests {
     fn host_methods_answer_and_never_unwind() {
         use std::ffi::CStr;
         let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: Default::default(), data: Default::default(), data_file: Default::default(),
-            settings: std::sync::Arc::new(std::sync::Mutex::new(serde_json::json!({ "x": true }).as_object().unwrap().clone())), recent: Default::default(), kept: Default::default() };
+            settings: std::sync::Arc::new(std::sync::Mutex::new(serde_json::json!({ "x": true }).as_object().unwrap().clone())), recent: Default::default(), kept: Default::default(),
+            avatars: Default::default() };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |m: &str, j: &str| {
             let (m, j) = (collabhost_plugin_api::cs(m), collabhost_plugin_api::cs(j));
@@ -783,7 +816,8 @@ mod tests {
         let msg = |author: &str, mine: bool, text: &str| crate::cloud::Message { author: author.into(), mine, text: text.into(), ..Default::default() };
         let notice = crate::cloud::Message { notice: "Anna ist beigetreten".into(), ..Default::default() };
         p.note_space("s1", &[msg("Anna", false, "eins"), notice, msg("Ich", true, "zwei"), msg("Anna", false, "drei")]);
-        let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(), recent: p.recent.clone(), kept: Default::default() };
+        let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(), recent: p.recent.clone(), kept: Default::default(),
+            avatars: Default::default() };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |m: &str, j: serde_json::Value| {
             let (m, j) = (collabhost_plugin_api::cs(m), collabhost_plugin_api::cs(&j.to_string()));
@@ -905,7 +939,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("collabhost-keep-{}", std::process::id()));
         let p = super::Plugins::with_root(&dir, dir.join("installed"));
         let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(),
-            recent: p.recent.clone(), kept: p.kept.clone() };
+            recent: p.recent.clone(), kept: p.kept.clone(), avatars: Default::default() };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |j: serde_json::Value| {
             let (m, j) = (collabhost_plugin_api::cs("message.keep"), collabhost_plugin_api::cs(&j.to_string()));
@@ -932,6 +966,56 @@ mod tests {
         assert_eq!(call(serde_json::json!({ "replace": true })), "{}");
         p.reapply_kept("s1", &mut l);
         assert_eq!(rows(&l), [row("m1", "eins", "", 0, &[]), row("m3", "drei!", "", 0, &[])]);
+        drop(p);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Turns reaction avatars on in `start`, like the WhoReacted plugin.
+    #[derive(Default)]
+    struct Who;
+    impl collabhost_plugin_api::Plugin for Who {
+        const NAME: &'static str = "Who"; const AUTHOR: &'static str = ""; const VERSION: &'static str = ""; const DESCRIPTION: &'static str = "";
+        fn start(&mut self, h: collabhost_plugin_api::Host) {
+            assert!(h.has("reactions.show_avatars"));
+            assert_eq!(h.call("reactions.show_avatars", r#"{"max":5,"size":"medium"}"#).as_deref(), Some("{}"));
+        }
+    }
+
+    #[test]
+    fn reaction_avatars_are_off_by_default_and_follow_the_plugin() {
+        use super::{reaction_avatars as parse, ReactionAvatars as A};
+        use serde_json::json;
+        // Defaults, clamping, switched off, refused values.
+        assert_eq!(parse(&json!({})), Ok(Some(A { max: 3, size: 14.0, hide_self: false })));
+        assert_eq!(parse(&json!({ "max": 0, "size": "small", "hide_self": true })), Ok(Some(A { max: 1, size: 14.0, hide_self: true })));
+        assert_eq!(parse(&json!({ "max": 99, "size": "medium" })), Ok(Some(A { max: 10, size: 18.0, hide_self: false })));
+        assert_eq!(parse(&json!({ "enabled": false, "max": 4 })), Ok(None));
+        assert!(parse(&json!({ "size": "huge" })).is_err() && parse(&serde_json::Value::Null).is_err());
+
+        // No plugin: Webox draws no avatars.
+        let none = std::env::temp_dir().join(format!("collabhost-who-none-{}", std::process::id()));
+        assert_eq!(super::Plugins::with_root(&none, none.join("installed")).reaction_avatars(), None);
+        // A plugin that calls the method in `start`: on with its values; switched off: gone; on again: back.
+        let (mut p, dir) = load_in_process::<Who>(6);
+        assert_eq!(p.reaction_avatars(), Some(A { max: 5, size: 18.0, hide_self: false }));
+        let i = p.list.len() - 1;
+        p.set_enabled(i, false);
+        assert_eq!(p.reaction_avatars(), None);
+        p.set_enabled(i, true);
+        assert_eq!(p.reaction_avatars().map(|a| a.max), Some(5));
+        // `{"enabled": false}` (the plugin's toggle) turns them off; a bad call keeps the last state and answers an error.
+        let c = &*p.list[i].loaded.as_ref().unwrap()._ctx as *const super::Ctx as super::Ptr;
+        let call = |j: &str| {
+            let (m, j) = (collabhost_plugin_api::cs("reactions.show_avatars"), collabhost_plugin_api::cs(j));
+            let r = super::h_call(c, m.as_ptr(), j.as_ptr());
+            let t = unsafe { std::ffi::CStr::from_ptr(r) }.to_string_lossy().into_owned();
+            super::h_free(r);
+            t
+        };
+        assert!(call(r#"{"size":"huge"}"#).contains("error"));
+        assert_eq!(p.reaction_avatars().map(|a| a.size), Some(18.0));
+        assert_eq!(call(r#"{"enabled":false}"#), "{}");
+        assert_eq!(p.reaction_avatars(), None);
         drop(p);
         let _ = std::fs::remove_dir_all(dir);
     }

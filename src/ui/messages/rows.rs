@@ -413,7 +413,7 @@ impl App {
                 y += g.size().y;
             }
             if let Some(g) = &ct.tag { p.galley(pos2(tx, y), g.clone(), c.head); y += g.size().y; }
-            if !m.reactions.is_empty() { self.reactions_row(ui, c, pos2(tx, y + 2.0), m); }
+            if !m.reactions.is_empty() { self.reactions_row(ui, t, c, pos2(tx, y + 2.0), m); }
         }
         // A closed (read-only) chat has no reply / react / edit toolbar (ui/closed.rs).
         // Nor has a deleted message a plugin keeps: it is gone on the service.
