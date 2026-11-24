@@ -18,7 +18,7 @@ impl App {
         let edit = matches!(self.compose, Compose::Edit { .. });
         // Finished dialogs / captures, the file shortcuts (Ctrl+O, screen capture), download announcements.
         self.files_frame(&ctx, now);
-        self.screen_capture_frame(&ctx);
+        self.screen_capture_frame(&ctx, now);
         let picked = crate::app::files::take_picks(&id);
         if !picked.is_empty() { self.stage_paths(&mut st.chips, picked, edit, now); }
         if let Some(png) = super::super::screen_capture::take_capture(&id) { self.stage_bytes(&mut st.chips, &crate::app::files::capture_name(), &png, edit, now); }
