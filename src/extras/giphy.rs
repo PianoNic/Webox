@@ -128,7 +128,9 @@ pub fn parse_page(body: &str) -> Result<Page, FetchError> {
 
 /// Thumbnails and shared files come from Giphy's public CDN over TLS only.
 pub fn media_host_ok(url: &str) -> bool {
-    url.strip_prefix("https://").and_then(|r| r.split(['/', '?']).next()).map_or(false, |h| h == "giphy.com" || h.ends_with(".giphy.com"))
+    let Ok(u) = url::Url::parse(url) else { return false };
+    if u.scheme() != "https" || !u.username().is_empty() || u.password().is_some() || u.port().is_some() { return false }
+    matches!(u.host(), Some(url::Host::Domain(h)) if h == "giphy.com" || h.strip_suffix(".giphy.com").is_some_and(|p| !p.is_empty()))
 }
 
 fn agent() -> &'static ureq::Agent {
@@ -299,6 +301,10 @@ mod tests {
         assert!(!media_host_ok("http://media.giphy.com/x"));
         assert!(!media_host_ok("https://evilgiphy.com/x"));
         assert!(!media_host_ok("https://giphy.com.evil.example/x"));
+        assert!(media_host_ok("https://Media.GIPHY.com/x"));
+        for no in ["https://evil.example#.giphy.com", "https://evil.example?.giphy.com", "https://evil.example\\.giphy.com/x", "https://media.giphy.com@evil.example/x",
+            "https://user@media.giphy.com/x", "https://u:p@media.giphy.com/x", "https://media.giphy.com./x", "https://giphy.com.evil.example./x", "https://.giphy.com/x",
+            "https://media.giphy.com:8443/x", "https://evil.example/media.giphy.com", "giphy.com/x", "not a url"] { assert!(!media_host_ok(no), "{no}"); }
     }
 
     #[test]
