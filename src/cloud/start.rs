@@ -43,15 +43,17 @@ pub fn start(token: String, device: Option<String>, kms_src: Option<(String, Str
                 loci_at = Instant::now() + loci_every;
                 if let Err(e) = s.meetings() { dbg_conn(&format!("meetings poll failed: {}", http_status(&e).map_or("transport".into(), |c| c.to_string()))); }
             }
+            // Presence renewal on its own clock: checked on every turn, not only when the queue was idle for a second (a busy
+            // session starved it for hours). Each subscribe makes the server push everyone's current state again.
+            if Instant::now() >= renew_presence {
+                renew_presence = Instant::now() + Duration::from_secs(PRESENCE_RENEW_SECS);
+                let mut want = s.presence_people();
+                want.extend(s.extra_people()); // people followed outside the spaces (cloud/presence_sub.rs)
+                s.subscribe_presence(&want);
+            }
             let job = match jobs.recv_timeout(Duration::from_secs(1)) {
                 Ok(j) => j,
                 Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    if Instant::now() >= renew_presence {
-                        renew_presence = Instant::now() + Duration::from_secs(PRESENCE_RENEW_SECS);
-                        let mut want = s.presence_people();
-                        want.extend(s.extra_people()); // people followed outside the spaces (cloud/presence_sub.rs)
-                        s.subscribe_presence(&want);
-                    }
                     s.presence_recheck(); // a call / meeting / DND whose end passed without an update
                     continue
                 }
@@ -60,7 +62,8 @@ pub fn start(token: String, device: Option<String>, kms_src: Option<(String, Str
             let user = super::report::user_started(&job);
             let r = match job {
                 Job::Ui(Req::Token { access, kms }) => { s.renew_token(access, kms); Ok(()) }
-                Job::Catchup(since) => { renew_presence = Instant::now() + Duration::from_secs(PRESENCE_RENEW_SECS); s.catchup(since) }
+                // Back after a reconnect (sleep, network): statuses changed meanwhile without an event, so renew right away.
+                Job::Catchup(since) => { renew_presence = Instant::now(); s.catchup(since) }
                 Job::Ui(Req::Spaces) => s.spaces(),
                 Job::Ui(Req::Messages(id)) => { s.register_typing(&id); let r = s.messages(&id); s.publish_typing(&id); if r.is_err() { let _ = s.out.send(Resp::MessagesFailed(id.clone())); } r } // shown: receive its typing (cloud/typing.rs)
                 Job::Ui(Req::Typing(id)) => s.send_typing(&id),
