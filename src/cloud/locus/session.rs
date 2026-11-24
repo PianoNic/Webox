@@ -18,6 +18,7 @@ impl Session {
             CallReq::Cleanup => self.audit(true),
             CallReq::Dtmf(t) => self.dtmf(&t),
             CallReq::Share(r) => self.share_req(r),
+            CallReq::JoinSpace(id, c) => self.join_space(&id, &c),
         }
     }
 
@@ -161,14 +162,11 @@ impl Session {
         let (media, offer) = self.prepare_media(choice)?;
         self.calls.last_dial = Some(Instant::now());
         let corr = jose::uuid();
-        let body = json!({"device": self.device_body(), "usingResource": null, "moveMediaToResource": false, "correlationId": corr,
-            "respOnlySdp": true, "allowMultiDevice": true, "ensureConversation": false, "supportsNativeLobby": 1,
-            "clientMediaPreferences": {"preferTranscoding": true}, "invitee": {"address": addr},
-            "localMedias": [{"localSdp": roap_local_sdp("OFFER", Some(&offer), 1, self.calls.muted)}]});
+        let body = join_body(self.device_body(), &corr, &offer, self.calls.muted, Some(&addr));
         let url = self.url("locus", "/loci/call?alternateRedirect=true");
         dbg_conn("call: POST /loci/call (with ROAP offer)");
         let r = match self.http("POST", &url, Some(body)) { Ok(r) => r, Err(e) => { media.close(); self.release_audio(); return Err(format!("Anruf fehlgeschlagen: {}", scrub(&e))); } };
-        self.adopt(&r, media, corr, true)
+        self.adopt(&r, media, corr, true, None)
     }
 
     /// Answer an incoming call: join the locus with our OFFER (the same ROAP flow as dialling).
@@ -178,19 +176,56 @@ impl Session {
         if !webex_host(&url) { return Err("Ungültige Anruf-Adresse.".into()); }
         let (media, offer) = self.prepare_media(choice)?;
         let corr = jose::uuid();
-        let body = json!({"device": self.device_body(), "usingResource": null, "moveMediaToResource": false, "correlationId": corr,
-            "respOnlySdp": true, "allowMultiDevice": true, "ensureConversation": false, "supportsNativeLobby": 1,
-            "clientMediaPreferences": {"preferTranscoding": true}, "localMedias": [{"localSdp": roap_local_sdp("OFFER", Some(&offer), 1, self.calls.muted)}]});
+        let body = join_body(self.device_body(), &corr, &offer, self.calls.muted, None);
         dbg_conn("call: POST /participant (answer, with ROAP offer)");
         let r = match self.http("POST", &format!("{url}/participant"), Some(body)) {
             Ok(r) => r,
             Err(e) => { dbg_conn(&format!("call: answer failed: {}", scrub(&e))); media.close(); self.release_audio(); return Err(format!("Annehmen fehlgeschlagen: {}", scrub(&e))); }
         };
-        self.adopt(&r, media, corr, false)
+        self.adopt(&r, media, corr, false, None)
+    }
+
+    /// "Treffen" / "Beitreten" in a group space: like the official client, the space's meeting is joined on its locus
+    /// (`POST {locusUrl}/participant`) when the conversation has one, else created with the space as the invitee
+    /// (`POST /loci/call`, `invitee.address` = the conversation url). A locus join the server refuses (4xx: gone, ended,
+    /// not allowed) falls back to `/loci/call`. Audio only: the server mixes everyone into our single audio line
+    /// (`preferTranscoding`).
+    pub(super) fn join_space(&mut self, id: &str, choice: &audio::Choice) -> Result<(), String> {
+        // the test guard allows calls to one address only: a space meeting reaches everyone in the space
+        if std::env::var(GUARD_ENV).ok().is_some_and(|g| !g.trim().is_empty()) { return Err("Testschutz aktiv: keine Bereichs-Meetings.".into()); }
+        if self.calls.cur.is_some() { return Err("Es läuft bereits ein Anruf.".into()); }
+        if self.calls.last_dial.is_some_and(|t| t.elapsed() < REDIAL_COOLDOWN) { return Err("Bitte kurz warten, bevor erneut angerufen wird.".into()); }
+        if self.calls.device_type.is_empty() || self.device.is_empty() { return Err("Dieses Gerät ist noch nicht registriert.".into()); }
+        let Some(sp) = self.spaces.get(id).filter(|s| !s.direct).cloned() else { return Err("Meetings gibt es nur in Gruppenbereichen.".into()) };
+        let conv = self.typing.conv_url.get(id).cloned().unwrap_or_default();
+        let (on_locus, conv) = space_join_target(&sp.locus_url, &conv).ok_or("Für diesen Bereich ist keine Meeting-Adresse bekannt.")?;
+        let (media, offer) = self.prepare_media(choice)?;
+        self.calls.last_dial = Some(Instant::now());
+        let corr = jose::uuid();
+        let create = |s: &Self| {
+            dbg_conn("call: space meeting: POST /loci/call (space as invitee, with ROAP offer)");
+            s.http("POST", &s.url("locus", "/loci/call?alternateRedirect=true"), Some(join_body(s.device_body(), &corr, &offer, s.calls.muted, Some(&conv))))
+        };
+        let r = match on_locus {
+            Some(l) => {
+                dbg_conn("call: space meeting: POST /participant on the space's locus (with ROAP offer)");
+                match self.http("POST", &format!("{l}/participant"), Some(join_body(self.device_body(), &corr, &offer, self.calls.muted, None))) {
+                    Err(e) if http_status(&e).is_some_and(|c| (400..500).contains(&c)) && !conv.is_empty() => {
+                        dbg_conn(&format!("call: space meeting: locus join refused ({}), creating it", http_status(&e).unwrap_or(0)));
+                        create(self)
+                    }
+                    r => r,
+                }
+            }
+            None => create(self),
+        };
+        let r = match r { Ok(r) => r, Err(e) => { media.close(); self.release_audio(); return Err(format!("Meeting beitreten fehlgeschlagen: {}", scrub(&e))); } };
+        self.adopt(&r, media, corr, true, Some((id.to_string(), sp.title)))
     }
 
     /// Takes the join answer (new call or answered call): remembers locus / self / media ids and any ready ROAP answer.
-    pub(super) fn adopt(&mut self, r: &Value, media: Media, corr: String, new_call: bool) -> Result<(), String> {
+    /// `space`: a group space's meeting (id, title), named after the space and kept while others come and go.
+    pub(super) fn adopt(&mut self, r: &Value, media: Media, corr: String, new_call: bool, space: Option<(String, String)>) -> Result<(), String> {
         let l = locus_of(r);
         let v = parse_locus(l, &self.my_email);
         let lurl = if v.url.is_empty() { locus_url_of(r) } else { v.url.clone() };
@@ -202,10 +237,15 @@ impl Session {
         }
         let media_id = media_id_of(r, &self.device);
         dbg_conn(&format!("call: joined {} media_id={} (top level {})", describe(&v), !media_id.is_empty(), r["mediaConnections"][0]["mediaId"].is_string()));
+        if space.is_some() { self.space_meeting_locus(l, &lurl); }
         if new_call {
-            let name = v.others.first().map(|p| p.name.clone()).unwrap_or_default();
-            let email = v.others.first().map(|p| p.email.clone()).unwrap_or_default();
-            self.calls.cur = Some(Active::new(lurl, v.self_id.clone(), v.self_url.clone(), true, name, email));
+            let (name, email) = match &space {
+                Some((_, title)) => (title.clone(), String::new()),
+                None => (v.others.first().map(|p| p.name.clone()).unwrap_or_default(), v.others.first().map(|p| p.email.clone()).unwrap_or_default()),
+            };
+            let mut a = Active::new(lurl, v.self_id.clone(), v.self_url.clone(), true, name, email);
+            a.space = space.map(|(id, _)| id);
+            self.calls.cur = Some(a);
         }
         if let Some(c) = self.calls.cur.as_mut() {
             c.self_id = v.self_id.clone(); c.self_url = v.self_url.clone(); c.media_id = media_id; c.correlation_id = corr; c.answered = true; c.media = Some(media); c.roap_seq = 1; c.roap_done = false;
@@ -334,7 +374,8 @@ impl Session {
         }
         let media = c.media.as_ref().map(|m| m.state());
         let rx = c.media.as_ref().map_or(0, |m| m.rx_packets.load(Ordering::Relaxed));
-        let Some(mut s) = call_state(v, outgoing || answered) else { return Ok(()) };
+        let state = if c.space.is_some() { group_state(v) } else { call_state(v, outgoing || answered) };
+        let Some(mut s) = state else { return Ok(()) };
         if s == CallState::Connected { c.joined_at.get_or_insert(now); }
         if media == Some(MediaState::Connected) { c.media_up_at.get_or_insert(now); }
         let stall = if answered { media_stall(now, c.offer_at, c.joined_at, c.media_up_at, rx, media) } else { None };
@@ -359,6 +400,8 @@ impl Session {
         }
         let (tick, now) = (d["tick"].as_bool() == Some(true), Instant::now());
         if tick { self.share_tick(); self.share_rx_tick(); }
+        // any locus event with its state: a group space's meeting starting / ending shows on the space
+        else if full_locus(d).is_some() { self.space_meeting_locus(locus_of(d), &locus_url_of(d)); }
         let (url, carried) = match self.calls.cur.as_mut() {
             Some(c) if tick => {
                 if c.stats_at.is_none_or(|t| now.saturating_duration_since(t) >= STATS_EVERY) {
@@ -406,6 +449,7 @@ impl Session {
                 (locus_of(&r).clone(), "read")
             }
         };
+        if how == "read" { self.space_meeting_locus(&l, &url); }
         let seq = locus_seq(&l);
         if let Some(c) = self.calls.cur.as_mut() {
             if seq != 0 && seq < c.seq { dbg_conn("call: older locus ignored"); return Ok(()); }
@@ -454,5 +498,183 @@ impl Session {
         }
         self.say(&format!("calls: {} loci, {active} active call(s) joined, {left} left (this device)", loci.len()));
         Ok(())
+    }
+
+    /// Follows a group space's meeting from any locus we see (event, read, join answer, the meetings list): a locus that
+    /// belongs to a known group space (its `conversationUrl`; the official client's "Found conversation for locus url")
+    /// marks the space "meeting in progress" while it runs. The UI hears only changes (`ListPatch::Meeting`).
+    pub(crate) fn space_meeting_locus(&mut self, l: &Value, url: &str) {
+        if st(&l["fullState"], "type").is_empty() { return } // a delta: says nothing about the meeting as a whole
+        let url = Some(if url.is_empty() { locus_url_of(l) } else { url.to_string() }).filter(|u| webex_host(u)).unwrap_or_default();
+        let conv = locus_conv_url(l);
+        let Some(id) = space_of_locus(self.spaces.values().map(|s| (s.id.as_str(), s.locus_url.as_str(), s.direct)), &conv, &url) else { return };
+        let running = meeting_running(&parse_locus(l, &self.my_email));
+        let Some(sp) = self.spaces.get_mut(&id) else { return };
+        if sp.meeting == running && (url.is_empty() || sp.locus_url == url) { return }
+        sp.meeting = running;
+        if !url.is_empty() { sp.locus_url = url.clone(); }
+        dbg_conn(&format!("call: space meeting {}", if running { "in progress" } else { "over" }));
+        let _ = self.out.send(Resp::List(crate::cloud::live_list::ListPatch::Meeting { space: id, locus_url: url, active: running }));
+    }
+}
+
+/// The join body of every Locus join (`POST /loci/call` and `POST {locusUrl}/participant`): our device, the ROAP OFFER,
+/// and for `/loci/call` whom to call (`invitee.address`: a person's address, or a space's conversation url).
+pub fn join_body(device: Value, correlation_id: &str, offer: &str, muted: bool, invitee: Option<&str>) -> Value {
+    let mut b = json!({"device": device, "usingResource": null, "moveMediaToResource": false, "correlationId": correlation_id,
+        "respOnlySdp": true, "allowMultiDevice": true, "ensureConversation": false, "supportsNativeLobby": 1,
+        "clientMediaPreferences": {"preferTranscoding": true}, "localMedias": [{"localSdp": roap_local_sdp("OFFER", Some(offer), 1, muted)}]});
+    if let Some(a) = invitee { b["invitee"] = json!({"address": a}); }
+    b
+}
+
+/// Where a space meeting is joined: on the space's locus (`Some(locus url)`, the conversation url kept as the fallback
+/// invitee), or created with the conversation url as the invitee (`None`). Webex https urls only; None when neither is known.
+pub fn space_join_target(locus_url: &str, conv_url: &str) -> Option<(Option<String>, String)> {
+    let ok = |u: &str| (u.starts_with("https://") && webex_host(u)).then(|| u.to_string());
+    let conv = ok(conv_url).unwrap_or_default();
+    match ok(locus_url) {
+        Some(l) => Some((Some(l), conv)),
+        None if !conv.is_empty() => Some((None, conv)),
+        None => None,
+    }
+}
+
+/// The conversation a locus belongs to (`conversationUrl`, or `info.conversationUrl`).
+pub fn locus_conv_url(l: &Value) -> String {
+    [st(l, "conversationUrl"), st(&l["info"], "conversationUrl")].into_iter().find(|u| !u.is_empty()).unwrap_or_default()
+}
+
+/// The conversation id at the end of a conversation url (`…/conversations/{id}`); a space's id is that id.
+pub fn conv_id(url: &str) -> Option<&str> {
+    url.split("/conversations/").nth(1).map(|r| r.split(['/', '?']).next().unwrap_or("")).filter(|s| !s.is_empty())
+}
+
+/// The group space (id) a locus belongs to: its conversation url names the space, or the space's known locus url is this
+/// locus. Never a direct space (its calls are 1:1 calls). `spaces`: (id, locus url, direct).
+pub fn space_of_locus<'a>(mut spaces: impl Iterator<Item = (&'a str, &'a str, bool)>, conv_url: &str, locus_url: &str) -> Option<String> {
+    let cid = conv_id(conv_url);
+    spaces.find(|(id, lu, direct)| !direct && (cid.is_some_and(|c| c.eq_ignore_ascii_case(id)) || (!lu.is_empty() && !locus_url.is_empty() && same_locus(lu, locus_url))))
+        .map(|(id, _, _)| id.to_string())
+}
+
+/// A space meeting is in progress: its locus is active and someone (me included) is in it.
+pub fn meeting_running(v: &LocusView) -> bool {
+    v.active && (v.self_state == "JOINED" || v.others.iter().any(|p| p.state == "JOINED" && !p.left()))
+}
+
+/// Our state in a group space's meeting: in it (self JOINED) = connected, whoever else is there yet; before that
+/// connecting (lobby, join in flight). It ends only when we left / were removed or the meeting ended, never because the
+/// others left (a 1:1 call's `call_state` ends then).
+pub fn group_state(v: &LocusView) -> Option<CallState> {
+    match v.self_state.as_str() {
+        "LEFT" | "DECLINED" => Some(CallState::Ended("left".into())),
+        _ if !v.active && !v.kind.is_empty() => Some(CallState::Ended("left".into())),
+        "JOINED" => Some(CallState::Connected),
+        _ => Some(CallState::Connecting),
+    }
+}
+
+#[cfg(test)]
+mod join_tests {
+    use super::*;
+
+    const CONV: &str = "https://conv-a.wbx2.com/conversation/api/v1/conversations/5e1d2c3b-aaaa-bbbb-cccc-0123456789ab";
+    const LOCUS: &str = "https://locus-a.wbx2.com/locus/api/v1/loci/9f8e7d6c-1111-2222-3333-444455556666";
+
+    /// A space meeting's locus in the recorded shape (Mercury `locus.difference` / GET): `conversationUrl`, `fullState`,
+    /// `self`, `participants` with person and devices.
+    fn space_locus(active: bool, me: &str, others: &[(&str, &str)]) -> Value {
+        let mut ps = vec![json!({"id": "p-me", "type": "USER", "state": me, "person": {"email": "me@example.com", "name": "Ich"}, "devices": [{"url": "https://wdm-a.wbx2.com/wdm/api/v1/devices/d1", "state": me}]})];
+        for (i, (email, state)) in others.iter().enumerate() {
+            ps.push(json!({"id": format!("p{i}"), "type": "USER", "state": state, "person": {"email": email, "name": email}, "devices": [{"url": format!("https://wdm-a.wbx2.com/wdm/api/v1/devices/o{i}"), "state": state}]}));
+        }
+        json!({"url": LOCUS, "conversationUrl": CONV,
+            "fullState": {"type": "MEETING", "active": active, "state": if active { "ACTIVE" } else { "INACTIVE" }},
+            "self": {"id": "p-me", "state": me, "url": format!("{LOCUS}/participant/p-me"), "devices": [{"url": "https://wdm-a.wbx2.com/wdm/api/v1/devices/d1", "state": me}]},
+            "participants": ps, "sequence": {"entries": [5], "rangeStart": 0, "rangeEnd": 0}})
+    }
+
+    /// The space join reuses the call / answer body; only `/loci/call` names the invitee (the space's conversation url).
+    #[test]
+    fn space_join_body_is_the_call_body_with_the_conversation_as_invitee() {
+        let dev = json!({"url": "https://wdm-a.wbx2.com/wdm/api/v1/devices/d1", "deviceType": "DESKTOP"});
+        let b = join_body(dev.clone(), "corr-1", "v=0\r\n", false, Some(CONV));
+        assert_eq!(b["invitee"]["address"], CONV);
+        assert_eq!(b["correlationId"], "corr-1");
+        assert_eq!(b["clientMediaPreferences"]["preferTranscoding"], true);
+        assert_eq!(b["supportsNativeLobby"], 1);
+        let sdp: Value = serde_json::from_str(b["localMedias"][0]["localSdp"].as_str().unwrap()).unwrap();
+        assert_eq!(sdp["roapMessage"]["messageType"], "OFFER");
+        assert_eq!(sdp["roapMessage"]["sdps"][0], "v=0\r\n");
+        let p = join_body(dev, "corr-1", "v=0\r\n", true, None);
+        assert!(p.get("invitee").is_none(), "a locus join names nobody");
+        let sdp: Value = serde_json::from_str(p["localMedias"][0]["localSdp"].as_str().unwrap()).unwrap();
+        assert_eq!(sdp["audioMuted"], true);
+    }
+
+    /// Known locus: join it (conversation as the fallback); none: create it with the conversation; foreign urls never.
+    #[test]
+    fn space_join_target_prefers_the_spaces_locus() {
+        assert_eq!(space_join_target(LOCUS, CONV), Some((Some(LOCUS.to_string()), CONV.to_string())));
+        assert_eq!(space_join_target("", CONV), Some((None, CONV.to_string())));
+        assert_eq!(space_join_target("https://evil.example.com/loci/1", CONV), Some((None, CONV.to_string())));
+        assert_eq!(space_join_target("", "http://conv-a.wbx2.com/conversation/api/v1/conversations/x"), None);
+        assert_eq!(space_join_target("", ""), None);
+    }
+
+    /// A locus maps to its group space by conversation id, or by the space's known locus url (another Locus host too).
+    #[test]
+    fn a_locus_finds_its_group_space() {
+        let id = "5e1d2c3b-aaaa-bbbb-cccc-0123456789ab";
+        let spaces = [("dm", "", true), (id, "", false), ("other", "", false)];
+        assert_eq!(space_of_locus(spaces.iter().copied(), CONV, LOCUS).as_deref(), Some(id));
+        assert_eq!(conv_id(CONV), Some(id));
+        let by_locus = [("s2", "https://locus-b.wbx2.com/locus/api/v1/loci/9f8e7d6c-1111-2222-3333-444455556666", false)];
+        assert_eq!(space_of_locus(by_locus.iter().copied(), "", LOCUS).as_deref(), Some("s2"));
+        // a direct space with that conversation is no space meeting; an unknown conversation neither
+        assert_eq!(space_of_locus([(id, "", true)].into_iter(), CONV, LOCUS), None);
+        assert_eq!(space_of_locus(spaces.iter().copied(), "https://conv-a.wbx2.com/conversation/api/v1/conversations/zzz", ""), None);
+        assert_eq!(locus_conv_url(&json!({"info": {"conversationUrl": CONV}})), CONV);
+    }
+
+    /// "Meeting in progress": active with someone joined; not before anyone is in it, not once it is over.
+    #[test]
+    fn meeting_in_progress_needs_an_active_locus_with_someone_in_it() {
+        let v = |l: &Value| parse_locus(l, "me@example.com");
+        assert!(meeting_running(&v(&space_locus(true, "IDLE", &[("a@example.com", "JOINED")]))));
+        assert!(meeting_running(&v(&space_locus(true, "JOINED", &[]))));
+        assert!(!meeting_running(&v(&space_locus(true, "IDLE", &[("a@example.com", "IDLE")]))));
+        assert!(!meeting_running(&v(&space_locus(false, "LEFT", &[("a@example.com", "LEFT")]))));
+    }
+
+    /// In a space meeting we are connected as soon as we are in it, alone too, and stay when the others leave; it ends
+    /// when we leave or the meeting ends. A 1:1 call ends when the other side leaves (the contrast).
+    #[test]
+    fn a_space_meeting_survives_others_leaving() {
+        let v = |l: &Value| parse_locus(l, "me@example.com");
+        assert_eq!(group_state(&v(&space_locus(true, "JOINED", &[]))), Some(CallState::Connected));
+        assert_eq!(group_state(&v(&space_locus(true, "JOINED", &[("a@example.com", "JOINED"), ("b@example.com", "JOINED")]))), Some(CallState::Connected));
+        let after = v(&space_locus(true, "JOINED", &[("a@example.com", "LEFT"), ("b@example.com", "LEFT")]));
+        assert_eq!(group_state(&after), Some(CallState::Connected));
+        assert_eq!(call_state(&after, true), Some(CallState::Ended("left".into())));
+        assert_eq!(group_state(&v(&space_locus(true, "IDLE", &[("a@example.com", "JOINED")]))), Some(CallState::Connecting));
+        assert_eq!(group_state(&v(&space_locus(true, "LEFT", &[("a@example.com", "JOINED")]))), Some(CallState::Ended("left".into())));
+        assert_eq!(group_state(&v(&space_locus(false, "JOINED", &[]))), Some(CallState::Ended("left".into())));
+    }
+
+    /// The join answer of `/loci/call` for a space (recorded shape: `locus` + `mediaConnections`): its locus url, our ids
+    /// and the media id are found as for a 1:1 call.
+    #[test]
+    fn the_space_join_answer_is_read_like_a_call() {
+        let mut l = space_locus(true, "JOINED", &[("a@example.com", "JOINED")]);
+        l["self"]["devices"][0]["mediaConnections"] = json!([{"mediaId": "m-1", "type": "SDP"}]);
+        let r = json!({"locus": l, "mediaConnections": [{"mediaId": "m-1", "type": "SDP"}]});
+        let v = parse_locus(locus_of(&r), "me@example.com");
+        assert_eq!(v.url, LOCUS);
+        assert_eq!(v.self_url, format!("{LOCUS}/participant/p-me"));
+        assert_eq!(media_id_of(&r, "https://wdm-a.wbx2.com/wdm/api/v1/devices/d1"), "m-1");
+        assert_eq!(locus_conv_url(locus_of(&r)), CONV);
+        assert!(full_locus(&r).is_some(), "the event / answer carries the whole locus");
     }
 }

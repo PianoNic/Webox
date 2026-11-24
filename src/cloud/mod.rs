@@ -67,6 +67,10 @@ pub struct Space {
     /// Announcement state: a group space in announcement mode in which I am not a moderator; no composer.
     /// Set by `announcement_blocked`. See ui/closed.rs.
     pub announcement: bool,
+    /// The space's meeting (locus) url, `locusUrl` of the conversation; empty until the space ever had a meeting.
+    pub locus_url: String,
+    /// A meeting runs in this group space right now (its locus is active with someone joined): the header shows "Beitreten".
+    pub meeting: bool,
 }
 #[derive(Clone, Debug, Default)]
 pub struct Message {

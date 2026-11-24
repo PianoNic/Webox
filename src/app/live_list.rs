@@ -29,6 +29,11 @@ impl App {
             }),
             ListPatch::Title { space, title } => if let Some(i) = find(self, &space) { self.spaces[i].title = title },
             ListPatch::Favorite(space, on) => if let Some(i) = find(self, &space) { self.spaces[i].favorite = on },
+            ListPatch::Meeting { space, locus_url, active } => if let Some(i) = find(self, &space) {
+                let s = &mut self.spaces[i];
+                if !locus_url.is_empty() { s.locus_url = locus_url; }
+                s.meeting = active;
+            },
             ListPatch::Hidden(space, on) => if let Some(i) = find(self, &space) { self.spaces[i].hidden = on },
             ListPatch::Locked(space, on) => crate::ui::spaces_ext::with(|x| { if on { x.locked.insert(space); } else { x.locked.remove(&space); } }),
             ListPatch::NotifyTags { space, add, tags } => crate::ui::spaces_ext::with(|x| {

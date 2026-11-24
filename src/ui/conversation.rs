@@ -100,10 +100,27 @@ impl App {
                 self.open_scheduler(&space.title, &inv);
             }
             if put(self, ui, 4).on_hover_text("KI-Zusammenfassung").clicked() { self.toast("Die KI-Zusammenfassung ist in dieser Version nicht verfügbar", now) }        } else {
-            let pill = Rect::from_center_size(pos2(banner.right() - 26.0 - 32.5, cy), Vec2::new(65.0, 28.0));
-            // Disabled "Treffen": button-primary-background / -text disabled (20 % / 40 %).
-            ui.painter().rect_filled(pill, 14.0, t.tk("button-primary-background:disabled"));
-            ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, tr("Meet"), FontId::proportional(14.5), t.tk("button-primary-text:disabled"));
+            // "Treffen" starts the space's meeting; while one runs it is the green "Beitreten" ("Meeting läuft"). Both join the
+            // space's meeting through its locus (cloud/locus/session.rs `join_space`); audio only.
+            let (label, tip) = meet_pill(space.meeting);
+            let galley = ui.painter().layout_no_wrap(label.to_string(), FontId::proportional(14.5), Color32::WHITE);
+            let w = (galley.size().x + 26.0).max(65.0);
+            let pill = Rect::from_center_size(pos2(banner.right() - 26.0 - w / 2.0, cy), Vec2::new(w, 28.0));
+            let in_call = self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none());
+            let presp = ui.interact(pill, ui.id().with("meet-pill"), if in_call { Sense::hover() } else { Sense::click() });
+            let down = presp.is_pointer_button_down_on();
+            let fill = match (in_call, space.meeting) {
+                (true, _) => t.tk("button-primary-background:disabled"),
+                // the call buttons' emerald (-60 / -70 hover / -80 pressed) for "join the running meeting"
+                (false, true) => if down { hex(0x17422C) } else if presp.hovered() { hex(0x1C5E3D) } else { hex(0x248052) },
+                // the enabled primary button (button-primary-background, as in ui/invite.rs)
+                (false, false) => if down { t.tk("button-primary-background:pressed") } else if presp.hovered() { t.tk("button-primary-background:hovered") } else { t.white_btn },
+            };
+            ui.painter().rect_filled(pill, 14.0, fill);
+            let text = if in_call { t.tk("button-primary-text:disabled") } else if space.meeting { Color32::WHITE } else { t.white_btn_text };
+            ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, label, FontId::proportional(14.5), text);
+            if presp.hovered() && !in_call { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+            if presp.on_hover_text(if in_call { "Es läuft bereits ein Anruf." } else { tip }).clicked() { self.join_space_meeting(&space, now); }
             // A 28 pt round S button, 6 pt before the pill.
             let cal = Rect::from_center_size(pos2(pill.left() - 6.0 - 14.0, cy), Vec2::splat(28.0));
             let cresp = ui.interact(cal, ui.id().with("cal-btn"), Sense::click());
@@ -184,7 +201,24 @@ impl App {
     }
 }
 
+/// The group space header's meeting pill: "Treffen" ("Meet") starts the space's meeting, "Beitreten" ("Join") joins the
+/// one in progress; the tooltip is the official one ("Laufendes Meeting" = "Meeting in progress").
+pub(crate) fn meet_pill(meeting: bool) -> (&'static str, &'static str) {
+    if meeting { (tr("Join"), tr("Meeting in progress")) } else { (tr("Meet"), "Meeting im Bereich starten") }
+}
+
 impl App {
+    /// "Treffen" / "Beitreten": joins (or starts) the group space's meeting; the call window shows it under the space's name.
+    pub(crate) fn join_space_meeting(&mut self, space: &Space, now: f64) {
+        if space.direct { return; }
+        if self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none()) { self.toast("Es läuft bereits ein Anruf.", now); return; }
+        let choice = self.choice();
+        let Some(c) = &self.client else { self.toast("Nicht verbunden", now); return };
+        c.req(Req::Call(crate::cloud::locus::CallReq::JoinSpace(space.id.clone(), choice)));
+        self.call.muted = false;
+        self.call.cur = Some(super::call::Shown { state: crate::cloud::locus::CallState::Connecting, name: space.title.clone(), email: String::new(), since: now, confirmed: false, ended_at: None });
+    }
+
     /// A group space's own custom cover (the data side's `space_cover`); None = flat header. Never the user's own cover.
     pub(crate) fn space_cover_tex(&mut self, ctx: &egui::Context, id: &str) -> Option<(egui::TextureId, [usize; 2])> {
         // Same lookup as photos.rs `App::space_cover` (Resp::SpaceCovers files images as "spacecover:<id>").
@@ -205,6 +239,15 @@ pub(crate) fn header_subline(t: &Th, person_line: Option<String>, space: &Space,
 #[cfg(test)]
 mod header_tests {
     use super::*;
+
+    /// A group space offers "Treffen" (Meet); with a meeting in progress it is "Beitreten" (Join) with the official
+    /// "Meeting in progress" tooltip. Both are enabled now (the pill was a disabled placeholder).
+    #[test]
+    fn the_meet_pill_turns_into_join_while_a_meeting_runs() {
+        assert_eq!(meet_pill(false).0, tr("Meet"));
+        assert_eq!(meet_pill(true), (tr("Join"), tr("Meeting in progress")));
+        assert_ne!(meet_pill(false).0, meet_pill(true).0);
+    }
 
     #[test]
     fn team_spaces_show_the_team_name_in_the_team_colour() {

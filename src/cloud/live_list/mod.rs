@@ -34,6 +34,8 @@ pub enum ListPatch {
     Moderator { space: String, ids: Vec<String>, on: bool },
     /// I left / was removed: the space leaves the list.
     Remove(String),
+    /// A meeting started (`active`) or ended in a group space; `locus_url` is its locus (cloud/locus/session.rs).
+    Meeting { space: String, locus_url: String, active: bool },
 }
 
 /// What one activity means for the list.
