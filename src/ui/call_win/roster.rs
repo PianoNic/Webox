@@ -4,7 +4,7 @@
 //!
 //! Official: `ParticipantList/ParticipantItemDelegate.qml` (row 48, avatar 32, control buttons 28, second line),
 //! `PhoneWidget/ParticipantsPopup.qml` ("Remove from call", width 278), `ParticipantList/InvitePeopleAndDevicePage.qml`.
-//! German from the language pack: "Teilnehmer ({{0}})", "Teilnehmerbereich", "Personen anhand von Name oder
+//! German from the language pack: "Teilnehmer ({{0}})", "Teilnehmerbereich", "Personen hinzufügen", "Personen anhand von Name oder
 //! E-Mail-Adresse hinzufügen", "Einladen", "Einladung gesendet", "Ich", "Gastgeber", "Gastgeber, ich", "Anrufen ...",
 //! "Stummgeschaltet", "Stummschalten", "Hand heben", "Hand senken", "Gehobene Hand", "Aus Anruf entfernen",
 //! "{{0}} entfernen?", "Entfernen", "Abbrechen", "{{MEETING_TYPE}} für alle beenden", "Meeting für alle beenden?".
@@ -153,7 +153,8 @@ impl App {
         // Invite: a field, known people matching it, "Einladen".
         let inv = Rect::from_min_size(pos2(r.left() + 12.0, head.bottom()), Vec2::new(r.width() - 24.0, 32.0));
         let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inv).layout(egui::Layout::left_to_right(egui::Align::Center)));
-        let te = field.add(egui::TextEdit::singleline(&mut self.call.win.roster.invite).hint_text("Personen anhand von Name oder E-Mail-Adresse hinzufügen").desired_width(inv.width() - BTN - 8.0));
+        let te = field.add(egui::TextEdit::singleline(&mut self.call.win.roster.invite).hint_text("Personen hinzufügen").desired_width(inv.width() - BTN - 8.0))
+            .on_hover_text("Personen anhand von Name oder E-Mail-Adresse hinzufügen");
         let enter = te.lost_focus() && vctx.input(|i| i.key_pressed(egui::Key::Enter));
         let add = Rect::from_center_size(pos2(inv.right() - BTN / 2.0, inv.center().y), Vec2::splat(BTN));
         let add_clicked = icon_btn(ui, &mut self.icons, t, "roster-invite", add, "people-add-regular", t.text1, "Einladen").clicked();
