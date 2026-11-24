@@ -22,11 +22,12 @@ pub fn start(token: String, device: Option<String>, kms_src: Option<(String, Str
         }).unwrap_or_else(|| token.clone());
         let kms_loop = kms_tx.clone();
         let mut s = Session { hist: Default::default(), space_cover_urls: Default::default(), space_covers_done: Default::default(), full_desc: Default::default(), read_marks: Default::default(), covers_done: Default::default(), oracle_done: false, img_jobs: vec![], images_done: Default::default(), uuids: HashMap::new(), avatars_done: Default::default(), my_email: String::new(), kms_loop, kms_token, agent, token, svc: defaults(), device: String::new(), user: String::new(),
-            kms: None, keys: HashMap::new(), kms_rx, spaces: HashMap::new(), out: out.clone(), cover: String::new(), calls: Default::default(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default() };
+            kms: None, keys: HashMap::new(), kms_rx, spaces: HashMap::new(), out: out.clone(), cover: String::new(), calls: Default::default(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default(), subs: Default::default() };
         if let Err(e) = s.connect(device, job_tx, kms_tx, gen) { dbg_conn(&format!("CONNECT FAILED: {e}")); let _ = out.send(Resp::AuthFailed(e)); return; }
         dbg_conn("connected, entering job loop");
         // A timed loop: periodic work (presence renewal) and the end of a replaced session.
-        let mut renew_presence = Instant::now() + Duration::from_secs(PRESENCE_RENEW_SECS);
+        let renew_ms = PRESENCE_RENEW_SECS as i64 * 1000;
+        let mut renew_presence = keepalive_now() + renew_ms;
         // Running / upcoming meetings: at start and every ~36 min (cloud/polls.rs).
         let loci_every = Duration::from_secs(polls::loci_period_s());
         let mut loci_at = Instant::now();
@@ -44,9 +45,10 @@ pub fn start(token: String, device: Option<String>, kms_src: Option<(String, Str
                 if let Err(e) = s.meetings() { dbg_conn(&format!("meetings poll failed: {}", http_status(&e).map_or("transport".into(), |c| c.to_string()))); }
             }
             // Presence renewal on its own clock: checked on every turn, not only when the queue was idle for a second (a busy
-            // session starved it for hours). Each subscribe makes the server push everyone's current state again.
-            if Instant::now() >= renew_presence {
-                renew_presence = Instant::now() + Duration::from_secs(PRESENCE_RENEW_SECS);
+            // session starved it for hours). Contacts whose subscription lapsed or was dropped are subscribed with `refresh`,
+            // which makes the server push their current state again (cloud/people/subs.rs).
+            if presence_renew_due(renew_presence, keepalive_now()) {
+                renew_presence = keepalive_now() + renew_ms;
                 let mut want = s.presence_people();
                 want.extend(s.extra_people()); // people followed outside the spaces (cloud/presence_sub.rs)
                 s.subscribe_presence(&want);
@@ -62,8 +64,10 @@ pub fn start(token: String, device: Option<String>, kms_src: Option<(String, Str
             let user = super::report::user_started(&job);
             let r = match job {
                 Job::Ui(Req::Token { access, kms }) => { s.renew_token(access, kms); Ok(()) }
-                // Back after a reconnect (sleep, network): statuses changed meanwhile without an event, so renew right away.
-                Job::Catchup(since) => { renew_presence = Instant::now(); s.catchup(since) }
+                // Back after a reconnect (sleep, network): statuses changed meanwhile without an event. Like the desktop client
+                // (mercury lost / restored, resumed from sleep) nothing counts as subscribed any more, and everyone is
+                // subscribed again right away, with `refresh`.
+                Job::Catchup(since) => { s.subs.forget_all(); renew_presence = keepalive_now(); s.catchup(since) }
                 Job::Ui(Req::Spaces) => s.spaces(),
                 Job::Ui(Req::Messages(id)) => { s.register_typing(&id); let r = s.messages(&id); s.publish_typing(&id); if r.is_err() { let _ = s.out.send(Resp::MessagesFailed(id.clone())); } r } // shown: receive its typing (cloud/typing.rs)
                 Job::Ui(Req::Typing(id)) => s.send_typing(&id),
@@ -221,6 +225,21 @@ pub(super) fn url_host(url: &str, schemes: &[&str]) -> Option<String> {
 /// `host` lies below `domain` (dot boundary, the bare domain itself doesn't count).
 pub(super) fn subdomain_of(host: &str, domain: &str) -> bool { host.strip_suffix(domain).is_some_and(|p| p.len() > 1 && p.ends_with('.')) }
 pub(super) fn hhmm(iso: &str) -> String { iso.get(11..16).unwrap_or(iso).to_string() }
+
+#[cfg(test)]
+mod renew_tests {
+    use super::super::presence_renew_due;
+
+    #[test]
+    fn renewal_on_the_wall_clock() {
+        let at = 1_000_000_000_000;
+        assert!(!presence_renew_due(at, at - 1));
+        assert!(presence_renew_due(at, at));
+        assert!(presence_renew_due(at, at + 10 * 3_600_000), "after a night asleep: at once");
+        assert!(!presence_renew_due(at, at - 540_000), "planned one period ahead");
+        assert!(presence_renew_due(at, at - 540_001), "clock set back: don't wait for hours");
+    }
+}
 
 #[cfg(test)]
 mod host_tests {

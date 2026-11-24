@@ -7,7 +7,7 @@ pub(in crate::cloud) fn session() -> (Session, Receiver<Resp>) {
     let (tx, rx) = std::sync::mpsc::channel();
     let (ktx, krx) = std::sync::mpsc::channel();
     let s = Session { hist: Default::default(), space_cover_urls: Default::default(), space_covers_done: Default::default(), full_desc: Default::default(), read_marks: Default::default(), covers_done: Default::default(), oracle_done: false, calls: Default::default(), img_jobs: vec![], images_done: Default::default(), uuids: Default::default(), avatars_done: Default::default(), agent: ureq::agent(), token: String::new(), my_email: "me@example.com".into(), kms_token: String::new(), kms_loop: ktx, svc: Default::default(), device: String::new(),
-        user: "me".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default() };
+        user: "me".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default(), subs: Default::default() };
     (s, rx)
 }
 

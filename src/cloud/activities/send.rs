@@ -133,7 +133,14 @@ impl Session {
         // Flags set / cleared on another device while the socket was down are re-read on every reconnect. The flag request has
         // no `sinceDate`, so it reads the full list.
         if let Err(e) = self.flags_load() { dbg_conn(&format!("catchup: flags not re-read ({})", http_status(&e).map_or("no service".into(), |c| c.to_string()))); }
-        if changed.as_ref().is_some_and(|c| c.is_empty()) { return Ok(()) }
+        if changed.as_ref().is_some_and(|c| c.is_empty()) {
+            // No list reload (which would re-read presence): read the statuses that changed while the socket was down.
+            let mut want = self.presence_people();
+            want.extend(self.extra_people());
+            let statuses = self.presence(&want);
+            crate::cloud::people::send_presence(&self.out, statuses);
+            return Ok(())
+        }
         self.spaces()?; // the list (titles, unread, new spaces) and a fresh presence subscription
         let opened: Vec<String> = self.hist.acts.keys().cloned().collect();
         for id in opened {

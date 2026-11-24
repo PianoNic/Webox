@@ -76,7 +76,7 @@ fn older_pages_merge_and_refold() {
     let (tx, _rx) = std::sync::mpsc::channel();
     let (ktx, krx) = std::sync::mpsc::channel();
     let mut s = super::Session { hist: Default::default(), space_cover_urls: Default::default(), space_covers_done: Default::default(), full_desc: Default::default(), read_marks: Default::default(), covers_done: Default::default(), oracle_done: false, calls: Default::default(), img_jobs: vec![], images_done: Default::default(), uuids: Default::default(), avatars_done: Default::default(), agent: ureq::agent(), token: String::new(), my_email: String::new(), kms_token: String::new(), kms_loop: ktx, svc: Default::default(), device: String::new(),
-        user: "me".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default() };
+        user: "me".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default(), subs: Default::default() };
     let post = |id: &str, t: &str| json!({"id": id, "verb": "post", "object": {"displayName": id, "objectType": "comment"}, "actor": {"id": "x"}, "published": format!("2026-01-01T{t}.000Z")});
     let summary = json!({"id": "s1", "verb": "add", "published": "2026-01-01T10:04:00.000Z", "parent": {"id": "m1", "type": "reactionSummary"},
         "object": {"objectType": "reaction2Summary", "reactions": [{"displayName": "thumbsup", "count": 1, "users": [{"id": "u1"}]}]}, "actor": {"id": "x"}});
@@ -136,7 +136,7 @@ fn notices() {
     let (tx, _rx) = std::sync::mpsc::channel();
     let (ktx, krx) = std::sync::mpsc::channel();
     let mut s = super::Session { hist: Default::default(), space_cover_urls: Default::default(), space_covers_done: Default::default(), full_desc: Default::default(), read_marks: Default::default(), covers_done: Default::default(), oracle_done: false, calls: Default::default(), img_jobs: vec![], images_done: Default::default(), uuids: Default::default(), avatars_done: Default::default(), agent: ureq::agent(), token: String::new(), my_email: "me@example.com".into(), kms_token: String::new(), kms_loop: ktx, svc: Default::default(), device: String::new(),
-        user: "me-uuid".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default() };
+        user: "me-uuid".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default(), subs: Default::default() };
     let call = |id: &str, t: &str, secs: u64, init_me: bool| json!({"id": id, "verb": "update", "published": format!("2026-01-01T{t}.000Z"),
         "object": {"objectType": "locusSessionSummary", "duration": secs, "participants": {"items": [
             {"email": "me@example.com", "id": "me-uuid", "isInitiator": init_me, "state": "LEFT"},
@@ -176,7 +176,7 @@ fn synthetic_creates_of_a_direct_chat() {
     let (tx, _rx) = std::sync::mpsc::channel();
     let (ktx, krx) = std::sync::mpsc::channel();
     let mut s = super::Session { hist: Default::default(), space_cover_urls: Default::default(), space_covers_done: Default::default(), full_desc: Default::default(), read_marks: Default::default(), covers_done: Default::default(), oracle_done: false, calls: Default::default(), img_jobs: vec![], images_done: Default::default(), uuids: Default::default(), avatars_done: Default::default(), agent: ureq::agent(), token: String::new(), my_email: String::new(), kms_token: String::new(), kms_loop: ktx, svc: Default::default(), device: String::new(),
-        user: "me".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default() };
+        user: "me".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default(), subs: Default::default() };
     s.spaces.insert("dm".into(), super::super::Space { id: "dm".into(), direct: true, ..Default::default() });
     let made_up = |id: &str| json!({"id": id, "verb": "create", "objectType": "activity", "published": "2025-03-04T08:20:00.000Z",
         "actor": {"id": "u-1", "entryUUID": "u-1", "objectType": "person"}, "object": {"objectType": "conversation", "tags": []}});
@@ -216,7 +216,7 @@ fn read_receipt_rules() {
     let (tx, _rx) = std::sync::mpsc::channel();
     let (ktx, krx) = std::sync::mpsc::channel();
     let mut s = super::Session { hist: Default::default(), space_cover_urls: Default::default(), space_covers_done: Default::default(), full_desc: Default::default(), read_marks: Default::default(), covers_done: Default::default(), oracle_done: false, calls: Default::default(), img_jobs: vec![], images_done: Default::default(), uuids: Default::default(), avatars_done: Default::default(), agent: ureq::agent(), token: String::new(), my_email: String::new(), kms_token: String::new(), kms_loop: ktx, svc: Default::default(), device: String::new(),
-        user: "me".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default() };
+        user: "me".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default(), subs: Default::default() };
     s.spaces.insert("sp".into(), super::super::Space { id: "sp".into(), last_seen: "2026-01-01T10:05:00.000Z".into(), ..Default::default() });
     let post = |id: &str, t: &str, who: &str| json!({"id": id, "verb": "post", "published": format!("2026-01-01T{t}.000Z"), "actor": {"id": who}, "object": {"objectType": "comment"}});
     s.merge_acts("sp", vec![post("a", "10:01:00", "x"), json!({"id": "n", "verb": "update", "published": "2026-01-01T10:09:00.000Z", "object": {"objectType": "locusSessionSummary"}})]);
@@ -234,7 +234,7 @@ fn deleted_messages_and_team_rows() {
     let (tx, _rx) = std::sync::mpsc::channel();
     let (ktx, krx) = std::sync::mpsc::channel();
     let mut s = super::Session { hist: Default::default(), space_cover_urls: Default::default(), space_covers_done: Default::default(), full_desc: Default::default(), read_marks: Default::default(), covers_done: Default::default(), oracle_done: false, calls: Default::default(), img_jobs: vec![], images_done: Default::default(), uuids: Default::default(), avatars_done: Default::default(), agent: ureq::agent(), token: String::new(), my_email: String::new(), kms_token: String::new(), kms_loop: ktx, svc: Default::default(), device: String::new(),
-        user: "me-uuid".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default() };
+        user: "me-uuid".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default(), subs: Default::default() };
     s.spaces.insert("g".into(), super::super::Space { id: "g".into(), title: "Sandbox Room".into(), ..Default::default() });
     let me = json!({"id": "me-uuid", "entryUUID": "me-uuid", "displayName": "Ich"});
     let ann = json!({"id": "a-uuid", "entryUUID": "a-uuid", "displayName": "Ann"});
@@ -312,7 +312,7 @@ fn reaction_summaries() {
     let (tx, _rx) = std::sync::mpsc::channel();
     let (ktx, krx) = std::sync::mpsc::channel();
     let mut s = super::Session { hist: Default::default(), space_cover_urls: Default::default(), space_covers_done: Default::default(), full_desc: Default::default(), read_marks: Default::default(), covers_done: Default::default(), oracle_done: false, calls: Default::default(), img_jobs: vec![], images_done: Default::default(), uuids: Default::default(), avatars_done: Default::default(), agent: ureq::agent(), token: String::new(), my_email: String::new(), kms_token: String::new(), kms_loop: ktx, svc: Default::default(), device: String::new(),
-        user: "me".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default() };
+        user: "me".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default(), subs: Default::default() };
     
     let post = json!({"id": "m1", "verb": "post", "object": {"displayName": "hello", "objectType": "comment"}, "actor": {"id": "x"}, "published": "2026-01-01T10:00:00.000Z"});
     let summary = |t: &str, reactions: serde_json::Value| json!({"id": format!("s{t}"), "verb": "add", "published": format!("2026-01-01T{t}.000Z"),
@@ -353,7 +353,7 @@ fn folding() {
     let (tx, _rx) = std::sync::mpsc::channel();
     let (ktx, krx) = std::sync::mpsc::channel();
     let mut s = super::Session { hist: Default::default(), space_cover_urls: Default::default(), space_covers_done: Default::default(), full_desc: Default::default(), read_marks: Default::default(), covers_done: Default::default(), oracle_done: false, calls: Default::default(), img_jobs: vec![], images_done: Default::default(), uuids: Default::default(), avatars_done: Default::default(), agent: ureq::agent(), token: String::new(), my_email: String::new(), kms_token: String::new(), kms_loop: ktx, svc: Default::default(), device: String::new(),
-        user: "me".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default() };
+        user: "me".into(), kms: None, keys: Default::default(), kms_rx: krx, spaces: Default::default(), out: tx, cover: String::new(), keep: Default::default(), live: Default::default(), extra: Default::default(), typing: Default::default(), subs: Default::default() };
     let p = |id: &str, t: &str, parent: serde_json::Value| json!({"id": id, "verb": "post", "object": {"displayName": t}, "actor": {"id": "x"}, "parent": parent});
     let acts = vec![
         p("a", "hello", json!(null)), p("b", "typo", json!(null)), p("e", "fixed", json!({"id": "b", "type": "edit"})),

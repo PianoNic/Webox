@@ -290,6 +290,10 @@ pub(super) fn live_token() -> String { LIVE_TOKEN.read().map(|t| t.clone()).unwr
 /// 1 min before they expire.
 pub const PRESENCE_RENEW_SECS: u64 = 540;
 
+/// Whether the renewal planned for `at` (Unix ms) is due at `now`. Wall-clock time, like the desktop client's expiry check:
+/// time asleep counts. A clock set back by more than one period counts as due too, so the renewal never waits for hours.
+pub fn presence_renew_due(at: i64, now: i64) -> bool { now >= at || at - now > PRESENCE_RENEW_SECS as i64 * 1000 }
+
 pub struct Client { tx: Sender<Job>, pub rx: Receiver<Resp> }
 impl Client { pub fn req(&self, r: Req) { let _ = self.tx.send(Job::Ui(r)); } }
 
@@ -311,6 +315,8 @@ struct Session {
     extra: presence_sub::Extra,
     /// Typing registration and conversation urls (cloud/typing.rs).
     typing: typing::TypingState,
+    /// Whose presence subscription runs until when (cloud/people/subs.rs).
+    subs: people::Subs,
 }
 
 /// A direct chat's title: the other participant's name; when nobody else is left in `participants` (a ONE_ON_ONE chat
