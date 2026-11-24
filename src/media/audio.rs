@@ -247,6 +247,29 @@ pub fn rms(pcm: &[i16]) -> f32 {
     (pcm.iter().map(|&s| { let f = s as f32 / i16::MAX as f32; f * f }).sum::<f32>() / pcm.len() as f32).sqrt()
 }
 
+/// Stream errors this close together (or more) mean the stream is broken, not just one glitch.
+const FATAL_ERRORS: usize = 3;
+const FATAL_WINDOW: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// Whether a stream error should reopen the devices: at once when the device is gone, else only when errors keep coming
+/// (`FATAL_ERRORS` within `FATAL_WINDOW`). One ALSA overrun / underrun (xrun) is transient: reopening for it would tear down
+/// both streams and reset the echo canceller. `recent` holds the times of this stream's earlier errors.
+fn stream_error_fatal(device_gone: bool, recent: &mut VecDeque<std::time::Instant>, now: std::time::Instant) -> bool {
+    recent.retain(|t| now.saturating_duration_since(*t) < FATAL_WINDOW);
+    recent.push_back(now);
+    device_gone || recent.len() >= FATAL_ERRORS
+}
+
+/// The error callback of a stream (`side` names it in the log): sets `failed` for the engine only for a fatal error.
+fn stream_error(io: Arc<Io>, side: &'static str) -> impl FnMut(cpal::StreamError) + Send + 'static {
+    let mut recent = VecDeque::new();
+    move |e| {
+        if !stream_error_fatal(matches!(e, cpal::StreamError::DeviceNotAvailable), &mut recent, std::time::Instant::now()) {
+            eprintln!("audio {side} (transient): {e}");
+        } else if !io.failed.swap(true, Ordering::Relaxed) { eprintln!("audio {side}: {e}"); }
+    }
+}
+
 /// Devices to open: `None` leaves that side closed (an empty name is the system default, not "none").
 enum Cmd { Open(Option<String>, Option<String>, Sender<Result<String, String>>), Close }
 
@@ -357,7 +380,7 @@ fn open_streams(io: &Arc<Io>, input: Option<&str>, output: Option<&str>) -> Resu
                 let _ = blocks.send(res.clone());
             };
             let io4 = io.clone();
-            let err = move |e| { if !io4.failed.swap(true, Ordering::Relaxed) { eprintln!("audio input: {e}"); } };
+            let err = stream_error(io4, "input");
             match fmt {
                 cpal::SampleFormat::F32 => dev.build_input_stream(cfg, move |d: &[f32], _| handle(&mut d.iter().copied()), err, None),
                 cpal::SampleFormat::I16 => dev.build_input_stream(cfg, move |d: &[i16], _| handle(&mut d.iter().map(|&s| to_f32(s))), err, None),
@@ -392,7 +415,7 @@ fn open_streams(io: &Arc<Io>, input: Option<&str>, output: Option<&str>) -> Resu
             };
             let mut play_into = play_into;
             let io4 = io.clone();
-            let err = move |e| { if !io4.failed.swap(true, Ordering::Relaxed) { eprintln!("audio output: {e}"); } };
+            let err = stream_error(io4, "output");
             match fmt {
                 cpal::SampleFormat::F32 => dev.build_output_stream(cfg, move |d: &mut [f32], _| { let n = d.len(); play_into(n, Box::new(|i, v| d[i] = v)) }, err, None),
                 cpal::SampleFormat::I16 => dev.build_output_stream(cfg, move |d: &mut [i16], _| { let n = d.len(); play_into(n, Box::new(|i, v| d[i] = (v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)) }, err, None),
@@ -412,6 +435,23 @@ fn open_streams(io: &Arc<Io>, input: Option<&str>, output: Option<&str>) -> Resu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_lasting_stream_errors_reopen_the_devices() {
+        use std::time::{Duration, Instant};
+        let t0 = Instant::now();
+        let ms = |n| t0 + Duration::from_millis(n);
+        let mut r = VecDeque::new();
+        assert!(!stream_error_fatal(false, &mut r, ms(0)), "one overrun is transient");
+        assert!(!stream_error_fatal(false, &mut r, ms(500)));
+        assert!(stream_error_fatal(false, &mut r, ms(900)), "three within a second");
+        // Spread out, errors never add up.
+        let mut r = VecDeque::new();
+        for i in 0..20 { assert!(!stream_error_fatal(false, &mut r, ms(i * 600)), "{i}"); }
+        assert!(r.len() <= 2);
+        // A device that is gone counts at once.
+        assert!(stream_error_fatal(true, &mut VecDeque::new(), ms(0)));
+    }
 
     #[test]
     fn choice_round_trip() {
