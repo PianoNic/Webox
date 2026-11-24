@@ -81,6 +81,7 @@ pub fn start(token: String, device: Option<String>, kms_src: Option<(String, Str
                 Job::Ui(Req::FullImage(k)) => s.full_image(&k),
                 Job::Ui(Req::MessagesBefore(id)) => s.older_messages(&id),
                 Job::Ui(Req::Unreact(id, r)) => s.unreact(&id, &r).and_then(|_| s.after_write(&id)),
+                Job::Ui(Req::ReactorNames(id, msg)) => s.reactor_names(&id, &msg),
                 Job::Ui(Req::Favorite(id, on)) => s.favorite(&id, on).and_then(|_| s.spaces()),
                 Job::Ui(Req::Hide(id)) => s.hide(&id).and_then(|_| s.spaces()),
                 Job::Ui(Req::Leave(id)) => s.leave(&id).and_then(|_| s.spaces()),

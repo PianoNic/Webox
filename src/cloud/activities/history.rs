@@ -135,6 +135,11 @@ impl Session {
         // A space not opened here needs no history for an event: the list was patched above, a thread reply still arrives as
         // a new message (moves the space up, unread, toast); edits / deletes / reactions show when it is opened (that load
         // reads them).
+        if a["verb"] == "delete" {
+            let target = st(&a["object"], "id");
+            dbg_conn(&format!("live delete {} of {target} (object verb {:?}) in {id}: space loaded {cached}, target cached {}",
+                st(a, "id"), st(&a["object"], "verb"), self.cached(&id, &target)));
+        }
         if !plain && !cached && !reply { return Ok(()); }
         if !plain && cached {
             if self.merge_acts(&id, vec![a.clone()]) > 0 {
@@ -145,6 +150,8 @@ impl Session {
         }
         let key_url = self.spaces.get(&id).map(|s| s.key_url.clone()).unwrap_or_default();
         if cached && self.merge_acts(&id, vec![a.clone()]) == 0 { return Ok(()); } // known already (my own write's echo)
+        // Its delete came first (another page or event): it is a tombstone now, shown by folding the list again.
+        if cached && self.hist.acts.get(&id).is_some_and(|l| l.iter().any(|x| x["verb"] == "tombstone" && st(x, "id") == st(a, "id"))) { self.refold(&id); return Ok(()); }
         if let Some(m) = self.activity(a, &key_url) { let _ = self.out.send(Resp::Incoming(id, m)); self.fetch_images(); }
         Ok(())
     }
