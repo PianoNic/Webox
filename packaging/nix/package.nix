@@ -73,6 +73,7 @@ let
         ../../Cargo.toml
         ../../Cargo.lock
         ../../build.rs
+        ../../secrets.toml # sign-in and the GIF picker (build.rs embeds it)
         ../../src
         ../../assets
         ../../examples
