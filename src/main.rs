@@ -283,6 +283,9 @@ fn cjk_fallback_fonts() -> Vec<Vec<u8>> {
 #[cfg(not(windows))]
 fn system_fallback_font() -> Option<Vec<u8>> {
     if let Some(b) = std::env::var_os("WEBOX_FALLBACK_FONT").and_then(|p| std::fs::read(p).ok()) { return Some(b); }
+    // macOS: no fontconfig; Arial from the system's fonts (the big "Arial Unicode" would cost ~23 MB of memory).
+    #[cfg(target_os = "macos")]
+    if let Some(b) = std::fs::read("/System/Library/Fonts/Supplemental/Arial.ttf").ok().filter(|b| is_font(b)) { return Some(b); }
     // Whatever fontconfig picks for DejaVu Sans (NixOS and others keep fonts in places the folder walk below doesn't know).
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);
     if let Some(b) = fc_match("DejaVu Sans", deadline).and_then(|(_, p)| std::fs::read(p).ok()).filter(|b| is_font(b)) { return Some(b); }

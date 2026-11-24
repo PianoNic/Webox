@@ -1,5 +1,6 @@
 //! App updates from the GitHub releases: the check (by hand, and once a day in the background), and on Windows the download,
 //! checksum test and program swap (`swap`). Linux only reports a new version: packages update through Nix or the distribution.
+//! macOS only reports it too and links to the GitHub download (`webox-<v>-macos-arm64.zip`; no self-replacing of the .app).
 //! The state lives here; the UI reads it every frame (`status`) and the workers wake the window when it changes.
 pub mod release;
 pub mod net;

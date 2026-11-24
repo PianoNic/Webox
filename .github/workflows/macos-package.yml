@@ -1,0 +1,54 @@
+name: macOS package (dry run)
+
+# The macOS steps of release.yml without a release: release build, Webox.app, zip + .sha256, kept as a workflow artifact (nothing
+# is uploaded to a release, no version bump). By hand (Actions > Run workflow), and on pull requests that change the packaging.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - packaging/macos/**
+      - .github/workflows/macos-package.yml
+
+concurrency:
+  group: macos-package-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  package:
+    name: Webox.app (dry run)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+
+      # No WEBOX_* secrets here: pull requests from forks never get them, and a dry run doesn't need a working sign-in.
+      - name: Build and pack Webox.app
+        run: sh packaging/macos/make-app.sh
+
+      - name: Checksum and check the bundle
+        run: |
+          set -euo pipefail
+          cd dist
+          for f in webox-*-macos-*.zip; do shasum -a 256 "$f" > "$f.sha256"; cat "$f.sha256"; done
+          plutil -lint Webox.app/Contents/Info.plist
+          codesign -dv Webox.app 2>&1
+          Webox.app/Contents/MacOS/webox --version
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: webox-macos-zip
+          path: |
+            dist/webox-*-macos-*.zip
+            dist/webox-*-macos-*.zip.sha256

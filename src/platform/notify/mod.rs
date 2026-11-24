@@ -168,3 +168,5 @@ mod card;
 #[allow(unused_imports)]
 pub(crate) use card::*;
 mod hub;
+#[cfg(target_os = "macos")]
+mod macos; // Notification Center banners

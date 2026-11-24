@@ -54,12 +54,14 @@ pub fn config_dir() -> PathBuf {
     DIR.get_or_init(|| {
         #[cfg(windows)]
         let base = std::env::var_os("APPDATA").map(PathBuf::from);
-        #[cfg(not(windows))]
+        #[cfg(target_os = "macos")]
+        let base = crate::platform::macos::app_support(); // ~/Library/Application Support/WebOx
+        #[cfg(not(any(windows, target_os = "macos")))]
         let base = xdg_config_home();
         let Some(base) = base else { return fallback_config_dir() };
-        let d = base.join(if cfg!(windows) { "WebOx" } else { "webox" });
+        let d = base.join(if cfg!(any(windows, target_os = "macos")) { "WebOx" } else { "webox" });
         // The app was called CollabHost before: carry its settings, sign-in and plugins over once.
-        let old = base.join(if cfg!(windows) { "CollabHost" } else { "collabhost" });
+        let old = base.join(if cfg!(any(windows, target_os = "macos")) { "CollabHost" } else { "collabhost" });
         if !d.exists() && old.is_dir() { let _ = std::fs::rename(&old, &d); }
         let _ = create_private_dir(&d);
         // An existing folder (older versions made it 0755) is tightened; a symlinked one (dotfiles) is followed.
@@ -263,12 +265,14 @@ pub fn open(url: &str) {
     // Only web, mail, phone and meeting links are handed to the system.
     if !["https://", "http://", "sip:", "tel:", "mailto:"].iter().any(|p| url.starts_with(p)) { return; }
     #[cfg(windows)] spawn_detached(std::process::Command::new("rundll32").args(["url.dll,FileProtocolHandler", url]));
-    #[cfg(not(windows))] spawn_detached(std::process::Command::new("xdg-open").arg(url));
+    #[cfg(target_os = "macos")] crate::platform::macos::open(url);
+    #[cfg(not(any(windows, target_os = "macos")))] spawn_detached(std::process::Command::new("xdg-open").arg(url));
 }
 
 pub fn open_folder(p: &std::path::Path) {
     #[cfg(windows)] spawn_detached(std::process::Command::new("explorer").arg(p));
-    #[cfg(not(windows))] spawn_detached(std::process::Command::new("xdg-open").arg(p));
+    #[cfg(target_os = "macos")] crate::platform::macos::open(p);
+    #[cfg(not(any(windows, target_os = "macos")))] spawn_detached(std::process::Command::new("xdg-open").arg(p));
 }
 
 /// Gives a child process the caller's own `LD_LIBRARY_PATH` back: the Nix wrapper prefixes its libraries (`WEBOX_ORIG_LD_LIBRARY_PATH`
@@ -390,10 +394,12 @@ pub fn autostart_registered() -> Option<bool> {
 }
 
 #[cfg(not(windows))]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 const AUTOSTART_FILE: &str = "webox.desktop";
 
 /// The autostart folders in the order of precedence: the user's, then `XDG_CONFIG_DIRS` (default `/etc/xdg`).
 #[cfg(not(windows))]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn autostart_dirs() -> Vec<PathBuf> {
     let dirs = std::env::var_os("XDG_CONFIG_DIRS").filter(|v| !v.is_empty()).unwrap_or_else(|| "/etc/xdg".into());
     xdg_config_home().into_iter().chain(std::env::split_paths(&dirs).filter(|p| p.is_absolute())).map(|p| p.join("autostart")).collect()
@@ -401,12 +407,18 @@ fn autostart_dirs() -> Vec<PathBuf> {
 
 /// `Hidden=true` (or the GNOME switch `X-GNOME-Autostart-enabled=false`) in the text of a desktop entry.
 #[cfg(not(windows))]
+#[cfg_attr(target_os = "macos", allow(dead_code))]
 fn desktop_hidden(text: &str) -> bool {
     text.lines().map(str::trim).any(|l| l.eq_ignore_ascii_case("Hidden=true") || l.eq_ignore_ascii_case("X-GNOME-Autostart-enabled=false"))
 }
 
-/// Start with the computer: the Run key on Windows, an XDG autostart entry on Linux.
+/// Start with the computer: the Run key on Windows, an XDG autostart entry on Linux. Not on macOS yet (`SMAppService.mainApp`).
 pub fn set_autostart(on: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = on;
+        Err("Autostart ist unter macOS noch nicht verfügbar".into())
+    }
     #[cfg(windows)]
     {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -414,7 +426,7 @@ pub fn set_autostart(on: bool) -> Result<(), String> {
         let ok = reg_run_value("WebOx", on.then(|| format!("\"{}\" {AUTOSTART_ARGS}", exe.display())).as_deref());
         if ok || !on { Ok(()) } else { Err("couldn't change the Run key".into()) }
     }
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     {
         let dir = xdg_config_home().ok_or("no home folder")?.join("autostart");
         let file = dir.join(AUTOSTART_FILE);
@@ -444,7 +456,7 @@ pub fn set_autostart(on: bool) -> Result<(), String> {
 /// One quoted `Exec=` argument per the Desktop Entry spec: `"`, `` ` ``, `$` and `\` get a backslash inside the quotes, then the
 /// value's own string escaping doubles every backslash, and `%` (a field code) becomes `%%`. A path with a line break or other
 /// control character can't be written safely: `webox` (from PATH) then.
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
 fn desktop_exec_arg(p: &str) -> String {
     if p.chars().any(char::is_control) { return "webox".into(); }
     let mut s = String::from("\"");

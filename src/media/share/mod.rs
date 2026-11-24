@@ -25,6 +25,10 @@ use self::windows as backend;
 mod linux;
 #[cfg(target_os = "linux")]
 use self::linux as backend;
+#[cfg(target_os = "macos")]
+mod macos; // not built yet (ScreenCaptureKit + VideoToolbox): nothing to share
+#[cfg(target_os = "macos")]
+use self::macos as backend;
 #[cfg(test)]
 mod ts;
 #[cfg(test)]

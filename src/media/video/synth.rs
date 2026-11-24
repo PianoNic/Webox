@@ -123,6 +123,8 @@ pub fn sample_clip() -> Option<PathBuf> {
         let (p, r) = { let p = dir.join("Demo-Clip.mp4"); let r = if p.exists() { Ok(()) } else { write(&p, spec, &paint_demo) }; (p, r) };
         #[cfg(target_os = "linux")]
         let (p, r) = { let p = dir.join("Demo-Clip.avi"); let r = if p.exists() { Ok(()) } else { write_gst(&p, spec, &format!("videotestsrc num-buffers={} pattern=ball", spec.frames)) }; (p, r) };
+        #[cfg(not(any(windows, target_os = "linux")))]
+        let (p, r): (PathBuf, Result<(), String>) = { let _ = spec; (dir.join("Demo-Clip"), Err("no video encoder on this platform".into())) };
         match r { Ok(()) => Some(p), Err(e) => { let _ = std::fs::remove_file(&p); eprintln!("sample video: {e}"); None } }
     }).clone()
 }

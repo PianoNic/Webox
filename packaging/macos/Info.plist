@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>de</string>
+	</array>
+	<key>CFBundleExecutable</key>
+	<string>webox</string>
+	<key>CFBundleIconFile</key>
+	<string>webox</string>
+	<key>CFBundleIdentifier</key>
+	<string>io.github.pianonic.webox</string>
+	<key>CFBundleName</key>
+	<string>Webox</string>
+	<key>CFBundleDisplayName</key>
+	<string>Webox</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.business</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<true/>
+	<!-- Calls use the microphone; the camera is asked for by the AVFoundation capture still to come. Localised in
+	     de.lproj / en.lproj (InfoPlist.strings). -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Webox uses the microphone for calls and meetings.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Webox uses the camera for video calls and meetings.</string>
+</dict>
+</plist>

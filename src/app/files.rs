@@ -227,7 +227,8 @@ pub fn opens_directly(name: &str) -> bool {
 pub fn open_file(p: &Path) {
     if !opens_directly(&p.to_string_lossy()) { show_in_folder(p); return; }
     #[cfg(windows)] crate::system::spawn_detached(std::process::Command::new("explorer").arg(p));
-    #[cfg(not(windows))] crate::system::spawn_detached(std::process::Command::new("xdg-open").arg(p));
+    #[cfg(target_os = "macos")] crate::platform::macos::open(p);
+    #[cfg(not(any(windows, target_os = "macos")))] crate::system::spawn_detached(std::process::Command::new("xdg-open").arg(p));
 }
 
 /// Mark-of-the-Web on a file downloaded from a chat: the `Zone.Identifier` stream (Internet zone) that SmartScreen, Office's
@@ -298,7 +299,9 @@ pub fn show_in_folder(p: &Path) {
         {
             if !shell_select(&p) { explorer_select(&p); }
         }
-        #[cfg(not(windows))]
+        #[cfg(target_os = "macos")]
+        crate::platform::macos::reveal(&p); // Finder, the file selected
+        #[cfg(not(any(windows, target_os = "macos")))]
         {
             if !show_items(&p) { crate::system::spawn_detached(std::process::Command::new("xdg-open").arg(p.parent().unwrap_or(&p))); }
         }
@@ -315,7 +318,7 @@ fn show_items(p: &Path) -> bool {
         bus.call_method(Some(N), "/org/freedesktop/FileManager1", Some(N), "ShowItems", &(vec![uri], "")).await.ok()
     }).flatten().is_some()
 }
-#[cfg(all(not(windows), not(target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 fn show_items(_: &Path) -> bool { false }
 
 /// `SHOpenFolderAndSelectItems` with the file's own ITEMIDLIST (an absolute pidl selects that item in its parent folder).

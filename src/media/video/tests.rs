@@ -36,6 +36,9 @@ fn make(path: &std::path::Path) -> Result<(), String> {
     let caps = format!("video/x-raw,width={W},height={H},framerate={FPS}/1");
     synth::write_gst(path, spec(), &format!("concat name=c videotestsrc num-buffers={half} pattern=red ! {caps} ! c. videotestsrc num-buffers={half} pattern=blue ! {caps} ! c. c."))
 }
+/// macOS: no encoder (and no decoder) yet, see `media/video/macos.rs`: the decode tests skip.
+#[cfg(not(any(windows, target_os = "linux")))]
+fn make(_path: &std::path::Path) -> Result<(), String> { Err("no video encoder on this platform".into()) }
 /// The test video, or None when this machine has no encoder (Windows N without the Media Feature Pack, Linux without
 /// gst-plugins-good): the test then says so and passes.
 fn synthetic() -> Option<PathBuf> {

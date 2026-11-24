@@ -244,6 +244,8 @@ impl App {
         self.notify.toasts.retain(|ts| clock < ts.deadline + FADE);
         #[cfg(target_os = "linux")]
         { self.native_toasts(ctx); crate::ui::call_toast::call_note_frame(ctx); }
+        #[cfg(target_os = "macos")]
+        self.mac_toasts();
 
         if !self.notify.toasts.is_empty() && ctx.embed_viewports() {
             // No multi-viewport support: fall back to the in-window toast.

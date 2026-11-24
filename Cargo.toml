@@ -106,6 +106,15 @@ webkit2gtk = { version = "2.0", features = ["v2_40"] }
 gtk = "0.18"
 glib = "0.18"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# WKWebView sign-in window (src/platform/webview/platform_mac.rs). objc2 0.6 / the 0.3 framework crates are the line winit, rfd and
+# arboard already pull on macOS; only objc2-web-kit is new, with just the headers that window uses.
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString", "NSURL", "NSURLRequest", "NSGeometry", "NSNotification", "NSObject"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSWindow", "NSResponder", "NSView", "NSGraphics"] }
+objc2-web-kit = { version = "0.3", default-features = false, features = ["std", "objc2-app-kit", "objc2-core-foundation", "WKWebView", "WKWebViewConfiguration",
+  "WKUserContentController", "WKUserScript", "WKScriptMessage", "WKScriptMessageHandler", "WKNavigationDelegate", "WKNavigation"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 # Native desktop integration on Linux (src/platform/linux/): all of these are already in the tree through rfd's xdg-portal backend
 # (ashpd -> zbus 5 / zvariant 5 / futures-util / serde) and winit (x11rb, raw-window-handle), so they add no new crates.

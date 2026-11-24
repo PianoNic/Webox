@@ -79,11 +79,13 @@ fn parse_release() {
 #[test]
 fn asset_choice() {
     let list = vec![asset("webox-0.2.0-linux-x86_64.tar.gz"), asset("webox-0.2.0-linux-x86_64.tar.gz.sha256"), asset("Webox-Setup-0.2.0-x64.exe"),
+        asset("webox-0.2.0-macos-arm64.zip"), asset("webox-0.2.0-macos-arm64.zip.sha256"),
         asset("webox-0.2.0-windows-x64.zip"), asset("webox-0.2.0-windows-x64.zip.sha256")];
     assert_eq!(release::platform_asset(&list, "windows", "x86_64").unwrap().name, "webox-0.2.0-windows-x64.zip");
     assert_eq!(release::platform_asset(&list, "linux", "x86_64").unwrap().name, "webox-0.2.0-linux-x86_64.tar.gz");
     assert!(release::platform_asset(&list, "linux", "aarch64").is_none());
-    assert!(release::platform_asset(&list, "macos", "aarch64").is_none());
+    assert!(release::platform_asset(&list, "macos", "aarch64").is_none()); // macOS only notifies, it never self-updates
+    assert!(release::platform_asset(&list, "windows", "aarch64").is_none_or(|a| !a.name.contains("macos")));
     assert_eq!(release::checksum_asset(&list, "webox-0.2.0-windows-x64.zip").unwrap().name, "webox-0.2.0-windows-x64.zip.sha256");
     let sums = vec![asset("webox-0.2.0-windows-x64.zip"), asset("SHA256SUMS")];
     assert_eq!(release::checksum_asset(&sums, "webox-0.2.0-windows-x64.zip").unwrap().name, "SHA256SUMS");
