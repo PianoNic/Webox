@@ -10,6 +10,8 @@ jobs:
   ci:
     name: Gates
     uses: ./.github/workflows/ci.yml
+    with:
+      nix: false
 
   sync-version:
     name: Bump version to the release tag
@@ -80,6 +82,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       # build.rs bakes these into the binary (sign-in and the GIF picker work out of the box).
       - name: Build
@@ -154,6 +158,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
           toolchain: stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       - name: Pack, checksum and upload
         env:

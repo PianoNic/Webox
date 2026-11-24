@@ -1,0 +1,5 @@
+# Faster builds (docs/dev-setup.md).
+# Windows: rust-lld (shipped with every Rust toolchain) links the large webox.exe several times faster than MSVC's link.exe.
+# Linux already uses lld by default since Rust 1.90.
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"

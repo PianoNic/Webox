@@ -42,6 +42,13 @@ cargo run -- --sample              # debug build, for stepping through code
 
 Screenshots of specific states use `WEBOX_SHOT_*` variables together with `--sample --screenshot`, for example `WEBOX_SHOT_OPEN=s2` (a direct chat), `WEBOX_SHOT_SETTINGS=notifications`, `WEBOX_SHOT_GIF=1` (the GIF picker; with `WEBOX_SHOT_GIF_EXTRAS=1` the GIF-Extras plugin's popup, e.g. `WEBOX_SHOT_GIF=stickers`, and `WEBOX_SHOT_GIF_COMPACT=1` for its compact size) or `WEBOX_SHOT_THEME=light`. `WEBOX_LANG=en` picks the language. Each variable is documented where it is read; `scripts/shots.ps1` renders a set into `shots/`.
 
+## Build speed
+
+- While editing, `cargo check` (or rust-analyzer in the editor) reports errors in a few seconds without building the exe.
+- `.cargo/config.toml` links with `rust-lld` on Windows (shipped with every toolchain), much faster than MSVC's `link.exe`.
+- Debug builds compile Webox's own code unoptimised and with line tables only; the dependencies stay optimised, so the UI is
+  still smooth. A one-file change rebuilds in about 19 s (was 22 s); nearly all of it is compiling the `webox` crate.
+
 ## Tests
 
 ```bash
