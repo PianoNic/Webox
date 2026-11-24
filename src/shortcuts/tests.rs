@@ -207,3 +207,20 @@ fn take_key_drops_the_text_of_alt_keys_only() {
     take_key(&mut ev, 0);
     assert!(matches!(ev.as_slice(), [egui::Event::Text(_)]));
 }
+
+/// Call commands only take their key when they would act: with no call ringing, Ctrl+Shift+C (AnswerCall) is left to Copy.
+#[test]
+fn call_keys_only_act_on_a_call() {
+    use crate::cloud::locus::CallState;
+    use commands::call_actions;
+    let r = registry();
+    assert!(r.cmds[r.index("AnswerCall").unwrap()].needs_call() && !r.cmds[r.index("ShowHideCallingDock").unwrap()].needs_call());
+    for id in ["AnswerCall", "DeclineCall", "EndCall", "ToggleAudioMute"] { assert!(call_actions(id, None).is_none(), "{id}"); }
+    assert!(call_actions("AnswerCall", Some(&CallState::Incoming)).is_some_and(|a| a.answer));
+    assert!(call_actions("AnswerCall", Some(&CallState::Connected)).is_none());
+    assert!(call_actions("DeclineCall", Some(&CallState::Incoming)).is_some_and(|a| a.hang));
+    assert!(call_actions("EndCall", Some(&CallState::Connected)).is_some_and(|a| a.hang));
+    assert!(call_actions("EndCall", Some(&CallState::Incoming)).is_none());
+    assert!(call_actions("ToggleAudioMute", Some(&CallState::Connected)).is_some_and(|a| a.mute));
+    assert!(call_actions("ToggleAudioMute", Some(&CallState::Dialing)).is_none());
+}
