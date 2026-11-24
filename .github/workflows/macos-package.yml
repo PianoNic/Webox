@@ -51,6 +51,27 @@ jobs:
           Webox.app/Contents/MacOS/webox --version
           arch -x86_64 Webox.app/Contents/MacOS/webox --version || echo "(no Rosetta on this runner: the x86_64 slice was not started)"
 
+      # docs/MACOS.md "Links": the bundle declares the schemes, and the links reach the app as Apple Events, both the one that
+      # launches it (cold start) and one while it runs. The app (sample data) logs each link it receives.
+      - name: webexteams:// / collabhost:// links
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          plutil -p dist/Webox.app/Contents/Info.plist | sed -n '/CFBundleURLTypes/,/^  \]/p'
+          plutil -extract CFBundleURLTypes.0.CFBundleURLSchemes json -o - dist/Webox.app/Contents/Info.plist | grep -q '"webexteams"'
+          plutil -extract CFBundleURLTypes.0.CFBundleURLSchemes json -o - dist/Webox.app/Contents/Info.plist | grep -q '"collabhost"'
+          /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$PWD/dist/Webox.app"
+          LOG="$PWD/links.log"; : > "$LOG"
+          open -a "$PWD/dist/Webox.app" --stdout "$LOG" --stderr "$LOG" 'webexteams://im?space=s2' --args --sample
+          for i in $(seq 30); do grep -q 'webox: link webexteams://im?space=s2' "$LOG" && break; sleep 1; done
+          sleep 3
+          open 'collabhost://space/s3'
+          for i in $(seq 20); do grep -q 'webox: link collabhost://space/s3' "$LOG" && break; sleep 1; done
+          osascript -e 'quit app "Webox"' || pkill -x webox || true
+          cat "$LOG"
+          grep -q 'webox: link webexteams://im?space=s2' "$LOG"
+          grep -q 'webox: link collabhost://space/s3' "$LOG"
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: webox-macos-zip

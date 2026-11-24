@@ -46,6 +46,9 @@ allowing it in **System Settings → Privacy & Security → Screen Recording**).
   (Settings > Tastenkombinationen), as on Linux.
 - **Notifications** come from Webox in Notification Center; a click opens the space, reminders keep their buttons and an incoming
   call has Annehmen / Ablehnen. Started outside `Webox.app` (`cargo run`) they fall back to plain banners from "Script Editor".
+- **Links:** `webexteams://` and `collabhost://` links (from the browser, a mail, "Copy space link") open the space in Webox, at
+  start-up as well as while it runs. `Webox.app` declares both schemes; when the official Webex app is installed too, macOS picks
+  one of them for `webexteams://`.
 - **Sign-in** is a WebKit window (WKWebView), the same flow as WebView2 on Windows and WebKitGTK on Linux.
 - **Media:** call audio through Core Audio, cameras and video playback through AVFoundation, screen sharing through
   ScreenCaptureKit with the H.264 encoder of VideoToolbox.
@@ -57,7 +60,6 @@ allowing it in **System Settings → Privacy & Security → Screen Recording**).
 | Notarization, a Developer ID signature | needs a paid Apple Developer account; hence the first-launch step above |
 | Playing MPEG-TS files inline | AVFoundation doesn't read `.ts` (MP4 / MOV / M4V play) |
 | A larger Dock / Finder icon than 256 px | the icon source in `assets/icon` is 256 px |
-| `webexteams://` / `collabhost://` links from the browser | macOS hands links to an app through Apple Events, which Webox doesn't receive yet |
 
 ## Building from source
 
