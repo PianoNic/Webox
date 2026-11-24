@@ -24,6 +24,8 @@ pub(crate) struct CallUi {
     /// The other side shares (their name): the call window shows it as the stage. Its texture and the picture number
     /// it holds (a new picture is uploaded once, never per frame).
     pub(crate) remote_share: Option<String>, share_tex: Option<egui::TextureHandle>, share_seq: u64,
+    /// Mute as Locus has it: the other side's microphone, ours (muted by others, unmute allowed, asked to unmute).
+    pub(crate) mute: cloud::locus::MuteInfo,
     // Separate-window state, offline sample mode (no sound, no microphone), toast's ring switch.
     pub(crate) win: super::call_win::WinState, pub(crate) sample: bool, pub(crate) ring_muted: bool,
     /// Plays ringtone / ringback / test tones (its own streams, on the ringtone or speaker device).
@@ -154,6 +156,34 @@ impl App {
         self.call.share_pending = false; // a share start that failed says so with its own error
     }
 
+    /// Mute in the call changed (the cloud thread follows the locus). Being muted by someone else, or asked to unmute,
+    /// is said once (the official client: "You've been muted by others.").
+    pub(crate) fn on_call_mute(&mut self, m: cloud::locus::MuteInfo, now: f64) {
+        let prev = self.call.mute;
+        if m.me.remote && !prev.me.remote { self.toast("Du wurdest von anderen stummgeschaltet.", now); }
+        if m.me.unmute_requested && !prev.me.unmute_requested && self.call.muted { self.toast("Du wirst gebeten, deine Stummschaltung aufzuheben.", now); }
+        self.call.muted = m.local;
+        self.call.mute = m;
+    }
+
+    /// The other side's muted microphone on their avatar (`ar`): a round badge at its lower right, like the roster's
+    /// `participantListItem-audioMuted` icon. Nothing while they're not muted.
+    pub(crate) fn peer_muted_badge(&mut self, ui: &egui::Ui, t: &Th, ar: Rect) {
+        if !self.call.mute.peer_muted { return; }
+        let d = (ar.width() * 0.32).clamp(18.0, 36.0);
+        let c = ar.right_bottom() - Vec2::splat(d * 0.42);
+        ui.painter().circle_filled(c, d / 2.0 + 2.0, t.win);
+        ui.painter().circle_filled(c, d / 2.0, t.badge);
+        self.icons.paint(ui, "microphone-muted-regular", Rect::from_center_size(c, Vec2::splat(d * 0.6)), Color32::WHITE);
+        ui.interact(Rect::from_center_size(c, Vec2::splat(d)), ui.id().with(("peer-muted", ar.min.x as i32)), Sense::hover()).on_hover_text("Stummgeschaltet");
+    }
+
+    /// The mute button's tooltip (muted by someone else and not allowed to unmute: says so).
+    pub(crate) fn mute_tip(&self) -> &'static str {
+        if self.call.muted && self.call.mute.me.remote && !self.call.mute.me.unmute_allowed { "Von anderen stummgeschaltet" }
+        else if self.call.muted { "Stummschaltung aufheben" } else { "Stummschalten" }
+    }
+
     /// The other side's share started (their name) or ended.
     pub(crate) fn on_remote_share(&mut self, who: Option<String>) {
         if who.is_none() { self.call.share_tex = None; self.call.share_seq = 0; }
@@ -223,6 +253,7 @@ impl App {
             self.call.muted = false;
             self.call.sharing = false; self.call.share_pending = false;
             self.on_remote_share(None);
+            self.call.mute = Default::default();
             super::share_picker::close();
             self.call.mc.keypad = false; self.call.mc.keypad_text.clear();
             if let Some(c) = &self.client { c.req(Req::CallHistory); } // the session is in janus now
@@ -425,7 +456,10 @@ impl App {
             ui.add_space(14.0);
         }
         ui.vertical_centered(|ui| {
+            let top = ui.cursor().top();
             avatar_photo(ui, &mut self.icons, t, &v.name, 96.0, false, None, None, v.photo);
+            let ar = Rect::from_center_size(pos2(ui.max_rect().center().x, top + 48.0), Vec2::splat(96.0));
+            if v.state == CallState::Connected && !v.ended { self.peer_muted_badge(ui, t, ar); }
             ui.add_space(14.0);
             ui.label(RichText::new(&v.name).font(semibold(20.0)).color(t.text1));
             ui.add_space(4.0);
@@ -437,7 +471,7 @@ impl App {
             r.spacing_mut().item_spacing.x = 20.0;
             let muted = self.call.muted;
             if round_fill(&mut r, &mut self.icons, if muted { "microphone-muted-regular" } else { "microphone-regular" }, if muted { t.badge } else { t.selected }, 48.0)
-                .on_hover_text(if muted { "Stummschaltung aufheben" } else { "Stummschalten" }).clicked() { a.mute = true }
+                .on_hover_text(self.mute_tip()).clicked() { a.mute = true }
             if round_fill(&mut r, &mut self.icons, "handset-down-slash-regular", t.badge, 48.0).on_hover_text("Auflegen").clicked() { a.hang = true }
             let open = menu_is_open(&ctx, "call-devices");
             let dev = round_fill(&mut r, &mut self.icons, "speaker-regular", if open { t.accent } else { t.selected }, 48.0).on_hover_text("Audiogeräte");

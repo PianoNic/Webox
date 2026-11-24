@@ -273,6 +273,7 @@ impl App {
                 let ar = Rect::from_center_size(pos2(cx, cy - av / 2.0 - 4.0), Vec2::splat(av));
                 let mut c = ui.new_child(egui::UiBuilder::new().max_rect(ar));
                 avatar_photo(&mut c, &mut self.icons, t, &v.name, av, false, None, None, v.photo);
+                if connected && !v.ended { self.peer_muted_badge(ui, t, ar); }
             }
             let name_y = cy + av / 2.0 + 24.0;
             if stage {
@@ -287,7 +288,7 @@ impl App {
                 let y = name_y + 28.0 + 64.0;
                 let muted = self.call.muted;
                 if round_at(ui, &mut self.icons, "mute", pos2(cx - 36.0, y), 48.0, if muted { "microphone-muted-regular" } else { "microphone-regular" }, if muted { t.badge } else { t.selected }, Color32::WHITE, t.focus)
-                    .on_hover_text(if muted { "Stummschaltung aufheben" } else { "Stummschalten" }).clicked() { a.mute = true; }
+                    .on_hover_text(self.mute_tip()).clicked() { a.mute = true; }
                 if round_at(ui, &mut self.icons, "hang", pos2(cx + 36.0, y), 48.0, "handset-down-slash-regular", t.badge, Color32::WHITE, t.focus).on_hover_text("Auflegen").clicked() { a.hang = true; }
                 return;
             }
@@ -311,7 +312,7 @@ impl App {
                 let y = br.center().y;
                 let muted = self.call.muted;
                 if round_at(&mut bu, &mut self.icons, "bar-mute", pos2(br.left() + 16.0 + 20.0, y), 40.0, if muted { "microphone-muted-regular" } else { "microphone-regular" }, if muted { t.badge } else { t.selected }, Color32::WHITE, t.focus)
-                    .on_hover_text(if muted { "Stummschaltung aufheben" } else { "Stummschalten" }).clicked() { a.mute = true; }
+                    .on_hover_text(self.mute_tip()).clicked() { a.mute = true; }
                 let open = ["call-devices", "call-mic", "call-spk"].iter().any(|k| super::super::menu::menu_is_open(vctx, k));
                 let dev = round_at(&mut bu, &mut self.icons, "bar-dev", pos2(br.left() + 16.0 + 20.0 + 48.0, y), 40.0, "speaker-regular", if open { t.accent } else { t.selected }, Color32::WHITE, t.focus).on_hover_text("Audiogeräte");
                 if dev.clicked() { menu_toggle(vctx, "call-devices"); }
