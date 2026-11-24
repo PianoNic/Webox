@@ -234,7 +234,8 @@ impl Session {
             }
         }
         for (pid, text) in edits { if let Some(m) = list.iter_mut().find(|m| m.id == pid) { m.text = text; m.edited = true; } }
-        list.retain(|m| !deleted.contains(&m.id));
+        // A deleted message's row is its tombstone ("… deleted …", `merge_acts`): only other rows go.
+        list.retain(|m| !m.notice.is_empty() || !deleted.contains(&m.id));
         // A single reaction (a live event merged into the cache) that is not newer than the message's newest summary is already
         // counted in that summary (a later page load brings the summary that includes it): only newer ones are added on top.
         let summary_at: HashMap<String, String> = summaries.iter().map(|(m, a)| (m.clone(), st(a, "published"))).collect();
@@ -264,13 +265,45 @@ impl Session {
         }
         for (msg, name, rid, mine, published, actor) in reacts.into_iter().filter(|r| !deleted.contains(&r.2)) {
             let Some(m) = list.iter_mut().find(|m| m.id == msg) else { continue };
-            let who = Reactor { id: actor, published };
+            let who = Reactor { id: actor, published, ..Default::default() };
             match m.reactions.iter_mut().find(|r| r.name == name) {
                 Some(r) => { r.count += 1; if mine { r.mine = Some(rid) } if !who.id.is_empty() && !r.users.iter().any(|u| u.id == who.id) { r.users.push(who) } }
                 None => m.reactions.push(Reaction { name, count: 1, mine: mine.then_some(rid), users: if who.id.is_empty() { vec![] } else { vec![who] } }),
             }
         }
+        self.name_reactors(space, acts, &mut list);
         collapse_join_leave(list, &joins)
+    }
+
+    /// Gives every reactor (a uuid) the name and e-mail the session knows: read from their reaction activities
+    /// (`reactor_names`), an actor of a loaded activity (`uuidEntryFormat` actors carry displayName / emailAddress), or the
+    /// space's participant with that uuid. Me: my e-mail too (the UI calls me "Sie").
+    fn name_reactors(&self, space: &str, acts: &[Value], list: &mut [Message]) {
+        if !list.iter().any(|m| m.reactions.iter().any(|r| !r.users.is_empty())) { return }
+        let mut known: HashMap<String, (String, String)> = HashMap::new();
+        for p in self.spaces.get(space).map(|s| s.participants.as_slice()).unwrap_or_default() {
+            let Some(u) = self.uuids.get(&p.id).cloned().or_else(|| (p.id.len() == 36).then(|| p.id.clone())) else { continue };
+            if !p.name.trim().is_empty() { known.insert(u, (p.name.clone(), p.email.clone())); }
+        }
+        remember_actors(&mut known, acts);
+        known.extend(self.hist.names.iter().map(|(k, v)| (k.clone(), v.clone())));
+        for u in list.iter_mut().flat_map(|m| m.reactions.iter_mut()).flat_map(|r| r.users.iter_mut()) {
+            if let Some((n, e)) = known.get(&u.id) { u.name = n.clone(); u.email = e.clone(); }
+            if u.id == self.user && u.email.is_empty() { u.email = self.my_email.clone(); }
+        }
+    }
+
+    /// The names of the people who reacted to `msg` (`Req::ReactorNames`, read-only): `GET <conversation>/parents/<msg>
+    /// ?activityType=reaction` lists each reaction activity with its actor (uuid, displayName, emailAddress). Remembered per
+    /// uuid, then the space is folded again.
+    pub(crate) fn reactor_names(&mut self, space: &str, msg: &str) -> Result<(), String> {
+        let q = format!("/conversations/{space}/parents/{msg}?activityType=reaction{}", super::activity_flags());
+        let r = self.http("GET", &self.url("conversation", &q), None)?;
+        let items: Vec<Value> = r["items"].as_array().cloned().or_else(|| r.as_array().cloned()).unwrap_or_default();
+        let n = remember_actors(&mut self.hist.names, &items);
+        dbg_conn(&format!("reactor names: {} reactions, {n} with a named actor, for a message in {space}", items.len()));
+        if self.hist.acts.contains_key(space) { self.refold(space); }
+        Ok(())
     }
 
     /// What the join/leave collapsing needs to know about an add / leave info row (`None` for any other row, and in a 1:1).
@@ -355,18 +388,57 @@ impl Session {
     /// A conversation has one `create`, but for older 1:1s the service makes one up on every `maxDate` request, each time with
     /// a new id, the conversation's own `published` and a nameless actor. Deduplicating by id alone would add another
     /// "created" row on every scroll to the top, so only the first `create` is kept.
+    ///
+    /// A deleted message: the service replaces the activity by a `tombstone` with the same id (and the deletion time), so a
+    /// cached post/share is replaced when its tombstone arrives (a reload) and turned into one when a `delete` of it is known
+    /// (a live event or my own delete, which only point at it). Without that the message stayed, as the id is already known.
     pub(crate) fn merge_acts(&mut self, space: &str, items: Vec<Value>) -> usize {
         let list = self.hist.acts.entry(space.to_string()).or_default();
-        let mut known: HashSet<String> = list.iter().map(|a| st(a, "id")).collect();
+        let mut known: HashMap<String, usize> = list.iter().enumerate().map(|(i, a)| (st(a, "id"), i)).collect();
         let mut has_create = list.iter().any(|a| a["verb"] == "create");
         let mut added = 0;
         for a in items {
             if a["verb"] == "create" { if has_create { continue } has_create = true; }
-            if known.insert(st(&a, "id")) { list.push(a); added += 1; }
+            match known.get(&st(&a, "id")) {
+                Some(&i) => if a["verb"] == "tombstone" && list[i]["verb"] != "tombstone" { list[i] = a; added += 1; },
+                None => { known.insert(st(&a, "id"), list.len()); list.push(a); added += 1; }
+            }
         }
+        added += tombstone_deleted(list);
         if added > 0 { list.sort_by(|a, b| st(a, "published").cmp(&st(b, "published"))); }
         added
     }
+}
+
+/// Turns every cached post/share that a cached `delete` points at into the tombstone the service makes of it: same id and
+/// parent, `actor` = who deleted it, `object.actor` = who wrote it, `published` = the deletion time (the official client shows
+/// "Sie haben Ihre Nachricht gelöscht. 15.12.2025, 15:08" in its place). Returns how many were turned.
+fn tombstone_deleted(list: &mut [Value]) -> usize {
+    let deletes: HashMap<String, (Value, String)> = list.iter().filter(|a| a["verb"] == "delete")
+        .map(|d| (st(&d["object"], "id"), (d["actor"].clone(), st(d, "published")))).filter(|(id, _)| !id.is_empty()).collect();
+    if deletes.is_empty() { return 0 }
+    let mut n = 0;
+    for a in list.iter_mut().filter(|a| a["verb"] == "post" || a["verb"] == "share") {
+        let Some((by, at)) = deletes.get(&st(a, "id")) else { continue };
+        let published = if at.is_empty() { st(a, "published") } else { at.clone() };
+        *a = json!({"id": st(a, "id"), "verb": "tombstone", "published": published, "actor": by, "parent": a["parent"].clone(), "target": a["target"].clone(),
+            "object": {"id": st(a, "id"), "objectType": "activity", "verb": a["verb"].clone(), "actor": a["actor"].clone()}});
+        n += 1;
+    }
+    n
+}
+
+/// Remembers the named actors of `items` by uuid (their entryUUID and id); returns how many had a name.
+pub(super) fn remember_actors(names: &mut HashMap<String, (String, String)>, items: &[Value]) -> usize {
+    let mut n = 0;
+    for a in items {
+        let actor = &a["actor"];
+        let name = st(actor, "displayName");
+        if name.trim().is_empty() { continue }
+        n += 1;
+        for k in [st(actor, "entryUUID"), st(actor, "id")] { if !k.is_empty() { names.insert(k, (name.clone(), st(actor, "emailAddress"))); } }
+    }
+    n
 }
 
 /// The reactors of one entry of a reaction summary (`users: [{id, published}]`), in the service's order, each once.
@@ -374,7 +446,7 @@ pub(crate) fn reactors(entry: &Value) -> Vec<Reactor> {
     let mut out: Vec<Reactor> = vec![];
     for u in entry["users"].as_array().into_iter().flatten() {
         let id = st(u, "id");
-        if !id.is_empty() && !out.iter().any(|r| r.id == id) { out.push(Reactor { id, published: st(u, "published") }); }
+        if !id.is_empty() && !out.iter().any(|r| r.id == id) { out.push(Reactor { id, published: st(u, "published"), ..Default::default() }); }
     }
     out
 }

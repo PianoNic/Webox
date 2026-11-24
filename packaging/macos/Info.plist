@@ -31,6 +31,21 @@
 	<string>12.3</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.business</string>
+	<!-- The link schemes Webox opens (as webox.desktop on Linux): received as kAEGetURL Apple Events, src/platform/macos/links.rs. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>io.github.pianonic.webox.space</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>webexteams</string>
+				<string>collabhost</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>

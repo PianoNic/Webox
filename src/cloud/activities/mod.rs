@@ -85,6 +85,8 @@ pub(super) struct History {
     /// Decrypted texts by ciphertext, so folding a space again (after a send, a reaction, a live edit) doesn't decrypt every
     /// message once more.
     pub plain: HashMap<String, String>,
+    /// Reactors' (name, e-mail) by uuid, read from their reaction activities (`reactor_names`).
+    pub names: HashMap<String, (String, String)>,
 }
 
 /// A posted activity waiting for its live event: matched by activity id or by the clientTempId it was sent with.

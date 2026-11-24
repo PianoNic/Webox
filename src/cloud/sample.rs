@@ -55,12 +55,12 @@ pub fn sample_messages(room: &str) -> Vec<Message> {
         "s1" => {
             let mut first = m("1", me.0, me.1, "Hier sind die Architektur-Notizen zum Kranich-Portal.", "16:48");
             first.date = crate::system::days_ago(1);
-            first.reactions = vec![Reaction { name: "thumbsup".into(), count: 1, mine: None, users: vec![Reactor { id: "mara@example.com".into(), published: String::new() }] }];
+            first.reactions = vec![Reaction { name: "thumbsup".into(), count: 1, mine: None, users: vec![Reactor { id: "mara@example.com".into(), ..Default::default() }] }];
             let mut second = m("2", me.0, me.1, "Sieht gut aus, ich schaue mir das morgen noch einmal an.", "16:49");
             second.date = crate::system::days_ago(1);
             let mut link = m("4", "Mara Lind", "mara@example.com", "Die Doku steht unter https://docs.example.com/kranich-portal/overview (und der Status auf www.example.com/status). @Alex Muster kannst du bitte kurz prüfen, ob die Beschreibung so stimmt und ob wir das Wording für die Release Notes noch einmal anpassen sollten?", "09:02");
             // Reactors (made-up people): six on the 👏 so its popover scrolls past five rows.
-            let who = |l: &[(&str, &str)]| l.iter().map(|(id, t)| Reactor { id: id.to_string(), published: format!("{}T{t}:00.000Z", crate::system::today()) }).collect::<Vec<_>>();
+            let who = |l: &[(&str, &str)]| l.iter().map(|(id, t)| Reactor { id: id.to_string(), published: format!("{}T{t}:00.000Z", crate::system::today()), ..Default::default() }).collect::<Vec<_>>();
             link.reactions = vec![
                 Reaction { name: "thumbsup".into(), count: 2, mine: Some("local".into()), users: who(&[("lina@example.com", "09:03"), ("me", "09:05")]) },
                 Reaction { name: "heart".into(), count: 1, mine: None, users: who(&[("jonas@example.com", "09:04")]) },

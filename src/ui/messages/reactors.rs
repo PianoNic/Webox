@@ -22,16 +22,21 @@ const CLOSE_FROM_POPOVER: f64 = 0.5;
 pub(super) struct ReactorRow { pub id: String, pub email: String, pub name: String, pub me: bool, pub published: String }
 
 /// The rows for a reaction's users, in the service's order (each person once). My own row is labelled `you` ("Sie");
-/// others are looked up in `known` by id or e-mail, a person not found is `unknown`.
+/// others are looked up in `known` by id or e-mail (the reactor's id is a uuid, the people lists' ids are e-mail-style, so the
+/// e-mail the session resolved for it is what matches), then the name the session resolved; a person not found is `unknown`.
 pub(super) fn reactor_rows(users: &[Reactor], me: &Person, known: &[Person], you: &str, unknown: &str) -> Vec<ReactorRow> {
-    let same = |id: &str, p: &Person| (!p.id.is_empty() && p.id.eq_ignore_ascii_case(id)) || (!p.email.is_empty() && p.email.eq_ignore_ascii_case(id));
+    let same = |id: &str, p: &Person| !id.is_empty() && ((!p.id.is_empty() && p.id.eq_ignore_ascii_case(id)) || (!p.email.is_empty() && p.email.eq_ignore_ascii_case(id)));
+    let is = |u: &Reactor, p: &Person| same(&u.id, p) || same(&u.email, p);
     let mut out: Vec<ReactorRow> = vec![];
     for u in users {
         if u.id.is_empty() || out.iter().any(|r| r.id == u.id) { continue }
-        let mine = same(&u.id, me);
-        let p = if mine { Some(me) } else { known.iter().find(|p| same(&u.id, p)) };
-        let name = if mine { you.to_string() } else { p.map(|p| p.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| unknown.to_string()) };
-        out.push(ReactorRow { id: u.id.clone(), email: p.map(|p| p.email.clone()).unwrap_or_default(), name, me: mine, published: u.published.clone() });
+        let mine = is(u, me);
+        let p = if mine { Some(me) } else { known.iter().find(|p| is(u, p)) };
+        let name = if mine { you.to_string() } else {
+            p.map(|p| p.name.clone()).filter(|n| !n.is_empty()).or_else(|| Some(u.name.clone()).filter(|n| !n.trim().is_empty())).unwrap_or_else(|| unknown.to_string())
+        };
+        let email = p.map(|p| p.email.clone()).filter(|e| !e.is_empty()).unwrap_or_else(|| u.email.clone());
+        out.push(ReactorRow { id: u.id.clone(), email, name, me: mine, published: u.published.clone() });
     }
     out
 }
@@ -98,6 +103,15 @@ impl App {
         let unknown = crate::i18n::tr("ConversationRenderer", "Unknown").into_owned();
         let rows = reactor_rows(&r.users, &self.me, &known, &crate::i18n::tr("QObject", "You"), &unknown);
         if rows.is_empty() || ctx.input(|i| i.key_pressed(Key::Escape)) { ctx.data_mut(|d| d.remove::<Pop>(key())); return }
+        // Someone not known here (not in the space any more, never wrote in the loaded history): their names are read from the
+        // message's reaction activities once; the list is folded again with them.
+        if rows.iter().any(|r| !r.me && r.name == unknown) {
+            if let (Some(c), Some(space)) = (&self.client, self.selected.clone()) {
+                let ask = format!("{space}/{}", pop.msg);
+                let asked = ctx.data_mut(|d| !d.get_temp_mut_or_default::<std::collections::HashSet<String>>(Id::new("reactor-names-asked")).insert(ask));
+                if !asked { c.req(cloud::Req::ReactorNames(space, pop.msg.clone())); }
+            }
+        }
         let (body, tip, above) = popover_geom(pop.count, rows.len(), ctx.screen_rect());
         // Pointer: on the count, in the popover (arrow included), or neither.
         let hover = ctx.pointer_hover_pos();
@@ -172,7 +186,7 @@ impl App {
     }
 
     /// Everyone a reactor can be: the open space's full participant list (asked for once, read-only), the people list, me.
-    fn reactor_people(&mut self) -> Vec<Person> {
+    pub(super) fn reactor_people(&mut self) -> Vec<Person> {
         let mut out = self.selected.clone().and_then(|id| self.spaces.iter().find(|s| s.id == id).cloned()).map(|s| self.space_people(&s)).unwrap_or_default();
         out.extend(self.people.iter().cloned());
         out
@@ -191,7 +205,20 @@ mod tests {
     use super::*;
 
     fn p(id: &str, name: &str, email: &str) -> Person { Person { id: id.into(), name: name.into(), email: email.into(), status: String::new() } }
-    fn u(id: &str, at: &str) -> Reactor { Reactor { id: id.into(), published: at.into() } }
+    fn u(id: &str, at: &str) -> Reactor { Reactor { id: id.into(), published: at.into(), ..Default::default() } }
+
+    /// The real case: reactors are uuids, the people lists use e-mail-style ids. The e-mail / name the session resolved for
+    /// the uuid is what finds them (this was "Unbekannt" for everyone).
+    #[test]
+    fn uuid_reactors_are_found_by_their_resolved_email_or_name() {
+        let me = p("alex@example.com", "Alex Muster", "alex@example.com");
+        let known = [p("erika@example.com", "Erika Beispiel", "erika@example.com")];
+        let r = |id: &str, name: &str, email: &str| Reactor { id: id.into(), published: String::new(), name: name.into(), email: email.into() };
+        let users = [r("u-erika", "Erika B.", "erika@example.com"), r("u-me", "", "alex@example.com"), r("u-gone", "Lea Weg", "lea@example.com"), r("u-none", "", "")];
+        let rows = reactor_rows(&users, &me, &known, "Sie", "Unbekannt");
+        let got: Vec<(&str, &str, bool)> = rows.iter().map(|r| (r.name.as_str(), r.email.as_str(), r.me)).collect();
+        assert_eq!(got, [("Erika Beispiel", "erika@example.com", false), ("Sie", "alex@example.com", true), ("Lea Weg", "lea@example.com", false), ("Unbekannt", "", false)]);
+    }
 
     #[test]
     fn rows_keep_the_service_order_and_call_me_you() {

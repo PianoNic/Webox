@@ -46,6 +46,7 @@ const LB_MARGIN: f32 = 48.0; // image viewer margin around the picture
 const BODY: f32 = 16.0; // body text size
 const SECOND: f32 = 14.0; // secondary text size (names, times)
 const HEADER_GAP: f32 = 12.0; // gap between name and time in the header
+const HISTORY_GAP: f32 = 2.0; // below each earlier text of an edited message
 fn top_pad() -> f32 { dm().msg_top_pad } // row top -> first line (6)
 fn header_to_body() -> f32 { dm().msg_header_to_body } // header line bottom -> first content (5.1)
 /// egui sets Segoe UI 1.2 pt lower inside its line box than Qt does: body text is drawn that much higher so that header cap -> body
@@ -90,6 +91,8 @@ struct Mc {
     body: Color32, head: Color32, hover_bg: Color32, accent: Color32, chip_border: Color32, chip_hover: Color32,
     ring: Color32, bubble: Color32, tile: Color32, tile_hover: Color32, tile_border: Color32, file_icon_bg: Color32,
     mention_other: Color32, code_bg: Color32, select: Color32, pill_bg: Color32, pill_hover: Color32, pill_border: Color32, day: Color32, bar: Color32, white: Color32, checked: Color32,
+    /// Deleted messages a plugin keeps ("(gelöscht)", red text or overlay): the danger tone of menus and dialogs.
+    danger: Color32,
 }
 fn mc(t: &Th) -> Mc {
     let dark = !t.light;
@@ -117,6 +120,7 @@ fn mc(t: &Th) -> Mc {
         bar: t.tk("legacy-separator-primary"), // reply bar
         white: t.tk("message-bodyText-primary-text"),
         checked: wa(f, 0.11), // message-background checked: #FFFFFF/0.11 dark, #000000/0.11 light
+        danger: if t.light { hex(0xD43519) } else { hex(0xF55868) }, // as the menus' danger entries
     }
 }
 
@@ -133,7 +137,9 @@ struct Style { bold: bool, italic: bool, underline: bool, strike: bool, code: bo
 /// What a message needs below its text, measured before painting.
 /// `files` / `file_atts`: the file cards (names and their attachments); `videos`: the video files of the share, drawn as video
 /// cards after the pictures (a video with a thumbnail comes in `Message.images` and is drawn there).
-struct Content { text: Option<Arc<Galley>>, links: Vec<(std::ops::Range<usize>, String)>, emojis: Vec<EmojiRun>, quotes: Vec<(usize, usize)>, jump: Option<String>, files: Vec<String>, file_atts: Vec<Option<Attachment>>, videos: Vec<Attachment>, h: f32 }
+/// `history`: earlier texts a plugin attached (struck through above the text); `tag`: "(gelöscht)" / "(bearbeitet)" below it.
+struct Content { text: Option<Arc<Galley>>, links: Vec<(std::ops::Range<usize>, String)>, emojis: Vec<EmojiRun>, quotes: Vec<(usize, usize)>, jump: Option<String>, files: Vec<String>, file_atts: Vec<Option<Attachment>>, videos: Vec<Attachment>,
+    history: Vec<Arc<Galley>>, tag: Option<Arc<Galley>>, h: f32 }
 
 #[cfg(test)]
 mod tests;
@@ -162,3 +168,4 @@ pub(crate) use video::poster as video_poster;
 use video::is_video;
 mod interact;
 mod reactors;
+mod who_reacted;
