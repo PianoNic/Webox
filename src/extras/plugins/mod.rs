@@ -400,7 +400,7 @@ impl Plugins {
     fn drop_kept_unless_logging(&self) {
         if self.logs_messages() { return; }
         let mut k = lock(&self.kept);
-        if !k.is_empty() { *k = Default::default(); drop(k); lock(&self.out).kept_changed = true; }
+        if !k.is_empty() { k.clear(); drop(k); lock(&self.out).kept_changed = true; }
     }
 
     /// Whether an enabled plugin listens to `message.deleted` or `message.edited`.

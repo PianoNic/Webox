@@ -60,6 +60,9 @@ pub fn edited_payload(space: &str, space_name: &str, m: &Message, new_text: &str
 impl Kept {
     pub fn is_empty(&self) -> bool { self.deleted.is_empty() && self.edits.is_empty() }
 
+    /// Forgets everything kept; the replaced tombstones stay so `strip` can put them back.
+    pub fn clear(&mut self) { self.deleted.clear(); self.edits.clear(); }
+
     /// Keeps `m` of `space` as deleted, drawn in `style` (a later keep of the same id replaces it).
     pub fn keep_deleted(&mut self, space: &str, mut m: Message, style: u8) {
         m.deleted = style.max(STYLE_TEXT);
