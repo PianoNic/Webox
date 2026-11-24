@@ -38,11 +38,13 @@ impl Decoder {
     }
 }
 
-pub const MAX_FRAMES: usize = 60;
+/// A sanity cap only; `MAX_ANIM_BYTES` is what normally limits a GIF.
+pub const MAX_FRAMES: usize = 600;
 pub const MAX_FRAME_SIDE: u32 = 512;
 /// Largest side of a static image texture (typical GPU limit is 8192–16384).
 pub const MAX_TEXTURE_SIDE: u32 = 8192;
-const MAX_ANIM_BYTES: usize = 32 * 1024 * 1024;
+/// One GIF's frames at most (the whole image budget, so the one on screen plays every frame; off-screen ones are evicted).
+const MAX_ANIM_BYTES: usize = 64 * 1024 * 1024;
 /// Largest side of a full-size image in the viewer (enough for a 4K screen; phone photos are larger and only cost memory).
 const MAX_FULL_SIDE: u32 = 4096;
 
@@ -128,6 +130,8 @@ fn decode_anim(ctx: &egui::Context, key: &str, bytes: &[u8]) -> Option<Anim> {
                 }
                 size = [img.width() as usize, img.height() as usize];
                 buf.push((img, delay));
+                // Only memory drops frames (every second one, the loop keeps its length): a fixed 60-frame cap made most Giphy
+                // GIFs (70-150 frames) jerky even when they were small.
                 if buf.len() > MAX_FRAMES || buf.len() * size[0] * size[1] * 4 > max_mem { buf = halve_frames(buf); }
             },
             Err(e) => { crate::cloud::dbg_conn(&format!("image decode failed: gif header ({} bytes): {e}", bytes.len())); return None }
@@ -294,10 +298,10 @@ impl Photos {
         for (i, (_, d)) in a.frames.iter().enumerate() { if t < acc + d { idx = i; break } acc += d; idx = i; }
         let left = (acc + a.frames[idx].1 - t).max(0.005);
         // Every animation frame redraws the whole window: none while it's hidden (tray, minimized), at most 30 fps in front,
-        // 10 fps in the background.
+        // 20 fps behind another window.
         let (minimized, focused) = ctx.input(|i| (i.viewport().minimized == Some(true), i.viewport().focused != Some(false)));
         if !minimized && !crate::platform::tray::HIDDEN.load(std::sync::atomic::Ordering::Relaxed) {
-            ctx.request_repaint_after(std::time::Duration::from_secs_f32(left.max(if focused { 1.0 / 30.0 } else { 0.1 })));
+            ctx.request_repaint_after(std::time::Duration::from_secs_f32(left.max(if focused { 1.0 / 30.0 } else { 0.05 })));
         }
         Some((a.frames[idx].0.id(), a.size))
     }

@@ -27,8 +27,8 @@ fn animated_gif_loops_through_frames() {
 
 #[test]
 fn long_gif_keeps_its_loop_duration() {
-    // 100 frames × 100 ms = 10 s must stay 10 s with at most MAX_FRAMES frames.
-    let mut v: Vec<(u32, f32)> = (0..100).map(|i| (i, 0.1)).collect();
+    // 1000 frames × 10 ms = 10 s must stay 10 s with at most MAX_FRAMES frames.
+    let mut v: Vec<(u32, f32)> = (0..1000).map(|i| (i, 0.01)).collect();
     while v.len() > MAX_FRAMES { v = halve_frames(v); }
     assert!(v.len() <= MAX_FRAMES && v.len() > MAX_FRAMES / 2);
     assert!((v.iter().map(|f| f.1).sum::<f32>() - 10.0).abs() < 1e-3);
@@ -79,4 +79,17 @@ fn viewer_image_is_dropped_once_the_viewer_no_longer_draws_it() {
     let _ = p.image(&ctx, "y"); // a later pass: the viewer is closed, the list image is still drawn
     assert!(!p.image_tex.contains_key("full:x"));
     assert!(p.image_tex.contains_key("y"));
+}
+
+#[test]
+fn small_gif_keeps_every_frame() {
+    // A typical Giphy GIF has 70-150 frames; a small one fits the memory budget and must play every frame (a fixed 60-frame
+    // cap used to drop up to 40 % of them, which looked jerky and slow).
+    let colours: Vec<[u8; 4]> = (0..100u8).map(|i| [i, 255 - i, i / 2, 255]).collect();
+    let ctx = egui::Context::default();
+    let mut p = Photos::default();
+    p.add_images(vec![("g".into(), gif(&colours))]);
+    let a = p.anim(&ctx, "g").unwrap();
+    assert_eq!(a.frames.len(), 100);
+    assert!((a.total - 10.0).abs() < 1e-3);
 }
