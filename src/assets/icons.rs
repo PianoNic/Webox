@@ -197,7 +197,7 @@ fn take_prewarmed(kind: Kind, name: &'static str) -> Option<egui::ColorImage> {
 const SCALED: egui::TextureOptions = egui::TextureOptions { mipmap_mode: Some(egui::TextureFilter::Linear), ..egui::TextureOptions::LINEAR };
 
 #[derive(Default)]
-pub struct Icons(HashMap<&'static str, TextureHandle>, HashMap<&'static str, TextureHandle>, HashMap<(&'static str, u32), TextureHandle>);
+pub struct Icons(HashMap<&'static str, TextureHandle>, HashMap<(&'static str, u32), TextureHandle>, HashMap<(&'static str, u32), TextureHandle>);
 
 impl Icons {
     fn tex(&mut self, ctx: &egui::Context, name: &'static str) -> Option<egui::TextureId> {
@@ -215,13 +215,17 @@ impl Icons {
         // Single-colour black line art (the Momentum fallbacks contacts-320 / message-send-320, ...) is drawn in the theme's ink,
         // like the -black / -white art variants switch by theme.
         let mono = mono_black(data);
-        if !self.1.contains_key(name) {
-            let img = if mono { raster_px(data, true, 256, None) } else { take_prewarmed(Kind::Art, name).or_else(|| raster_px(data, false, 256, None)) };
-            let Some(img) = img else { return false };
-            self.1.insert(name, ui.ctx().load_texture(format!("art-{name}"), img, SCALED));
+        // Rasterised at the drawn size in device pixels (cached per size), snapped to the pixel grid, like `paint`: a 256 px raster
+        // shrunk with mipmaps also shrank the transparent margin below a pixel, so a full disc touched the quad's border again
+        // and was cut flat on whichever sides the sub-pixel position put on that border.
+        let ppp = ui.ctx().pixels_per_point();
+        let px = (rect.width() * ppp).round().clamp(1.0, 1024.0) as u32;
+        if !self.1.contains_key(&(name, px)) {
+            let Some(img) = raster_px(data, mono, px, None) else { return false };
+            self.1.insert((name, px), ui.ctx().load_texture(format!("art-{name}@{px}"), img, egui::TextureOptions::LINEAR));
         }
         let tint = if mono { art_ink() } else { Color32::WHITE };
-        ui.painter().image(self.1[name].id(), grow(rect, 256), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
+        ui.painter().image(self.1[&(name, px)].id(), grow(on_grid(rect, px, ppp), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
         true
     }
 
