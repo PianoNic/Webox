@@ -213,7 +213,9 @@ pub fn mime_of(name: &str, head: &[u8]) -> String {
 
 /// Types "Öffnen" starts with their default program: documents, pictures, sound, video, archives.
 const OPEN_DIRECT: &[&str] = &["pdf", "txt", "log", "csv", "md", "json", "xml", "png", "jpg", "jpeg", "gif", "webp", "bmp", "mp3", "wav", "m4a",
-    "ogg", "flac", "mp4", "mov", "webm", "mkv", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "zip", "7z", "gz", "tar"];
+    "ogg", "flac", "mp4", "mov", "webm", "mkv", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "zip", "7z", "gz", "tar",
+    "heic", "heif", "tif", "tiff", "avi", "wmv", "mpg", "mpeg", "aac", "opus", "ics", "vcf", "eml", "msg", "vsdx", "odg", "epub", "rar"];
+// Not svg / html / htm: they open in a browser, which runs their script.
 
 /// Whether a file from the chat may be started with its default program. Everything not in `OPEN_DIRECT` (programs, scripts,
 /// shortcuts, macro documents, unknown types) is only shown in its folder. The extension is the one of the name as the disk
@@ -253,8 +255,10 @@ pub fn private_tmp(sub: &str) -> std::io::Result<PathBuf> {
     #[cfg(unix)]
     {
         let uid = current_uid();
-        let base = std::env::temp_dir().join(format!("webox-{uid}")); // not XDG_RUNTIME_DIR: that is RAM, and the video cache holds up to 2 GB
-        private_dir(&base, uid)?;
+        // not XDG_RUNTIME_DIR: that is RAM, and the video cache holds up to 2 GB. Worked out once per run, so every caller shares it.
+        static BASE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+        let base = BASE.get_or_init(|| private_base(&std::env::temp_dir(), uid));
+        private_dir(base, uid)?;
         let d = base.join(sub);
         private_dir(&d, uid)?;
         Ok(d)
@@ -265,6 +269,22 @@ pub fn private_tmp(sub: &str) -> std::io::Result<PathBuf> {
         std::fs::create_dir_all(&d)?;
         Ok(d)
     }
+}
+
+/// `<tmp>/webox-<uid>` when that is (or can be made) a private folder of this user; when someone else got there first (another
+/// user's folder, a symlink, open permissions) a fresh random `<tmp>/webox-<hex>` instead, so they can't block the temp files.
+#[cfg(unix)]
+fn private_base(tmp: &Path, uid: u32) -> PathBuf {
+    use std::os::unix::fs::DirBuilderExt;
+    let named = tmp.join(format!("webox-{uid}"));
+    if private_dir(&named, uid).is_ok() { return named; }
+    let fresh = || tmp.join(format!("webox-{:016x}", rand::random::<u64>()));
+    for _ in 0..8 {
+        // create (not recursive) fails on anything already there, so the folder is new and ours
+        let d = fresh();
+        if std::fs::DirBuilder::new().mode(0o700).create(&d).is_ok() { return d; }
+    }
+    fresh() // eight collisions in a row: an unguessable name all the same (private_dir creates and checks it)
 }
 
 /// Creates `d` with mode 0700 (if missing), then checks what is there: a folder, not a symlink, owned by `uid`, no group / other
@@ -465,8 +485,10 @@ mod tests {
     }
     #[test]
     fn only_known_document_types_are_opened() {
-        for n in ["a.pdf", "Bericht.DOCX", "x.tar", "clip.mp4", "foto.JPG", "notiz.txt", r"C:\Users\a\Downloads\b.xlsx", "/home/a/c.png"] { assert!(opens_directly(n), "{n}"); }
-        for n in ["setup.EXE", "evil.exe .", "evil.exe . ", "evil\u{202E}fdp.exe", "a.lnk", "a.js", "a.hta", "a.docm", "a.html", "a.svg", "a.desktop",
+        for n in ["a.pdf", "Bericht.DOCX", "x.tar", "clip.mp4", "foto.JPG", "notiz.txt", r"C:\Users\a\Downloads\b.xlsx", "/home/a/c.png",
+            "IMG_1.HEIC", "a.heif", "scan.tif", "scan.tiff", "a.avi", "a.wmv", "a.mpg", "a.mpeg", "a.aac", "a.opus", "termin.ics", "kontakt.vcf",
+            "mail.eml", "mail.msg", "plan.vsdx", "a.odg", "buch.epub", "a.rar", "a.7z"] { assert!(opens_directly(n), "{n}"); }
+        for n in ["setup.EXE", "evil.exe .", "evil.exe . ", "evil\u{202E}fdp.exe", "a.lnk", "a.js", "a.hta", "a.docm", "a.html", "a.htm", "a.svg", "a.SVG", "a.desktop",
             "a.unknown", "noext", "pdf", "a.pdf.exe", "a.scr", r"C:\x\evil.exe ."] { assert!(!opens_directly(n), "{n}"); }
     }
     #[test]
@@ -508,6 +530,34 @@ mod tests {
         let p = private_tmp("selftest").unwrap();
         assert!(p.is_dir() && std::fs::metadata(&p).unwrap().permissions().mode() & 0o077 == 0);
         let _ = std::fs::remove_dir(&p);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+    #[cfg(unix)]
+    #[test]
+    fn a_taken_temp_folder_falls_back_to_a_fresh_one() {
+        use std::os::unix::fs::PermissionsExt;
+        let uid = current_uid();
+        let root = std::env::temp_dir().join(format!("webox-private-test-{}", crate::jose::uuid()));
+        std::fs::create_dir_all(&root).unwrap();
+        assert_eq!(private_base(&root, uid), root.join(format!("webox-{uid}"))); // free: the named folder
+        let _ = std::fs::remove_dir(root.join(format!("webox-{uid}")));
+        // Someone else prepared it: open to everyone (as another user's folder would be refused for its owner)...
+        let named = root.join(format!("webox-{uid}"));
+        std::fs::create_dir(&named).unwrap();
+        std::fs::set_permissions(&named, std::fs::Permissions::from_mode(0o777)).unwrap();
+        let b = private_base(&root, uid);
+        assert!(b != named && b.parent() == Some(root.as_path()) && private_dir(&b, uid).is_ok(), "{}", b.display());
+        assert_eq!(std::fs::metadata(&named).unwrap().permissions().mode() & 0o777, 0o777); // left alone
+        // ...or a link to a folder they control; and a folder owned by another uid.
+        std::fs::remove_dir(&named).unwrap();
+        std::os::unix::fs::symlink(&b, &named).unwrap();
+        let b2 = private_base(&root, uid);
+        assert!(b2 != named && b2 != b && private_dir(&b2, uid).is_ok());
+        let other = uid.wrapping_add(1);
+        std::fs::create_dir(root.join(format!("webox-{other}"))).unwrap();
+        std::fs::set_permissions(root.join(format!("webox-{other}")), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let b3 = private_base(&root, other); // the folder exists but is owned by uid, not `other`
+        assert!(b3 != root.join(format!("webox-{other}")) && b3.is_dir());
         let _ = std::fs::remove_dir_all(&root);
     }
     #[test]
