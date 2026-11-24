@@ -201,7 +201,7 @@ impl App {
             super::share_picker::close();
             self.call.mc.keypad = false; self.call.mc.keypad_text.clear();
             if let Some(c) = &self.client { c.req(Req::CallHistory); } // the session is in janus now
-            if w == "missed" && ev.incoming { self.on_missed_call(&name, &ev.email, now); } // rail badge + toast (calls_page)
+            if w == "missed" && ev.incoming && !blocked { self.on_missed_call(&name, &ev.email, now); } // rail badge + toast (calls_page)
             // An incoming call that ends while it still rings here (I declined it, the caller cancelled, another of my
             // devices took it) just stops ringing: no call window, no "Anruf abgelehnt" screen, no tone. Like the official
             // client, which only removes its incoming-call notification.
