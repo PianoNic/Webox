@@ -27,7 +27,7 @@ The official Webex app is a big Qt and Chromium bundle. Webox is one small Rust 
 ## Why Webox?
 
 - 🪶 **Light**: starts in a moment and stays quiet in the background, one small native app instead of a browser bundle
-- 🔑 **Your normal Webex account**: same spaces, messages, calls and meetings, nothing to set up on the server
+- 🕵️ **No tracking**: Webox sends no usage data or metrics, only what Webex needs to deliver your messages and calls
 - 💻 **Windows, macOS and Linux**: including Wayland and Nix, where the official app falls short
 - 🎥 **Calls the way you know them**: audio and video calls, screen sharing, joining space meetings
 - 🎨 **Make it yours**: hide, show and reorder buttons and menus, themes, compact mode
