@@ -133,7 +133,10 @@ fn content_revision_follows_what_the_list_draws() {
 #[test]
 fn utc_converts_to_local_time() {
     let (d, t) = to_local("2026-11-13", "15:48").unwrap();
-    if cfg!(windows) { assert!(d == "2026-11-13" || d == "2026-11-14" || d == "2026-11-12"); } else { assert_eq!((d.as_str(), t.as_str()), ("2026-11-13", "15:48")); }
+    // The system zone's offset at that instant, on every platform (not just Windows).
+    let utc = crate::i18n::days_from_civil(2026, 11, 13) * 86_400 + 15 * 3600 + 48 * 60;
+    let p = crate::i18n::parts(utc + crate::i18n::local_offset_secs(utc) as i64);
+    assert_eq!((d, t.clone()), (format!("{:04}-{:02}-{:02}", p.year, p.month, p.day), format!("{:02}:{:02}", p.hour, p.minute)));
     assert_eq!(t.len(), 5);
     assert!(to_local("", "15:48").is_none() && to_local("2026-11-13", "now").is_none() && to_local("2026-13-01", "10:00").is_none());
 }

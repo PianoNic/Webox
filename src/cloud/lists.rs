@@ -107,7 +107,7 @@ impl Session {
         for l in v["loci"].as_array().into_iter().flatten() { self.space_meeting_locus(l, &locus::locus_url_of(l)); }
         let list =v["loci"].as_array().cloned().unwrap_or_default().iter().map(|l| Meeting {
             title: [st(&l["info"], "webExMeetingName"), st(&l["meeting"], "title"), st(&l["info"], "topic")].into_iter().find(|t| !t.is_empty()).unwrap_or_else(|| "Meeting".into()),
-            start: hhmm(&st(&l["meeting"], "startTime")),
+            start: local_hhmm(&st(&l["meeting"], "startTime")),
             link: [st(&l["info"], "webExMeetingLink"), st(&l["info"], "sipUri")].into_iter().find(|t| !t.is_empty()).unwrap_or_default(),
         }).collect();
         let _ = self.out.send(Resp::Meetings(list));

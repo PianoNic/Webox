@@ -47,32 +47,17 @@ pub(crate) fn civil_from_days(z: i64) -> (i32, u32, u32) {
     ((yoe + era * 400 + if m <= 2 { 1 } else { 0 }) as i32, m, d)
 }
 
-/// Local wall clock (y, m, d, h, min) of a UTC instant (Windows: the system time zone incl. daylight saving; elsewhere UTC).
+/// Local wall clock (y, m, d, h, min) of a UTC instant: the system time zone incl. daylight saving (`i18n::local_offset_secs`).
 pub(crate) fn local_parts(ms: i64) -> (i32, u32, u32, u32, u32) {
     let secs = ms.div_euclid(1000);
-    let (y, mo, d) = civil_from_days(secs.div_euclid(86_400));
-    let (h, mi) = ((secs.rem_euclid(86_400) / 3600) as u32, (secs.rem_euclid(3600) / 60) as u32);
-    to_local(y, mo, d, h, mi)
+    let p = crate::i18n::parts(secs + crate::i18n::local_offset_secs(secs) as i64);
+    (p.year as i32, p.month as u32, p.day as u32, p.hour as u32, p.minute as u32)
 }
-#[cfg(windows)]
-fn st(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> windows::Win32::Foundation::SYSTEMTIME {
-    windows::Win32::Foundation::SYSTEMTIME { wYear: y as u16, wMonth: mo as u16, wDayOfWeek: 0, wDay: d as u16, wHour: h as u16, wMinute: mi as u16, wSecond: 0, wMilliseconds: 0 }
-}
-#[cfg(windows)]
-fn to_local(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> (i32, u32, u32, u32, u32) {
-    let mut l = windows::Win32::Foundation::SYSTEMTIME::default();
-    if unsafe { windows::Win32::System::Time::SystemTimeToTzSpecificLocalTime(None, &st(y, mo, d, h, mi), &mut l) }.is_ok() { (l.wYear as i32, l.wMonth as u32, l.wDay as u32, l.wHour as u32, l.wMinute as u32) } else { (y, mo, d, h, mi) }
-}
-#[cfg(not(windows))]
-fn to_local(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> (i32, u32, u32, u32, u32) { (y, mo, d, h, mi) }
-/// The UTC instant of a local wall-clock time.
+/// The UTC instant of a local wall-clock time (the offset is looked up twice so a time next to a DST switch lands right).
 pub(crate) fn local_to_ms(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> i64 {
-    #[cfg(windows)]
-    let (y, mo, d, h, mi) = {
-        let mut u = windows::Win32::Foundation::SYSTEMTIME::default();
-        if unsafe { windows::Win32::System::Time::TzSpecificLocalTimeToSystemTime(None, &st(y, mo, d, h, mi), &mut u) }.is_ok() { (u.wYear as i32, u.wMonth as u32, u.wDay as u32, u.wHour as u32, u.wMinute as u32) } else { (y, mo, d, h, mi) }
-    };
-    (days_from_civil(y, mo, d) * 86_400 + h as i64 * 3600 + mi as i64 * 60) * 1000
+    let wall = days_from_civil(y, mo, d) * 86_400 + h as i64 * 3600 + mi as i64 * 60;
+    let off = |s: i64| crate::i18n::local_offset_secs(s) as i64;
+    (wall - off(wall - off(wall))) * 1000
 }
 
 /// "Tomorrow at 9:00 AM": tomorrow 09:00 local time.

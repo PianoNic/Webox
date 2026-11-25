@@ -186,17 +186,12 @@ pub(super) fn chip_emoji(name: &str) -> Option<String> {
 }
 
 /// The data layer delivers UTC: `Message.date` is the UTC day and `Message.time` the UTC "HH:MM" of the activity. The UI shows local
-/// time (Windows: the system time zone incl. daylight saving through SystemTimeToTzSpecificLocalTime; elsewhere UTC is kept).
-#[cfg(windows)]
+/// time: the system time zone incl. daylight saving (`i18n::local_offset_secs`).
 pub(super) fn utc_to_local(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> (i32, u32, u32, u32, u32) {
-    use windows::Win32::Foundation::SYSTEMTIME;
-    use windows::Win32::System::Time::SystemTimeToTzSpecificLocalTime;
-    let utc = SYSTEMTIME { wYear: y as u16, wMonth: mo as u16, wDayOfWeek: 0, wDay: d as u16, wHour: h as u16, wMinute: mi as u16, wSecond: 0, wMilliseconds: 0 };
-    let mut local = SYSTEMTIME::default();
-    if unsafe { SystemTimeToTzSpecificLocalTime(None, &utc, &mut local) }.is_ok() { (local.wYear as i32, local.wMonth as u32, local.wDay as u32, local.wHour as u32, local.wMinute as u32) } else { (y, mo, d, h, mi) }
+    let secs = crate::i18n::days_from_civil(y as i64, mo as i64, d as i64) * 86_400 + h as i64 * 3600 + mi as i64 * 60;
+    let p = crate::i18n::parts(secs + crate::i18n::local_offset_secs(secs) as i64);
+    (p.year as i32, p.month as u32, p.day as u32, p.hour as u32, p.minute as u32)
 }
-#[cfg(not(windows))]
-pub(super) fn utc_to_local(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> (i32, u32, u32, u32, u32) { (y, mo, d, h, mi) }
 
 /// (UTC "YYYY-MM-DD", UTC "HH:MM") -> the same moment in local time.
 pub(super) fn to_local(date: &str, time: &str) -> Option<(String, String)> {
