@@ -180,7 +180,7 @@ impl App {
         let general = format!("{id}-general");
         self.teams.push(Team { id: id.clone(), name: name.to_string(), color: None });
         let mut parts = vec![self.me.clone()]; parts.extend(people.iter().cloned());
-        self.spaces.insert(0, Space { id: general.clone(), title: name.to_string(), team: id.clone(), participants: parts, last: "jetzt".into(), ..Default::default() });
+        self.spaces.insert(0, Space { id: general.clone(), title: name.to_string(), team: id.clone(), participants: parts, last: tr("Now").into(), ..Default::default() });
         self.messages.insert(general.clone(), vec![]);
         let me = self.me.id.clone();
         with(|x| { x.teams.insert(id.clone(), TeamInfo { id: id.clone(), general: general.clone(), url: String::new(), archived: false }); x.moderators.entry(general).or_default().insert(me); });
@@ -216,7 +216,7 @@ impl App {
     }
     pub(crate) fn join_team_space(&mut self, team: &str, ts: &TeamSpace) {
         if self.op(SpaceOp::TeamJoin { team: team.to_string(), space: ts.id.clone() }) { return; }
-        self.spaces.insert(0, Space { id: ts.id.clone(), title: ts.title.clone(), team: team.to_string(), participants: vec![self.me.clone()], last: "jetzt".into(), ..Default::default() });
+        self.spaces.insert(0, Space { id: ts.id.clone(), title: ts.title.clone(), team: team.to_string(), participants: vec![self.me.clone()], last: tr("Now").into(), ..Default::default() });
         self.messages.entry(ts.id.clone()).or_default();
     }
 
