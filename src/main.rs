@@ -329,8 +329,10 @@ fn main() -> eframe::Result<()> {
     // Windows: one Webox at a time. A second start hands its link to the running copy (which comes to the front) and quits; test
     // runs (--sample / --screenshot) neither hold nor check the mutex. WEBOX_MULTI_INSTANCE=1 allows several (development).
     #[cfg(windows)]
+    // The start right after a self-update (`--updated`) never hands off: the old program still holds the mutex while it closes,
+    // and handing over to it would leave no Webox running once it is gone.
     if args.screenshot.is_none() && !args.sample && system::hold_app_mutex() && std::env::var_os("WEBOX_MULTI_INSTANCE").is_none()
-        && platform::tray::hand_off(args.protocol_uri.as_deref()) {
+        && !std::env::args().any(|a| a == platform::updater::UPDATED_FLAG) && platform::tray::hand_off(args.protocol_uri.as_deref()) {
         return Ok(());
     }
     // Linux: a second start hands its link to the running copy (D-Bus) and quits; test runs (--sample / --screenshot) never do.
