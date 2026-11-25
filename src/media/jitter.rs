@@ -49,6 +49,8 @@ pub struct Jitter {
     next: Option<u64>,
     started: bool,
     lost_row: u32,
+    /// The last slot that played a real packet.
+    played: Option<u64>,
     /// Interarrival jitter in ms (RFC 3550 style), the last packet's transit and the first arrival.
     jitter: f64,
     transit: Option<f64>,
@@ -81,7 +83,11 @@ impl Jitter {
         let transit = at.saturating_duration_since(t0).as_secs_f64() * 1000.0 - e as f64 * SLOT_MS;
         if let Some(p) = self.transit.replace(transit) { self.jitter += ((transit - p).abs() - self.jitter) / 16.0; }
         let n = *self.next.get_or_insert(e);
-        if e < n && !self.started { self.next = Some(e); } else if e < n { return false; }
+        if e < n && !self.started { self.next = Some(e); }
+        // concealing with nothing buffered (a silent / DTX gap: the sender skipped packets, not numbers): the packet after
+        // the last one played resumes the stream here instead of counting as late
+        else if e < n && self.lost_row > 0 && self.pkts.is_empty() && self.played.is_none_or(|p| e > p) { self.next = Some(e); }
+        else if e < n { return false; }
         if self.pkts.contains_key(&e) { return false; }
         self.pkts.insert(e, payload);
         self.top = Some(self.top.map_or(e, |t| t.max(e)));
@@ -102,7 +108,7 @@ impl Jitter {
             (self.started, self.high, self.low, self.lost_row) = (true, 0, 0, 0);
         }
         let play = match self.pkts.remove(&n) {
-            Some(p) => { self.lost_row = 0; Play::Packet(p) }
+            Some(p) => { (self.lost_row, self.played) = (0, Some(n)); Play::Packet(p) }
             None => {
                 self.lost_row += 1;
                 if let Some(p) = self.pkts.get(&(n + 1)) { Play::Fec(p.clone()) }
@@ -191,6 +197,19 @@ mod tests {
         assert_eq!(j.pop().0, Play::Fec(vec![4]), "the next packet carries the lost one's FEC");
         assert_eq!(played(&mut j, 2), [Play::Packet(vec![4]), Play::Packet(vec![5])]);
         assert_eq!(j.pop().0, Play::Plc, "nothing after it: PLC");
+    }
+
+    #[test]
+    fn speech_after_a_short_silent_gap_is_not_dropped() {
+        // the sender skipped packets in silence (DTX): sequence numbers go on where they stopped
+        let (mut j, t0) = fed(&[1, 2]);
+        played(&mut j, 2);
+        assert_eq!(played(&mut j, 2), [Play::Plc, Play::Plc]);
+        assert!(j.push(3, vec![3], t0 + Duration::from_millis(100)), "the next packet resumes the stream");
+        assert!(j.push(4, vec![4], t0 + Duration::from_millis(120)));
+        assert_eq!(played(&mut j, 2), [Play::Packet(vec![3]), Play::Packet(vec![4])]);
+        // a packet older than what played stays late
+        assert!(!j.push(2, vec![2], t0 + Duration::from_millis(140)));
     }
 
     #[test]

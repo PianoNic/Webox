@@ -354,7 +354,8 @@ async fn play_out(io: Arc<Io>, jb: Arc<std::sync::Mutex<Jitter>>, stop: Arc<Atom
     while !stop.load(Ordering::Relaxed) && !ended.load(Ordering::Relaxed) {
         tick.tick().await;
         for _ in 0..8 {
-            if io.play_pending() >= 2 * FRAME { break; }
+            // two frames ahead, or one more than the output takes in one pull (a device with a long callback)
+            if io.play_pending() >= (2 * FRAME).max(io.pull_size() + FRAME) { break; }
             let Ok((play, adj)) = jb.lock().map(|mut j| j.pop()) else { return };
             let (data, len, mode): (&[u8], usize, _) = match &play {
                 Play::Wait => break,
