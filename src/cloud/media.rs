@@ -1,7 +1,8 @@
 //! The call's media leg: one WebRTC peer connection (webrtc-rs: ICE, DTLS-SRTP, RTP — pure Rust) carrying Opus audio.
 //! Locus negotiates it with ROAP v2: our OFFER (SDP with all ICE candidates already gathered, no trickle) goes inside the
 //! join request, the server's ANSWER comes back as a mercury `locus.message.roap` event, then we send OK (see `locus.rs`).
-//! Audio comes from / goes to `audio::Io` (48 kHz mono, 20 ms Opus frames).
+//! Audio comes from / goes to `audio::Io` (48 kHz mono, 20 ms Opus frames); received audio plays out of a jitter buffer
+//! (`media::jitter`).
 //!
 //! Sockets: one UDP socket of our own (`ice_socket.rs`) on the address the system uses to reach Webex (`Net::Route`),
 //! no mDNS socket; only when that address is unknown does webrtc-ice bind its own on every interface. Media is
@@ -20,6 +21,7 @@
 use super::ice_socket::SeenSsrc;
 use super::{dbg_conn, sdp, sdp_compat};
 use crate::media::audio::{self, Io, FRAME};
+use crate::media::jitter::{self, Adjust, Jitter, Play};
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, Ordering};
 use std::sync::Arc;
@@ -339,6 +341,45 @@ impl ReadErrs {
     fn ok(&mut self) { self.row = 0; }
 }
 
+/// Plays one audio track out of its jitter buffer until the call stops or the track's read loop `ended`. The output
+/// callback paces it: every 5 ms the playback queue is topped up to two frames ahead of it, one 20 ms slot at a time, so
+/// playout goes on (concealed) while packets are missing and the jitter buffer, not the queue, holds the delay.
+async fn play_out(io: Arc<Io>, jb: Arc<std::sync::Mutex<Jitter>>, stop: Arc<AtomicBool>, ended: Arc<AtomicBool>) {
+    let new_dec = || ropus::Decoder::new(audio::RATE, ropus::Channels::Mono);
+    let Ok(mut dec) = new_dec() else { return };
+    // `frame`: samples of the last decoded packet, what a concealed or silent slot fills
+    let (mut pcm, mut frame) = (vec![0i16; 5760], FRAME);
+    let mut tick = tokio::time::interval(Duration::from_millis(5));
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    while !stop.load(Ordering::Relaxed) && !ended.load(Ordering::Relaxed) {
+        tick.tick().await;
+        for _ in 0..8 {
+            // two frames ahead, or one more than the output takes in one pull (a device with a long callback)
+            if io.play_pending() >= (2 * FRAME).max(io.pull_size() + FRAME) { break; }
+            let Ok((play, adj)) = jb.lock().map(|mut j| j.pop()) else { return };
+            let (data, len, mode): (&[u8], usize, _) = match &play {
+                Play::Wait => break,
+                Play::Silence => { pcm[..frame].fill(0); io.play(&pcm[..frame]); continue; }
+                Play::Packet(p) => (p, pcm.len(), ropus::DecodeMode::Normal),
+                Play::Fec(p) => (p, frame, ropus::DecodeMode::Fec),
+                Play::Plc => (&[], frame, ropus::DecodeMode::Normal),
+            };
+            // a broken packet must not end the call's audio: a decoder that panicked is made anew
+            let n = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| dec.decode(data, &mut pcm[..len], mode))) {
+                Ok(Ok(n)) => n,
+                Ok(Err(_)) => continue,
+                Err(_) => { dbg_conn("call: opus decoder panicked, made anew"); let Ok(d) = new_dec() else { return }; dec = d; continue; }
+            };
+            if matches!(play, Play::Packet(_)) && n > 0 { frame = n; }
+            match adj {
+                Adjust::None => io.play(&pcm[..n]),
+                Adjust::Shrink => io.play(&jitter::shrink(&pcm[..n])),
+                Adjust::Stretch => io.play(&jitter::stretch(&pcm[..n])),
+            }
+        }
+    }
+}
+
 /// The SSRC one of our senders sends from (the sender SSRC of our RTCP feedback; 0 when none is known yet).
 async fn own_ssrc(pc: &RTCPeerConnection) -> u32 {
     for s in pc.get_senders().await {
@@ -415,26 +456,18 @@ impl Media {
                         }
                         dbg_conn(&format!("call: audio track from the far end (ssrc {})", if rx_ssrc.load(Ordering::Relaxed) == 0 { "first" } else { "changed" }));
                         rx_ssrc.store(track.ssrc(), Ordering::Relaxed);
-                        let new_dec = || ropus::Decoder::new(audio::RATE, ropus::Channels::Mono);
-                        let Ok(mut dec) = new_dec() else { return };
-                        let (mut pcm, mut errs) = (vec![0i16; 5760], ReadErrs::default());
+                        let (jb, ended) = (Arc::new(std::sync::Mutex::new(Jitter::default())), Arc::new(AtomicBool::new(false)));
+                        tokio::spawn(play_out(io, jb.clone(), stop.clone(), ended.clone()));
+                        let mut errs = ReadErrs::default();
                         while !stop.load(Ordering::Relaxed) {
                             // a packet webrtc-rs can't read (e.g. an unknown payload type) is skipped; only a closed track ends audio
                             let pkt = match track.read_rtp().await { Ok((p, _)) => { errs.ok(); p } Err(e) => if errs.note("audio", &e).await { break } else { continue } };
                             if rxp.fetch_add(1, Ordering::Relaxed) == 0 { dbg_conn("call: first RTP packet received"); }
                             live.rx(super::media_stats::AUDIO, &pkt.header, pkt.payload.len(), super::media_stats::AUDIO_CLOCK);
                             if pkt.payload.is_empty() { continue; }
-                            // a broken packet must not end the call's audio: a decoder that panicked is made anew
-                            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| dec.decode(&pkt.payload, &mut pcm, ropus::DecodeMode::Normal))) {
-                                Ok(Ok(n)) => {
-                                    io.play(&pcm[..n]);
-                                    // Keep latency low: if more than 400 ms queued, drop down to 100 ms.
-                                    if let Ok(mut q) = io.to_play.lock() { if q.len() > 19_200 { let drop = q.len() - 4_800; q.drain(..drop); } }
-                                }
-                                Ok(Err(_)) => {}
-                                Err(_) => { dbg_conn("call: opus decoder panicked, made anew"); let Ok(d) = new_dec() else { break }; dec = d; }
-                            }
+                            if let Ok(mut j) = jb.lock() { j.push_ts(pkt.header.sequence_number, pkt.header.timestamp, pkt.payload.to_vec(), Instant::now()); }
                         }
+                        ended.store(true, Ordering::Relaxed);
                     });
                     Box::pin(async {})
                 }));

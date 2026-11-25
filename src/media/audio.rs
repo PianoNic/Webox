@@ -202,6 +202,8 @@ pub struct Io {
     pub far: Mutex<VecDeque<f32>>,
     /// A stream reported an error (device unplugged, sound server restarted): the engine reopens its devices.
     failed: AtomicBool,
+    /// Samples (48 kHz) the output callback took in its last pull: the call's playout keeps at least that much queued.
+    pull: AtomicU32,
 }
 impl Io {
     pub fn level(&self) -> f32 { f32::from_bits(self.level.load(Ordering::Relaxed)) }
@@ -228,6 +230,8 @@ impl Io {
     /// Like `play` but never drops audio (ringtones / sound files longer than the 1 s call buffer).
     pub fn play_long(&self, pcm: &[i16]) { if let Ok(mut q) = self.to_play.lock() { q.extend(pcm.iter().copied()); } }
     pub fn play_pending(&self) -> usize { self.to_play.lock().map_or(0, |q| q.len()) }
+    /// Samples (48 kHz) the output callback took last time (0 before the first pull).
+    pub fn pull_size(&self) -> usize { self.pull.load(Ordering::Relaxed) as usize }
 }
 
 /// A sine beep of `ms` milliseconds (speaker test), 48 kHz mono, with a short fade in / out.
@@ -401,6 +405,7 @@ fn open_streams(io: &Arc<Io>, input: Option<&str>, output: Option<&str>) -> Resu
             let mut pull = Pull::new(RATE, rate);
             let play_into = move |len: usize, mut put: Box<dyn FnMut(usize, f32) + '_>| {
                 let gain = io2.gain();
+                io2.pull.store(((len / ch) as u64 * RATE as u64 / rate.max(1) as u64) as u32, Ordering::Relaxed);
                 let mut q = io2.to_play.lock().ok();
                 // in a call, what is played (at 48 kHz, after the volume) is the echo canceller's reference
                 let mut far = if io2.in_call() { io2.far.lock().ok() } else { None };
