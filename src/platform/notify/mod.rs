@@ -135,6 +135,20 @@ impl Hub {
         self.toasts.push(t);
         if self.toasts.len() > 5 { self.toasts.remove(0); }
     }
+    /// Changes whenever a toast comes or goes (the data API's change check).
+    pub(crate) fn generation(&self) -> u64 { (self.next << 8) | self.toasts.len() as u64 }
+    /// The toasts on screen for the data API: (id, kind, shown at in Unix ms, space, title, body).
+    pub(crate) fn data_view(&self, now_ms: i64) -> Vec<(u64, &'static str, Option<i64>, Option<String>, String, String)> {
+        let clock = self.t0.map(|t| t.elapsed().as_secs_f64());
+        self.toasts.iter().filter(|t| !t.dismissed).map(|t| {
+            let kind = match t.kind {
+                Kind::Message => "message", Kind::Mention => "mention", Kind::MissedCall => "missed_call", Kind::MeetingReminder => "meeting",
+                Kind::MessageReminder => "reminder", _ => "info",
+            };
+            let at = clock.map(|c| now_ms - ((c - t.born).max(0.0) * 1000.0) as i64);
+            (t.id, kind, at, t.space.clone().filter(|s| s != OPEN_CALLS), t.title.clone(), t.body.clone())
+        }).collect()
+    }
     /// The space was read elsewhere / left: its message toasts go.
     pub(crate) fn withdraw_space(&mut self, space: &str) {
         self.toasts.retain(|t| !(matches!(t.kind, Kind::Message | Kind::Mention) && t.space.as_deref() == Some(space)));

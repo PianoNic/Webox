@@ -55,7 +55,9 @@ struct Ctx { plugin: String, name: String, out: Arc<Mutex<Outbox>>, data: Arc<Mu
     /// `reactions.show_avatars`: what this plugin last asked for (None = off).
     avatars: Mutex<Option<ReactionAvatars>>,
     /// The plugin's translations (`i18n.strings`), applied to its toasts and dialogs.
-    strings: i18n::Strings }
+    strings: i18n::Strings,
+    /// The data API's store (`data.*` methods), and whether the plugin listens to `data.changed`.
+    hub: crate::extras::data::Hub, hub_events: bool }
 
 /// `reactions.show_avatars`: small round avatars of the people who reacted, drawn after each reaction chip's count
 /// (ui/messages/who_reacted.rs). Off until an enabled plugin turns it on.
@@ -186,6 +188,8 @@ pub struct Plugins {
     pub dialog: Option<dialog::Dialog>,
     /// `i18n::generation` the plugins' texts were last translated for.
     i18n_gen: u64,
+    /// The data API's store (extras/data/): filled by the window only while a plugin uses it.
+    pub hub: crate::extras::data::Hub,
 }
 
 fn s(p: *const c_char) -> String { if p.is_null() { String::new() } else { unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned() } }
@@ -324,7 +328,19 @@ const METHODS: &[(&str, u32, Method)] = &[
     ("ui.dialog", 1, dialog::ui_dialog),
     // `{}` -> `{"lang", "fallbacks"}`: the active language, as the `i18n.strings` event sends it (plugins/i18n.rs).
     (i18n::METHOD, 1, |_, _| i18n::language()),
+    // The data API (extras/data/, docs/plugins.md "Data API"). `{}` -> the model description.
+    ("data.model", 1, |_, _| crate::extras::data::api::model()),
+    // `{"entity", "id", "fields"?}` -> `{"item", "rev"}`.
+    ("data.get", 1, |c, a| c.hub.get(&c.plugin, a, on_ui(c))),
+    // `{"query", "params"?, "fields"?, "limit"?, "cursor"?}` -> `{"items", "total", "rev", "cursor"?, "groups"?}`.
+    ("data.query", 1, |c, a| c.hub.query(&c.plugin, a, on_ui(c))),
+    // `{"id", "query", "params"?, "fields"?, "limit"?}` -> the first page and `"sub"`; changes arrive as `data.changed`.
+    ("data.subscribe", 1, |c, a| c.hub.subscribe(&c.plugin, a, on_ui(c), c.hub_events)),
+    // `{"id"}` -> `{}`.
+    ("data.unsubscribe", 1, |c, a| c.hub.unsubscribe(&c.plugin, a)),
 ];
+/// Whether a host method runs on the window's thread (it must not wait there).
+fn on_ui(c: &Ctx) -> bool { c.ui_thread == Some(std::thread::current().id()) }
 /// An entry a plugin adds to a message's or a space's menu (`message.menu` / `space.menu`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct MenuItem {
@@ -385,6 +401,11 @@ const EVENTS: &[(&str, u32)] = &[
     // The plugin's translations are wanted: at start and after every language change. Payload: `{"lang","fallbacks"}`. Answer
     // `{"strings": {"English source": "translation"}}`, applied to everything Webox shows from the plugin (plugins/i18n.rs).
     (i18n::EVENT, 1),
+    // A data subscription's result changed (`data.subscribe`). Payload: `{"sub", "rev", "ops": [...]}` with `{"op": "insert",
+    // "at", "item"}`, `{"op": "update", "id", "set"}`, `{"op": "move", "id", "to"}`, `{"op": "remove", "id"}`, `{"op": "rekey",
+    // "from", "to"}` or `{"op": "reset"}`. Sent after the frame's work, at most 10 per second per subscription. UI thread.
+    // Listing it switches the data store on from the plugin's start.
+    (crate::extras::data::EVENT, 1),
 ];
 /// `host.capabilities`: every method and event with its version, as one flat object.
 fn capabilities() -> Value {
@@ -438,7 +459,7 @@ impl Plugins {
         let mut p = Plugins { dirs, list: vec![], out: Default::default(), install_root, data: Arc::new(Mutex::new(read_json(&data_file))),
             state_file: config.join("plugins.json"), data_file, settings_store: ps::Store::new(config), recent: Default::default(), seen: Default::default(),
             kept: Default::default(), fired: Default::default(), view: Default::default(), fed: false, confirms: Default::default(),
-            ui_thread: std::thread::current().id(), dialog: None, i18n_gen: 0 };
+            ui_thread: std::thread::current().id(), dialog: None, i18n_gen: 0, hub: Default::default() };
         store::clean(&p.install_root);
         p.rescan();
         p
@@ -451,7 +472,7 @@ impl Plugins {
     }
 
     pub fn rescan(&mut self) {
-        for e in &mut self.list { unload(e) }
+        for e in &mut self.list { self.hub.forget(&e.key); unload(e) }
         self.list.clear();
         let state = read_json(&self.state_file);
         let ext = std::env::consts::DLL_EXTENSION;
@@ -528,6 +549,7 @@ impl Plugins {
                 let on = e.enabled;
                 i18n::refresh(e, on); // before the start: what it shows at start is translated already
                 if let Some(l) = e.loaded.as_ref().filter(|_| on) { push_settings(l, &e.settings); (l.c.start)(l.inst, &*l.host) }
+                self.note_data_user(e);
             }
             Err(x) => { e.error = Some(x); e.enabled = false; }
         }
@@ -545,7 +567,8 @@ impl Plugins {
         let name = if e.name.trim().is_empty() { key.to_string() } else { e.name.clone() };
         let ctx = Box::new(Ctx { plugin: key.to_string(), name, out: self.out.clone(), data: self.data.clone(), data_file: self.data_file.clone(),
             settings: e.settings.values.clone(), recent: self.recent.clone(), kept: self.kept.clone(), view: self.view.clone(), confirms: self.confirms.clone(),
-            ui_thread: Some(self.ui_thread), avatars: Mutex::new(None), strings: e.labels.strings.clone() });
+            ui_thread: Some(self.ui_thread), avatars: Mutex::new(None), strings: e.labels.strings.clone(), hub: self.hub.clone(),
+            hub_events: events(v, minor).iter().any(|x| x == crate::extras::data::EVENT) });
         let host = Box::new(HostApi { ctx: &*ctx as *const Ctx as Ptr, toast: Some(h_toast), send: Some(h_send), log: Some(h_log),
             data_get: Some(h_get), data_set: Some(h_set), free_str: Some(h_free), settings_get: Some(h_settings),
             // 1.6
@@ -575,6 +598,7 @@ impl Plugins {
             if on && !e.enabled { push_settings(l, &e.settings); (l.c.start)(l.inst, &*l.host) } else if !on && e.enabled { crate::media::camera::hook::release(&e.key); l.stop() }
         }
         e.enabled = on && (e.loaded.is_some() || e.builtin);
+        if self.list[i].enabled { self.note_data_user(&self.list[i]); } else { self.hub.forget(&self.list[i].key); }
         self.save_state();
         self.drop_kept_unless_logging();
     }
@@ -613,7 +637,7 @@ impl Plugins {
         }
         let old_i = self.list.iter().position(|e| e.source.as_ref().is_some_and(|s| s.pkg == inst.pkg));
         let enabled = old_i.map_or(true, |i| self.list[i].enabled || self.list[i].error.is_some());
-        let old = old_i.map(|i| { let mut e = self.list.remove(i); unload(&mut e); e.source.unwrap() });
+        let old = old_i.map(|i| { let mut e = self.list.remove(i); self.hub.forget(&e.key); unload(&mut e); e.source.unwrap() });
         let reload_old = |me: &mut Self| if let Some(o) = &old {
             let mut e = Self::entry(store::path_of(&me.install_root, o), &o.pkg, &Map::new(), Some(o.clone()));
             e.enabled = enabled;
@@ -642,6 +666,7 @@ impl Plugins {
     pub fn uninstall(&mut self, pkg: &str) -> Result<(), String> {
         let i = self.list.iter().position(|e| e.source.as_ref().is_some_and(|s| s.pkg == pkg)).ok_or_else(|| crate::trq!("not installed").into_owned())?;
         let mut e = self.list.remove(i);
+        self.hub.forget(&e.key);
         unload(&mut e);
         self.drop_kept_unless_logging();
         store::remove(&self.install_root, pkg)?;
@@ -697,6 +722,30 @@ impl Plugins {
     pub fn message_menu_action(&self, plugin: &str, space: &str, id: &str, item: &str) {
         let Some(l) = self.list.iter().filter(|e| e.enabled && e.key == plugin).find_map(|e| e.loaded.as_ref()) else { return };
         l.event("message.menu_action", &serde_json::json!({ "space": space, "id": id, "item": item }).to_string());
+    }
+
+    /// A started plugin that lists `data.changed` switches the data store on (filled from the next frame).
+    fn note_data_user(&self, e: &Entry) {
+        if let Some(l) = e.loaded.as_ref().filter(|_| e.enabled) {
+            if l.c.on_event.is_some() && l.events.iter().any(|x| x == crate::extras::data::EVENT) { self.hub.use_by(&e.key); }
+        }
+    }
+
+    /// Delivers `data.changed` payloads (plugin key, JSON) to their enabled plugins.
+    pub fn deliver_data(&self, events: Vec<(String, String)>) {
+        for (key, json) in events {
+            if let Some(l) = self.list.iter().filter(|e| e.enabled && e.key == key).find_map(|e| e.loaded.as_ref()) { l.event(crate::extras::data::EVENT, &json); }
+        }
+    }
+
+    /// The plugins as the data API lists them.
+    pub fn data_view(&self) -> Vec<crate::extras::data::build::PluginView> {
+        self.list.iter().map(|e| crate::extras::data::build::PluginView { key: e.key.clone(), name: e.name.clone(), version: e.version.clone(),
+            author: e.author.clone(), enabled: e.enabled, builtin: e.builtin, error: e.error.clone(),
+            settings: e.settings.schema.as_ref().map(|s| {
+                let v = e.settings.values();
+                s.fields().filter(|f| !matches!(f.kind, ps::schema::Kind::Secret | ps::schema::Kind::Button)).filter_map(|f| v.get(&f.id).map(|x| (f.id.clone(), x.clone()))).collect()
+            }) }).collect()
     }
 
     /// Whether an enabled plugin subscribed to event `name`.
@@ -829,7 +878,7 @@ fn unload(e: &mut Entry) {
     }
 }
 
-impl Drop for Plugins { fn drop(&mut self) { for e in &mut self.list { unload(e) } } }
+impl Drop for Plugins { fn drop(&mut self) { for e in &mut self.list { self.hub.forget(&e.key); unload(e) } } }
 
 #[cfg(test)]
 mod e2e;
@@ -936,7 +985,7 @@ pub(super) mod tests {
         use std::ffi::CStr;
         let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: Default::default(), data: Default::default(), data_file: Default::default(),
             settings: std::sync::Arc::new(std::sync::Mutex::new(serde_json::json!({ "x": true }).as_object().unwrap().clone())), recent: Default::default(), kept: Default::default(),
-            view: Default::default(), confirms: Default::default(), ui_thread: None, avatars: Default::default(), strings: Default::default() };
+            view: Default::default(), confirms: Default::default(), ui_thread: None, avatars: Default::default(), strings: Default::default(), hub: Default::default(), hub_events: false };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |m: &str, j: &str| {
             let (m, j) = (collabhost_plugin_api::cs(m), collabhost_plugin_api::cs(j));
@@ -1011,7 +1060,7 @@ pub(super) mod tests {
         let notice = crate::cloud::Message { notice: "Anna joined".into(), ..Default::default() };
         p.note_space("s1", &[msg("Anna", false, "one"), notice, msg("Me", true, "two"), msg("Anna", false, "three")]);
         let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(), recent: p.recent.clone(), kept: Default::default(),
-            view: p.view.clone(), confirms: Default::default(), ui_thread: None, avatars: Default::default(), strings: Default::default() };
+            view: p.view.clone(), confirms: Default::default(), ui_thread: None, avatars: Default::default(), strings: Default::default(), hub: Default::default(), hub_events: false };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |m: &str, j: serde_json::Value| {
             let (m, j) = (collabhost_plugin_api::cs(m), collabhost_plugin_api::cs(&j.to_string()));
@@ -1192,7 +1241,7 @@ pub(super) mod tests {
         let dir = std::env::temp_dir().join(format!("collabhost-keep-{}", std::process::id()));
         let p = super::Plugins::with_root(&dir, dir.join("installed"));
         let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(),
-            recent: p.recent.clone(), kept: p.kept.clone(), view: Default::default(), confirms: Default::default(), ui_thread: None, avatars: Default::default(), strings: Default::default() };
+            recent: p.recent.clone(), kept: p.kept.clone(), view: Default::default(), confirms: Default::default(), ui_thread: None, avatars: Default::default(), strings: Default::default(), hub: Default::default(), hub_events: false };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |j: serde_json::Value| {
             let (m, j) = (collabhost_plugin_api::cs("message.keep"), collabhost_plugin_api::cs(&j.to_string()));
@@ -1319,6 +1368,46 @@ pub(super) mod tests {
         assert!(hook::filter_stats("ev-cam").is_none() && hook::source().is_none());
         let _ = std::fs::remove_dir_all(dir);
         let _ = std::fs::remove_file(png);
+    }
+
+    /// Subscribes to the space list in `start` (on the UI thread, before the store is filled) and records `data.changed`.
+    static DATA_SEEN: std::sync::Mutex<Vec<serde_json::Value>> = std::sync::Mutex::new(vec![]);
+    #[derive(Default)]
+    struct DataPlugin { first: Option<String>, nope: Option<String> }
+    impl collabhost_plugin_api::Plugin for DataPlugin {
+        const NAME: &'static str = "DataPlugin"; const AUTHOR: &'static str = ""; const VERSION: &'static str = ""; const DESCRIPTION: &'static str = "";
+        const EVENTS: &'static str = "data.changed";
+        fn start(&mut self, h: collabhost_plugin_api::Host) {
+            assert!(h.has("data.subscribe") && h.version("data.changed") == Some(1));
+            self.first = h.call("data.subscribe", r#"{"id": "sp", "query": "spaces sort title", "fields": ["title"]}"#);
+            self.nope = h.call("data.query", r#"{"query": "spaces where titel == 'x'"}"#);
+        }
+        fn on_event(&mut self, _: &str, payload: &str) -> Option<String> { DATA_SEEN.lock().unwrap().push(serde_json::from_str(payload).unwrap()); None }
+    }
+
+    #[test]
+    fn data_api_reaches_plugins() {
+        use crate::extras::data::{Fingerprint, Marks};
+        let (mut p, dir) = load_in_process::<DataPlugin>(7);
+        assert!(p.hub.active(), "a plugin listening to data.changed switches the store on");
+        let i = p.list.len() - 1;
+        let plug = unsafe { &*(p.list[i].loaded.as_ref().unwrap().inst as *const DataPlugin) };
+        let first: serde_json::Value = serde_json::from_str(plug.first.as_deref().unwrap()).unwrap();
+        assert_eq!(first, serde_json::json!({ "sub": "sp", "items": [], "total": 0, "rev": 0, "ready": false }), "on the UI thread nothing waits");
+        assert!(plug.nope.as_deref().unwrap().contains("'titel' is not a field of space (did you mean 'title'?)"));
+        // the window's next frame fills the store; the subscription's items arrive as inserts
+        let f = crate::extras::data::build::tests::Fixture::new();
+        let m = p.hub.plan(Marks::default(), Fingerprint::default()).unwrap();
+        p.hub.apply(&m, &f.source());
+        p.deliver_data(p.hub.take_events());
+        assert_eq!(*DATA_SEEN.lock().unwrap(), [serde_json::json!({ "sub": "sp", "rev": 1, "ops": [
+            { "op": "insert", "at": 0, "item": { "id": "s-dev", "title": "Development" } },
+            { "op": "insert", "at": 0, "item": { "id": "s-anna", "title": "Anna Berg" } }] })]);
+        // switched off: the store goes with it
+        p.set_enabled(i, false);
+        assert!(!p.hub.active());
+        drop(p);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -287,6 +287,8 @@ impl Photos {
     /// The encoded bytes of a message image (`key`, or `full:<key>` for the original) for the viewer's Kopieren /
     /// Speichern unter.
     pub fn image_bytes(&self, key: &str) -> Option<&[u8]> { self.images.get(key).map(|b| b.as_slice()) }
+    /// Whether a profile picture with that key (person id, uuid or lower-case e-mail) is loaded.
+    pub fn has_photo(&self, key: &str) -> bool { self.bytes.contains_key(key) }
 
     /// The first frame of an inline message image as (texture, [width, height] in pixels); `None` while it isn't
     /// downloaded or can't be decoded. Animated GIFs: use `image_frame` to get the frame for the current time.

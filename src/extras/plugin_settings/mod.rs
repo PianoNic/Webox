@@ -53,6 +53,7 @@ impl Store {
 
     /// Saves an already validated value.
     pub fn save_value(&self, key: &str, id: &str, v: &Value) -> Result<(), String> {
+        crate::extras::data::note_settings_saved(); // the data API lists plugin settings
         let mut f = self.read_file(key);
         if !f["values"].is_object() { f["values"] = json!({}); }
         f["values"][id] = v.clone();

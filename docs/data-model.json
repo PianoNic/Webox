@@ -1,0 +1,1321 @@
+{
+  "collections": [
+    {
+      "doc": "Everyone the store knows.",
+      "entity": "person",
+      "name": "people"
+    },
+    {
+      "doc": "The people of my spaces (the Contacts page).",
+      "entity": "person",
+      "name": "contacts"
+    },
+    {
+      "doc": "My spaces; hidden ones only when the query names `hidden`.",
+      "entity": "space",
+      "name": "spaces"
+    },
+    {
+      "doc": "My teams.",
+      "entity": "team",
+      "name": "teams"
+    },
+    {
+      "arg": "space id",
+      "doc": "Loaded messages of one space, oldest first.",
+      "entity": "message",
+      "name": "messages"
+    },
+    {
+      "arg": "message id",
+      "doc": "A thread root and its loaded replies.",
+      "entity": "message",
+      "name": "thread"
+    },
+    {
+      "doc": "The current call (0 or 1).",
+      "entity": "call",
+      "name": "calls"
+    },
+    {
+      "doc": "Call history, newest first.",
+      "entity": "call_record",
+      "name": "call_history"
+    },
+    {
+      "doc": "Running meetings and calendar events.",
+      "entity": "meeting",
+      "name": "meetings"
+    },
+    {
+      "doc": "Toasts on screen.",
+      "entity": "notification",
+      "name": "notifications"
+    },
+    {
+      "doc": "The display-settings whitelist.",
+      "entity": "setting",
+      "name": "settings"
+    },
+    {
+      "doc": "Message reminders and scheduled messages.",
+      "entity": "reminder",
+      "name": "reminders"
+    },
+    {
+      "doc": "Installed plugins.",
+      "entity": "plugin",
+      "name": "plugins"
+    },
+    {
+      "doc": "Presence of everyone the store knows.",
+      "entity": "presence",
+      "name": "presence"
+    },
+    {
+      "doc": "One item: me.",
+      "entity": "me",
+      "name": "me"
+    },
+    {
+      "doc": "One item: the window's state.",
+      "entity": "app",
+      "name": "app"
+    }
+  ],
+  "entities": {
+    "app": {
+      "doc": "The window's state (one item, id \"app\").",
+      "fields": [
+        {
+          "doc": "Always \"app\".",
+          "name": "id",
+          "scope": "app",
+          "type": "string"
+        },
+        {
+          "doc": "The page shown.",
+          "name": "page",
+          "scope": "app",
+          "type": "\"messaging\"|\"meetings\"|\"calling\"|\"whiteboards\"|\"contacts\"|\"teams\"|\"voicemail\"|\"settings\""
+        },
+        {
+          "doc": "The open space.",
+          "name": "selected",
+          "optional": true,
+          "relation": "space",
+          "scope": "app",
+          "type": "-> space"
+        },
+        {
+          "doc": "The team whose spaces are shown (Teams page).",
+          "name": "team",
+          "optional": true,
+          "relation": "team",
+          "scope": "app",
+          "type": "-> team"
+        },
+        {
+          "doc": "Signed in with a running connection.",
+          "name": "connected",
+          "scope": "app",
+          "type": "bool"
+        },
+        {
+          "doc": "A sign-in exists (false on the sign-in screen).",
+          "name": "signed_in",
+          "scope": "app",
+          "type": "bool"
+        },
+        {
+          "doc": "The connection status line.",
+          "name": "status",
+          "scope": "app",
+          "type": "string"
+        },
+        {
+          "doc": "Unread spaces (hidden ones left out).",
+          "name": "unread_total",
+          "scope": "app",
+          "type": "u32"
+        },
+        {
+          "doc": "A call is shown (ringing, connecting or connected).",
+          "name": "call_active",
+          "scope": "app",
+          "type": "bool"
+        },
+        {
+          "doc": "Reserved for the theming engine.",
+          "name": "width_class",
+          "optional": true,
+          "reserved": true,
+          "scope": "app",
+          "type": "\"narrow\"|\"medium\"|\"wide\""
+        },
+        {
+          "doc": "Reserved for the theming engine.",
+          "name": "focus_mode",
+          "optional": true,
+          "reserved": true,
+          "scope": "app",
+          "type": "bool"
+        }
+      ],
+      "scope": "app"
+    },
+    "call": {
+      "doc": "The current call (0 or 1 today).",
+      "fields": [
+        {
+          "doc": "Opaque call id.",
+          "name": "id",
+          "scope": "calls.state",
+          "type": "string"
+        },
+        {
+          "doc": "1:1 or group call.",
+          "name": "kind",
+          "scope": "calls.state",
+          "type": "\"direct\"|\"space\"|\"meeting\""
+        },
+        {
+          "doc": "State.",
+          "name": "state",
+          "scope": "calls.state",
+          "type": "\"dialing\"|\"ringing\"|\"incoming\"|\"connecting\"|\"connected\"|\"ended\""
+        },
+        {
+          "doc": "Someone called me.",
+          "name": "incoming",
+          "scope": "calls.state",
+          "type": "bool"
+        },
+        {
+          "doc": "1:1 calls: the other person.",
+          "name": "peer",
+          "optional": true,
+          "relation": "person",
+          "scope": "calls.state",
+          "type": "-> person"
+        },
+        {
+          "doc": "The name the call shows.",
+          "name": "peer_name",
+          "scope": "calls.state",
+          "type": "string"
+        },
+        {
+          "doc": "The space of the call.",
+          "name": "space",
+          "optional": true,
+          "relation": "space",
+          "scope": "calls.state",
+          "type": "-> space"
+        },
+        {
+          "doc": "When it connected.",
+          "name": "started_at",
+          "optional": true,
+          "scope": "calls.state",
+          "type": "ms"
+        },
+        {
+          "doc": "{id, person?, name, state, muted, hand, host, me}.",
+          "name": "participants",
+          "scope": "calls.state",
+          "type": "[Participant]"
+        },
+        {
+          "doc": "My side: {muted, muted_by_host, unmute_allowed, asked_to_unmute, video, video_sending, sharing, hand, host}.",
+          "keys": [
+            "muted",
+            "muted_by_host",
+            "unmute_allowed",
+            "asked_to_unmute",
+            "video",
+            "video_sending",
+            "sharing",
+            "hand",
+            "host"
+          ],
+          "name": "me",
+          "scope": "calls.state",
+          "type": "object"
+        },
+        {
+          "doc": "Who shares a screen.",
+          "name": "remote_share",
+          "optional": true,
+          "relation": "person",
+          "scope": "calls.state",
+          "type": "-> person"
+        },
+        {
+          "doc": "The sharer's name.",
+          "name": "remote_share_name",
+          "optional": true,
+          "scope": "calls.state",
+          "type": "string"
+        },
+        {
+          "doc": "Media statistics while the statistics view runs, read when asked.",
+          "name": "stats",
+          "optional": true,
+          "scope": "calls.stats",
+          "type": "object",
+          "volatile": true
+        }
+      ],
+      "scope": "calls.state"
+    },
+    "call_record": {
+      "doc": "Call history (loaded with the Calling page).",
+      "fields": [
+        {
+          "doc": "Session id.",
+          "name": "id",
+          "scope": "calls.history",
+          "type": "string"
+        },
+        {
+          "doc": "Start.",
+          "name": "at",
+          "scope": "calls.history",
+          "type": "ms"
+        },
+        {
+          "doc": "End.",
+          "name": "ended_at",
+          "scope": "calls.history",
+          "type": "ms"
+        },
+        {
+          "doc": "Duration.",
+          "name": "secs",
+          "scope": "calls.history",
+          "type": "u32"
+        },
+        {
+          "doc": "I called.",
+          "name": "outgoing",
+          "scope": "calls.history",
+          "type": "bool"
+        },
+        {
+          "doc": "Incoming and not answered.",
+          "name": "missed",
+          "scope": "calls.history",
+          "type": "bool"
+        },
+        {
+          "doc": "The other person, when known.",
+          "name": "peer",
+          "optional": true,
+          "relation": "person",
+          "scope": "calls.history",
+          "type": "-> person"
+        },
+        {
+          "doc": "The other side's name or number.",
+          "name": "name",
+          "scope": "calls.history",
+          "type": "string"
+        },
+        {
+          "doc": "My 1:1 space with them.",
+          "name": "space",
+          "optional": true,
+          "relation": "space",
+          "scope": "calls.history",
+          "type": "-> space"
+        }
+      ],
+      "scope": "calls.history"
+    },
+    "me": {
+      "doc": "The signed-in user (one item, id \"me\").",
+      "fields": [
+        {
+          "doc": "Always \"me\".",
+          "name": "id",
+          "scope": "me.basic",
+          "type": "string"
+        },
+        {
+          "doc": "My own person entry (name, avatar, presence).",
+          "name": "person",
+          "relation": "person",
+          "scope": "me.basic",
+          "type": "-> person"
+        },
+        {
+          "doc": "This device's registration id.",
+          "name": "device",
+          "optional": true,
+          "scope": "me.devices",
+          "type": "string"
+        },
+        {
+          "doc": "The chosen devices: {input, output, ringtone, volume}; inputs / outputs are read when asked.",
+          "keys": [
+            "input",
+            "output",
+            "ringtone",
+            "volume",
+            "inputs",
+            "outputs"
+          ],
+          "name": "audio",
+          "scope": "me.devices",
+          "type": "object"
+        },
+        {
+          "doc": "Cameras, read when asked (never on the UI thread).",
+          "name": "cameras",
+          "optional": true,
+          "scope": "me.devices",
+          "type": "[Device]",
+          "volatile": true
+        },
+        {
+          "doc": "{text, until?}: local only, not sent to Webex.",
+          "keys": [
+            "text",
+            "until"
+          ],
+          "name": "custom_status",
+          "optional": true,
+          "scope": "me.basic",
+          "type": "object"
+        },
+        {
+          "doc": "{start: \"HH:MM\", end: \"HH:MM\", days: [u8]} while quiet hours are on (0 = Monday).",
+          "keys": [
+            "start",
+            "end",
+            "days"
+          ],
+          "name": "quiet_hours",
+          "optional": true,
+          "scope": "me.basic",
+          "type": "object"
+        },
+        {
+          "doc": "My presence is Do not disturb.",
+          "name": "dnd",
+          "scope": "me.basic",
+          "type": "bool"
+        },
+        {
+          "doc": "Feature toggles and client policies {key: bool | number | string}, read when asked.",
+          "name": "features",
+          "optional": true,
+          "scope": "me.features",
+          "type": "object",
+          "volatile": true
+        }
+      ],
+      "scope": "me.basic"
+    },
+    "meeting": {
+      "doc": "Running and starting-soon meetings, and calendar events.",
+      "fields": [
+        {
+          "doc": "Calendar id, or the join link for running meetings.",
+          "name": "id",
+          "scope": "meetings.list",
+          "type": "string"
+        },
+        {
+          "doc": "Title.",
+          "name": "title",
+          "scope": "meetings.list",
+          "type": "string"
+        },
+        {
+          "doc": "Start.",
+          "name": "start",
+          "optional": true,
+          "scope": "meetings.list",
+          "type": "ms"
+        },
+        {
+          "doc": "End.",
+          "name": "end",
+          "optional": true,
+          "scope": "meetings.list",
+          "type": "ms"
+        },
+        {
+          "doc": "Organiser.",
+          "name": "organizer",
+          "optional": true,
+          "scope": "meetings.list",
+          "type": "string"
+        },
+        {
+          "doc": "Location.",
+          "name": "location",
+          "optional": true,
+          "scope": "meetings.list",
+          "type": "string"
+        },
+        {
+          "doc": "Opaque; only the meeting.join action accepts it.",
+          "name": "join",
+          "scope": "meetings.list",
+          "type": "JoinRef"
+        },
+        {
+          "doc": "The space it belongs to.",
+          "name": "space",
+          "optional": true,
+          "relation": "space",
+          "scope": "meetings.list",
+          "type": "-> space"
+        },
+        {
+          "doc": "Recurring.",
+          "name": "recurring",
+          "scope": "meetings.list",
+          "type": "bool"
+        },
+        {
+          "doc": "Invitees.",
+          "name": "attendee_count",
+          "optional": true,
+          "scope": "meetings.list",
+          "type": "u32"
+        },
+        {
+          "doc": "Running now.",
+          "name": "running",
+          "scope": "meetings.list",
+          "type": "bool"
+        },
+        {
+          "doc": "Where Webox knows it from.",
+          "name": "source",
+          "scope": "meetings.list",
+          "type": "\"loci\"|\"calendar\""
+        }
+      ],
+      "scope": "meetings.list"
+    },
+    "message": {
+      "doc": "A loaded message (also system lines and deleted ones a plugin keeps).",
+      "fields": [
+        {
+          "doc": "Webex activity id.",
+          "name": "id",
+          "scope": "messages.meta",
+          "type": "string"
+        },
+        {
+          "doc": "Its space.",
+          "name": "space",
+          "relation": "space",
+          "scope": "messages.meta",
+          "type": "-> space"
+        },
+        {
+          "doc": "Who wrote it (absent for system lines).",
+          "name": "author",
+          "optional": true,
+          "relation": "person",
+          "scope": "messages.meta",
+          "type": "-> person"
+        },
+        {
+          "doc": "The author's name as the message shows it.",
+          "name": "author_name",
+          "scope": "messages.meta",
+          "type": "string"
+        },
+        {
+          "doc": "I wrote it.",
+          "name": "mine",
+          "scope": "messages.meta",
+          "type": "bool"
+        },
+        {
+          "doc": "Sent at.",
+          "name": "at",
+          "optional": true,
+          "scope": "messages.meta",
+          "type": "ms"
+        },
+        {
+          "doc": "What it is.",
+          "name": "kind",
+          "scope": "messages.meta",
+          "type": "\"message\"|\"system\"|\"deleted\"|\"join_leave\""
+        },
+        {
+          "doc": "Plain text.",
+          "name": "text",
+          "scope": "messages.content",
+          "type": "string"
+        },
+        {
+          "doc": "Rich text as sent (sanitised by Webox's renderer).",
+          "name": "html",
+          "optional": true,
+          "scope": "messages.content",
+          "type": "string"
+        },
+        {
+          "doc": "The thread root it replies to.",
+          "name": "parent",
+          "optional": true,
+          "relation": "message",
+          "scope": "messages.content",
+          "type": "-> message"
+        },
+        {
+          "doc": "Loaded replies (thread roots).",
+          "name": "replies",
+          "optional": true,
+          "scope": "messages.content",
+          "type": "u32"
+        },
+        {
+          "doc": "Edited.",
+          "name": "edited",
+          "scope": "messages.content",
+          "type": "bool"
+        },
+        {
+          "doc": "Deleted, kept on screen by a plugin.",
+          "name": "kept",
+          "scope": "messages.content",
+          "type": "bool"
+        },
+        {
+          "doc": "Earlier texts a plugin attached, oldest first.",
+          "name": "history",
+          "optional": true,
+          "scope": "messages.content",
+          "type": "[[string]]"
+        },
+        {
+          "doc": "Reactions: {name, count, mine, people: [-> person]}.",
+          "name": "reactions",
+          "scope": "messages.content",
+          "type": "[Reaction]"
+        },
+        {
+          "doc": "Files and images: {name, mime, size, kind, thumb?, width?, height?}.",
+          "name": "files",
+          "scope": "files",
+          "type": "[File]"
+        },
+        {
+          "doc": "Link previews: {url, title, description, site, image?}.",
+          "name": "previews",
+          "scope": "messages.content",
+          "type": "[Preview]"
+        },
+        {
+          "doc": "It mentions me.",
+          "name": "mentions_me",
+          "scope": "messages.content",
+          "type": "bool"
+        },
+        {
+          "doc": "I flagged it.",
+          "name": "flagged",
+          "scope": "messages.content",
+          "type": "bool"
+        },
+        {
+          "doc": "{author, text} of a quoted message.",
+          "keys": [
+            "author",
+            "text"
+          ],
+          "name": "quote",
+          "optional": true,
+          "scope": "messages.content",
+          "type": "object"
+        },
+        {
+          "doc": "People whose last read message this is.",
+          "name": "seen_by",
+          "relation": "person",
+          "scope": "messages.receipts",
+          "type": "[-> person]"
+        }
+      ],
+      "scope": "messages.content"
+    },
+    "notification": {
+      "doc": "Toasts on screen.",
+      "fields": [
+        {
+          "doc": "Opaque id.",
+          "name": "id",
+          "scope": "notifications",
+          "type": "string"
+        },
+        {
+          "doc": "What it is about.",
+          "name": "kind",
+          "scope": "notifications",
+          "type": "\"message\"|\"mention\"|\"call\"|\"missed_call\"|\"meeting\"|\"reminder\"|\"info\""
+        },
+        {
+          "doc": "When it appeared.",
+          "name": "at",
+          "optional": true,
+          "scope": "notifications",
+          "type": "ms"
+        },
+        {
+          "doc": "Its space.",
+          "name": "space",
+          "optional": true,
+          "relation": "space",
+          "scope": "notifications",
+          "type": "-> space"
+        },
+        {
+          "doc": "Its person.",
+          "name": "person",
+          "optional": true,
+          "relation": "person",
+          "scope": "notifications",
+          "type": "-> person"
+        },
+        {
+          "doc": "Title.",
+          "name": "title",
+          "scope": "notifications",
+          "type": "string"
+        },
+        {
+          "doc": "Text.",
+          "name": "body",
+          "optional": true,
+          "scope": "messages.content",
+          "type": "string"
+        }
+      ],
+      "scope": "notifications"
+    },
+    "person": {
+      "doc": "Someone Webox knows: people of my spaces, directory results, call participants, me.",
+      "fields": [
+        {
+          "doc": "Webex person id; \"email:<address>\" while only the e-mail is known (then a rekey follows).",
+          "name": "id",
+          "scope": "people.basic",
+          "type": "string"
+        },
+        {
+          "doc": "Display name.",
+          "name": "name",
+          "scope": "people.basic",
+          "type": "string"
+        },
+        {
+          "doc": "Up to two letters.",
+          "name": "initials",
+          "scope": "people.basic",
+          "type": "string"
+        },
+        {
+          "doc": "Profile picture handle, when loaded.",
+          "name": "avatar",
+          "optional": true,
+          "scope": "people.basic",
+          "type": "ImageRef"
+        },
+        {
+          "doc": "Cover picture handle, when loaded.",
+          "name": "cover",
+          "optional": true,
+          "scope": "people.basic",
+          "type": "ImageRef"
+        },
+        {
+          "doc": "E-mail address.",
+          "name": "email",
+          "optional": true,
+          "scope": "people.email",
+          "type": "string"
+        },
+        {
+          "doc": "Job title (not fetched yet).",
+          "name": "title",
+          "optional": true,
+          "reserved": true,
+          "scope": "people.basic",
+          "type": "string"
+        },
+        {
+          "doc": "Department (not fetched yet).",
+          "name": "department",
+          "optional": true,
+          "reserved": true,
+          "scope": "people.basic",
+          "type": "string"
+        },
+        {
+          "doc": "Phone (not fetched yet).",
+          "name": "phone",
+          "optional": true,
+          "reserved": true,
+          "scope": "people.basic",
+          "type": "string"
+        },
+        {
+          "doc": "Presence (same id).",
+          "name": "presence",
+          "relation": "presence",
+          "scope": "people.basic",
+          "type": "-> presence"
+        },
+        {
+          "doc": "My 1:1 space with this person.",
+          "name": "direct",
+          "optional": true,
+          "relation": "space",
+          "scope": "people.basic",
+          "type": "-> space"
+        },
+        {
+          "doc": "The 1:1 space is a favourite.",
+          "name": "favorite",
+          "scope": "people.basic",
+          "type": "bool"
+        },
+        {
+          "doc": "Outside my organisation (not known yet).",
+          "name": "external",
+          "optional": true,
+          "reserved": true,
+          "scope": "people.basic",
+          "type": "bool"
+        },
+        {
+          "doc": "In the people of my spaces (the Contacts page).",
+          "name": "contact",
+          "scope": "people.basic",
+          "type": "bool"
+        },
+        {
+          "doc": "Found through a directory search, in none of my spaces.",
+          "name": "directory",
+          "scope": "people.basic",
+          "type": "bool"
+        },
+        {
+          "doc": "This is me.",
+          "name": "me",
+          "scope": "people.basic",
+          "type": "bool"
+        }
+      ],
+      "scope": "people.basic"
+    },
+    "plugin": {
+      "doc": "Installed plugins.",
+      "fields": [
+        {
+          "doc": "The plugin's key.",
+          "name": "id",
+          "scope": "app",
+          "type": "string"
+        },
+        {
+          "doc": "Name.",
+          "name": "name",
+          "scope": "app",
+          "type": "string"
+        },
+        {
+          "doc": "Version.",
+          "name": "version",
+          "scope": "app",
+          "type": "string"
+        },
+        {
+          "doc": "Author.",
+          "name": "author",
+          "scope": "app",
+          "type": "string"
+        },
+        {
+          "doc": "Switched on.",
+          "name": "enabled",
+          "scope": "app",
+          "type": "bool"
+        },
+        {
+          "doc": "Compiled into Webox.",
+          "name": "builtin",
+          "scope": "app",
+          "type": "bool"
+        },
+        {
+          "doc": "Why it does not load.",
+          "name": "error",
+          "optional": true,
+          "scope": "app",
+          "type": "string"
+        }
+      ],
+      "scope": "app"
+    },
+    "presence": {
+      "doc": "A person's presence (id = the person's id).",
+      "fields": [
+        {
+          "doc": "The person's id.",
+          "name": "id",
+          "scope": "people.presence",
+          "type": "string"
+        },
+        {
+          "doc": "Whose presence.",
+          "name": "person",
+          "relation": "person",
+          "scope": "people.presence",
+          "type": "-> person"
+        },
+        {
+          "doc": "The state (open enum).",
+          "name": "state",
+          "scope": "people.presence",
+          "type": "\"active\"|\"inactive\"|\"away\"|\"dnd\"|\"busy\"|\"quiet\"|\"ooo\"|\"call\"|\"meeting\"|\"presenting\"|\"calendar\"|\"unknown\""
+        },
+        {
+          "doc": "state is active, busy, call, meeting, presenting or calendar.",
+          "name": "online",
+          "scope": "people.presence",
+          "type": "bool"
+        },
+        {
+          "doc": "state is call, meeting or presenting.",
+          "name": "in_call",
+          "scope": "people.presence",
+          "type": "bool"
+        },
+        {
+          "doc": "Last active.",
+          "name": "last_active",
+          "optional": true,
+          "scope": "people.presence",
+          "type": "ms"
+        },
+        {
+          "doc": "End of DND / meeting / out of office.",
+          "name": "until",
+          "optional": true,
+          "scope": "people.presence",
+          "type": "ms"
+        },
+        {
+          "doc": "Custom status or out-of-office text.",
+          "name": "text",
+          "optional": true,
+          "scope": "people.presence",
+          "type": "string"
+        }
+      ],
+      "scope": "people.presence"
+    },
+    "reminder": {
+      "doc": "Message reminders and scheduled messages (local).",
+      "fields": [
+        {
+          "doc": "Opaque id.",
+          "name": "id",
+          "scope": "messages.content",
+          "type": "string"
+        },
+        {
+          "doc": "A reminder of a message, or a message to send later.",
+          "name": "kind",
+          "scope": "messages.content",
+          "type": "\"reminder\"|\"scheduled\""
+        },
+        {
+          "doc": "The space.",
+          "name": "space",
+          "relation": "space",
+          "scope": "messages.content",
+          "type": "-> space"
+        },
+        {
+          "doc": "The message to remember.",
+          "name": "message",
+          "optional": true,
+          "relation": "message",
+          "scope": "messages.content",
+          "type": "-> message"
+        },
+        {
+          "doc": "When it is due.",
+          "name": "at",
+          "scope": "messages.content",
+          "type": "ms"
+        },
+        {
+          "doc": "The text.",
+          "name": "text",
+          "scope": "messages.content",
+          "type": "string"
+        },
+        {
+          "doc": "The remembered message's author.",
+          "name": "author",
+          "optional": true,
+          "scope": "messages.content",
+          "type": "string"
+        }
+      ],
+      "scope": "messages.content"
+    },
+    "setting": {
+      "doc": "Display settings (a whitelist; no tokens, ids, paths or e-mail).",
+      "fields": [
+        {
+          "doc": "The key.",
+          "name": "id",
+          "scope": "settings.read",
+          "type": "string"
+        },
+        {
+          "doc": "Its value.",
+          "name": "value",
+          "scope": "settings.read",
+          "type": "bool | number | string"
+        },
+        {
+          "doc": "Its type.",
+          "name": "kind",
+          "scope": "settings.read",
+          "type": "\"bool\"|\"number\"|\"choice\"|\"text\""
+        }
+      ],
+      "scope": "settings.read"
+    },
+    "space": {
+      "doc": "A space (conversation) of mine.",
+      "fields": [
+        {
+          "doc": "Webex conversation id.",
+          "name": "id",
+          "scope": "spaces.list",
+          "type": "string"
+        },
+        {
+          "doc": "Title (the other person's name for 1:1 spaces).",
+          "name": "title",
+          "scope": "spaces.list",
+          "type": "string"
+        },
+        {
+          "doc": "1:1 or group.",
+          "name": "kind",
+          "scope": "spaces.list",
+          "type": "\"direct\"|\"group\""
+        },
+        {
+          "doc": "Its team.",
+          "name": "team",
+          "optional": true,
+          "relation": "team",
+          "scope": "spaces.list",
+          "type": "-> team"
+        },
+        {
+          "doc": "Direct spaces: the other person.",
+          "name": "peer",
+          "optional": true,
+          "relation": "person",
+          "scope": "spaces.list",
+          "type": "-> person"
+        },
+        {
+          "doc": "Space picture; for direct spaces the peer's avatar.",
+          "name": "avatar",
+          "optional": true,
+          "scope": "spaces.list",
+          "type": "ImageRef"
+        },
+        {
+          "doc": "Space cover picture.",
+          "name": "cover",
+          "optional": true,
+          "scope": "spaces.list",
+          "type": "ImageRef"
+        },
+        {
+          "doc": "Favourite.",
+          "name": "favorite",
+          "scope": "spaces.list",
+          "type": "bool"
+        },
+        {
+          "doc": "Hidden from the list.",
+          "name": "hidden",
+          "scope": "spaces.list",
+          "type": "bool"
+        },
+        {
+          "doc": "Public space.",
+          "name": "public",
+          "scope": "spaces.list",
+          "type": "bool"
+        },
+        {
+          "doc": "Archived (not known for spaces yet).",
+          "name": "archived",
+          "optional": true,
+          "reserved": true,
+          "scope": "spaces.list",
+          "type": "bool"
+        },
+        {
+          "doc": "Has unread activity.",
+          "name": "unread",
+          "scope": "spaces.list",
+          "type": "bool"
+        },
+        {
+          "doc": "A loaded message I have not seen mentions me.",
+          "name": "mentioned",
+          "optional": true,
+          "scope": "spaces.list",
+          "type": "bool"
+        },
+        {
+          "doc": "Unread count (Webex offers none).",
+          "name": "unread_count",
+          "optional": true,
+          "reserved": true,
+          "scope": "spaces.list",
+          "type": "u32"
+        },
+        {
+          "doc": "Last activity.",
+          "name": "last_activity",
+          "optional": true,
+          "scope": "spaces.list",
+          "type": "ms"
+        },
+        {
+          "doc": "Last activity I have seen.",
+          "name": "last_seen",
+          "optional": true,
+          "scope": "spaces.list",
+          "type": "ms"
+        },
+        {
+          "doc": "Notification setting.",
+          "name": "notify",
+          "scope": "spaces.list",
+          "type": "\"global\"|\"all\"|\"mentions\"|\"off\""
+        },
+        {
+          "doc": "notify is off.",
+          "name": "muted",
+          "scope": "spaces.list",
+          "type": "bool"
+        },
+        {
+          "doc": "I can post (not closed, not announcement-blocked).",
+          "name": "writable",
+          "scope": "spaces.list",
+          "type": "bool"
+        },
+        {
+          "doc": "Why I cannot post.",
+          "name": "read_only_reason",
+          "optional": true,
+          "scope": "spaces.list",
+          "type": "\"closed\"|\"announcement\""
+        },
+        {
+          "doc": "Moderated (locked) space.",
+          "name": "locked",
+          "scope": "spaces.list",
+          "type": "bool"
+        },
+        {
+          "doc": "Moderators.",
+          "name": "moderators",
+          "relation": "person",
+          "scope": "spaces.list",
+          "type": "[-> person]"
+        },
+        {
+          "doc": "Known members (the first 10 until the full list was loaded).",
+          "name": "members",
+          "relation": "person",
+          "scope": "spaces.list",
+          "type": "[-> person]"
+        },
+        {
+          "doc": "Exact member count once the full list was loaded.",
+          "name": "member_count",
+          "optional": true,
+          "scope": "spaces.list",
+          "type": "u32"
+        },
+        {
+          "doc": "{active: bool, locus: string} once the space ever had a meeting.",
+          "keys": [
+            "active",
+            "locus"
+          ],
+          "name": "meeting",
+          "optional": true,
+          "scope": "spaces.list",
+          "type": "object"
+        },
+        {
+          "doc": "Who is typing.",
+          "name": "typing",
+          "relation": "person",
+          "scope": "spaces.list",
+          "type": "[-> person]"
+        },
+        {
+          "doc": "My unsent draft.",
+          "name": "draft",
+          "optional": true,
+          "scope": "messages.content",
+          "type": "string"
+        },
+        {
+          "doc": "The newest loaded message.",
+          "name": "last_message",
+          "optional": true,
+          "relation": "message",
+          "scope": "messages.meta",
+          "type": "-> message"
+        }
+      ],
+      "scope": "spaces.list"
+    },
+    "team": {
+      "doc": "A team of mine.",
+      "fields": [
+        {
+          "doc": "Webex team id.",
+          "name": "id",
+          "scope": "spaces.list",
+          "type": "string"
+        },
+        {
+          "doc": "Name.",
+          "name": "name",
+          "scope": "spaces.list",
+          "type": "string"
+        },
+        {
+          "doc": "Team colour.",
+          "name": "color",
+          "optional": true,
+          "scope": "spaces.list",
+          "type": "\"#RRGGBB\""
+        },
+        {
+          "doc": "Up to two letters.",
+          "name": "initials",
+          "scope": "spaces.list",
+          "type": "string"
+        },
+        {
+          "doc": "The team's general space.",
+          "name": "general",
+          "optional": true,
+          "relation": "space",
+          "scope": "spaces.list",
+          "type": "-> space"
+        },
+        {
+          "doc": "Archived.",
+          "name": "archived",
+          "scope": "spaces.list",
+          "type": "bool"
+        },
+        {
+          "doc": "My spaces of the team.",
+          "name": "spaces",
+          "relation": "space",
+          "scope": "spaces.list",
+          "type": "[-> space]"
+        },
+        {
+          "doc": "One of its spaces is unread.",
+          "name": "unread",
+          "scope": "spaces.list",
+          "type": "bool"
+        },
+        {
+          "doc": "One of its spaces mentions me.",
+          "name": "mentioned",
+          "optional": true,
+          "scope": "spaces.list",
+          "type": "bool"
+        }
+      ],
+      "scope": "spaces.list"
+    }
+  },
+  "functions": [
+    {
+      "doc": "Number of items of a list (or characters of a string).",
+      "name": "len(list)"
+    },
+    {
+      "doc": "Same as len.",
+      "name": "count(path)"
+    },
+    {
+      "doc": "Some item of the list matches expr (paths in expr are relative to the item).",
+      "name": "any(list, expr)"
+    },
+    {
+      "doc": "Every item matches.",
+      "name": "all(list, expr)"
+    },
+    {
+      "doc": "Current time in ms.",
+      "name": "now()"
+    },
+    {
+      "doc": "n minutes in ms.",
+      "name": "minutes(n)"
+    },
+    {
+      "doc": "n hours in ms.",
+      "name": "hours(n)"
+    },
+    {
+      "doc": "n days in ms.",
+      "name": "days(n)"
+    },
+    {
+      "doc": "Lower case.",
+      "name": "lower(s)"
+    }
+  ],
+  "types": {
+    "Device": "{id, name, kind: \"audio_in\"|\"audio_out\"|\"camera\", default: bool}",
+    "File": "{name, mime, size: u64, kind: \"image\"|\"video\"|\"gif\"|\"file\", thumb?: ImageRef, width?: u32, height?: u32}",
+    "ImageRef": "An opaque image handle (\"img:...\"); never a URL or a token.",
+    "JoinRef": "An opaque meeting handle (\"join:...\"); only the meeting.join action accepts it.",
+    "Participant": "{id, person?: -> person, name, state: \"joined\"|\"ringing\"|\"left\", muted, hand, host, me}",
+    "Preview": "{url, title, description, site, image?: ImageRef}",
+    "Reaction": "{name, count: u32, mine: bool, people: [-> person]}",
+    "ms": "Unix time in milliseconds (JSON number)."
+  },
+  "version": "webox-data/1"
+}

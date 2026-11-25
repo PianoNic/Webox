@@ -79,7 +79,14 @@ impl App {
         let mut got = vec![];
         if let Some(c) = &self.client { while let Ok(r) = c.rx.try_recv() { got.push(r); } }
         let changed = !got.is_empty();
+        // The data API's store: what the answers change (only while a plugin uses it; app/data_sync.rs).
+        let data_on = self.plugins.hub.active();
+        let mut data_marks = crate::extras::data::Marks::default();
         for r in got {
+            if data_on {
+                data_marks.add(self.data_marks(&r));
+                if let Resp::Directory(_, p, _) = &r { self.plugins.hub.note_directory(p); }
+            }
             match r {
                 Resp::Status(s) => self.status = s,
                 Resp::Device(d) => { self.settings["device"] = json!(d); system::save_settings(&self.cfg, &self.settings); }
@@ -204,6 +211,7 @@ impl App {
         // Plugin threads read spaces, people and messages from a copy (`spaces.list`, `space.history`, ...), kept only while a
         // plugin listens to `message.received`.
         self.plugins.feed(&self.spaces, &self.people, &self.messages, changed);
+        self.data_frame(data_marks, now); // data API: store update and `data.changed` (nothing without a plugin using it)
         self.ack_on_activation(); // the window came to the front with an unread chat open
         self.plugin_log.extend(out.logs);
         self.toasts.retain(|t| t.1 > now);
@@ -358,6 +366,7 @@ impl App {
 
 mod signin;
 mod live_list;
+mod data_sync; // the data API's store (extras/data/)
 pub mod actions;
 pub mod files; // upload / download state shared by the UI and the cloud thread
 
