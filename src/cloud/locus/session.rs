@@ -287,7 +287,7 @@ impl Session {
             "ANSWER" => {
                 let Some(c) = self.calls.cur.as_ref() else { return };
                 let (done, ours, share_seq) = (c.roap_done, c.roap_seq, c.lines_seq);
-                if done && seq == ours {
+                if done && seq == ours && c.roap_applied == seq {
                     // the server repeats its ANSWER when our OK got lost: OK again (the state machine waits for it)
                     let r = self.send_roap("OK", None, seq);
                     dbg_conn(&format!("call: repeated ANSWER seq={seq}, OK sent again -> {}", if r.is_ok() { "ok" } else { "failed" }));
@@ -298,7 +298,7 @@ impl Session {
                 let r = if share_seq == Some(seq) { m.apply_lines_answer(sdp) } else { m.apply_any_answer(sdp) };
                 match r {
                     Ok(()) => {
-                        if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; c.offer_at = None; c.lines_seq = None; c.lines_at = None; }
+                        if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; c.roap_applied = seq; c.offer_at = None; c.lines_seq = None; c.lines_at = None; }
                         let r = self.send_roap("OK", None, seq);
                         dbg_conn(&format!("call: roap OK sent -> {}", r.as_ref().map_or_else(|e| format!("failed: {}", scrub(e)), |_| "ok".into())));
                         if share_seq == Some(seq) { self.lines_ready(); }
@@ -386,10 +386,11 @@ impl Session {
             Err(e) => { dbg_conn(&format!("call: ice restart offer failed: {}", scrub(&e))); return }
         };
         let seq = c.roap_seq + 1;
-        (c.roap_seq, c.roap_done, c.offer_at) = (seq, false, Some(now));
+        (c.roap_seq, c.roap_done) = (seq, false);
         let r = self.send_roap("OFFER", Some(&sdp), seq);
         dbg_conn(&format!("call: media down {} s, ice restart OFFER seq={seq} -> {}", now.saturating_duration_since(down).as_secs(), if r.is_ok() { "ok" } else { "failed" }));
-        if r.is_err() { if let Some(c) = self.calls.cur.as_mut() { (c.roap_done, c.offer_at) = (true, None); } }
+        // the ANSWER's deadline starts once the OFFER is out (gathering and the request may have taken a while)
+        if let Some(c) = self.calls.cur.as_mut() { if r.is_ok() { c.offer_at = Some(Instant::now()); } else { (c.roap_done, c.offer_at) = (true, None); } }
     }
 
     /// Cancel (outgoing) / leave (connected) / decline (incoming, not answered).

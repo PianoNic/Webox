@@ -234,8 +234,9 @@ impl Session {
         }
         let Some(c) = self.calls.cur.as_mut() else { return };
         let (Some(m), Some(s)) = (c.media.as_ref(), c.share.as_mut()) else { return };
+        let base = m.share_tx_packets(); // before the feed sends anything
         match m.feed_share(s.stream.clone()) {
-            Ok(f) => { (s.feed, s.phase, s.since, s.tx_base, s.tx_checked) = (Some(f), Phase::Sharing, Instant::now(), m.share_tx_packets(), false); }
+            Ok(f) => { (s.feed, s.phase, s.since, s.tx_base, s.tx_checked) = (Some(f), Phase::Sharing, Instant::now(), base, false); }
             Err(e) => return self.share_failed(&format!("Freigabe fehlgeschlagen: {e}")),
         }
         dbg_conn("call: share: sharing");

@@ -351,6 +351,8 @@ struct Active {
     url: String, self_id: String, self_url: String, media_id: String, correlation_id: String,
     outgoing: bool, name: String, email: String, last: Option<CallState>, answered: bool,
     media: Option<Media>, roap_seq: u32, roap_done: bool,
+    /// The seq of the last ANSWER applied (a repeated one gets OK again; one for an offer given up on does not).
+    roap_applied: u32,
     /// Media trouble was already reported for this call (`media_trouble`).
     media_warned: bool,
     /// Event-driven state: the last locus applied, its sequence, when it was last read by GET, whether an event asked
@@ -392,7 +394,7 @@ struct Active {
 impl Active {
     fn new(url: String, self_id: String, self_url: String, outgoing: bool, name: String, email: String) -> Active {
         Active { url, self_id, self_url, media_id: String::new(), correlation_id: String::new(), outgoing, name, email, last: None, answered: outgoing,
-            media: None, roap_seq: 0, roap_done: false, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None,
+            media: None, roap_seq: 0, roap_done: false, roap_applied: 0, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None,
             locus: Value::Null, joined_at: None, media_up_at: None, offer_at: None, share: None,
             lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false, rx_lines_tried: false, mute_info: None, space: None, roster_sent: None,
             video: Default::default(), gone_since: None, fresh_at: None, media_down_at: None, ice_restart_at: None }
