@@ -8,11 +8,11 @@ fn live_connect() {
     let mut token = s["token"].as_str().unwrap_or("").to_string();
     // the saved access token may have expired: refresh it in memory only (nothing is written back)
     if let Some(r) = s["refresh_token"].as_str().filter(|r| !r.is_empty()) {
-        let base = s["idbroker_base"].as_str().filter(|b| !b.is_empty()).unwrap_or(crate::cloud::auth::US_BROKER).to_string();
+        let base = crate::cloud::auth::saved_broker(s["idbroker_base"].as_str());
         if let Ok(t) = crate::cloud::auth::refresh(r, &base, "") { token = t.access; }
     }
     let kms = s["refresh_token"].as_str().filter(|r| !r.is_empty())
-        .map(|r| (r.to_string(), s["idbroker_base"].as_str().filter(|b| !b.is_empty()).unwrap_or(crate::cloud::auth::US_BROKER).to_string()));
+        .map(|r| (r.to_string(), crate::cloud::auth::saved_broker(s["idbroker_base"].as_str())));
     let c = super::start(token, s["device"].as_str().map(String::from), kms);
     let hs = |b: &[u8]| { use std::hash::{Hash, Hasher}; let mut h = std::collections::hash_map::DefaultHasher::new(); b.hash(&mut h); h.finish() as u32 };
     let mut asked_older: Vec<String> = vec![]; // spaces for which the history was requested twice (read-only paging check)

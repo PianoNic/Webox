@@ -338,7 +338,7 @@ fn live_call() {
     let s = crate::system::load_settings(&dir);
     let token = s["token"].as_str().unwrap_or("").to_string();
     let kms = s["refresh_token"].as_str().filter(|r| !r.is_empty())
-        .map(|r| (r.to_string(), s["idbroker_base"].as_str().filter(|b| !b.is_empty()).unwrap_or(crate::cloud::auth::US_BROKER).to_string()));
+        .map(|r| (r.to_string(), crate::cloud::auth::saved_broker(s["idbroker_base"].as_str())));
     let c = crate::cloud::start(token, s["device"].as_str().map(String::from), kms);
     let end = Instant::now() + Duration::from_secs(60);
     let (mut dialled, mut rang_at, mut hung, mut audited) = (false, None::<Instant>, false, false);

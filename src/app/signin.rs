@@ -12,7 +12,7 @@ impl App {
     /// The account's home-cluster idbroker base, discovered at sign-in and saved; US default if unset.
     /// authorize, token exchange, refresh and revoke must all use this same cluster.
     pub(crate) fn idbroker_base(&self) -> String {
-        self.settings["idbroker_base"].as_str().filter(|s| !s.is_empty()).unwrap_or(auth::US_BROKER).to_string()
+        auth::saved_broker(self.settings["idbroker_base"].as_str())
     }
 
     /// Stable per-install device id sent on the token exchange/refresh (`&device_id=`). Generated once (64 hex) and

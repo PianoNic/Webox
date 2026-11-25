@@ -108,6 +108,33 @@ pub(crate) fn gif_decoder(bytes: &[u8]) -> image::ImageResult<image::codecs::gif
     Ok(d)
 }
 
+/// Largest side / decode memory of a picture from the network (message pictures, covers, link previews): any space member can
+/// post one, and a few KB of PNG can claim an 11k x 11k canvas (~480 MB) that the decoder's default limits (512 MB, no side
+/// limit) would allocate. Above the limits the picture is refused from its header, before anything is allocated.
+pub(crate) const NET_IMAGE_SIDE: u32 = 16384;
+pub(crate) const NET_IMAGE_ALLOC: u64 = 256 * 1024 * 1024;
+/// Profile pictures are small (Webex serves them at 1600 px at most): tighter limits.
+const AVATAR_SIDE: u32 = 4096;
+const AVATAR_ALLOC: u64 = 64 * 1024 * 1024;
+
+/// Decodes a still picture (or a GIF's first frame) within `max_side` per side and `max_alloc` bytes of decoder memory; a GIF
+/// must also pass `gif_canvas_ok`. Too big is an `ImageError::Limits`, never an allocation.
+pub(crate) fn decode_limited(bytes: &[u8], max_side: u32, max_alloc: u64) -> image::ImageResult<image::DynamicImage> {
+    let mut r = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format()?;
+    if r.format() == Some(image::ImageFormat::Gif) && !gif_canvas_ok(bytes) {
+        return Err(image::ImageError::Limits(image::error::LimitError::from_kind(image::error::LimitErrorKind::DimensionError)));
+    }
+    let mut l = image::Limits::default(); // non_exhaustive: set the fields one by one
+    l.max_image_width = Some(max_side);
+    l.max_image_height = Some(max_side);
+    l.max_alloc = Some(max_alloc);
+    r.limits(l);
+    r.decode()
+}
+
+/// `decode_limited` with the limits for pictures from the network.
+pub(crate) fn decode_net(bytes: &[u8]) -> image::ImageResult<image::DynamicImage> { decode_limited(bytes, NET_IMAGE_SIDE, NET_IMAGE_ALLOC) }
+
 /// Keeps every second frame and gives it the delay of the pair, so the total duration is unchanged.
 pub(crate) fn halve_frames<T>(frames: Vec<(T, f32)>) -> Vec<(T, f32)> {
     let mut out: Vec<(T, f32)> = Vec::with_capacity(frames.len() / 2 + 1);
@@ -156,7 +183,7 @@ fn decode_anim(ctx: &egui::Context, key: &str, bytes: &[u8]) -> Option<Anim> {
         let bytes = out.len() * size[0] * size[1] * 4;
         return Some(Anim { frames: out, size, total, start: None, paused_at: None, drawn: 0.0, bytes, used: 0 });
     }
-    match image::load_from_memory(bytes) {
+    match decode_net(bytes) {
         Ok(img) => {
             let mut img = img.into_rgba8(); // no copy of an RGBA picture (a large one would briefly need twice its memory)
             let max_side = if key.starts_with("full:") { MAX_FULL_SIDE } else { MAX_TEXTURE_SIDE };
@@ -330,8 +357,7 @@ impl Photos {
     pub fn image_gray(&mut self, ctx: &egui::Context, key: &str) -> Option<(egui::TextureId, [usize; 2])> {
         if !self.gray_tex.contains_key(key) {
             let bytes = self.images.get(key)?;
-            let gif_ok = image::guess_format(bytes).ok() != Some(image::ImageFormat::Gif) || gif_canvas_ok(bytes);
-            let tex = gif_ok.then(|| image::load_from_memory(bytes).ok()).flatten().map(|img| {
+            let tex = decode_net(bytes).ok().map(|img| {
                 let img = if img.width().max(img.height()) > MAX_FRAME_SIDE { img.thumbnail(MAX_FRAME_SIDE, MAX_FRAME_SIDE) } else { img };
                 upload(ctx, format!("gray:{key}"), &image::DynamicImage::ImageLumaA8(img.to_luma_alpha8()).to_rgba8(), true)
             });
@@ -407,7 +433,7 @@ impl Photos {
         let key = if self.bytes.contains_key(key) { key.to_string() } else { key.to_lowercase() };
         if !self.bytes.contains_key(&key) { return None; }
         if !self.tex.contains_key(&key) {
-            let t = match image::load_from_memory(&self.bytes[&key]) {
+            let t = match decode_limited(&self.bytes[&key], AVATAR_SIDE, AVATAR_ALLOC) {
                 Ok(img) => {
                     let img = img.to_rgba8();
                     // The avatars are drawn from round.rs textures, rendered from the full picture registered below; this texture

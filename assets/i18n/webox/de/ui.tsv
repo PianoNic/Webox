@@ -440,3 +440,13 @@ Your message draft already contains a quote.\nDo you want to replace it with thi
 Your self view is your own video. When your video is off, your self view shows what others see instead of your video, such as your profile picture or display name. These options only change how you see your self view, not what others see.	Ihre Selbstansicht ist Ihre eigene Videoansicht. Wenn Ihr Video ausgeschaltet ist, ist Ihre Selbstansicht die Ansicht, die andere anstelle Ihres Videos sehen, z. B. Ihr Profilbild oder Ihren Anzeigenamen. Diese Optionen steuern nur Ihre Anzeige Ihrer Selbstansicht und nicht, was andere sehen.
 •••••••• (saved; type again to change)	•••••••• (gespeichert; zum Ändern neu eingeben)
 ‹ All plugins	‹ Alle Plugins
+Signatures	Signaturen
+Allow unsigned repositories	Unsignierte Repositorys erlauben
+Installs plugins from repositories whose list is not signed with the Webox key, or whose signature is wrong. Anyone who can change such a list can deliver any code.	Installiert Plugins aus Repositorys, deren Liste nicht mit dem Webox-Schlüssel signiert ist oder deren Signatur falsch ist. Wer eine solche Liste ändern kann, kann beliebigen Code ausliefern.
+signed	signiert
+not signed	nicht signiert
+signature invalid	Signatur ungültig
+signature not checked	Signatur nicht geprüft
+Unsigned repository: Webox can't check that this list comes from its publisher.	Unsigniertes Repository: Webox kann nicht prüfen, ob diese Liste von ihrem Herausgeber stammt.
+The repository's signature is invalid: the list may have been changed by someone else.	Die Signatur des Repositorys ist ungültig: Die Liste wurde möglicherweise von jemand anderem geändert.
+Allow unsigned repositories below to install it anyway.	Erlauben Sie unten unsignierte Repositorys, um es trotzdem zu installieren.

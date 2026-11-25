@@ -115,7 +115,7 @@ impl Session {
                 Ok(r) => r.into_reader().take(COVER_MAX_BYTES).read_to_end(&mut buf).is_ok() && !buf.is_empty(),
                 Err(e) => { dbg_conn(&format!("cover ({what}) image: {}", match e { ureq::Error::Status(c, _) => format!("http {c}"), _ => "transport".into() })); false }
             };
-            dbg_conn(&format!("cover ({what}, {:?}): {} bytes, decodes: {}", st(&a, "imageName"), buf.len(), image::load_from_memory(&buf).is_ok()));
+            dbg_conn(&format!("cover ({what}, {:?}): {} bytes, decodes: {}", st(&a, "imageName"), buf.len(), crate::assets::photos::decode_net(&buf).is_ok()));
             if !ok { continue }
             if what == "own selection" { let _ = self.out.send(Resp::Cover(buf)); sent_own = true; continue }
             if !sent_own { let _ = self.out.send(Resp::Cover(buf.clone())); }

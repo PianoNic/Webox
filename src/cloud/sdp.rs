@@ -106,9 +106,25 @@ pub fn summary(sdp: &str) -> String {
     format!("m=[{}] c=[{}] ice-lite={lite} setup={setup} candidates=[{}]", mlines.join("; "), conn.join(" "), cands.join(" "))
 }
 
+/// The addresses of the UDP candidates (IP literals only: `resolve_names` ran before): where the media server sends from.
+pub fn udp_candidate_addrs(sdp: &str) -> Vec<std::net::SocketAddr> {
+    sdp.lines().filter_map(|l| l.trim().strip_prefix("a=candidate:")).filter_map(|c| {
+        let f: Vec<&str> = c.split_whitespace().collect();
+        if !f.get(2)?.eq_ignore_ascii_case("udp") { return None }
+        Some(std::net::SocketAddr::new(f.get(4)?.parse().ok()?, f.get(5)?.parse().ok()?))
+    }).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn server_addresses_are_the_udp_candidates() {
+        let a = udp_candidate_addrs(ANSWER);
+        assert_eq!(a, ["192.0.2.10:5004".parse().unwrap(), "192.0.2.10:9000".parse().unwrap()]);
+        assert!(udp_candidate_addrs("a=candidate:1 1 UDP 1 media.example.com 5004 typ host\r\n").is_empty(), "names are resolved first");
+    }
 
     /// The shape of a Webex media server answer (documentation addresses).
     const ANSWER: &str = "v=0\r\no=linus 0 1 IN IP4 192.0.2.10\r\ns=-\r\nc=IN IP4 192.0.2.10\r\nt=0 0\r\na=ice-lite\r\n\

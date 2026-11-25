@@ -41,9 +41,11 @@ pub fn handle(msg: &Value, open: &mut dyn FnMut(&str)) -> Value {
         ("ping", _) | ("version", _) => json!({"result": "success", "version": env!("CARGO_PKG_VERSION"), "installed": true}),
         (k, Some(u)) if k.contains("join") || k.contains("launch") || k.contains("start") || k.is_empty() => {
             // Parsed and handed on in its normalised form: no raw spaces, quotes or control characters reach the system's opener.
-            match url::Url::parse(u).ok().filter(|p| u.starts_with("https://") && p.host_str().is_some_and(|h| !h.is_empty())) {
+            // Only Webex meeting links (an https host below webex.com / wbx2.com / ciscospark.com): any page the extension
+            // runs on can send this message, and it must not be able to make Webox open arbitrary links.
+            match url::Url::parse(u).ok().filter(|p| u.starts_with("https://") && crate::cloud::webex_host(p.as_str())) {
                 Some(p) => { open(p.as_str()); json!({"result": "success", "joined": true}) }
-                None => json!({"result": "failure", "reason": "only https meeting links are opened"}),
+                None => json!({"result": "failure", "reason": "only https Webex meeting links are opened"}),
             }
         }
         _ => json!({"result": "failure", "reason": format!("unsupported message '{kind}'")}),
@@ -144,12 +146,24 @@ mod tests {
         let mut opened = vec![];
         let mut open = |u: &str| opened.push(u.to_string());
         assert_eq!(handle(&json!({"type": "ping"}), &mut open)["result"], "success");
-        assert_eq!(handle(&json!({"type": "join", "joinURL": "https://site.example/j/1"}), &mut open)["result"], "success");
+        assert_eq!(handle(&json!({"type": "join", "joinURL": "https://site.webex.com/j/1"}), &mut open)["result"], "success");
         assert_eq!(handle(&json!({"type": "join", "joinURL": "file:///x"}), &mut open)["result"], "failure");
-        assert_eq!(opened, ["https://site.example/j/1"]);
+        assert_eq!(opened, ["https://site.webex.com/j/1"]);
         let mut buf = vec![];
         write_msg(&mut buf, &json!({"a": 1})).unwrap();
         assert_eq!(read_msg(&mut buf.as_slice()), Some(json!({"a": 1})));
         assert!(is_host_call(&["x".into(), "chrome-extension://abc/".into()]));
+    }
+
+    #[test]
+    fn only_webex_meeting_links_are_opened() {
+        let mut opened = vec![];
+        let mut open = |u: &str| opened.push(u.to_string());
+        for bad in ["https://site.example/j/1", "https://webex.com.evil.example/j", "https://evil.example?.webex.com", "https://a.webex.com@evil.example/",
+            "http://site.webex.com/j/1", "https://webex.com/j/1"] {
+            assert_eq!(handle(&json!({"type": "join", "joinURL": bad}), &mut open)["result"], "failure", "{bad}");
+        }
+        assert_eq!(handle(&json!({"cmd": "launch", "data": {"url": "https://Company.WebEx.com/meet/x"}}), &mut open)["result"], "success");
+        assert_eq!(opened, ["https://company.webex.com/meet/x"]);
     }
 }

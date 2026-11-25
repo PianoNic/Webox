@@ -18,7 +18,7 @@
 //! direction is enough: no simulcast, no multistream. Received video is decoded off the UI thread (`share_rx::Decode`,
 //! into `video_rx::MAIN` for the camera and `share_rx::SHARE` for a share); sent video is encoded on the camera's own
 //! thread (`media::camera::send`).
-use super::ice_socket::SeenSsrc;
+use super::ice_socket::{Peers, SeenSsrc};
 use super::{dbg_conn, sdp, sdp_compat};
 use crate::media::audio::{self, Io, FRAME};
 use crate::media::jitter::{self, Adjust, Jitter, Play};
@@ -80,6 +80,9 @@ pub struct Media {
     /// The SSRCs H.264 (the video lines' payload type) was last seen arriving from on the ICE socket, whether webrtc-rs
     /// took them or not: with several m-lines webrtc-rs drops RTP from undeclared SSRCs.
     pub seen_video: Arc<SeenSsrc>,
+    /// The media server's addresses (the UDP candidates of every remote description applied): only RTP from these is
+    /// noted in `seen_video`.
+    peers: Arc<Peers>,
     /// What the far end sends as the locus has it (`EXPECT_SHARE`, `EXPECT_VIDEO`): which line an undeclared SSRC
     /// seen on the wire is declared on (`apply_lines_answer`).
     pub expect: Arc<AtomicU8>,
@@ -222,7 +225,7 @@ pub fn route_ip(host: &str) -> Option<IpAddr> {
 }
 
 /// Needs the tokio runtime (the ICE socket is registered with it).
-fn settings(net: Net, seen_video: Arc<SeenSsrc>) -> Result<SettingEngine, String> {
+fn settings(net: Net, seen_video: Arc<SeenSsrc>, peers: Arc<Peers>) -> Result<SettingEngine, String> {
     let mut s = SettingEngine::default();
     // a short network gap only disconnects (and recovers); Failed, the media gone for good, after a minute without checks
     s.set_ice_timeouts(Some(Duration::from_secs(5)), Some(Duration::from_secs(60)), Some(Duration::from_secs(1)));
@@ -236,7 +239,7 @@ fn settings(net: Net, seen_video: Arc<SeenSsrc>) -> Result<SettingEngine, String
         s.set_network_types(vec![if ip.is_ipv4() { NetworkType::Udp4 } else { NetworkType::Udp6 }]);
         s.set_ip_filter(Box::new(move |a| a == ip));
         // our own socket on that address only (reads survive ICMP errors, see ice_socket.rs)
-        s.set_udp_network(super::ice_socket::mux(ip, seen_video, SLIDES_PT).map_err(|e| format!("ICE socket: {e}"))?);
+        s.set_udp_network(super::ice_socket::mux(ip, seen_video, SLIDES_PT, peers).map_err(|e| format!("ICE socket: {e}"))?);
     }
     Ok(s)
 }
@@ -406,6 +409,8 @@ impl Media {
         let (decoded_share, decoded_main) = (Arc::new(AtomicU64::new(0)), Arc::new(AtomicU64::new(0)));
         let seen_video = Arc::new(SeenSsrc::default());
         let seen = seen_video.clone();
+        let peers = Arc::new(Peers::default());
+        let peers_ice = peers.clone();
         let live = Arc::new(super::media_stats::Live::default());
         let pc = {
             let (state, io, rxp, stop, rx_ssrc, rx_video, live) = (state.clone(), io.clone(), rx_packets.clone(), stop.clone(), rx_ssrc.clone(), rx_video.clone(), live.clone());
@@ -417,7 +422,7 @@ impl Media {
                 // offered only once the video lines are added (an audio call's offer has no m=video)
                 m.register_codec(RTCRtpCodecParameters { capability: h264_cap(), payload_type: SLIDES_PT, ..Default::default() }, RTPCodecType::Video).map_err(|e| e.to_string())?;
                 let registry = register_default_interceptors(Registry::new(), &mut m).map_err(|e| e.to_string())?;
-                let api = APIBuilder::new().with_media_engine(m).with_interceptor_registry(registry).with_setting_engine(settings(net, seen)?).build();
+                let api = APIBuilder::new().with_media_engine(m).with_interceptor_registry(registry).with_setting_engine(settings(net, seen, peers_ice)?).build();
                 let ice_servers = turn.filter(|t| !t.url.is_empty()).map(|t| vec![RTCIceServer { urls: vec![t.url], username: t.username, credential: t.password, ..Default::default() }]).unwrap_or_default();
                 let pc = Arc::new(api.new_peer_connection(RTCConfiguration { ice_servers, ..Default::default() }).await.map_err(|e| e.to_string())?);
                 let (s2, t0) = (state.clone(), Instant::now());
@@ -474,7 +479,7 @@ impl Media {
                 Ok::<_, String>(pc)
             })?
         };
-        let me = Media { rt, pc, state, muted, rx_packets, tx_frames, stop, v6, rx_ssrc, rx_video, rx_main, decoded_share, decoded_main, rx_slides_ssrc, rx_main_ssrc, seen_video,
+        let me = Media { rt, pc, state, muted, rx_packets, tx_frames, stop, v6, rx_ssrc, rx_video, rx_main, decoded_share, decoded_main, rx_slides_ssrc, rx_main_ssrc, seen_video, peers,
             expect: Arc::new(AtomicU8::new(0)), share: std::sync::Mutex::new(None), camera: std::sync::Mutex::new(None), lines_negotiated: AtomicBool::new(false), live };
         me.start_sender(io)?;
         Ok(me)
@@ -564,6 +569,7 @@ impl Media {
         let pc = self.pc.clone();
         let mid = self.rt.block_on(pc.local_description()).map_or(String::new(), |d| sdp_compat::first_mid(&d.sdp));
         let sdp = usable(&sdp, self.v6, lookup, &mid);
+        self.peers.allow(sdp::udp_candidate_addrs(&sdp));
         self.state.store(1, Ordering::SeqCst);
         let desc = RTCSessionDescription::answer(sdp.clone()).map_err(|e| e.to_string())?;
         let r = self.rt.block_on(async move { pc.set_remote_description(desc).await.map_err(|e| e.to_string()) });
@@ -580,6 +586,7 @@ impl Media {
         let local = self.rt.block_on(pc.local_description()).map(|d| d.sdp).unwrap_or_default();
         let (mids, share) = (mids_of(&local), self.has_lines());
         let offer_sdp = usable(&offer_sdp, self.v6, lookup, mids.first().map_or("", |s| s.as_str()));
+        self.peers.allow(sdp::udp_candidate_addrs(&offer_sdp));
         let offer_sdp = if share {
             let (slides, main) = self.undeclared_video();
             let sdp = share_answer_sdp(&offer_sdp, &mids, self.rx_ssrc.load(Ordering::Relaxed), slides, main);
@@ -685,7 +692,9 @@ impl Media {
         let (slides, main) = self.undeclared_video();
         if slides.is_some() { dbg_conn("call: share: declaring the SSRC the far end's share arrives from"); }
         if main.is_some() { dbg_conn("call: video: declaring the SSRC the far end's camera arrives from"); }
-        let sdp = share_answer_sdp(&usable(&sdp, self.v6, lookup, mids.first().map_or("", |s| s.as_str())), &mids, self.rx_ssrc.load(Ordering::Relaxed), slides, main);
+        let sdp = usable(&sdp, self.v6, lookup, mids.first().map_or("", |s| s.as_str()));
+        self.peers.allow(sdp::udp_candidate_addrs(&sdp));
+        let sdp = share_answer_sdp(&sdp, &mids, self.rx_ssrc.load(Ordering::Relaxed), slides, main);
         // our `audio/slides` is recvonly in webrtc-rs (see prepare_lines): its answer must read sendonly, whatever the
         // server said, or webrtc-rs pauses the receiver the call's audio arrives on
         let sdp = match section_of_kind(&local, "audio", 2) { Some(i) => with_direction(&sdp, i, "sendonly"), None => sdp };

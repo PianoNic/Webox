@@ -95,6 +95,13 @@ pub fn discover_idbroker(email: &str) -> String {
     found.unwrap_or_else(|| US_BROKER.to_string())
 }
 
+/// The saved home-cluster broker (`idbroker_base` in settings.json), checked again on every use: the client secret and the
+/// refresh token are sent to it, and settings.json is a plain file anything running as the user can edit. Only a Webex https
+/// host counts (like `discover_idbroker`); anything else, or nothing saved, is the US broker.
+pub fn saved_broker(saved: Option<&str>) -> String {
+    saved.map(|b| b.trim().trim_end_matches('/')).filter(|b| super::webex_host(b)).map_or_else(|| US_BROKER.to_string(), str::to_string)
+}
+
 fn enc(s: &str) -> String {
     s.bytes().map(|b| match b { b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(), _ => format!("%{b:02X}") }).collect()
 }
@@ -227,6 +234,17 @@ pub fn exchange_async(code: String, verifier: String, base: String, device_id: S
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn saved_broker_must_be_a_webex_host() {
+        assert_eq!(super::saved_broker(Some("https://idbroker-eu.webex.com/")), "https://idbroker-eu.webex.com");
+        assert_eq!(super::saved_broker(Some("https://idbroker.webex.com")), super::US_BROKER);
+        for bad in ["https://evil.example", "http://idbroker.webex.com", "https://webex.com.evil.example", "https://idbroker.webex.com@evil.example",
+            "https://evil.example/idbroker.webex.com", "", "idbroker.webex.com"] {
+            assert_eq!(super::saved_broker(Some(bad)), super::US_BROKER, "{bad}");
+        }
+        assert_eq!(super::saved_broker(None), super::US_BROKER);
+    }
+
     #[test]
     fn urls() {
         let (v, c) = super::pkce();
