@@ -640,7 +640,8 @@ impl Media {
             // talked audio-only before (loopback tests) reuses it as `audio/slides`
             let mut spare_audio = None;
             for t in pc.get_transceivers().await {
-                if t.mid().is_none() && t.kind() == RTPCodecType::Audio { spare_audio = Some(t); }
+                // not the microphone's own transceiver: before the first offer it has no mid either
+                if t.mid().is_none() && t.kind() == RTPCodecType::Audio && t.sender().await.track().await.is_none() { spare_audio = Some(t); }
             }
             // the camera: sendrecv from the start, muted (`videoMuted`) while it is off, like the official client
             let camera = video_line(&pc, "video", "webox-camera", live.clone(), super::media_stats::VIDEO).await?;
