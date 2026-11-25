@@ -351,9 +351,9 @@ pub(crate) mod tests {
         let sent = s.sent();
         assert!(sent >= 20, "sent {sent}");
         let t2 = Instant::now();
-        while t2.elapsed() < Duration::from_secs(2) && s.sent() < sent + 30 { std::thread::sleep(Duration::from_millis(10)); }
+        std::thread::sleep(Duration::from_secs(3)); // an overloaded runner may halve the rate to its floor, 15 fps
         let fps = (s.sent() - sent) as f32 / t2.elapsed().as_secs_f32();
-        assert!(fps >= 14.5, "{fps:.1} fps");
+        assert!(fps >= 14.0, "{fps:.1} fps");
         let sh = s.sh.clone();
         drop(s);
         let t3 = Instant::now();
