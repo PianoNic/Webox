@@ -86,15 +86,16 @@ impl App {
                 if resp.hovered() && !closed { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 resp
             };
-            // Tooltips: "Video Call", "Audio Call", "Screen Share", "Schedule a meeting. Share a link and meet later". All three call
-            // buttons place the 1:1 call through the guarded call path (`start_call`); media is audio only.
+            // Tooltips: "Video call" (PhoneWidgetBody "Videoanruf"), "Audio Call", "Screen Share", "Schedule a meeting. Share a link and
+            // meet later". All three call buttons place the 1:1 call through the guarded call path (`start_call_with`); the video
+            // button starts it with our camera on.
             let peer = person.as_ref().filter(|p| !p.email.is_empty()).map(|p| (p.email.clone(), p.name.clone()))
                 .or_else(|| space.participants.iter().find(|p| !p.email.is_empty() && !p.email.eq_ignore_ascii_case(&self.me.email)).map(|p| (p.email.clone(), p.name.clone())));
-            let mut call_peer = false;
-            if put(self, ui, 0).on_hover_text("Video-Anruf").clicked() { call_peer = true; }
-            if put(self, ui, 1).on_hover_text("Audio-Anruf").clicked() { call_peer = true; }
-            if put(self, ui, 2).on_hover_text("Bildschirmfreigabe").clicked() { call_peer = true; }
-            if call_peer { match &peer { Some((e, n)) => self.start_call(e, n, now), None => self.toast(crate::cloud::locus::call_allowed("", None).err().unwrap_or_default(), now) } }
+            let mut call_peer = None; // Some(with video)
+            if put(self, ui, 0).on_hover_text("Videoanruf").clicked() { call_peer = Some(true); }
+            if put(self, ui, 1).on_hover_text("Audio-Anruf").clicked() { call_peer = Some(false); }
+            if put(self, ui, 2).on_hover_text("Bildschirmfreigabe").clicked() { call_peer = Some(false); }
+            if let Some(video) = call_peer { match &peer { Some((e, n)) => self.start_call_with(e, n, now, video), None => self.toast(crate::cloud::locus::call_allowed("", None).err().unwrap_or_default(), now) } }
             if put(self, ui, 3).on_hover_text("Setzen Sie ein Meeting an. Link teilen und später treffen").clicked() {
                 let inv: Vec<String> = peer.iter().map(|(e, _)| e.clone()).collect();
                 self.open_scheduler(&space.title, &inv);
@@ -213,7 +214,9 @@ impl App {
         if space.direct { return; }
         if self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none()) { self.toast("Es läuft bereits ein Anruf.", now); return; }
         let choice = self.choice();
-        let Some(c) = &self.client else { self.toast("Nicht verbunden", now); return };
+        if self.client.is_none() { self.toast("Nicht verbunden", now); return; }
+        self.prime_video(false); // the space meeting starts with the camera off; the video button turns it on
+        let Some(c) = &self.client else { return };
         c.req(Req::Call(crate::cloud::locus::CallReq::JoinSpace(space.id.clone(), choice)));
         self.call.muted = false;
         self.call.cur = Some(super::call::Shown { state: crate::cloud::locus::CallState::Connecting, name: space.title.clone(), email: String::new(), since: now, confirmed: false, ended_at: None });

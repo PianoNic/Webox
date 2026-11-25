@@ -43,6 +43,20 @@ pub(crate) fn ghost_at(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th, id: &st
     resp
 }
 
+/// The answer button's icon and tooltip: answered with the camera on, or audio only.
+pub(crate) fn answer_look(video: bool) -> (&'static str, &'static str) {
+    if video { ("video-regular", "Antworten (Video an)") } else { ("handset-regular", "Antworten") }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_answer_button_shows_how_the_call_is_answered() {
+        assert_eq!(super::answer_look(true).0, "video-regular", "Anrufe mit eingeschalteter Videokamera annehmen");
+        assert_eq!(super::answer_look(false), ("handset-regular", "Antworten"));
+    }
+}
+
 impl App {
     /// Shows (or fades out) the toast window; returns what the user pressed. Called once per frame while a call rings.
     pub(crate) fn incoming_toast_window(&mut self, ctx: &egui::Context, t: &Th, now: f64, v: &CallView) -> CallActions {
@@ -147,8 +161,11 @@ impl App {
                     y += REPLY_ROW_H;
                 }
             } else {
-            // 1. Answer (round).
-            if round_at(ui, &mut self.icons, "answer", at(CONTENT_W / 2.0 + 52.0, row_y), 40.0, "handset-regular", t.green, Color32::WHITE, ring).on_hover_text("Antworten").clicked() { a.answer = true; }
+            // 1. Answer (round). Its icon says how the call is answered (the toast model's `answerIcon`): the camera while
+            // "Anrufe mit eingeschalteter Videokamera annehmen" is on, else the handset.
+            let video = self.answer_with_video();
+            let (icon, tip) = answer_look(video);
+            if round_at(ui, &mut self.icons, "answer", at(CONTENT_W / 2.0 + 52.0, row_y), 40.0, icon, t.green, Color32::WHITE, ring).on_hover_text(tip).clicked() { a.answer = true; }
             // 2. Answer on this computer (pill, secondary because the round answer button is shown too).
             {
                 let resp = ui.interact(pill, ui.id().with("answer-pc"), Sense::click());

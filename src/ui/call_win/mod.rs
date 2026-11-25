@@ -83,7 +83,7 @@ impl WinState {
 }
 
 mod call;
-pub(crate) use call::fit_size;
+pub(crate) use call::{fill_uv, fit_size};
 mod dock;
 mod full_screen;
 mod stats;
