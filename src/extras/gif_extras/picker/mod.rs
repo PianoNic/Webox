@@ -3,7 +3,7 @@
 //! home screen of tiles with a darkened looping thumbnail behind a bold centred label: "Favoriten" (latest favourite),
 //! "Angesagte GIFs" / "Angesagte Sticker" (trending, with the `trending-regular` icon) and Giphy's top-level categories
 //! (`/v1/gifs/categories`: name + picture); a tile runs that search / opens trending / the favourites list, the arrow in the
-//! search field goes back, typing searches. Stickers use `/v1/stickers/trending|search` (same key and rating) and are sent
+//! search field goes back, typing searches. Stickers use `/v1/stickers/trending|search` (same key) and are sent
 //! exactly like GIFs. A star on each tile saves it to the plugin's local favourites (`favs.rs`). The Emojis tab embeds the
 //! emoji picker. "Nach GIFs suchen", "Keine Ergebnisse", ... come from the language pack; "Favoriten", "Angesagte GIFs", the
 //! tab labels, the sticker search hint and the empty-favourites texts are Webox's own wording.
@@ -363,7 +363,7 @@ impl Plugin {
             }
         }
         if load_more {
-            if let Some(kind) = self.picker.kind.clone() { let r = app.gif_rating(); let o = self.picker.next_offset; self.picker.fetch(kind, o, &r); self.picker.loading = true; }
+            if let Some(kind) = self.picker.kind.clone() { let o = self.picker.next_offset; self.picker.fetch(kind, o); self.picker.loading = true; }
         }
         // Click outside (but not on the opening button) closes the popup.
         let pressed = ctx.input(|i| if i.pointer.any_pressed() { i.pointer.interact_pos() } else { None });

@@ -19,12 +19,6 @@ impl App {
     /// An emoji picked in the plugin popup's "Emojis" tab (the composer inserts it at the caret).
     pub(crate) fn gif_take_emoji(&mut self) -> Option<String> { let mut st = take(); let e = st.pending_emoji.take(); put(st); e }
 
-    // The org's device policy `ucf-giphy-rating` decides when present; Giphy wants it lower-case. Offline: the setting, default "g".
-    pub(crate) fn gif_rating(&self) -> String {
-        self.feature("ucf-giphy-rating").map(|v| v.as_str().to_ascii_lowercase()).filter(|r| !r.is_empty())
-            .unwrap_or_else(|| self.settings["gif_rating"].as_str().unwrap_or("g").to_string())
-    }
-
     /// Resets the standard popup: empty search field (focused), the trending GIFs (sample mode: generated GIFs, no network).
     pub(super) fn gif_open(&mut self, st: &mut State) {
         st.query.clear(); st.focus = true; st.sel = None; st.debounce.reset(); st.error = None; st.scroll_to_sel = true;
@@ -45,18 +39,17 @@ impl App {
     /// Shows the trending list (empty query) or the search results for `q`.
     pub(super) fn gif_show(&mut self, st: &mut State, q: &str) {
         st.sel = None; st.scroll_to_sel = true; st.error = None; st.gifs.clear(); st.total = 0; st.next_offset = 0; st.loading = false;
-        let rating = self.gif_rating();
         if q.is_empty() {
             st.query.clear();
-            // trending?api_key=...&rating=G&limit=30&offset=0 (the first page is kept for the session).
+            // trending?api_key=...&limit=30&offset=0 (the first page is kept for the session).
             if let Some((g, next, total)) = st.trending.clone() { st.ticket += 1; st.gifs = g; st.next_offset = next; st.total = total; st.kind = Some(Kind::Trending); }
-            else { fetch(st, Kind::Trending, 0, &rating); }
+            else { fetch(st, Kind::Trending, 0); }
         } else {
             st.query = q.to_string();
             if st.sample {
                 st.gifs = st.sample_all.iter().filter(|g| g.title.to_lowercase().contains(&q.to_lowercase())).cloned().collect();
                 st.total = st.gifs.len() as u32; st.next_offset = st.total; st.kind = None;
-            } else { fetch(st, Kind::Search(q.to_string()), 0, &rating); }
+            } else { fetch(st, Kind::Search(q.to_string()), 0); }
         }
     }
 

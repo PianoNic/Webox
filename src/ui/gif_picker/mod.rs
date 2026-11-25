@@ -130,14 +130,14 @@ fn put(st: State) { ST.with(|s| *s.borrow_mut() = st) }
 /// True while the popup is open (for the toolbar button's pressed look).
 pub(crate) fn gif_picker_open() -> bool { ST.with(|s| s.try_borrow().map_or(false, |s| s.open)) }
 
-fn fetch(st: &mut State, kind: Kind, offset: u32, rating: &str) {
+fn fetch(st: &mut State, kind: Kind, offset: u32) {
     if st.sample { return }
     let Some(tx) = st.tx.clone() else { return };
     st.ticket += 1;
     st.loading = true;
     st.error = None;
     st.kind = Some(kind.clone());
-    giphy::fetch_page(tx, st.ticket, kind, rating.to_string(), offset);
+    giphy::fetch_page(tx, st.ticket, kind, offset);
 }
 
 /// Colours of the popup (dark = the app's dark theme). bg = wx-giphy-background, head = wx-headingColor-background,
