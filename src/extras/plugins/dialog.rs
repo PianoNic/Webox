@@ -60,7 +60,15 @@ pub(super) fn parse(plugin: &str, a: &Value) -> Result<Dialog, String> {
 /// The method: queued for the window (next frame).
 pub(super) fn ui_dialog(c: &Ctx, a: &Value) -> Value {
     match parse(&c.plugin, a) {
-        Ok(d) => { post(c, |o| o.dialog = Some(d)); json!({}) }
+        Ok(mut d) => {
+            // the plugin's translations (`i18n.strings`) for the texts it gave in English
+            let t = |s: &str| if s.is_empty() { String::new() } else { super::i18n::tr(&c.strings, s) };
+            d.title = t(&d.title);
+            for tab in &mut d.tabs { tab.label = t(&tab.label); tab.hint = t(&tab.hint); }
+            if let Some(sw) = &mut d.switch { sw.0 = t(&sw.0); }
+            post(c, |o| o.dialog = Some(d));
+            json!({})
+        }
         Err(e) => json!({ "error": e }),
     }
 }

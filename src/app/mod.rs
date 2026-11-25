@@ -187,6 +187,7 @@ impl App {
                 Resp::Typing { space, person, on } => crate::ui::typing::on_typing(space, person, on),
             }
         }
+        self.plugins.sync_language(); // plugins' translations after a language change (extras/plugins/i18n.rs)
         let out = std::mem::take(&mut *self.plugins.out.lock().unwrap());
         for (plugin, t) in out.toasts { self.plugin_toast(plugin, t, now); }
         for t in out.sends { self.send_text(t, now); }

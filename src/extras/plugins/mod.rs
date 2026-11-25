@@ -10,6 +10,7 @@ pub mod kept;
 pub mod view;
 pub mod confirm;
 pub mod dialog;
+pub mod i18n;
 use settings::push_settings;
 use collabhost_plugin_api::{cs, unpack_contract, Accents, Decor, HostApi, Palette, PluginVTable, ThemeInfo, ABI_VERSION, CONTRACT_SYMBOL, ENTRY_SYMBOL};
 use serde_json::{Map, Value};
@@ -52,7 +53,9 @@ struct Ctx { plugin: String, name: String, out: Arc<Mutex<Outbox>>, data: Arc<Mu
     /// The window's thread (`ui.confirm` refuses to block it); None in tests.
     ui_thread: Option<std::thread::ThreadId>,
     /// `reactions.show_avatars`: what this plugin last asked for (None = off).
-    avatars: Mutex<Option<ReactionAvatars>> }
+    avatars: Mutex<Option<ReactionAvatars>>,
+    /// The plugin's translations (`i18n.strings`), applied to its toasts and dialogs.
+    strings: i18n::Strings }
 
 /// `reactions.show_avatars`: small round avatars of the people who reacted, drawn after each reaction chip's count
 /// (ui/messages/who_reacted.rs). Off until an enabled plugin turns it on.
@@ -153,6 +156,8 @@ pub struct Entry {
     pub key: String,
     /// Its settings: schema and current values (plugins/settings.rs).
     pub settings: ps::State,
+    /// The English texts and the plugin's translations (plugins/i18n.rs).
+    labels: i18n::Labels,
     loaded: Option<Loaded>,
 }
 
@@ -179,6 +184,8 @@ pub struct Plugins {
     ui_thread: std::thread::ThreadId,
     /// The `ui.dialog` on screen (moved here from the outbox by the window).
     pub dialog: Option<dialog::Dialog>,
+    /// `i18n::generation` the plugins' texts were last translated for.
+    i18n_gen: u64,
 }
 
 fn s(p: *const c_char) -> String { if p.is_null() { String::new() } else { unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned() } }
@@ -190,7 +197,7 @@ fn guard<R>(c: Ptr, fallback: R, f: impl FnOnce(&Ctx) -> R) -> R {
 }
 /// Puts something in the outbox and wakes the window to handle it.
 fn post(c: &Ctx, f: impl FnOnce(&mut Outbox)) { f(&mut lock(&c.out)); crate::ui::wake(); }
-fn toast(c: &Ctx, t: String) { post(c, |o| o.toasts.push((c.name.clone(), t))) }
+fn toast(c: &Ctx, t: String) { post(c, |o| o.toasts.push((i18n::tr(&c.strings, &c.name), i18n::tr(&c.strings, &t)))) }
 fn log(c: &Ctx, t: &str) { post(c, |o| o.logs.push(format!("[{}] {t}", c.plugin))) }
 extern "C" fn h_toast(c: Ptr, t: *const c_char) { guard(c, (), |c| toast(c, s(t))) }
 extern "C" fn h_send(c: Ptr, t: *const c_char) { guard(c, (), |c| post(c, |o| o.sends.push(s(t)))) }
@@ -315,6 +322,8 @@ const METHODS: &[(&str, u32, Method)] = &[
     // read-only dialog of rich-text tabs (spans as in `message.keep`), optionally with a switch to each tab's `alt` text. Does
     // not block (fine on the UI thread); a new one replaces the one shown.
     ("ui.dialog", 1, dialog::ui_dialog),
+    // `{}` -> `{"lang", "fallbacks"}`: the active language, as the `i18n.strings` event sends it (plugins/i18n.rs).
+    (i18n::METHOD, 1, |_, _| i18n::language()),
 ];
 /// An entry a plugin adds to a message's or a space's menu (`message.menu` / `space.menu`).
 #[derive(Clone, Debug, PartialEq)]
@@ -373,6 +382,9 @@ const EVENTS: &[(&str, u32)] = &[
     // "(edited)" (below a message a plugin logs edits of) or the header's "Edited" was clicked. Payload: `{"space","id",
     // "text","mine","published_ms"}` (`text`: the current plain text). Answer ignored; the plugin may open `ui.dialog`. UI thread.
     ("message.edit_tag_clicked", 1),
+    // The plugin's translations are wanted: at start and after every language change. Payload: `{"lang","fallbacks"}`. Answer
+    // `{"strings": {"English source": "translation"}}`, applied to everything Webox shows from the plugin (plugins/i18n.rs).
+    (i18n::EVENT, 1),
 ];
 /// `host.capabilities`: every method and event with its version, as one flat object.
 fn capabilities() -> Value {
@@ -426,7 +438,7 @@ impl Plugins {
         let mut p = Plugins { dirs, list: vec![], out: Default::default(), install_root, data: Arc::new(Mutex::new(read_json(&data_file))),
             state_file: config.join("plugins.json"), data_file, settings_store: ps::Store::new(config), recent: Default::default(), seen: Default::default(),
             kept: Default::default(), fired: Default::default(), view: Default::default(), fed: false, confirms: Default::default(),
-            ui_thread: std::thread::current().id(), dialog: None };
+            ui_thread: std::thread::current().id(), dialog: None, i18n_gen: 0 };
         store::clean(&p.install_root);
         p.rescan();
         p
@@ -435,7 +447,7 @@ impl Plugins {
     fn entry(file: PathBuf, key: &str, state: &Map<String, Value>, source: Option<store::Installed>) -> Entry {
         Entry { file, name: source.as_ref().map_or_else(|| key.to_string(), |i| i.name.clone()), author: String::new(), version: String::new(),
             description: String::new(), commands: vec![], enabled: state.get(key).and_then(Value::as_bool).unwrap_or(source.is_some()),
-            error: None, source, builtin: false, key: key.to_string(), settings: Default::default(), loaded: None }
+            error: None, source, builtin: false, key: key.to_string(), settings: Default::default(), labels: Default::default(), loaded: None }
     }
 
     pub fn rescan(&mut self) {
@@ -450,9 +462,10 @@ impl Plugins {
         for b in crate::extras::builtin_plugins() {
             let mut e = Entry { file: PathBuf::new(), name: b.name.into(), author: "Webox".into(), version: b.version.into(), description: b.description.into(),
                 commands: vec![], enabled: state.get(b.key).and_then(Value::as_bool).unwrap_or(false), error: None, source: None, builtin: true,
-                key: b.key.into(), settings: Default::default(), loaded: None };
+                key: b.key.into(), settings: Default::default(), labels: i18n::Labels::builtin(b.name, b.description, b.settings), loaded: None };
             // Built-in plugins declare their settings in the same JSON format as native ones.
             e.settings.load(&self.settings_store, b.key, b.settings.map(|f| f()).as_deref());
+            i18n::refresh(&mut e, false);
             self.list.push(e);
         }
         // Repository installs first: their file name wins over a loose copy of the same plugin.
@@ -510,8 +523,11 @@ impl Plugins {
                 if e.name.is_empty() { e.name = key.to_string(); }
                 let schema = l.c.schema.and_then(|f| l.take(f(l.inst)));
                 e.settings.load(&self.settings_store, key, schema.as_deref());
-                if e.enabled { push_settings(&l, &e.settings); (l.c.start)(l.inst, &*l.host) }
+                i18n::capture(e);
                 e.loaded = Some(l);
+                let on = e.enabled;
+                i18n::refresh(e, on); // before the start: what it shows at start is translated already
+                if let Some(l) = e.loaded.as_ref().filter(|_| on) { push_settings(l, &e.settings); (l.c.start)(l.inst, &*l.host) }
             }
             Err(x) => { e.error = Some(x); e.enabled = false; }
         }
@@ -525,10 +541,11 @@ impl Plugins {
         if v.instance.is_null() { return Err(crate::trq!("the plugin created no instance").into_owned()); }
         e.name = s(v.name); e.author = s(v.author); e.version = s(v.version); e.description = s(v.description);
         e.commands = s(v.commands).split_whitespace().map(String::from).collect();
+        i18n::capture(e);
         let name = if e.name.trim().is_empty() { key.to_string() } else { e.name.clone() };
         let ctx = Box::new(Ctx { plugin: key.to_string(), name, out: self.out.clone(), data: self.data.clone(), data_file: self.data_file.clone(),
             settings: e.settings.values.clone(), recent: self.recent.clone(), kept: self.kept.clone(), view: self.view.clone(), confirms: self.confirms.clone(),
-            ui_thread: Some(self.ui_thread), avatars: Mutex::new(None) });
+            ui_thread: Some(self.ui_thread), avatars: Mutex::new(None), strings: e.labels.strings.clone() });
         let host = Box::new(HostApi { ctx: &*ctx as *const Ctx as Ptr, toast: Some(h_toast), send: Some(h_send), log: Some(h_log),
             data_get: Some(h_get), data_set: Some(h_set), free_str: Some(h_free), settings_get: Some(h_settings),
             // 1.6
@@ -553,6 +570,7 @@ impl Plugins {
             return;
         }
         let e = &mut self.list[i];
+        if on && !e.enabled && e.loaded.is_some() { i18n::refresh(e, true); } // before the start, as in `load`
         if let Some(l) = &e.loaded {
             if on && !e.enabled { push_settings(l, &e.settings); (l.c.start)(l.inst, &*l.host) } else if !on && e.enabled { crate::media::camera::hook::release(&e.key); l.stop() }
         }
@@ -663,7 +681,7 @@ impl Plugins {
         let json = payload.to_string();
         self.list.iter().filter(|e| e.enabled).filter_map(|e| e.loaded.as_ref().map(|l| (e, l)))
             .filter_map(|(e, l)| l.event(event, &json).map(|a| (e, a)))
-            .flat_map(|(e, a)| menu_items(&e.key, &a)).collect()
+            .flat_map(|(e, a)| menu_items(&e.key, &a).into_iter().map(|mut m| { m.label = i18n::tr(&e.labels.strings, &m.label); m }).collect::<Vec<_>>()).collect()
     }
 
     /// `space.menu_action`: the entry `item` of the plugin `plugin` was picked in the menu of `space`. Sent to that plugin only.
@@ -918,7 +936,7 @@ pub(super) mod tests {
         use std::ffi::CStr;
         let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: Default::default(), data: Default::default(), data_file: Default::default(),
             settings: std::sync::Arc::new(std::sync::Mutex::new(serde_json::json!({ "x": true }).as_object().unwrap().clone())), recent: Default::default(), kept: Default::default(),
-            view: Default::default(), confirms: Default::default(), ui_thread: None, avatars: Default::default() };
+            view: Default::default(), confirms: Default::default(), ui_thread: None, avatars: Default::default(), strings: Default::default() };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |m: &str, j: &str| {
             let (m, j) = (collabhost_plugin_api::cs(m), collabhost_plugin_api::cs(j));
@@ -993,7 +1011,7 @@ pub(super) mod tests {
         let notice = crate::cloud::Message { notice: "Anna joined".into(), ..Default::default() };
         p.note_space("s1", &[msg("Anna", false, "one"), notice, msg("Me", true, "two"), msg("Anna", false, "three")]);
         let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(), recent: p.recent.clone(), kept: Default::default(),
-            view: p.view.clone(), confirms: Default::default(), ui_thread: None, avatars: Default::default() };
+            view: p.view.clone(), confirms: Default::default(), ui_thread: None, avatars: Default::default(), strings: Default::default() };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |m: &str, j: serde_json::Value| {
             let (m, j) = (collabhost_plugin_api::cs(m), collabhost_plugin_api::cs(&j.to_string()));
@@ -1174,7 +1192,7 @@ pub(super) mod tests {
         let dir = std::env::temp_dir().join(format!("collabhost-keep-{}", std::process::id()));
         let p = super::Plugins::with_root(&dir, dir.join("installed"));
         let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(),
-            recent: p.recent.clone(), kept: p.kept.clone(), view: Default::default(), confirms: Default::default(), ui_thread: None, avatars: Default::default() };
+            recent: p.recent.clone(), kept: p.kept.clone(), view: Default::default(), confirms: Default::default(), ui_thread: None, avatars: Default::default(), strings: Default::default() };
         let c = &ctx as *const super::Ctx as super::Ptr;
         let call = |j: serde_json::Value| {
             let (m, j) = (collabhost_plugin_api::cs("message.keep"), collabhost_plugin_api::cs(&j.to_string()));
