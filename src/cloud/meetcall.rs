@@ -125,11 +125,11 @@ impl Session {
         Ok(())
     }
 
-    /// WRITE (only from the delete dialog's "Löschen").
+    /// WRITE (only from the delete dialog's "Delete").
     pub(super) fn delete_calls(&mut self, ids: &[(String, i64)]) -> Result<(), String> {
         if ids.is_empty() { return Ok(()); }
         let url = self.url("janus", "/history/userSessions/markAsDeleted");
-        if !webex_host(&url) { return Err("Anrufprotokoll nicht erreichbar".into()); }
+        if !webex_host(&url) { return Err(crate::trq!("Call history isn't reachable").into_owned()); }
         self.http("POST", &url, Some(delete_body(ids)))?;
         self.call_history()
     }
@@ -144,7 +144,7 @@ impl Session {
         Ok(())
     }
 
-    /// WRITE (only from the scheduler's "Ansetzen").
+    /// WRITE (only from the scheduler's "Schedule").
     pub(super) fn schedule(&mut self, r: &ScheduleReq) -> Result<(), String> {
         let res = self.http("POST", &format!("{HYDRA}/meetings"), Some(schedule_body(r)));
         dbg_conn(&format!("schedule meeting -> {}", if res.is_ok() { "ok" } else { "failed" }));
@@ -155,7 +155,7 @@ impl Session {
     pub(super) fn personal_room(&mut self) -> Result<(), String> {
         let res = self.http("GET", &format!("{HYDRA}/meetingPreferences/personalMeetingRoom"), None).map(|v| st(&v, "personalMeetingRoomLink"));
         let res = res.map_err(|e| super::report::friendly(&e));
-        let _ = self.out.send(Resp::PersonalRoom(res.and_then(|l| if l.starts_with("https://") { Ok(l) } else { Err("Kein persönlicher Raum gefunden.".into()) })));
+        let _ = self.out.send(Resp::PersonalRoom(res.and_then(|l| if l.starts_with("https://") { Ok(l) } else { Err(crate::trq!("No personal room found.").into_owned()) })));
         Ok(())
     }
 }

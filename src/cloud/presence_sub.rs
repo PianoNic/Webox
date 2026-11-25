@@ -1,5 +1,5 @@
 //! Presence for people outside the spaces the list was loaded with: people found in the directory search (search
-//! results, "Neue Nachricht", and the profile cards opened from them) and the participants of a conversation that appeared
+//! results, "New message", and the profile cards opened from them) and the participants of a conversation that appeared
 //! live (cloud/live_list/). They get a presence snapshot at once and join the usersub subscription, which the 540 s
 //! renewal keeps (start.rs). Uses the usersub subscribe (people.rs `subscribe_presence`) and snapshot (`presence`).
 use super::*;

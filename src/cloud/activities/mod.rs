@@ -200,18 +200,18 @@ pub(super) fn attachment_key(activity: &str, index: usize, url: &str, scr: &str)
     format!("{activity}#{index}:{:08x}", h.finish() as u32)
 }
 
-/// The short German message for a rejected activity (4xx), by what was being sent.
+/// The short message (English source, translated where shown) for a rejected activity (4xx), by what was being sent.
 fn friendly_failure(body: &Value) -> &'static str {
     match (body["verb"].as_str().unwrap_or(""), body["object"]["objectType"].as_str().unwrap_or("")) {
-        ("add", "reaction2") => "Reaktion konnte nicht gesendet werden",
-        ("delete", _) if body["object"]["objectType"] == "activity" => "Nachricht oder Reaktion konnte nicht gelöscht werden",
-        ("post", _) => "Nachricht konnte nicht gesendet werden",
-        ("tag" | "untag", _) => "Favorit konnte nicht geändert werden",
-        ("hide", _) => "Bereich konnte nicht ausgeblendet werden",
-        ("update", _) => "Bereich konnte nicht umbenannt werden",
-        ("add", _) => "Person konnte nicht hinzugefügt werden",
-        ("leave", _) => "Bereich konnte nicht verlassen werden",
-        _ => "Aktion konnte nicht ausgeführt werden",
+        ("add", "reaction2") => "Couldn't send the reaction",
+        ("delete", _) if body["object"]["objectType"] == "activity" => "Couldn't delete the message or reaction",
+        ("post", _) => "Couldn't send the message",
+        ("tag" | "untag", _) => "Couldn't change the favorite",
+        ("hide", _) => "Couldn't hide the space",
+        ("update", _) => "Couldn't rename the space",
+        ("add", _) => "Couldn't add the person",
+        ("leave", _) => "Couldn't leave the space",
+        _ => "Couldn't complete the action",
     }
 }
 

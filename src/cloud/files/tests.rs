@@ -81,7 +81,7 @@ fn thumbnails_fit_the_sdk_box() {
 
 #[test]
 fn refusals_in_the_originals_words() {
-    assert_eq!(refusal(413, ""), "Datei zu groß");
-    assert_eq!(refusal(403, "{\"message\":\"File extension blocked\"}"), "Gesperrte Datei");
+    assert_eq!(refusal(413, ""), crate::trq!("File too large"));
+    assert_eq!(refusal(403, "{\"message\":\"File extension blocked\"}"), crate::trq!("Blocked file"));
     assert_eq!(refusal(500, "x"), "http 500");
 }

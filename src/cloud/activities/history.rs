@@ -73,7 +73,7 @@ impl Session {
         Ok(())
     }
 
-    /// "Gesehen von" history: `GET /conversations/<id>?participantAckFilter=all` returns each participant's
+    /// "Seen by" history: `GET /conversations/<id>?participantAckFilter=all` returns each participant's
     /// `roomProperties {lastSeenActivityUUID, lastSeenActivityDate, lastAckDate, lastAckTime}`.
     /// Live acknowledgements (mercury) that are newer are kept.
     pub(super) fn load_read_marks(&mut self, space: &str) {

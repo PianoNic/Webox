@@ -321,12 +321,12 @@ mod tests {
     #[test]
     fn mentions() {
         let ms = [MentionRef { id: "11111111-2222-3333-4444-555555555555".into(), name: "Mara Lind".into(), all: false }];
-        let r = render("Hallo @Mara Lind bitte prüfen", false, &ms);
-        assert_eq!(r.html, "<p>Hallo <spark-mention data-object-type=\"person\" data-object-id=\"11111111-2222-3333-4444-555555555555\" data-mention-origin=\"client\">Mara Lind</spark-mention> bitte prüfen</p>");
-        assert_eq!(r.plain, "Hallo Mara Lind bitte prüfen"); // the displayName has no @ (as in real messages)
+        let r = render("Hello @Mara Lind please check", false, &ms);
+        assert_eq!(r.html, "<p>Hello <spark-mention data-object-type=\"person\" data-object-id=\"11111111-2222-3333-4444-555555555555\" data-mention-origin=\"client\">Mara Lind</spark-mention> please check</p>");
+        assert_eq!(r.plain, "Hello Mara Lind please check"); // the displayName has no @ (as in real messages)
         // A mention whose text was edited away is just text.
-        let r = render("Hallo Mara", false, &ms);
-        assert_eq!((r.html.as_str(), r.plain.as_str()), ("", "Hallo Mara"));
+        let r = render("Hello Mara", false, &ms);
+        assert_eq!((r.html.as_str(), r.plain.as_str()), ("", "Hello Mara"));
         // @all
         let all = [MentionRef { id: String::new(), name: "all".into(), all: true }];
         assert_eq!(render("@all lunch", true, &all).html, "<p><spark-mention data-object-type=\"groupMention\" data-group-type=\"all\">all</spark-mention> lunch</p>");

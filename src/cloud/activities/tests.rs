@@ -1,8 +1,8 @@
 use serde_json::json;
 #[test]
 fn friendly_messages() {
-    assert_eq!(super::friendly_failure(&json!({"verb": "add", "object": {"objectType": "reaction2"}})), "Reaktion konnte nicht gesendet werden");
-    assert_eq!(super::friendly_failure(&json!({"verb": "post", "object": {"objectType": "comment"}})), "Nachricht konnte nicht gesendet werden");
+    assert_eq!(super::friendly_failure(&json!({"verb": "add", "object": {"objectType": "reaction2"}})), "Couldn't send the reaction");
+    assert_eq!(super::friendly_failure(&json!({"verb": "post", "object": {"objectType": "comment"}})), "Couldn't send the message");
 }
 
 /// The posted `object` for `# 😀`, plain text, and mentions; `ENC(..)` stands for the JWE.
@@ -151,7 +151,7 @@ fn notices() {
         json!({"id": "ad3", "verb": "add", "published": "2026-01-01T18:00:00.000Z", "actor": {"displayName": "Zoe", "id": "z"}, "object": {"objectType": "person", "id": "y", "displayName": "Yan"}, "target": {"tags": ["ONE_ON_ONE"]}}),
     ];
     // The active language pack decides the words: the expectations go through the same QObject strings (in German e.g.
-    // "Anna Beispiel war nicht erreichbar.", "Sie haben einen Anruf verpasst.", "Sie hatten einen Anruf (2 Min.)").
+    // "Anna Example was unavailable.", "You missed a call.", "You had a call (2 min)").
     let mut d = super::super::Space { id: "dm".into(), direct: true, ..Default::default() };
     s.spaces.insert("dm".into(), d.clone());
     let calls: Vec<serde_json::Value> = acts[..3].iter().map(|a| { let mut a = a.clone(); a.as_object_mut().unwrap().remove("target"); a }).collect();
@@ -169,7 +169,7 @@ fn notices() {
     assert!(m.iter().all(|x| x.date == "2026-01-01"), "info rows carry their day, so the list puts a date separator above them");
 }
 
-/// Repeated `create` rows in a 1:1 ("Jemand hat den Bereich erstellt."): the service invents a `create` with a new id, a
+/// Repeated `create` rows in a 1:1 ("Someone created the space."): the service invents a `create` with a new id, a
 /// nameless actor and empty `object.tags` on every `maxDate` request for an old 1:1; only one may show.
 #[test]
 fn synthetic_creates_of_a_direct_chat() {

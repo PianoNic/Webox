@@ -1,4 +1,4 @@
-//! Call statistics ("Anrufstatistik", the official `MediaStatistics` dialog): per stream (audio, video, share) and
+//! Call statistics ("Call statistics", the official `MediaStatistics` dialog): per stream (audio, video, share) and
 //! direction the counters the call window turns into packet loss, jitter, bit rate and frame rate, plus the round trip.
 //!
 //! Where each figure comes from (webrtc-rs 0.14 `get_stats` has no receive-side loss / jitter, and leaves out a receiver

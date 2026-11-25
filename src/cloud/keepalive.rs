@@ -16,9 +16,9 @@
 //! has no input). Elsewhere the last input the window itself saw. With the screen locked there is no input, so the idle
 //! rule already stops the keepalive.
 //!
-//! Extra guard: the status menu sends "Abwesend" as event type `inactive`. So a manual choice other than "Verfügbar" also
-//! stops the keepalive for its TTL (or until the user picks "Verfügbar" again); otherwise the inactive poll would turn a
-//! chosen "Abwesend" back into Active.
+//! Extra guard: the status menu sends "Away" as event type `inactive`. So a manual choice other than "Available" also
+//! stops the keepalive for its TTL (or until the user picks "Available" again); otherwise the inactive poll would turn a
+//! chosen "Away" back into Active.
 use std::sync::Mutex;
 
 /// The active timer's random delay (s), inclusive.
@@ -45,7 +45,7 @@ pub struct Keepalive {
     pub mode: Mode,
     /// The last self status seen ("active", "inactive", "DoNotDisturb", …).
     last: String,
-    /// A manual status choice other than "Verfügbar" holds the keepalive until then (Unix ms; i64::MAX = no end).
+    /// A manual status choice other than "Available" holds the keepalive until then (Unix ms; i64::MAX = no end).
     manual_until: Option<i64>,
 }
 
@@ -196,12 +196,12 @@ mod tests {
     fn manual_choice_holds_the_keepalive() {
         let mut k = Keepalive::default();
         k.on_self_status("active", T0, 420);
-        // "Abwesend" from the menu (sent as event type inactive, no end).
+        // "Away" from the menu (sent as event type inactive, no end).
         k.on_manual("inactive", -1, T0 + 1000);
         k.on_self_status("inactive", T0 + 2000, 420);
         assert_eq!(k.mode, Mode::Off);
         assert!(!k.tick(T0 + 100_000_000, 0, 420), "a chosen Abwesend is not turned back into Active");
-        // "Verfügbar" again: the next self update restarts the timer.
+        // "Available" again: the next self update restarts the timer.
         k.on_manual("active", 600, T0 + 200_000_000);
         k.on_self_status("active", T0 + 200_000_100, 420);
         assert!(matches!(k.mode, Mode::Active { .. }));

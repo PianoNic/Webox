@@ -246,7 +246,7 @@ fn stalled_media_is_reported() {
     assert!(media_stall(now(10), None, Some(t0), None, 0, Some(MediaState::Connecting)).is_none());
     assert!(media_stall(now(16), None, Some(t0), None, 0, Some(MediaState::Connecting)).unwrap().contains("ICE"));
     // "connected" but not one packet: that is no connection
-    assert!(media_stall(now(9), None, Some(t0), Some(t0), 0, Some(MediaState::Connected)).unwrap().contains("kein Ton"));
+    assert!(media_stall(now(9), None, Some(t0), Some(t0), 0, Some(MediaState::Connected)).unwrap().contains("no sound"));
     assert!(media_stall(now(9), None, Some(t0), Some(t0), 50, Some(MediaState::Connected)).is_none());
     assert!(media_stall(now(1), None, None, None, 0, Some(MediaState::Failed)).is_some());
 }
@@ -264,13 +264,13 @@ fn share_floor_and_refusals() {
     assert_eq!(b["floor"]["requester"]["url"], "https://self");
     // every refusal has a reason for the toast
     let c = Some(&CallState::Connected);
-    assert!(share::share_blocked(Some(&CallState::Ringing), true, true, false, Some("u")).unwrap().contains("verbunden"));
+    assert!(share::share_blocked(Some(&CallState::Ringing), true, true, false, Some("u")).unwrap().contains("connected"));
     assert!(share::share_blocked(c, true, true, false, None).unwrap().contains("content"));
-    assert!(share::share_blocked(c, true, true, true, Some("u")).unwrap().contains("ausgehandelt"));
+    assert!(share::share_blocked(c, true, true, true, Some("u")).unwrap().contains("negotiated"));
     assert!(share::share_blocked(c, true, true, false, Some("u")).is_none());
-    assert!(share::floor_error("PUT https://x → 409 {}").contains("jemand anderes"));
-    assert!(share::floor_error("PUT https://x → 403 {}").contains("Richtlinie"));
-    assert!(share::floor_error("PUT https://x → 500 {}").contains("fehlgeschlagen"));
+    assert!(share::floor_error("PUT https://x → 409 {}") == crate::trq!("Can't share: someone else is sharing right now."));
+    assert!(share::floor_error("PUT https://x → 403 {}") == crate::trq!("Sharing not allowed: your organization's policy doesn't allow sharing in this call."));
+    assert!(share::floor_error("PUT https://x → 500 {}").ends_with("PUT https://x → 500 {}"));
 }
 
 #[test]

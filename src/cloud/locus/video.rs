@@ -69,15 +69,15 @@ pub fn peer_video(l: &Value, self_id: &str) -> bool {
     })
 }
 
-/// Why the camera can't be sent (German, a toast).
+/// Why the camera can't be sent (a toast).
 pub fn fail_text(f: &Fail) -> String {
     match f {
-        Fail::NoCamera => "Video nicht möglich: Keine Kamera gefunden.".into(),
-        Fail::InUse(n) => format!("Video nicht möglich: Die Kamera {n} wird von einer anderen Anwendung verwendet."),
-        Fail::Denied => "Video nicht möglich: Kein Zugriff auf die Kamera. Bitte den Zugriff in den Systemeinstellungen erlauben.".into(),
-        Fail::Unplugged(n) => format!("Video beendet: Die Kamera {n} ist nicht mehr angeschlossen."),
-        Fail::NoPicture => "Video beendet: Die Kamera liefert kein Bild.".into(),
-        Fail::Other(e) => format!("Video nicht möglich: Die Kamera lässt sich nicht starten ({}).", e.chars().take(120).collect::<String>()),
+        Fail::NoCamera => crate::trq!("Video not possible: no camera found.").into_owned(),
+        Fail::InUse(n) => crate::trq!("Video not possible: the camera {{0}} is used by another application.", n),
+        Fail::Denied => crate::trq!("Video not possible: no access to the camera. Please allow access in the system settings.").into_owned(),
+        Fail::Unplugged(n) => crate::trq!("Video stopped: the camera {{0}} is no longer connected.", n),
+        Fail::NoPicture => crate::trq!("Video stopped: the camera delivers no picture.").into_owned(),
+        Fail::Other(e) => crate::trq!("Video not possible: the camera doesn't start ({{0}}).", e.chars().take(120).collect::<String>()),
     }
 }
 
@@ -161,7 +161,7 @@ impl Session {
         let Some(m) = c.media.as_ref() else { return };
         match m.feed_camera(key) {
             Ok(f) => { dbg_conn("call: video: camera starting"); c.video.feed = Some(f); }
-            Err(e) => { self.calls.video_want = None; let _ = self.out.send(Resp::Error(format!("Video nicht möglich: {e}"))); return; }
+            Err(e) => { self.calls.video_want = None; let _ = self.out.send(Resp::Error(crate::trq!("Video not possible: {{0}}", e))); return; }
         }
         self.video_mute(false);
     }
@@ -173,7 +173,7 @@ impl Session {
         if !waiting { return; }
         self.calls.video_want = None;
         dbg_conn(&format!("call: video: lines refused: {why}"));
-        let _ = self.out.send(Resp::Error(format!("Video nicht möglich: {why}")));
+        let _ = self.out.send(Resp::Error(crate::trq!("Video not possible: {{0}}", why)));
         self.video_sync();
     }
 
@@ -187,7 +187,7 @@ impl Session {
         if !webex_host(&self_url) { return; }
         let r = self.http("PUT", &format!("{self_url}/media"), Some(local_mute_body(self.device_body(), &corr, &media_id, audio_muted, video_muted)));
         dbg_conn(&format!("call: video {} sent to locus -> {}", if video_muted { "off" } else { "on" }, if r.is_ok() { "ok" } else { "failed" }));
-        if let Err(e) = r { let _ = self.out.send(Resp::Error(format!("Video {} konnte nicht an Webex gemeldet werden: {}", if video_muted { "aus" } else { "an" }, scrub(&e)))); }
+        if let Err(e) = r { let _ = self.out.send(Resp::Error(if video_muted { crate::trq!("Couldn't report video off to Webex: {{0}}", scrub(&e)) } else { crate::trq!("Couldn't report video on to Webex: {{0}}", scrub(&e)) })); }
     }
 
     /// `videoMuted` for the ROAP messages and the mute requests of this call.
@@ -273,6 +273,6 @@ mod tests {
         let b = local_mute_body(json!({"url": "d"}), "c", "m", false, false);
         let sdp: Value = serde_json::from_str(b["localMedias"][0]["localSdp"].as_str().unwrap()).unwrap();
         assert_eq!(sdp, json!({"audioMuted": false, "videoMuted": false}));
-        assert!(fail_text(&Fail::NoCamera).contains("Keine Kamera"));
+        assert_eq!(fail_text(&Fail::NoCamera), crate::trq!("Video not possible: no camera found."));
     }
 }

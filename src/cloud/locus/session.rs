@@ -36,20 +36,20 @@ impl Session {
             if !me.unmute_allowed {
                 self.mute_local(true);
                 self.mute_sync(None);
-                return Err("Du wurdest stummgeschaltet und kannst die Stummschaltung nicht selbst aufheben.".into());
+                return Err(crate::trq!("You were muted and can't unmute yourself.").into_owned());
             }
             let r = self.http_signal("PATCH", &format!("{self_url}/controls"), Some(unmute_controls_body()));
             dbg_conn(&format!("call: unmute after being muted by others -> {}", if r.is_ok() { "ok" } else { "failed" }));
             if let Err(e) = r {
                 self.mute_local(true);
                 self.mute_sync(None);
-                return Err(format!("Stummschaltung aufheben fehlgeschlagen: {}", scrub(&e)));
+                return Err(crate::trq!("Unmute failed: {{0}}", scrub(&e)));
             }
         }
         let r = self.http_signal("PUT", &format!("{self_url}/media"), Some(local_mute_body(self.device_body(), &corr, &media_id, m, self.video_muted())));
         dbg_conn(&format!("call: {} sent to locus -> {}", if m { "mute" } else { "unmute" }, if r.is_ok() { "ok" } else { "failed" }));
         self.mute_sync(None);
-        r.map(|_| ()).map_err(|e| format!("{} konnte nicht an Webex gemeldet werden: {}", if m { "Stummschalten" } else { "Stummschaltung aufheben" }, scrub(&e)))
+        r.map(|_| ()).map_err(|e| if m { crate::trq!("Couldn't report mute to Webex: {{0}}", scrub(&e)) } else { crate::trq!("Couldn't report unmute to Webex: {{0}}", scrub(&e)) })
     }
 
     /// The microphone itself: silence instead of it while muted.
@@ -86,10 +86,10 @@ impl Session {
         if !dtmf_ok(tones) { return Ok(()); }
         let Some(c) = self.calls.cur.as_ref().filter(|c| c.answered && c.last == Some(CallState::Connected)) else { return Ok(()) };
         let url = c.url.clone();
-        if !webex_host(&url) { return Err("Ungültige Anruf-Adresse.".into()); }
+        if !webex_host(&url) { return Err(crate::trq!("Invalid call address.").into_owned()); }
         let r = self.http("POST", &format!("{url}/sendDtmf"), Some(dtmf_body(&self.device, tones, &jose::uuid())));
         dbg_conn(&format!("call: dtmf {} tone(s) -> {}", tones.len(), if r.is_ok() { "ok" } else { "failed" }));
-        r.map(|_| ()).map_err(|e| format!("Tastenton fehlgeschlagen: {}", scrub(&e)))
+        r.map(|_| ()).map_err(|e| crate::trq!("Keypad tone failed: {{0}}", scrub(&e)))
     }
 
     pub(super) fn emit(&mut self, state: CallState) {
@@ -166,9 +166,9 @@ impl Session {
     pub(super) fn dial(&mut self, addr: &str, choice: &audio::Choice) -> Result<(), String> {
         let addr = addr.trim().to_lowercase();
         call_allowed(&addr, std::env::var(GUARD_ENV).ok().as_deref())?; // before any network request
-        if self.calls.cur.is_some() { return Err("Es läuft bereits ein Anruf.".into()); }
-        if self.calls.last_dial.is_some_and(|t| t.elapsed() < REDIAL_COOLDOWN) { return Err("Bitte kurz warten, bevor erneut angerufen wird.".into()); }
-        if self.calls.device_type.is_empty() || self.device.is_empty() { return Err("Dieses Gerät ist noch nicht registriert.".into()); }
+        if self.calls.cur.is_some() { return Err(crate::trq!("A call is already in progress.").into_owned()); }
+        if self.calls.last_dial.is_some_and(|t| t.elapsed() < REDIAL_COOLDOWN) { return Err(crate::trq!("Please wait a moment before calling again.").into_owned()); }
+        if self.calls.device_type.is_empty() || self.device.is_empty() { return Err(crate::trq!("This device isn't registered yet.").into_owned()); }
         // The media offer comes first: a call is only ever created WITH an offer (a join without media leaves the callee "connecting").
         let (media, offer) = self.prepare_media(choice)?;
         self.calls.last_dial = Some(Instant::now());
@@ -176,7 +176,7 @@ impl Session {
         let body = join_body(self.device_body(), &corr, &offer, self.calls.muted, Some(&addr));
         let url = self.url("locus", "/loci/call?alternateRedirect=true");
         dbg_conn("call: POST /loci/call (with ROAP offer)");
-        let r = match self.http("POST", &url, Some(body)) { Ok(r) => r, Err(e) => { media.close(); self.release_audio(); return Err(format!("Anruf fehlgeschlagen: {}", scrub(&e))); } };
+        let r = match self.http("POST", &url, Some(body)) { Ok(r) => r, Err(e) => { media.close(); self.release_audio(); return Err(crate::trq!("Call failed: {{0}}", scrub(&e))); } };
         self.adopt(&r, media, corr, true, None)
     }
 
@@ -184,32 +184,32 @@ impl Session {
     pub(super) fn answer(&mut self, choice: &audio::Choice) -> Result<(), String> {
         let Some(c) = self.calls.cur.as_ref().filter(|c| !c.outgoing && !c.answered) else { return Ok(()) };
         let url = c.url.clone();
-        if !webex_host(&url) { return Err("Ungültige Anruf-Adresse.".into()); }
+        if !webex_host(&url) { return Err(crate::trq!("Invalid call address.").into_owned()); }
         let (media, offer) = self.prepare_media(choice)?;
         let corr = jose::uuid();
         let body = join_body(self.device_body(), &corr, &offer, self.calls.muted, None);
         dbg_conn("call: POST /participant (answer, with ROAP offer)");
         let r = match self.http("POST", &format!("{url}/participant"), Some(body)) {
             Ok(r) => r,
-            Err(e) => { dbg_conn(&format!("call: answer failed: {}", scrub(&e))); media.close(); self.release_audio(); return Err(format!("Annehmen fehlgeschlagen: {}", scrub(&e))); }
+            Err(e) => { dbg_conn(&format!("call: answer failed: {}", scrub(&e))); media.close(); self.release_audio(); return Err(crate::trq!("Answering failed: {{0}}", scrub(&e))); }
         };
         self.adopt(&r, media, corr, false, None)
     }
 
-    /// "Treffen" / "Beitreten" in a group space: like the official client, the space's meeting is joined on its locus
+    /// "Meet" / "Join" in a group space: like the official client, the space's meeting is joined on its locus
     /// (`POST {locusUrl}/participant`) when the conversation has one, else created with the space as the invitee
     /// (`POST /loci/call`, `invitee.address` = the conversation url). A locus join the server refuses (4xx: gone, ended,
     /// not allowed) falls back to `/loci/call`. Audio only: the server mixes everyone into our single audio line
     /// (`preferTranscoding`).
     pub(super) fn join_space(&mut self, id: &str, choice: &audio::Choice) -> Result<(), String> {
         // the test guard allows calls to one address only: a space meeting reaches everyone in the space
-        if std::env::var(GUARD_ENV).ok().is_some_and(|g| !g.trim().is_empty()) { return Err("Testschutz aktiv: keine Bereichs-Meetings.".into()); }
-        if self.calls.cur.is_some() { return Err("Es läuft bereits ein Anruf.".into()); }
-        if self.calls.last_dial.is_some_and(|t| t.elapsed() < REDIAL_COOLDOWN) { return Err("Bitte kurz warten, bevor erneut angerufen wird.".into()); }
-        if self.calls.device_type.is_empty() || self.device.is_empty() { return Err("Dieses Gerät ist noch nicht registriert.".into()); }
-        let Some(sp) = self.spaces.get(id).filter(|s| !s.direct).cloned() else { return Err("Meetings gibt es nur in Gruppenbereichen.".into()) };
+        if std::env::var(GUARD_ENV).ok().is_some_and(|g| !g.trim().is_empty()) { return Err(crate::trq!("Test guard active: no space meetings.").into_owned()); }
+        if self.calls.cur.is_some() { return Err(crate::trq!("A call is already in progress.").into_owned()); }
+        if self.calls.last_dial.is_some_and(|t| t.elapsed() < REDIAL_COOLDOWN) { return Err(crate::trq!("Please wait a moment before calling again.").into_owned()); }
+        if self.calls.device_type.is_empty() || self.device.is_empty() { return Err(crate::trq!("This device isn't registered yet.").into_owned()); }
+        let Some(sp) = self.spaces.get(id).filter(|s| !s.direct).cloned() else { return Err(crate::trq!("Meetings are only available in group spaces.").into_owned()) };
         let conv = self.typing.conv_url.get(id).cloned().unwrap_or_default();
-        let (on_locus, conv) = space_join_target(&sp.locus_url, &conv).ok_or("Für diesen Bereich ist keine Meeting-Adresse bekannt.")?;
+        let (on_locus, conv) = space_join_target(&sp.locus_url, &conv).ok_or_else(|| crate::trq!("No meeting address is known for this space.").into_owned())?;
         let (media, offer) = self.prepare_media(choice)?;
         self.calls.last_dial = Some(Instant::now());
         let corr = jose::uuid();
@@ -230,7 +230,7 @@ impl Session {
             }
             None => create(self),
         };
-        let r = match r { Ok(r) => r, Err(e) => { media.close(); self.release_audio(); return Err(format!("Meeting beitreten fehlgeschlagen: {}", scrub(&e))); } };
+        let r = match r { Ok(r) => r, Err(e) => { media.close(); self.release_audio(); return Err(crate::trq!("Joining the meeting failed: {{0}}", scrub(&e))); } };
         self.adopt(&r, media, corr, true, Some((id.to_string(), sp.title)))
     }
 
@@ -244,7 +244,7 @@ impl Session {
             media.close();
             self.release_audio();
             let keys = r.as_object().map(|m| m.keys().cloned().collect::<Vec<_>>().join(",")).unwrap_or_default();
-            return Err(format!("Anruf: unerwartete Antwort (keys: {keys})"));
+            return Err(crate::trq!("Call: unexpected answer (keys: {{0}})", keys));
         }
         let media_id = media_id_of(r, &self.device);
         dbg_conn(&format!("call: joined {} media_id={} (top level {})", describe(&v), !media_id.is_empty(), r["mediaConnections"][0]["mediaId"].is_string()));
@@ -273,7 +273,7 @@ impl Session {
     /// PUT {self.url}/media with a ROAP message (OK / ANSWER / a re-OFFER).
     pub(super) fn send_roap(&mut self, message_type: &str, sdp: Option<&str>, seq: u32) -> Result<(), String> {
         let (url, media_id, corr) = match &self.calls.cur { Some(c) => (c.self_url.clone(), c.media_id.clone(), c.correlation_id.clone()), None => return Ok(()) };
-        if !webex_host(&url) { return Err("Keine gültige Medien-Adresse.".into()); }
+        if !webex_host(&url) { return Err(crate::trq!("Invalid media address.").into_owned()); }
         if media_id.is_empty() { return Err("no media id".into()); } // like the original client: no ROAP message without it
         let body = json!({"device": self.device_body(), "correlationId": corr, "clientMediaPreferences": {"preferTranscoding": true},
             "localMedias": [{"localSdp": roap_local_sdp_av(message_type, sdp, seq, self.calls.muted, self.video_muted()), "mediaId": media_id}]});
@@ -308,12 +308,12 @@ impl Session {
                         if share_seq == Some(seq) {
                             if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; c.lines_seq = None; c.lines_at = None; }
                             if let Some(m) = self.calls.cur.as_ref().and_then(|c| c.media.as_ref()) { m.lines_unnegotiated(); }
-                            self.lines_failed(&format!("Der Medienserver hat die Videoverbindung abgelehnt: {}", scrub(&e)));
+                            self.lines_failed(&crate::trq!("The media server rejected the video connection: {{0}}", scrub(&e)));
                         }
                         else {
                             // the round is over either way: a later OFFER (ICE restart) may go out
                             if let Some(c) = self.calls.cur.as_mut() { (c.roap_done, c.offer_at) = (true, None); }
-                            self.media_trouble("Medienaushandlung fehlgeschlagen: die Antwort des Medienservers wurde nicht angenommen.");
+                            self.media_trouble(&crate::trq!("Media negotiation failed: the media server's answer wasn't accepted.").into_owned());
                         }
                     }
                 }
@@ -342,7 +342,7 @@ impl Session {
                 if share_offer {
                     if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; c.offer_at = None; c.lines_seq = None; c.lines_at = None; }
                     if let Some(m) = self.calls.cur.as_ref().and_then(|c| c.media.as_ref()) { m.lines_unnegotiated(); }
-                    self.lines_failed("Der Medienserver hat die Videoverbindung abgelehnt (ROAP-Fehler).");
+                    self.lines_failed(&crate::trq!("The media server rejected the video connection (ROAP error).").into_owned());
                 } else if let Some(c) = self.calls.cur.as_mut().filter(|c| !c.roap_done && c.roap_seq == seq) {
                     // our own OFFER (an ICE restart) refused: the next one may go out
                     (c.roap_done, c.offer_at) = (true, None);
@@ -397,7 +397,7 @@ impl Session {
     pub(super) fn hang_up(&mut self) -> Result<(), String> {
         let Some(c) = self.calls.cur.as_ref() else { return Ok(()) };
         let (url, id, incoming_pending) = (c.url.clone(), c.self_id.clone(), !c.outgoing && !c.answered);
-        if !webex_host(&url) { self.end_call("left"); return Err("Ungültige Anruf-Adresse.".into()); }
+        if !webex_host(&url) { self.end_call("left"); return Err(crate::trq!("Invalid call address.").into_owned()); }
         // Local media stops first and whatever the server answers (stalled request, network error, back-off, expired
         // token): the other side must never keep hearing us. The request error is still shown.
         self.end_call(if incoming_pending { "declined" } else { "left" });
@@ -415,7 +415,7 @@ impl Session {
             if !matches!(http_status(e), Some(404 | 409 | 410)) { std::thread::sleep(Duration::from_millis(500)); r = send(self); }
         }
         dbg_conn(&format!("call: {} -> {}", if incoming_pending { "decline" } else { "leave" }, if r.is_ok() { "ok" } else { "failed" }));
-        r.map(|_| ()).map_err(|e| format!("Auflegen fehlgeschlagen: {}", scrub(&e)))
+        r.map(|_| ()).map_err(|e| crate::trq!("Hanging up failed: {{0}}", scrub(&e)))
     }
 
     /// Maps the locus + our media state to what the UI shows; Connected only with real media.
@@ -451,9 +451,9 @@ impl Session {
         if media == Some(MediaState::Connected) { c.media_up_at.get_or_insert(now); }
         let stall = if answered { media_stall(now, c.offer_at, c.joined_at, c.media_up_at, rx, media) } else { None };
         let recovering = c.media_up_at.is_some() && media != Some(MediaState::Failed);
-        if let Some(why) = stall { self.media_trouble(why); }
-        // "Verbunden" only with the peer connection up (ICE + DTLS); before that "Verbindung wird hergestellt…". A call
-        // whose media was up stays "Verbunden" while ICE recovers from a blip (`ice_tick`).
+        if let Some(why) = stall { self.media_trouble(&crate::trq!(why)); }
+        // "Connected" only with the peer connection up (ICE + DTLS); before that "Connecting…". A call
+        // whose media was up stays "Connected" while ICE recovers from a blip (`ice_tick`).
         if s == CallState::Connected && media != Some(MediaState::Connected) && !recovering { s = CallState::Connecting; }
         if let CallState::Ended(w) = &s { self.end_call(w); } else { self.emit(s); }
         Ok(())

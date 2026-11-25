@@ -10,7 +10,7 @@
 //!   space on the team's general conversation; add / remove members; archive / unarchive; join a team space =
 //!   POST `<team.url>/conversations/<id>/participants`; list = GET `<team.url>/conversations`; the team list request is
 //!   `/teams?includeTeamMembers=false&includeTeamConversations=true`.
-//! - "Verlassen" on a 1:1 hides it (a `HIDE` activity comes back).
+//! - "Leave" on a 1:1 hides it (a `HIDE` activity comes back).
 //! Nothing here runs on its own: every write is sent only when the user picks the action. Tests cover the bodies only.
 use super::*;
 use std::sync::Mutex;
@@ -24,7 +24,7 @@ pub const MUTE_TAGS: [&str; 4] = [MENTION_OFF, MENTION_ON, MSG_OFF, MSG_ON];
 /// Participants asked for when the Personen tab opens (`participantsLimit`; the list request only carries 10).
 pub const PEOPLE_LIMIT: u32 = 500;
 
-/// A space's notification setting ("Global", "Alle Nachrichten", "Nur @Erwähnungen", "Aus"; "Aus und Bereich ausblenden" =
+/// A space's notification setting ("Global", "All messages", "@Mentions only", "Off"; "Off and hide the space" =
 /// `Off` + hide). Tags: messages muted = MESSAGE_…_OFF, mentions muted = MENTION_…_OFF, unmuted = …_ON, Global = no tag;
 /// "@Mentions only" = messages off + mentions on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -59,7 +59,7 @@ pub struct TeamSpace { pub id: String, pub title: String, pub joined: bool }
 
 pub enum SpaceOp {
     MarkRead(String), MarkUnread(String),
-    /// (space, setting); `hide` = "Aus und Bereich ausblenden".
+    /// (space, setting); `hide` = "Off and hide the space".
     Notify(String, Notify, bool),
     /// (space, person id as in `Person.id`).
     RemovePerson(String, String),

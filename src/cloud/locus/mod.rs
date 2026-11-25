@@ -31,7 +31,7 @@
 //!   us re-read the whole locus (`apply_event`). The call ends as soon as the other side declined or left
 //!   (`shouldDisconnectOne2OneCall`), and an incoming call answered on another of my devices stops ringing here.
 //!
-//! "Verbunden" is shown only when the callee's participant state is JOINED **and** our peer connection is `Connected`;
+//! "Connected" is shown only when the callee's participant state is JOINED **and** our peer connection is `Connected`;
 //! a call whose media doesn't come up (no ROAP answer, no ICE / DTLS, no RTP) is reported to the user (`media_stall`).
 //!
 //! Safety: `WEBOX_CALL_TEST_ONLY=<address>` makes every outgoing call to any other address fail before any network request,
@@ -160,7 +160,7 @@ pub enum CallReq { Dial(String, audio::Choice), Answer(audio::Choice), HangUp, M
     Control(controls::Ctl),
     /// Start sharing the picked screen / window (`Some`), or stop (`None`); see `share.rs`.
     Share(Option<share::ShareReq>),
-    /// "Treffen" / "Beitreten" in a group space (its id): join the space's meeting, or start it (session.rs `join_space`).
+    /// "Meet" / "Join" in a group space (its id): join the space's meeting, or start it (session.rs `join_space`).
     JoinSpace(String, audio::Choice),
     /// Our camera in the call: on with this camera (`Some`; again with another device = camera switch), or off (`None`).
     /// May be sent before `Dial` / `Answer`: the camera then starts once the call's media is up. See `video.rs`.
@@ -309,10 +309,10 @@ pub fn call_state(v: &LocusView, outgoing: bool) -> Option<CallState> {
 pub fn call_allowed(addr: &str, guard: Option<&str>) -> Result<(), String> {
     let a = addr.trim();
     if a.is_empty() || a.contains(char::is_whitespace) || a.contains(':') || a.matches('@').count() != 1 || a.starts_with('@') || a.ends_with('@') {
-        return Err("Angerufen werden können nur Webex-Adressen (E-Mail).".into());
+        return Err(crate::trq!("Only Webex addresses (email) can be called.").into_owned());
     }
     match guard.map(str::trim).filter(|g| !g.is_empty()) {
-        Some(g) if !g.eq_ignore_ascii_case(a) => Err("Testschutz aktiv: Anrufe nur an die freigegebene Adresse.".into()),
+        Some(g) if !g.eq_ignore_ascii_case(a) => Err(crate::trq!("Test guard active: calls only to the allowed address.").into_owned()),
         _ => Ok(()),
     }
 }
@@ -412,14 +412,15 @@ pub const ICE_RESTART_EVERY: Duration = Duration::from_secs(15);
 /// Our ROAP OFFER got no ANSWER.
 pub const ROAP_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The notice for a call whose media never came up, or `None` while there is still time. Pure, for the tests.
+/// The notice (English source, translated where shown) for a call whose media never came up, or `None` while there is
+/// still time. Pure, for the tests.
 pub fn media_stall(now: Instant, offer_at: Option<Instant>, joined_at: Option<Instant>, media_up_at: Option<Instant>, rx: u64, media: Option<MediaState>) -> Option<&'static str> {
     let over = |t: Option<Instant>, d: Duration| t.is_some_and(|t| now.saturating_duration_since(t) >= d);
-    if over(offer_at, ROAP_TIMEOUT) { return Some("Keine Antwort des Medienservers auf die Verbindungsanfrage (ROAP). Der Anruf hat möglicherweise keinen Ton."); }
-    if media == Some(MediaState::Failed) { return Some("Audioverbindung fehlgeschlagen (ICE/DTLS). Der Anruf hat keinen Ton."); }
+    if over(offer_at, ROAP_TIMEOUT) { return Some("No answer from the media server to the connection request (ROAP). The call may have no sound."); }
+    if media == Some(MediaState::Failed) { return Some("Audio connection failed (ICE/DTLS). The call has no sound."); }
     // only before the media was ever up: a later drop is ICE recovering (`ice_tick`), not "no connection"
-    if media != Some(MediaState::Connected) && media_up_at.is_none() && over(joined_at, MEDIA_TIMEOUT) { return Some("Keine Audioverbindung zum Medienserver (ICE/DTLS kommt nicht zustande). Netzwerk oder Firewall prüfen."); }
-    if media == Some(MediaState::Connected) && rx == 0 && over(media_up_at, RTP_TIMEOUT) { return Some("Verbunden, aber es kommt kein Ton an (keine Audiodaten vom Medienserver)."); }
+    if media != Some(MediaState::Connected) && media_up_at.is_none() && over(joined_at, MEDIA_TIMEOUT) { return Some("No audio connection to the media server (ICE/DTLS doesn't connect). Check the network or firewall."); }
+    if media == Some(MediaState::Connected) && rx == 0 && over(media_up_at, RTP_TIMEOUT) { return Some("Connected, but no sound arrives (no audio data from the media server)."); }
     None
 }
 

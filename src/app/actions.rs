@@ -64,7 +64,7 @@ impl App {
         }
     }
 
-    /// "Einzelne Emojis groß senden" (Webox addition, Messaging settings, default on).
+    /// "Send single emojis large" (Webox addition, Messaging settings, default on).
     pub(crate) fn big_emoji_on(&self) -> bool { self.settings["big_emoji_send"].as_bool().unwrap_or(true) }
 
     /// Whether the composer's text is markdown: markdown mode, or the rich-text toolbar (its commands insert markdown markers).
@@ -198,7 +198,7 @@ impl App {
     /// is in front (focused, not minimised): a chat that is merely selected behind other windows hasn't been read.
     /// The session sends it only when something is unseen and for the newest readable message (see `Session::ack`).
     pub(crate) fn acknowledge(&mut self, id: &str) {
-        // Settings > Nachrichten "Lesebestätigungen verwenden" off: no receipt on opening, only when sending a message.
+        // Settings > Messaging "Use Read Receipts" off: no receipt on opening, only when sending a message.
         if self.settings["read_receipts"] == false { return; }
         if self.msgx.unread_hold.as_deref() == Some(id) { return; } // just marked unread: no receipt while it stays open
         if !self.window_active() { return }

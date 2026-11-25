@@ -33,7 +33,7 @@ impl App {
         };
         // One-time key fixes (ui/settings); offline sample / screenshot runs change them in memory only.
         if ui::settings::migrate(&mut app.settings, ui::chrome::now_ms()) && !a.sample && app.shot.is_none() { system::save_settings(&app.cfg, &app.settings); }
-        // Sample: the Anrufe tab was "last seen" an hour ago, so the made-up missed call of 25 minutes ago shows the rail badge.
+        // Sample: the Calling tab was "last seen" an hour ago, so the made-up missed call of 25 minutes ago shows the rail badge.
         if a.sample { app.settings[ui::settings::CALLS_SEEN_MS] = json!(ui::chrome::now_ms() - 3_600_000); }
         app.msgx_load(); // scheduled messages saved by an earlier run
         extras::gif_extras::register(); // built-in plugin behind the GIF picker's hook (off unless switched on in Settings > Plugins)
@@ -42,14 +42,14 @@ impl App {
         app.email_input = [app.settings["webexusername"].as_str(), app.settings["email"].as_str()].into_iter().flatten()
             .find(|s| !s.is_empty()).unwrap_or("").into();
         for s in &app.spaces { app.messages.insert(s.id.clone(), cloud::sample_messages(&s.id)); }
-        // Sample-only extras so the Personen / Meetings tabs have something to show (offline demo data).
+        // Sample-only extras so the People / Meetings tabs have something to show (offline demo data).
         if a.sample {
             let me = app.me.clone();
             if let Some(s) = app.spaces.iter_mut().find(|s| s.id == "s1") { s.participants = std::iter::once(me).chain(app.people.iter().filter(|p| p.name != "Jonas Weber").cloned()).collect(); }
-            app.meetings.push(Meeting { title: "Webex-Bereich für Alex: Sync".into(), start: "16:00".into(), link: "https://example.com/meet/s1".into() });
+            app.meetings.push(Meeting { title: "Alex's Webex space: Sync".into(), start: "16:00".into(), link: "https://example.com/meet/s1".into() });
         }
         if a.sample { app.photos.add(ui::sample_photos::sample_photos()); if std::env::var("WEBOX_SHOT_LATE").is_err() { app.photos.add_images(ui::sample_photos::sample_images()); } app.cover_bytes = Some(ui::sample_photos::sample_banner(0)); app.photos.add_images(vec![("cover:@default".into(), ui::sample_photos::sample_banner(1)), ("cover:jonas@example.com".into(), ui::sample_photos::sample_banner(2)), ("spacecover:s6".into(), ui::sample_photos::sample_banner(0)), ("spaceavatar:s8".into(), ui::sample_photos::sample_banner(1))]); for (k, v) in ui::sample_photos::sample_last_active(ui::chrome::now_ms()) { app.photos.last_active.insert(k, v); } }
-        // Startup state: nothing selected in the list, the content area shows the "Bereich erstellen" pane; no space is
+        // Startup state: nothing selected in the list, the content area shows the "Create a space" pane; no space is
         // opened, so none is marked read. Screenshot mode opens the first sample space so --sample checks stay comparable.
         if app.shot.is_some() { if let Some(id) = app.spaces.first().map(|s| s.id.clone()) { app.open_space(id) } } else { app.new_space = Some(String::new()); }
         if a.sample { if let Ok(id) = std::env::var("WEBOX_SHOT_SPACE") { app.open_space(id) } } // screenshot checks of another sample chat
@@ -195,7 +195,7 @@ impl App {
             for (space, list) in self.messages.iter_mut() { self.plugins.reapply_kept(space, list); crate::ui::messages::prepare_arrived(list); }
         }
         for (key, id, v) in out.settings_set {
-            let r = self.plugins.list.iter().position(|e| e.key == key).ok_or_else(|| "kein Plugin".to_string()).and_then(|i| self.plugins.set_setting(i, &id, v));
+            let r = self.plugins.list.iter().position(|e| e.key == key).ok_or_else(|| "no such plugin".to_string()).and_then(|i| self.plugins.set_setting(i, &id, v));
             if let Err(e) = r { self.plugin_log.push(format!("[{key}] settings.set {id}: {e}")); }
         }
         if let Some(t) = out.clipboard { crate::ui::copy_text(t); }
@@ -229,7 +229,7 @@ impl App {
         if let Some(s) = self.spaces.iter_mut().find(|s| s.id == id) { s.unread = false; }
         if let Some(c) = &self.client { c.req(Req::Messages(id.clone())); }
         self.selected = Some(id.clone());
-        self.new_space = None; // opening a space leaves the "Bereich erstellen" pane (also the startup one)
+        self.new_space = None; // opening a space leaves the "Create a space" pane (also the startup one)
         self.conv_tab = ConvTab::Messages;
         if self.tab != Tab::Teams { self.tab = Tab::Messaging; }
         self.go(self.tab, Some(id));

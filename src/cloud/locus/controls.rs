@@ -117,22 +117,22 @@ pub fn request(locus_url: &str, c: &Ctl) -> (&'static str, String, Value) {
 /// (never us where it makes no sense), only what our role allows, invites only to plain Webex addresses (and with the
 /// test guard set only the allowed one).
 pub fn check(r: &Roster, c: &Ctl, guard: Option<&str>) -> Result<(), String> {
-    let other = |id: &str| r.get(id).filter(|m| !m.me).ok_or_else(|| "Diese Person ist nicht (mehr) im Anruf.".to_string());
+    let other = |id: &str| r.get(id).filter(|m| !m.me).ok_or_else(|| crate::trq!("This person is no longer in the call.").into_owned());
     match c {
-        Ctl::Mute(id, _) => { if !other(id)?.joined() { return Err("Diese Person ist noch nicht im Anruf.".into()); } Ok(()) }
+        Ctl::Mute(id, _) => { if !other(id)?.joined() { return Err(crate::trq!("This person hasn't joined the call yet.").into_owned()); } Ok(()) }
         Ctl::Hand(id, raise) => match r.get(id) {
-            Some(m) if m.me => if r.group { Ok(()) } else { Err("Handheben gibt es nur in Gruppenanrufen.".into()) },
+            Some(m) if m.me => if r.group { Ok(()) } else { Err(crate::trq!("Raising a hand is only available in group calls.").into_owned()) },
             Some(_) if !raise && r.me_host => Ok(()),
-            Some(_) => Err("Nur Gastgeber können die Hand anderer senken.".into()),
-            None => Err("Diese Person ist nicht (mehr) im Anruf.".into()),
+            Some(_) => Err(crate::trq!("Only hosts can lower other people's hands.").into_owned()),
+            None => Err(crate::trq!("This person is no longer in the call.").into_owned()),
         },
-        Ctl::Remove(id) => { other(id)?; if r.may_remove() { Ok(()) } else { Err("Nur Gastgeber können Personen entfernen.".into()) } }
+        Ctl::Remove(id) => { other(id)?; if r.may_remove() { Ok(()) } else { Err(crate::trq!("Only hosts can remove people.").into_owned()) } }
         Ctl::Invite(a) => {
             call_allowed(a, guard)?;
-            if r.members.iter().any(|m| m.email.eq_ignore_ascii_case(a.trim())) { return Err("Diese Person ist bereits im Anruf.".into()); }
+            if r.members.iter().any(|m| m.email.eq_ignore_ascii_case(a.trim())) { return Err(crate::trq!("This person is already in the call.").into_owned()); }
             Ok(())
         }
-        Ctl::EndAll => if r.me_host && r.group { Ok(()) } else { Err("Nur Gastgeber können den Anruf für alle beenden.".into()) },
+        Ctl::EndAll => if r.me_host && r.group { Ok(()) } else { Err(crate::trq!("Only hosts can end the call for everyone.").into_owned()) },
     }
 }
 
@@ -142,11 +142,11 @@ fn what(c: &Ctl) -> &'static str {
         Ctl::Remove(_) => "remove", Ctl::Invite(_) => "invite", Ctl::EndAll => "end for all" }
 }
 
-/// The user-facing failure text.
+/// The user-facing failure text (English source, translated where it is used).
 fn failed(c: &Ctl) -> &'static str {
-    match c { Ctl::Mute(_, true) => "Stummschalten fehlgeschlagen", Ctl::Mute(_, false) => "Stummschaltung aufheben fehlgeschlagen",
-        Ctl::Hand(_, true) => "Hand heben fehlgeschlagen", Ctl::Hand(_, false) => "Hand senken fehlgeschlagen",
-        Ctl::Remove(_) => "Entfernen fehlgeschlagen", Ctl::Invite(_) => "Einladen fehlgeschlagen", Ctl::EndAll => "Beenden für alle fehlgeschlagen" }
+    match c { Ctl::Mute(_, true) => "Mute failed", Ctl::Mute(_, false) => "Unmute failed",
+        Ctl::Hand(_, true) => "Raising the hand failed", Ctl::Hand(_, false) => "Lowering the hand failed",
+        Ctl::Remove(_) => "Removing failed", Ctl::Invite(_) => "Inviting failed", Ctl::EndAll => "Ending for everyone failed" }
 }
 
 impl Session {
@@ -154,14 +154,14 @@ impl Session {
     pub(super) fn control(&mut self, c: Ctl) -> Result<(), String> {
         let Some(a) = self.calls.cur.as_ref().filter(|a| a.answered) else { return Ok(()) };
         let url = a.url.clone();
-        if !webex_host(&url) { return Err("Ungültige Anruf-Adresse.".into()); }
+        if !webex_host(&url) { return Err(crate::trq!("Invalid call address.").into_owned()); }
         let r = a.view.as_ref().map(|v| v.roster.clone()).unwrap_or_default();
         check(&r, &c, std::env::var(GUARD_ENV).ok().as_deref())?; // before any network request
         let (method, u, body) = request(&url, &c);
         let res = self.http(method, &u, Some(body));
         dbg_conn(&format!("call: {} -> {}", what(&c), if res.is_ok() { "ok" } else { "failed" }));
         if c == Ctl::EndAll && res.is_ok() { self.end_call("left"); }
-        res.map(|_| ()).map_err(|e| format!("{}: {}", failed(&c), scrub(&e)))
+        res.map(|_| ()).map_err(|e| format!("{}: {}", crate::trq!(failed(&c)), scrub(&e)))
     }
 
     /// Tells the UI the roster when it changed (`Resp::CallRoster`).
@@ -221,7 +221,7 @@ mod tests {
         l["participants"][0]["controls"] = json!({});
         let r = parse_locus(&l, "me@example.com").roster;
         assert!(!r.group && !r.me_host && r.hostless());
-        assert_eq!(check(&r, &Ctl::Hand("self-1".into(), true), None), Err("Handheben gibt es nur in Gruppenanrufen.".into()));
+        assert_eq!(check(&r, &Ctl::Hand("self-1".into(), true), None), Err(crate::trq!("Raising a hand is only available in group calls.").into_owned()));
         assert!(check(&r, &Ctl::EndAll, None).is_err());
         assert_eq!(check(&r, &Ctl::Remove("pa".into()), None), Ok(()), "hostless: Locus lets anyone remove");
     }

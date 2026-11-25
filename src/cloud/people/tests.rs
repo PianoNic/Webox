@@ -100,7 +100,7 @@ fn an_older_last_activity_is_ignored_across_orders() {
     assert!(b.accept(&newer, 0));
 }
 
-/// "In einem Anruf" with an end; the call ends without an event → once the end has passed the person is due for a
+/// "In a call" with an end; the call ends without an event → once the end has passed the person is due for a
 /// snapshot again (then at most once a minute); an "active" update clears it.
 #[test]
 fn a_call_that_ends_without_an_event_is_checked_again() {

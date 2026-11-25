@@ -1,12 +1,12 @@
-//! Setting my OWN presence (Verfügbar / Abwesend / Bitte nicht stören + duration). WRITE on the real account,
+//! Setting my OWN presence (Available / Away / Do not disturb + duration). WRITE on the real account,
 //! only ever sent on the user's own click in the status menu; tests check the body only.
 //!
 //! Protocol: `POST apheleia /events` with `{subject: device.userId, eventType: status, label: device.userId (not for "dnd"),
-//! ttl}`; status is one of `active | inactive | ooo | dnd`, ttl in seconds. "Bis zur Deaktivierung" and a user-set
-//! "Abwesend" (no end) use ttl -1, the value apheleia itself uses for "no known expiration".
+//! ttl}`; status is one of `active | inactive | ooo | dnd`, ttl in seconds. "Until turned off" and a user-set
+//! "Away" (no end) use ttl -1, the value apheleia itself uses for "no known expiration".
 use super::*;
 
-/// TTL of a plain "Verfügbar" (s).
+/// TTL of a plain "Available" (s).
 pub const ACTIVE_TTL: i64 = 600;
 /// TTL for "no end".
 pub const NO_END_TTL: i64 = -1;
@@ -23,7 +23,7 @@ pub fn event_type(status: &str) -> &'static str {
     match status { "DoNotDisturb" => "dnd", "inactive" => "inactive", "OutOfOffice" => "ooo", _ => "active" }
 }
 
-/// The user feature toggle behind "Verfügbarkeit und Status anzeigen".
+/// The user feature toggle behind "Show availability and status".
 pub const PRESENCE_FEATURE: &str = "user-presence-enabled";
 
 /// Body of `POST feature /features/users/<userId>/user`.

@@ -29,7 +29,7 @@ impl Session {
             let code = e.split(" → ").nth(1).unwrap_or("").split_whitespace().next().unwrap_or("").to_string();
             let ecode = e.split("\"errorCode\":").nth(1).map(|r| r.chars().take_while(|c| c.is_ascii_digit()).collect::<String>()).unwrap_or_default();
             dbg_conn(&format!("activity rejected: http {code} errorCode {ecode}"));
-            if code.starts_with('4') { what.to_string() } else { e }
+            if code.starts_with('4') { crate::trq!(what).into_owned() } else { e }
         })
     }
 
@@ -63,7 +63,7 @@ impl Session {
     /// the "encryption" of the `scr` only hides the location from the service, as in real shares (see `gif_share_body`).
     pub(crate) fn send_gif(&mut self, id: &str, url: &str, title: &str, w: u32, h: u32) -> Result<(), String> {
         let url = url.replacen("http://", "https://", 1);
-        if !url.starts_with("https://") || !images::giphy_host(&url) { return Err("GIF-Adresse nicht erlaubt".into()); }
+        if !url.starts_with("https://") || !images::giphy_host(&url) { return Err(crate::trq!("This GIF address isn't allowed").into_owned()); }
         let key_url = self.key_url(id)?;
         let key = self.key(&key_url)?;
         // fileSize is a real value in received shares: ask Giphy's CDN (plain HEAD, no token), 0 if it won't say.
@@ -78,7 +78,7 @@ impl Session {
         full["objectType"] = json!("activity");
         full["actor"] = json!({"objectType": "person", "id": self.user});
         self.http("POST", &self.url("conversation", GIF_SHARE_PATH), Some(full)).map(|v| { self.hist.posted = Some((v, temp)); })
-            .map_err(|e| { dbg_conn("gif share rejected on /content"); if e.contains(" → 4") { "GIF konnte nicht gesendet werden".to_string() } else { e } })
+            .map_err(|e| { dbg_conn("gif share rejected on /content"); if e.contains(" → 4") { crate::trq!("Couldn't send the GIF").into_owned() } else { e } })
     }
 
     pub(crate) fn delete(&mut self, id: &str, activity: &str) -> Result<(), String> {
@@ -97,7 +97,7 @@ impl Session {
             let ku = Some(st(&a, "encryptionKeyUrl")).filter(|k| !k.is_empty()).unwrap_or_else(|| key_url.clone());
             if self.decrypt(&st(&a["object"], "displayName"), &ku) == name { return self.delete(id, &st(&a, "id")); }
         }
-        Err("Reaktion nicht gefunden".into())
+        Err(crate::trq!("Reaction not found").into_owned())
     }
 
     /// Read receipt: only when the space has something unseen (`lastSeen < lastReadable`) and for the newest readable
