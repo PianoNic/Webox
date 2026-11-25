@@ -101,11 +101,23 @@ pub(super) fn context_entries(hit: &Hit, selected: bool, deleted: bool, file_ite
     if !v.is_empty() { v.push(menu::Entry::Sep); }
     if deleted { v.push(menu::Item::new("copy-message", "Nachricht kopieren").icon("copy-regular").entry()); } else { v.extend(msg_items); }
     v.extend(plugin_entries(plugin));
-    v
+    tidy(v)
+}
+
+/// A menu never starts or ends with a separator, nor has two in a row (e.g. a part's actions with nothing after them).
+pub(crate) fn tidy(v: Vec<menu::Entry>) -> Vec<menu::Entry> {
+    let mut out: Vec<menu::Entry> = Vec::with_capacity(v.len());
+    for e in v {
+        let sep = matches!(e, menu::Entry::Sep);
+        if sep && out.last().is_none_or(|l| matches!(l, menu::Entry::Sep)) { continue; }
+        out.push(e);
+    }
+    while matches!(out.last(), Some(menu::Entry::Sep)) { out.pop(); }
+    out
 }
 
 /// The plugins' entries (ids "plug:<index>"), after a separator; nothing without any.
-pub(super) fn plugin_entries(plugin: &[PluginItem]) -> Vec<menu::Entry> {
+pub(crate) fn plugin_entries(plugin: &[PluginItem]) -> Vec<menu::Entry> {
     if plugin.is_empty() { return vec![]; }
     let mut v = vec![menu::Entry::Sep];
     for (i, p) in plugin.iter().enumerate() {
@@ -120,7 +132,7 @@ pub(super) fn plugin_entries(plugin: &[PluginItem]) -> Vec<menu::Entry> {
 impl App {
     /// The menu `k` of message `m` (in space `id`) was just opened: asks the plugins for their entries, once per opening.
     pub(super) fn message_menu_opened(&mut self, ctx: &egui::Context, id: &str, m: &Message, k: &str) {
-        let payload = json!({ "space": id, "id": m.id, "deleted": m.deleted != 0, "edited": m.edited || !m.history.is_empty(), "mine": m.mine });
+        let payload = json!({ "space": id, "id": m.id, "deleted": m.deleted != 0, "edited": m.edited || !m.history.is_empty() || m.edit_tag, "mine": m.mine });
         let items = self.plugins.message_menu(&payload);
         ctx.data_mut(|d| d.insert_temp(plug_id(k), items));
     }
@@ -132,7 +144,7 @@ impl App {
     pub(super) fn message_menu_show(&mut self, ctx: &egui::Context, t: &Th, id: &str, m: &Message, k: &str, anchor: Rect, side: menu::Side, align: menu::Align, caret: bool,
         mut items: Vec<menu::Entry>, add_plugins: bool) -> Option<String> {
         let plug: Vec<PluginItem> = ctx.data(|d| d.get_temp(plug_id(k))).unwrap_or_default();
-        if add_plugins && !msel(ctx, id).multi { items.extend(plugin_entries(&plug)); }
+        if add_plugins && !msel(ctx, id).multi { items.extend(plugin_entries(&plug)); items = tidy(items); }
         let (kr, kx) = (remind_key(k), react_key(k));
         let mut out = None;
         if let Some(a) = menu::webex_menu(ctx, &mut self.icons, t, k, anchor, side, align, caret, &items) {
@@ -166,6 +178,15 @@ impl App {
             }
         }
         out
+    }
+
+    /// Screenshot checks only: opens the right-click menu of `m` in the middle of the window as if its text was right-clicked.
+    pub(super) fn shot_context_menu(&mut self, ctx: &egui::Context, id: &str, m: &Message) {
+        let k = ctx_key(&m.id);
+        let at = ctx.screen_rect().center();
+        ctx.data_mut(|d| { d.insert_temp(Id::new(("msg-ctx-target", &m.id)), Hit::Text { link: None }); d.insert_temp(Id::new(("msg-ctx-at", &m.id)), at); });
+        menu::menu_open(ctx, &k);
+        self.message_menu_opened(ctx, id, m, &k);
     }
 
     /// The right-click menu of a message row, at the end of the row's frame: opens it on a right click anywhere on `row` (with
@@ -278,6 +299,18 @@ mod tests {
         assert!(plugin_entries(&[]).is_empty());
     }
 
+    #[test]
+    fn a_menu_never_ends_in_a_separator() {
+        // A kept deleted message right-clicked on its text, no plugin entries: the text actions, one separator, "Nachricht kopieren".
+        assert_eq!(ids(&context_entries(&Hit::Text { link: None }, false, true, vec![], vec![], &[])), ["select-all", "-", "copy-message"]);
+        // Whatever the parts give, no separator is left at either end or doubled.
+        let sep = || menu::Entry::Sep;
+        let it = |id: &str| menu::Item::new(id, id).entry();
+        assert_eq!(ids(&tidy(vec![sep(), it("a"), sep(), sep(), it("b"), sep()])), ["a", "-", "b"]);
+        assert!(tidy(vec![sep(), sep()]).is_empty());
+        assert_eq!(ids(&context_entries(&Hit::Text { link: None }, false, false, vec![], vec![sep()], &[])), ["select-all"]);
+    }
+
     /// A row with a text part and a picture part, right-clicked at `at`: what the row's menu would open with.
     fn right_click_on(at: egui::Pos2) -> Option<Hit> {
         let ctx = egui::Context::default();
@@ -302,6 +335,41 @@ mod tests {
         frame(vec![btn(true)], &mut out);
         frame(vec![btn(false)], &mut out);
         out
+    }
+
+    /// An edited message with logged history: earlier-text lines above the text and the clickable "(bearbeitet)" tag below it
+    /// (a click-sensing widget, as `edit_tag_click` adds), right-clicked at `at`.
+    fn right_click_on_edited(at: egui::Pos2) -> Option<Hit> {
+        let ctx = egui::Context::default();
+        let row = Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(400.0, 120.0));
+        let text = Rect::from_min_size(egui::pos2(60.0, 50.0), Vec2::new(200.0, 20.0));
+        let tag = Rect::from_min_size(egui::pos2(60.0, 74.0), Vec2::new(70.0, 14.0));
+        let mut out = None;
+        let frame = |events: Vec<egui::Event>, out: &mut Option<Hit>| {
+            let input = egui::RawInput { screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, Vec2::new(800.0, 600.0))), events, ..Default::default() };
+            let _ = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().frame(egui::Frame::NONE).show(ctx, |ui| {
+                    let (r, _) = ui.allocate_exact_size(row.size(), Sense::hover());
+                    let tr = ui.interact(text.translate(r.min.to_vec2()), Id::new("t"), Sense::click_and_drag());
+                    if tr.secondary_clicked() { note_hit(ui.ctx(), "m1", Hit::Text { link: None }); }
+                    let _ = ui.interact(tag.translate(r.min.to_vec2()), Id::new(("msg-edit-tag", "s", "m1", (0u32, 1u8))), Sense::click());
+                    if row_right_click(ui, r).is_some() { *out = Some(take_hit(ui.ctx(), "m1")); } else { let _ = take_hit(ui.ctx(), "m1"); }
+                });
+            });
+        };
+        let btn = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: Default::default() };
+        frame(vec![egui::Event::PointerMoved(at)], &mut out);
+        frame(vec![btn(true)], &mut out);
+        frame(vec![btn(false)], &mut out);
+        out
+    }
+
+    #[test]
+    fn an_edited_message_with_history_opens_its_menu_everywhere() {
+        assert_eq!(right_click_on_edited(egui::pos2(350.0, 60.0)), Some(Hit::Row), "the empty right side");
+        assert_eq!(right_click_on_edited(egui::pos2(100.0, 20.0)), Some(Hit::Row), "an earlier-text line");
+        assert_eq!(right_click_on_edited(egui::pos2(80.0, 80.0)), Some(Hit::Row), "the (bearbeitet) tag");
+        assert_eq!(right_click_on_edited(egui::pos2(100.0, 60.0)), Some(Hit::Text { link: None }), "the text");
     }
 
     #[test]

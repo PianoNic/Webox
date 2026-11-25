@@ -108,12 +108,24 @@ pub struct Message {
     /// arrival; 0 = unknown (the list then hashes the content itself). Whatever edits a message in place sets it to 0.
     pub rev: u64,
     /// Non-zero: a deleted message a plugin keeps showing (`message.deleted`, extras/plugins/kept.rs): 1 = red text,
-    /// 2 = red overlay. Local only.
+    /// 2 = red overlay, 3 = no highlight. Local only.
     pub deleted: u8,
-    /// Earlier texts of an edited message, oldest first, that a plugin attached (`message.edited`); drawn struck through
-    /// above the text. Local only.
-    pub history: Vec<String>,
+    /// A kept deleted message the plugin asked to fold: the list shows "N gelöschte Nachrichten" for a run of them, a click
+    /// unfolds them. Local only.
+    pub collapsed: bool,
+    /// Earlier texts of an edited message, oldest first, that a plugin attached (`message.edited`), each as spans (text,
+    /// `kept::SPAN_*`): a plain earlier text is one `SPAN_OLD` span, drawn struck through; a diff colours added / removed
+    /// parts. Drawn above the text. Local only.
+    pub history: Vec<Vec<Span>>,
+    /// The current text as spans with its added parts marked (a plugin's diff view): drawn in those colours when it is the
+    /// text Webox shows. Local only.
+    pub current: Vec<Span>,
+    /// A plugin logs this message's edits: "(bearbeitet)" stands below it even without earlier texts drawn, and a click on
+    /// it fires `message.edit_tag_clicked`. Local only.
+    pub edit_tag: bool,
 }
+/// A piece of plugin-given text: (text, kind), kind one of `extras::plugins::kept::SPAN_*`.
+pub type Span = (String, u8);
 /// A link preview: page title, description, site name and a thumbnail (OpenGraph data).
 #[derive(Clone, Debug, Default)]
 pub struct LinkPreview { pub url: String, pub title: String, pub description: String, pub site: String, pub image_key: String }

@@ -258,16 +258,33 @@ impl App {
         self.sched_tick(ctx);
         self.reminders_tick(ctx);
         // Screenshot checks only (--sample --screenshot): a waiting quote, scheduled messages, the "Später senden" menu / dialog.
-        // WEBOX_SHOT_KEPT=<n>: message <n> is deleted, through the plugins' message.deleted path (a logging plugin keeps it).
+        // WEBOX_SHOT_EDITED=<n>:<text>[;<n>:<text>...]: message <n> is edited to <text>, one edit after the other, and
+        // WEBOX_SHOT_KEPT=<n>[,<n>...]: those messages are deleted, through the plugins' message.edited / message.deleted path
+        // (a logging plugin keeps them). WEBOX_SHOT_EDIT_DIALOG=<n> clicks the "(bearbeitet)" of message <n>.
         if self.shot.is_some() && self.frames == 3 {
-            if let (Some(sel), Ok(v)) = (self.selected.clone(), std::env::var("WEBOX_SHOT_KEPT")) {
-                let mid = format!("{sel}-{v}");
-                if let Some(old) = self.messages.get(&sel).cloned() {
-                    let mut new: Vec<Message> = old.iter().map(|m| if m.id == mid { Message { id: m.id.clone(), notice: format!("{} hat die Nachricht gelöscht.", m.author), ..Default::default() } } else { m.clone() }).collect();
-                    let name = self.spaces.iter().find(|s| s.id == sel).map(|s| s.title.clone()).unwrap_or_default();
-                    self.plugins.list_arrived(&sel, &name, Some(&old), &mut new);
+            if let Some(sel) = self.selected.clone() {
+                let name = self.spaces.iter().find(|s| s.id == sel).map(|s| s.title.clone()).unwrap_or_default();
+                let step = |me: &mut Self, f: &dyn Fn(&Message) -> Message| if let Some(old) = me.messages.get(&sel).cloned() {
+                    let mut new: Vec<Message> = old.iter().map(f).collect();
+                    me.plugins.list_arrived(crate::extras::plugins::kept::Where { space: &sel, name: &name, ..Default::default() }, Some(&old), &mut new);
                     crate::ui::messages::prepare_arrived(&mut new);
-                    self.messages.insert(sel, new);
+                    me.messages.insert(sel.clone(), new);
+                };
+                for e in std::env::var("WEBOX_SHOT_EDITED").unwrap_or_default().split(';').filter_map(|e| e.split_once(':')) {
+                    let (mid, text) = (format!("{sel}-{}", e.0), e.1.to_string());
+                    step(self, &|m: &Message| if m.id == mid { Message { text: text.clone(), html: String::new(), edited: true, rev: 0, ..m.clone() } } else { m.clone() });
+                }
+                for v in std::env::var("WEBOX_SHOT_KEPT").unwrap_or_default().split(',').filter(|v| !v.is_empty()) {
+                    let mid = format!("{sel}-{v}");
+                    step(self, &|m: &Message| if m.id == mid { Message { id: m.id.clone(), notice: format!("{} hat die Nachricht gelöscht.", m.author), ..Default::default() } } else { m.clone() });
+                }
+            }
+        }
+        if self.shot.is_some() && self.frames == 8 {
+            if let (Some(sel), Ok(v)) = (self.selected.clone(), std::env::var("WEBOX_SHOT_EDIT_DIALOG")) {
+                if let Some(m) = self.messages.get(&sel).and_then(|l| l.iter().find(|m| m.id == format!("{sel}-{v}"))) {
+                    let p = json!({ "space": sel, "id": m.id, "text": m.text, "mine": m.mine, "published_ms": m.published_ms });
+                    self.plugins.emit("message.edit_tag_clicked", &p.to_string());
                 }
             }
         }

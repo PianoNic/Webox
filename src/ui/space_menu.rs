@@ -165,11 +165,32 @@ impl App {
         // Row "···" menu: target space + the button's rect were stored when it was opened.
         if let Some((sid, anchor)) = ctx.data(|d| d.get_temp::<(String, Rect)>(egui::Id::new("row-menu-target"))) {
             if let Some(space) = self.spaces.iter().find(|s| s.id == sid).cloned() {
-                let entries = self.row_entries(&space);
-                if let Some(a) = menu::webex_menu(ctx, &mut self.icons, t, "row", anchor, Side::Right, Align::Left, false, &entries) { self.space_action(ctx, &a, &space, now); }
+                let plug = self.row_menu_plugins(ctx, &space);
+                let mut entries = self.row_entries(&space);
+                entries.extend(crate::ui::messages::plugin_entries(&plug));
+                let entries = crate::ui::messages::tidy_menu(entries);
+                if let Some(a) = menu::webex_menu(ctx, &mut self.icons, t, "row", anchor, Side::Right, Align::Left, false, &entries) {
+                    match a.strip_prefix("plug:").and_then(|i| i.parse::<usize>().ok()).and_then(|i| plug.get(i)) {
+                        Some(it) => self.plugins.space_menu_action(&it.plugin, &space.id, &it.id),
+                        None => self.space_action(ctx, &a, &space, now),
+                    }
+                }
             }
         }
         self.spaces_ext_dialogs(ctx, t, now);
+    }
+}
+
+impl App {
+    /// The plugins' entries of the open row menu of `space` (`space.menu`): asked once per opening, kept while it stays open;
+    /// none (and no plugin asked) while it is closed.
+    fn row_menu_plugins(&self, ctx: &egui::Context, space: &Space) -> Vec<crate::extras::plugins::MenuItem> {
+        let k = egui::Id::new("row-menu-plugins");
+        if !menu::menu_is_open(ctx, "row") { ctx.data_mut(|d| d.remove::<(String, Vec<crate::extras::plugins::MenuItem>)>(k)); return vec![]; }
+        if let Some((sid, items)) = ctx.data(|d| d.get_temp::<(String, Vec<crate::extras::plugins::MenuItem>)>(k)) { if sid == space.id { return items; } }
+        let items = self.plugins.space_menu(&json!({ "space": space.id, "title": space.title, "direct": space.direct, "team": space.team }));
+        ctx.data_mut(|d| d.insert_temp(k, (space.id.clone(), items.clone())));
+        items
     }
 }
 

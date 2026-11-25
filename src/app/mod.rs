@@ -199,6 +199,7 @@ impl App {
             if let Err(e) = r { self.plugin_log.push(format!("[{key}] settings.set {id}: {e}")); }
         }
         if let Some(t) = out.clipboard { crate::ui::copy_text(t); }
+        if let Some(d) = out.dialog { self.plugins.dialog = Some(d); }
         // Plugin threads read spaces, people and messages from a copy (`spaces.list`, `space.history`, ...), kept only while a
         // plugin listens to `message.received`.
         self.plugins.feed(&self.spaces, &self.people, &self.messages, changed);
@@ -210,8 +211,10 @@ impl App {
     /// A new list of `space` replaces the loaded one: the plugins see what was deleted or edited in between and what they
     /// keep is drawn into it (extras/plugins/kept.rs). Nothing happens without such a plugin.
     fn list_arrived(&mut self, space: &str, list: &mut Vec<cloud::Message>) {
-        let name = self.spaces.iter().find(|s| s.id == space).map(|s| s.title.clone()).unwrap_or_default();
-        self.plugins.list_arrived(space, &name, self.messages.get(space).map(Vec::as_slice), list);
+        let (name, team) = self.spaces.iter().find(|s| s.id == space).map(|s| (s.title.clone(), s.team.clone())).unwrap_or_default();
+        let team_name = self.teams.iter().find(|t| !team.is_empty() && t.id == team).map(|t| t.name.clone()).unwrap_or_default();
+        let at = crate::extras::plugins::kept::Where { space, name: &name, team: &team, team_name: &team_name };
+        self.plugins.list_arrived(at, self.messages.get(space).map(Vec::as_slice), list);
     }
 
     pub(crate) fn go(&mut self, tab: Tab, space: Option<String>) {

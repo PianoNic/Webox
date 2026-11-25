@@ -81,18 +81,22 @@ plugin can check for something newer than its own contract and degrade when the 
 | `ui.confirm` | `{"text": "...", "title": "...", "ok": "...", "cancel": "...", "timeout": s}` (all but `text` optional; timeout 120 s, at most 600) | `{"ok": bool}`: Webox shows a dialog ("<plugin name>: text", the two buttons) and the call **blocks** until the person answers. `true` only for the `ok` button; the X, Esc, the timeout (`"timeout": true`) and switching the plugin off or uninstalling it all answer `false`, so a thread joined in `stop` never waits for it. Questions show one at a time. Refused on the UI thread (`on_event`, `start`): call it from a thread of your own. |
 | `settings.set` | `{"id": "...", "value": ...}` | `{}`; saves one of the plugin's own settings on the next frame exactly like a change on its page: validated against the schema (a refused value goes to the plugin log), passwords into the OS keyring, then `settings.changed`. For values the plugin makes itself, e.g. a generated token. |
 | `clipboard.write` | `{"text": "..."}` | `{}`; puts the text on the clipboard on the next frame. |
-| `message.keep` | `{"deleted": [...], "edited": [...], "replace": bool}` | `{}`; what the answers to `message.deleted` / `message.edited` keep, given again, e.g. after a restart: `deleted` entries are `message.deleted` payloads plus `"style"`, `edited` entries `{"id", "history": [...]}`. `replace` first drops everything kept so far (also to forget it all: `{"replace": true}`). Lists already on screen are drawn again. See "Deleted and edited messages". |
+| `message.keep` | `{"deleted": [...], "edited": [...], "replace": bool}` | `{}`; what the answers to `message.deleted` / `message.edited` keep, given again, e.g. after a restart: `deleted` entries are `message.deleted` payloads plus the answer's fields (`"style"`, `"collapsed"`, `"attachments"`), `edited` entries `{"id", "history": [...], "current"?, "inline"?}` as the answer (version 2). `replace` first drops everything kept so far (also to forget it all: `{"replace": true}`). Lists already on screen are drawn again. See "Deleted and edited messages". |
 | `reactions.show_avatars` | `{"enabled": true, "max": 3, "size": "small", "hide_self": false}`, every field optional (these are the defaults) | `{}`; from now on Webox draws small round avatars of the people who reacted inside each reaction chip, after the count: the first `max` (1–10, clamped) in the service's order, overlapping, then "+K" for the rest of the count. `size`: `small` (14 pt) or `medium` (18 pt), anything else answers `{"error"}` and changes nothing. `hide_self` leaves my own reaction out. Hovering an avatar shows the name (the reactors popover's lookup). Avatars come from the people and photo caches, no network request. `{"enabled": false}` turns them off. Webox remembers the call per plugin; a plugin that is switched off or unloaded stops counting, and with several the last enabled one wins. Without any, the chips look as before. Safe to call from any thread. |
+| `ui.dialog` | `{"title", "tabs": [{"label"?, "time_ms"?, "text", "alt"?, "disabled"?, "hint"?}], "selected"?, "switch"?: {"label", "on"?}}` | `{}` or `{"error"}` (no title or no tabs). A read-only dialog: an optional switch, a row of tabs (`label`, or `time_ms` written as local "25.11.2026, 14:05"; a `disabled` tab is greyed out with `hint` as tooltip), and the selected tab's `text` (spans, see "Deleted and edited messages"), or its `alt` while the switch is on. `selected` defaults to the last tab. Does not block, so it may be called from `on_event`; a new one replaces the one shown; it closes with "Schließen", the X or Esc, and when its plugin is switched off. At most 50 tabs. |
 | `camera.filter`, `camera.source`, `media.open`, `media.read`, `media.close` | see "Camera pictures" below | a frame filter on every camera picture under a time budget, a video file or picture instead of the camera, and decoded pictures for a plugin's own buffer. Safe to call from any thread. |
 
 | Event | Payload | Answer |
 |---|---|---|
 | `settings.changed` | all setting values (as `settings.get`); also once before every start | ignored |
 | `message.received` | `{"space", "id", "author", "text", "mine", "direct", "mentioned"}`: a message arrived live, once per message id, also your own (`mine`, from any client). `direct` = a 1:1 space, `mentioned` = it @-mentions you. Fired on the UI thread: return at once and do slow work on a thread of your own. | ignored |
-| `message.deleted` | `{"space", "space_name", "id", "author", "email", "text", "mine", "parent", "published_ms", "date", "time"}`: a message Webox had loaded was deleted (from any client), once per id. `text` is the last known plain text, `date` / `time` are UTC. UI thread. | `{"keep": true, "style": "text"\|"overlay"}` keeps it on screen, drawn as deleted; anything else: it goes as before |
-| `message.edited` | `{"space", "space_name", "id", "author", "mine", "old_text", "new_text"}`: a loaded message's text changed, once per id and new text. UI thread. | `{"history": ["...", ...]}`: earlier texts, oldest first, shown above the text; anything else: nothing shown |
+| `message.deleted` | `{"space", "space_name", "team", "team_name", "id", "author", "email", "text", "mine", "parent", "published_ms", "date", "time"}`: a message Webox had loaded was deleted (from any client), once per id. `text` is the last known plain text, `date` / `time` are UTC, `team` / `team_name` the space's team ("" outside one; version 2). UI thread. | `{"keep": true, "style": "text"\|"overlay"\|"plain", "collapsed"?: bool, "attachments"?: bool}` keeps it on screen, drawn as deleted (see below); anything else: it goes as before |
+| `message.edited` | `{"space", "space_name", "team", "team_name", "id", "author", "email", "mine", "published_ms", "old_edited", "old_text", "new_text"}`: a loaded message's text changed, once per id and new text. `old_edited`: the old text was itself already an edit (its original was never seen). Version 2 added `team` / `team_name`, `email`, `published_ms`, `old_edited`. UI thread. | `{"history": [...], "current"?: spans, "inline"?: bool}`: earlier texts, oldest first, each a string or spans, shown above the text; anything else: nothing shown |
 | `message.menu` | `{"space", "id", "deleted", "edited", "mine"}`: the menu of a message opens (a right click anywhere on it, or its "···" button), once per opening. `deleted`: a deleted message a plugin keeps; `edited`: edited according to the service, or showing earlier texts. UI thread: answer at once. | `{"items": [{"id", "label", "icon"?, "danger"?}]}` (or the bare list): entries Webox appends to the menu after a separator, at most 8 per plugin, labels at most 80 characters. `icon` is a Momentum icon name (`delete-regular`; an unknown name draws none), `danger` draws the entry in red. Anything else: nothing added. Without a subscribed plugin the menu is unchanged. |
 | `message.menu_action` | `{"space", "id", "item"}`: one of the plugin's own entries was picked (`item` = its `id`). Sent only to the plugin that offered it. UI thread. | ignored |
+| `space.menu` | `{"space", "title", "direct", "team"}`: the menu of a space in the list opens (right click on its row or its "···"), once per opening. UI thread. | as `message.menu`: entries appended after a separator at the end of the menu. Without a subscribed plugin the menu is unchanged. |
+| `space.menu_action` | `{"space", "item"}`: one of the plugin's own space-menu entries was picked. Sent only to the plugin that offered it. UI thread. | ignored |
+| `message.edit_tag_clicked` | `{"space", "id", "text", "mine", "published_ms"}`: "(bearbeitet)" below a message, or "Bearbeitet" in its header, was clicked. Both are buttons (pointer cursor) only while a plugin subscribes. `text` is the current plain text. UI thread. | ignored; the plugin may open `ui.dialog` |
 
 Naming and versioning rules:
 
@@ -133,18 +137,29 @@ since start, fires nothing. In a loaded space a live delete or edit folds the li
 cloud/activities), so the events come right away there.
 
 The plugin decides by its answer. `{"keep": true, "style": "text"}` keeps a deleted message where it was written (the
-"gelöscht" row, which stands at the deletion time, goes), its text in the danger red with "(gelöscht)" below it; `"overlay"` keeps the text colour and lays a red wash
-over the message. Such a message has no toolbar, and its menu (right click) has only "Nachricht kopieren" (and the text or
-picture actions of what was clicked) plus the plugins' `message.menu` entries. `{"history": [...]}` on `message.edited` shows the
-earlier texts struck through in the secondary grey above the text, with "(bearbeitet)" below it. Without such a plugin
-Webox draws every list exactly as received.
+"gelöscht" row, which stands at the deletion time, goes), its text in the danger red with "(gelöscht)" below it and its
+pictures grey (in colour under the pointer); `"overlay"` keeps the text colour and lays a red wash over the message;
+`"plain"` draws it like any message (no red, no "(gelöscht)", pictures in colour), e.g. after the person switched its
+highlight off. `"collapsed": true` folds it: a run of such messages of one day without replies becomes one row
+"N gelöschte Nachrichten" (link colour, arrow) that unfolds them on a click. `"attachments": false` draws it without its
+pictures, files ("📎" lines) and link cards. Such a message has no toolbar, and its menu (right click) has only "Nachricht
+kopieren" (and the text or picture actions of what was clicked) plus the plugins' `message.menu` entries; a menu never starts
+or ends with a separator.
+
+`{"history": [...]}` on `message.edited` shows the earlier texts above the text, with "(bearbeitet)" below it. An entry is a
+string (struck through in the secondary grey) or **spans**: `[{"text", "kind"?}]` (or `{"spans": [...]}`), kind `"added"`
+(green), `"removed"` (red, struck through) or none (secondary grey), e.g. a diff against the next version. `"current"`: the
+current text as spans; its `added` parts are drawn green in the message when the spans spell exactly the text Webox shows
+(rich text or emoji that change it leave it as it is). `"inline": false`: no earlier text in the message, only "(bearbeitet)".
+Without such a plugin Webox draws every list exactly as received.
 
 Kept messages are local: Webox keeps them in memory for as long as a plugin that listens to either event is switched on,
 and never sends them anywhere. To keep them across restarts the plugin stores the payloads itself (`host.set`) and gives
 them back with `message.keep` on start. To forget one message, an edit history or a space's log, the plugin drops it from its
 records and gives the rest again with `message.keep` and `"replace": true`: a deleted message no longer kept goes as Webox
 deletes any message (its "… gelöscht" row comes back), an edit history no longer given disappears. Its menu entries for this
-come from `message.menu`. The [Nachrichtenprotokoll](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/message-logger)
+come from `message.menu`, clearing a space's log from `space.menu`, and its edit history dialog is `ui.dialog` opened on
+`message.edit_tag_clicked`. The [Nachrichtenprotokoll](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/message-logger)
 plugin does this.
 
 ### Camera pictures
@@ -428,7 +443,10 @@ repository list, the ETag cache, refusal of a SHA-256 or size mismatch and of fo
 update, tamper check and uninstall of the example plugin. `src/extras/plugin_settings/tests.rs` covers the settings: schema parsing (what plugin-api writes, broken and odd schemas), validation, defaults, persistence with keyring and file fallback, a native plugin notified on every change and before start, buttons, the search, and the built-in GIF-Extras schema. `src/extras/plugins` covers the table gating (a 1.4 plugin loads and gets no events), events reaching subscribers only, `call` (unknown methods answer null, `host.capabilities` lists the registry), panics in events and host methods, `message.received` firing once per message id and only to subscribers, `space.send` / `space.history`, the read-only copy (made only while a plugin listens, dropped after it), `spaces.list`,
 `messages.search`, `people.search`, `ui.confirm` (answered, refused, timed out, refused on the UI thread, answered "no" when the
 plugin is switched off so `stop` does not hang), `settings.set` / `clipboard.write`, `message.deleted` /
-`message.edited` firing once, a kept deleted message staying (with its style, also when it vanished without a tombstone),
+`message.edited` firing once (`logger_tests.rs`: `space.menu` / `space.menu_action` reaching only the offering plugin and nothing
+without one, `message.edit_tag_clicked` opening a `ui.dialog` that closes with its plugin, the version 2 payloads, spans, `current`,
+`"inline": false`, `"plain"` / `"collapsed"` / `"attachments": false`; `kept.rs`, `dialog.rs` and `ui/messages` the parsing, the
+diff colours, the folded runs and menus without dangling separators), a kept deleted message staying (with its style, also when it vanished without a tombstone),
 edit history attaching, `message.keep` restoring and replacing, everything kept going when the plugin is switched off, and
 lists staying as received without such a plugin, and `reactions.show_avatars` (off without a plugin, follows the plugin's switch,
 `max` / `size` clamped or refused); `src/ui/messages/who_reacted.rs` covers which reactors a chip shows, "+K", hiding your

@@ -41,7 +41,7 @@ impl App {
         let (mut idx, mut block) = (0usize, 0usize);
         let mut next = |y: &mut f32, h: f32| { block += 1; *y += h + if block < n_attach { attach_gap() } else { ATTACH_BOTTOM }; };
         for a in &m.images {
-            let h = if is_video(a) { self.video_block(ui, t, c, pos2(tx, *y), a, wrap, (&m.id, idx), true) } else { self.image_block(ui, c, pos2(tx, *y), a, wrap, (&m.id, idx), m.deleted != 0) };
+            let h = if is_video(a) { self.video_block(ui, t, c, pos2(tx, *y), a, wrap, (&m.id, idx), true) } else { self.image_block(ui, c, pos2(tx, *y), a, wrap, (&m.id, idx), m.deleted != 0 && m.deleted != crate::extras::plugins::kept::STYLE_PLAIN) };
             idx += 1;
             next(y, h);
         }

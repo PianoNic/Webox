@@ -93,6 +93,8 @@ struct Mc {
     mention_other: Color32, code_bg: Color32, select: Color32, pill_bg: Color32, pill_hover: Color32, pill_border: Color32, day: Color32, bar: Color32, white: Color32, checked: Color32,
     /// Deleted messages a plugin keeps ("(gelöscht)", red text or overlay): the danger tone of menus and dialogs.
     danger: Color32,
+    /// Added text in a plugin's diff view (`kept::SPAN_ADDED`); removed text uses `danger`.
+    added: Color32,
 }
 fn mc(t: &Th) -> Mc {
     let dark = !t.light;
@@ -121,6 +123,7 @@ fn mc(t: &Th) -> Mc {
         white: t.tk("message-bodyText-primary-text"),
         checked: wa(f, 0.11), // message-background checked: #FFFFFF/0.11 dark, #000000/0.11 light
         danger: if t.light { hex(0xD43519) } else { hex(0xF55868) }, // as the menus' danger entries
+        added: if t.light { hex(0x1A7F37) } else { hex(0x85E89D) },
     }
 }
 
@@ -168,5 +171,6 @@ pub(crate) use video::poster as video_poster;
 use video::is_video;
 mod interact;
 mod ctx_menu;
+pub(crate) use ctx_menu::{plugin_entries, tidy as tidy_menu};
 mod reactors;
 mod who_reacted;
