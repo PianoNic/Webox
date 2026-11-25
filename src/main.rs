@@ -121,6 +121,16 @@ struct App {
     repos: extras::plugin_repo::Repos, toasts: Vec<(String, f64)>, plugin_log: Vec<String>, code_input: String,
     new_space: Option<String>, dial: String, show_shortcuts: bool, pending_space: Option<String>,
     shot: Option<PathBuf>, frames: u32, applied: Option<Th>, minimize: bool,
+    /// The resolved theme and what it was resolved for (`apply_theme`): theme, plugin generation, minute, my name.
+    theme_cache: Option<((ThemeId, u64, i64, String), Th)>,
+    /// The selection colour the visuals were last set with (a different one means egui replaced them).
+    theme_sel: Option<Color32>,
+    /// egui time of the last keyboard / pointer input (the text cursor stops blinking 10 s after it, ui/frame.rs).
+    last_input: f64,
+    /// Where the last pointer move went (a move to the same place is not input).
+    last_pointer: Option<egui::Pos2>,
+    /// The window is in the tray or minimised and its picture textures were released (ui/frame.rs).
+    textures_released: bool,
     need_login: bool, login_error: String, email_input: String, pkce_verifier: String,
     pending: Option<std::sync::mpsc::Receiver<Result<cloud::auth::Token, String>>>, refreshed: bool,
     login_page: LoginPage, config_open: bool, meeting_input: String, login_sized: bool,
@@ -135,6 +145,8 @@ struct App {
     photos: assets::photos::Photos,
     /// Reply / edit mode of the message box, and the space-settings dialogs.
     compose: Compose, rename_input: Option<String>, add_people: bool, people_filter: String, open_threads: HashSet<String>, confirm_leave: Option<String>, forward_text: Option<String>, rail_wide: bool,
+    /// WEBOX_SAMPLE_TOUR (ui/sample_scale.rs): the next space to open and when.
+    tour: (usize, f64),
     fonts_set: bool, row_salt: String, row_draft: bool,
     /// Keyboard shortcuts: user overrides, resolved bindings, popup / settings-page state (src/shortcuts/).
     sc: shortcuts::State,
@@ -171,22 +183,24 @@ const WHEEL_PT_PER_NOTCH: f32 = 60.0;
 fn set_fonts(ctx: &egui::Context) {
     let dir = std::env::var("WINDIR").map(|w| PathBuf::from(w).join("Fonts")).unwrap_or_default();
     let mut fonts = egui::FontDefinitions::default();
-    if let Ok(bytes) = std::fs::read(dir.join("segoeui.ttf")) {
-        fonts.font_data.insert("segoe".into(), std::sync::Arc::new(egui::FontData::from_owned(bytes)));
+    // Font files are mapped / loaded once and handed to egui as static slices, never copied (assets/font_file.rs).
+    let font = |p: PathBuf| assets::font_file::load(&p).map(|b| std::sync::Arc::new(egui::FontData::from_static(b)));
+    if let Some(f) = font(dir.join("segoeui.ttf")) {
+        fonts.font_data.insert("segoe".into(), f);
         fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap().insert(0, "segoe".into());
     }
     // Semibold: the weight for selected labels, titles and tabs.
     let mut sb: Vec<String> = Vec::new();
-    if let Ok(bytes) = std::fs::read(dir.join("seguisb.ttf")) {
-        fonts.font_data.insert("segoesb".into(), std::sync::Arc::new(egui::FontData::from_owned(bytes)));
+    if let Some(f) = font(dir.join("seguisb.ttf")) {
+        fonts.font_data.insert("segoesb".into(), f);
         sb.push("segoesb".into());
     }
     sb.extend(fonts.families[&egui::FontFamily::Proportional].clone());
     fonts.families.insert(egui::FontFamily::Name("semibold".into()), sb);
     // Emoji the bundled picture set doesn't have (newer ones) are drawn from the system emoji font, in a family of its own that
     // contains nothing else - so a missing glyph is a box, never another emoji (ui/emoji_text.rs).
-    if let Ok(bytes) = std::fs::read(dir.join("seguiemj.ttf")) {
-        fonts.font_data.insert("seguiemj".into(), std::sync::Arc::new(egui::FontData::from_owned(bytes)));
+    if let Some(f) = font(dir.join("seguiemj.ttf")) {
+        fonts.font_data.insert("seguiemj".into(), f);
         fonts.families.insert(egui::FontFamily::Name(ui::emoji_text::FAMILY.into()), vec!["seguiemj".into()]);
     }
     #[cfg(windows)]
@@ -204,8 +218,8 @@ fn set_fonts(ctx: &egui::Context) {
 fn windows_fallback_fonts(fonts: &mut egui::FontDefinitions, dir: &std::path::Path) {
     let semibold = egui::FontFamily::Name("semibold".into());
     for (key, file) in [("seguisym", "seguisym.ttf"), ("meiryo", "meiryo.ttc"), ("nirmala", "Nirmala.ttc")] {
-        let Ok(bytes) = std::fs::read(dir.join(file)) else { continue };
-        fonts.font_data.insert(key.into(), std::sync::Arc::new(egui::FontData::from_owned(bytes)));
+        let Some(bytes) = assets::font_file::load(&dir.join(file)) else { continue };
+        fonts.font_data.insert(key.into(), std::sync::Arc::new(egui::FontData::from_static(bytes)));
         for fam in [egui::FontFamily::Proportional, semibold.clone()] {
             if let Some(list) = fonts.families.get_mut(&fam) { list.push(key.into()); }
         }
@@ -242,7 +256,7 @@ fn linux_fonts(fonts: &mut egui::FontDefinitions) {
     let extra = system_fallback_font().into_iter().chain(cjk_fallback_fonts());
     for (n, bytes) in extra.enumerate() {
         let key = format!("sysfallback{n}");
-        fonts.font_data.insert(key.clone(), Arc::new(egui::FontData::from_owned(bytes))); // a .ttc collection loads its first font (index 0)
+        fonts.font_data.insert(key.clone(), Arc::new(egui::FontData::from_static(bytes))); // a .ttc collection loads its first font (index 0)
         for fam in [&prop, &sb] { fonts.families.get_mut(fam).unwrap().push(key.clone()); }
     }
 }
@@ -275,22 +289,22 @@ fn fc_match(pattern: &str, deadline: std::time::Instant) -> Option<(String, Path
 
 /// The CJK fallback fonts: the files of `WEBOX_FALLBACK_FONTS`, else (without that variable) fontconfig's "Noto Sans CJK SC".
 #[cfg(not(windows))]
-fn cjk_fallback_fonts() -> Vec<Vec<u8>> {
-    let read = |p: &std::path::Path| std::fs::read(p).ok().filter(|b| is_font(b));
+fn cjk_fallback_fonts() -> Vec<&'static [u8]> {
+    let read = |p: &std::path::Path| assets::font_file::load(p).filter(|b| is_font(b));
     if let Some(list) = std::env::var_os("WEBOX_FALLBACK_FONTS") { return std::env::split_paths(&list).filter_map(|p| read(&p)).collect(); }
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);
     fc_match("Noto Sans CJK SC", deadline).filter(|(family, _)| family.to_lowercase().contains("cjk")).and_then(|(_, p)| read(&p)).into_iter().collect()
 }
 
 #[cfg(not(windows))]
-fn system_fallback_font() -> Option<Vec<u8>> {
-    if let Some(b) = std::env::var_os("WEBOX_FALLBACK_FONT").and_then(|p| std::fs::read(p).ok()) { return Some(b); }
+fn system_fallback_font() -> Option<&'static [u8]> {
+    if let Some(b) = std::env::var_os("WEBOX_FALLBACK_FONT").and_then(|p| assets::font_file::load(p.as_ref())) { return Some(b); }
     // macOS: no fontconfig; Arial from the system's fonts (the big "Arial Unicode" would cost ~23 MB of memory).
     #[cfg(target_os = "macos")]
-    if let Some(b) = std::fs::read("/System/Library/Fonts/Supplemental/Arial.ttf").ok().filter(|b| is_font(b)) { return Some(b); }
+    if let Some(b) = assets::font_file::load("/System/Library/Fonts/Supplemental/Arial.ttf".as_ref()).filter(|b| is_font(b)) { return Some(b); }
     // Whatever fontconfig picks for DejaVu Sans (NixOS and others keep fonts in places the folder walk below doesn't know).
     let deadline = std::time::Instant::now() + std::time::Duration::from_millis(200);
-    if let Some(b) = fc_match("DejaVu Sans", deadline).and_then(|(_, p)| std::fs::read(p).ok()).filter(|b| is_font(b)) { return Some(b); }
+    if let Some(b) = fc_match("DejaVu Sans", deadline).and_then(|(_, p)| assets::font_file::load(&p)).filter(|b| is_font(b)) { return Some(b); }
     const NAMES: [&str; 4] = ["DejaVuSans.ttf", "NotoSans-Regular.ttf", "LiberationSans-Regular.ttf", "FreeSans.ttf"];
     let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
     let mut dirs: Vec<PathBuf> = std::env::var_os("XDG_DATA_DIRS").map(|v| std::env::split_paths(&v).map(|p| p.join("fonts")).collect()).unwrap_or_default();
@@ -305,7 +319,7 @@ fn system_fallback_font() -> Option<Vec<u8>> {
         }
         sub.iter().find_map(|s| walk(s, name, depth - 1))
     }
-    NAMES.iter().find_map(|n| dirs.iter().find_map(|d| walk(d, n, 4))).and_then(|p| std::fs::read(p).ok())
+    NAMES.iter().find_map(|n| dirs.iter().find_map(|d| walk(d, n, 4))).and_then(|p| assets::font_file::load(&p))
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -365,10 +379,14 @@ fn main() -> eframe::Result<()> {
     #[cfg(target_os = "macos")]
     platform::macos::links::install();
     eframe::run_native("Webox", opts, Box::new(move |cc| {
+        platform::memprobe::mark("window created");
         set_fonts(&cc.egui_ctx);
+        platform::memprobe::mark("fonts set");
         // Mouse wheel: 60 pt per notch instead of egui's 40.
         cc.egui_ctx.options_mut(|o| o.line_scroll_speed = WHEEL_PT_PER_NOTCH);
         round_corners(cc);
-        Ok(Box::new(App::new(args)))
+        let app = App::new(args);
+        platform::memprobe::mark("app created");
+        Ok(Box::new(app))
     }))
 }

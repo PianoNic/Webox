@@ -31,6 +31,7 @@ pub(crate) mod edit_overlay; // editing a message: an overlay over the conversat
 pub(crate) mod autoscroll; // middle-click autoscroll of every vscroll list
 pub(crate) mod scroll_route; // wheel over row overlays (hover toolbar, tooltips) scrolls the list under them
 pub(crate) mod sample_photos;
+pub(crate) mod sample_scale; // WEBOX_SAMPLE_SCALE / WEBOX_SAMPLE_TOUR: a bigger sample for memory and CPU checks
 pub(crate) mod emoji_picker;
 pub(crate) mod emoji_text;
 pub(crate) mod gif_picker;

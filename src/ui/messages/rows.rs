@@ -12,8 +12,12 @@ thread_local! {
     static ROWS: RefCell<std::collections::HashMap<u64, RowEntry>> = RefCell::new(std::collections::HashMap::new());
 }
 /// Entries kept at most before unused ones are swept, and how many passes "unused" means.
-const ROW_CACHE_SWEEP: usize = 4096;
-const ROW_CACHE_IDLE_PASSES: u64 = 600;
+/// A measured row holds its laid-out text (galleys), tens of KB for a long message; the 4096 rows kept after browsing through
+/// many spaces were most of the heap. Rows of chats no longer shown (and of other window widths) go after 60 passes.
+const ROW_CACHE_SWEEP: usize = 256;
+const ROW_CACHE_IDLE_PASSES: u64 = 60;
+/// Measured rows cached (the `WEBOX_PROBE=1` report).
+pub(crate) fn row_cache_len() -> usize { ROWS.with(|r| r.borrow().len()) }
 
 thread_local! {
     /// Height of a message header line by (sender name, pixels per point): the height of the name's galley.

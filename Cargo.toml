@@ -12,6 +12,10 @@ edition = "2021"
 name = "webox"
 path = "src/main.rs"
 
+[features]
+# Counting global allocator for memory work: the WEBOX_PROBE=1 report then shows the live heap (src/platform/memprobe.rs).
+profile-mem = []
+
 [dependencies]
 collabhost-plugin-api = { path = "plugin-api" }
 eframe = "0.31"
@@ -83,6 +87,8 @@ webview2-com = "0.33"
 windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_WinRT", "Win32_Graphics_Dwm", "Win32_System_Time", "Win32_UI_WindowsAndMessaging", "Win32_Globalization", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Threading", "Win32_System_Registry", "Win32_System_SystemInformation",
   # tray icon, toast windows, taskbar flash/overlay, screen capture (raw Win32, no tray crates)
   "Win32_UI_Shell", "Win32_UI_HiDpi", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_UI_Accessibility",
+  # system fonts memory-mapped instead of copied onto the heap (src/assets/font_file.rs)
+  "Win32_System_Memory",
   # secret plugin settings in the Credential Manager (src/extras/plugin_settings/secret.rs)
   "Win32_Security_Credentials",
   # cameras: Settings > Video preview; video playback (src/media/video/mf.rs): Media Foundation source reader / sink writer,

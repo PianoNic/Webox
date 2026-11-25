@@ -165,6 +165,7 @@ pub(crate) use loading_item::*;
 mod multisel;
 pub(crate) use multisel::*;
 mod rows;
+pub(crate) use rows::row_cache_len;
 mod media;
 mod video;
 mod attachments;
