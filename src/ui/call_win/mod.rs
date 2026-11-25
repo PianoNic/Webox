@@ -61,6 +61,8 @@ pub(crate) struct WinState {
     // Focus of our windows in the previous frame (main, call window, dock), for "covered by other apps".
     focus_call: bool, focus_dock: bool,
     pub sample_done: bool, rounded: u8, save_t: f64,
+    /// "Anrufstatistik" panel (stats.rs); a full-screen toggle asked for (title bar button, Alt+Eingabe; full_screen.rs).
+    pub(crate) stats: stats::StatsUi, pub(crate) full_toggle: bool,
     /// The participants panel (`roster.rs`).
     pub roster: roster::RosterUi,
 }
@@ -83,4 +85,6 @@ impl WinState {
 mod call;
 pub(crate) use call::fit_size;
 mod dock;
+mod full_screen;
+mod stats;
 mod roster;

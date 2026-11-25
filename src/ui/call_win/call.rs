@@ -48,6 +48,8 @@ impl App {
             "dock" => { self.preview_call("connected", now); self.call.win.dock_open = true; }
             // the other side shares its screen (a made-up picture): the stage layout
             "share" => { self.preview_call("connected", now); self.call.remote_share = Some("Max Muster".into()); cloud::share_rx::show_sample(1280, 720); }
+            // the call statistics panel with made-up figures (stats.rs)
+            "stats" => { self.preview_call("connected", now); self.sample_stats(); }
             "incoming" | "ringing" | "connected" => self.preview_call(&k, now),
             // a group call with the participants panel open (made-up people)
             "roster" => { self.preview_call("connected", now); self.call.roster = super::roster::sample_roster(); self.call.win.roster.open = true; }
@@ -67,6 +69,7 @@ impl App {
         let live = v.as_ref().is_some_and(|v| !v.ended);
         let email = v.as_ref().map(|v| v.email.clone()).unwrap_or_default();
         let mut act = CallActions::default();
+        self.call_stats_frame(live && !incoming);
         {
             let w = &mut self.call.win;
             if !incoming { w.toast_closed = None; w.toast_pos = None; w.toast_hwnd = None; }
@@ -168,7 +171,8 @@ impl App {
         if !self.persist_ok() { return; }
         let (outer, inner, maxed, mini, time) = vctx.input(|i| (i.viewport().outer_rect, i.viewport().inner_rect, i.viewport().maximized.unwrap_or(false), i.viewport().minimized.unwrap_or(false), i.time));
         let down = crate::ui::chrome::pointer_down(vctx);
-        if maxed || mini || down { return; }
+        let full = vctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+        if maxed || mini || down || full { return; }
         let key = if call { "call_win_rect" } else { "dock_rect" };
         let r = match (outer, inner) {
             (Some(o), Some(inn)) => [o.min.x.round(), o.min.y.round(), inn.width().round(), inn.height().round()],
@@ -246,6 +250,8 @@ impl App {
         let connected = v.state == CallState::Connected;
         let mut share = false;
         let autohide = self.settings["call_autohide_controls"].as_bool().unwrap_or(true);
+        let fullscreen = self.call_full_screen(vctx);
+        self.call_window_shortcuts(vctx);
         egui::CentralPanel::default().frame(egui::Frame::NONE).show(vctx, |ui| {
             let full = ui.max_rect();
             // theme-gradient-primary-0 (call window background / title bar gradient).
@@ -258,8 +264,9 @@ impl App {
             let drag = ui.interact(bar, ui.id().with("titlebar"), Sense::click_and_drag());
             if drag.drag_started() { crate::ui::chrome::note_os_grab(vctx); vctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); }
             if drag.double_clicked() { vctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maxed)); }
-            crate::ui::chrome::fit_text(ui.painter(), bar.left() + 8.0 + 8.0, bar.center().y, &v.name, semibold(14.0), t.text1, bar.width() - 3.0 * WIN_BTN_W - 40.0);
+            crate::ui::chrome::fit_text(ui.painter(), bar.left() + 8.0 + 8.0, bar.center().y, &v.name, semibold(14.0), t.text1, bar.width() - 5.0 * WIN_BTN_W - 40.0);
             let (mn, mx, cl) = Self::win_buttons(ui, t, bar.right_top(), TITLE_BAR_H, maxed);
+            self.call_title_buttons(ui, t, bar, connected && !v.ended, fullscreen);
             if mn { vctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)); }
             if mx { vctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maxed)); }
             if cl { if v.ended { a.dismiss = true } else { a.hang = true } } // closing the call window ends the call
@@ -351,6 +358,7 @@ impl App {
                 let area = Rect::from_min_max(bar.left_bottom(), pos2(full.right(), full.bottom() - BAR_H - BAR_GAP));
                 self.call_keypad_ui(ui, t, area);
             }
+            self.call_stats_panel(ui, t, Rect::from_min_max(bar.left_bottom(), full.right_bottom()));
         });
         crate::ui::chrome::edge_overlay(vctx); // Linux: no server-side border to resize by (no-op while maximised)
         vctx.request_repaint_after(std::time::Duration::from_millis(200));

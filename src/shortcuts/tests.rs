@@ -224,3 +224,31 @@ fn call_keys_only_act_on_a_call() {
     assert!(call_actions("ToggleAudioMute", Some(&CallState::Connected)).is_some_and(|a| a.mute));
     assert!(call_actions("ToggleAudioMute", Some(&CallState::Dialing)).is_none());
 }
+
+#[test]
+fn share_and_full_screen_keys_act_on_the_call_window() {
+    use crate::cloud::locus::CallState;
+    use commands::call_view_cmd;
+    let on = Some(&CallState::Connected);
+    // Strg+Umschalt+D: the picker only on a connected call that isn't sharing (or starting to)
+    assert!(call_view_cmd("ShareContent", on, false, false, true));
+    assert!(!call_view_cmd("ShareContent", on, true, false, true));
+    assert!(!call_view_cmd("ShareContent", on, false, true, true));
+    assert!(!call_view_cmd("ShareContent", Some(&CallState::Dialing), false, false, true));
+    assert!(!call_view_cmd("ShareContent", None, false, false, true));
+    // Strg+Umschalt+Z: only while sharing (otherwise the key stays redo)
+    assert!(call_view_cmd("StopSharing", on, true, false, true));
+    assert!(!call_view_cmd("StopSharing", on, false, false, true));
+    // Alt+Eingabe: a call window is on screen, not the ringing toast
+    assert!(call_view_cmd("FullScreen", on, false, false, true));
+    assert!(call_view_cmd("FullScreen", Some(&CallState::Dialing), false, false, true));
+    assert!(!call_view_cmd("FullScreen", Some(&CallState::Incoming), false, false, true));
+    assert!(!call_view_cmd("FullScreen", on, false, false, false), "no separate call window");
+    assert!(!call_view_cmd("EndCall", on, false, false, true), "the rest is call_actions'");
+    // all three are implemented and count as call commands (global only during a call)
+    let reg = registry();
+    for id in ["ShareContent", "StopSharing", "FullScreen"] {
+        let c = reg.cmds.iter().find(|c| c.id == id).unwrap_or_else(|| panic!("{id}"));
+        assert!(matches!(c.kind, Kind::Cmd) && c.needs_call(), "{id}");
+    }
+}

@@ -27,6 +27,10 @@ impl App {
             "NewReplyButton" => ctx.memory_mut(|m| m.request_focus(composer)),
             "FocusMainConversation" => ctx.memory_mut(|m| if let Some(f) = m.focused() { m.surrender_focus(f) }),
             "AnswerCall" | "DeclineCall" | "EndCall" | "ToggleAudioMute" => self.call_command(id),
+            // Strg+Umschalt+D / Strg+Umschalt+Z: the share picker / stop sharing (what the call window's share button does)
+            "ShareContent" | "StopSharing" => if self.call_cmd_applies(id, ctx) { self.share_button(now) },
+            // Alt+Eingabe (F11 in the call window as well): the call window in full screen, or back
+            "FullScreen" => if self.call_cmd_applies(id, ctx) { self.call.win.full_toggle = true },
             // "Home": the landing screen of Settings > Allgemein > Zielbildschirm (there is no separate home tab).
             "OpenHome" => self.set_tab(match self.settings["home"].as_str() { Some("Meetings") => Tab::Meetings, Some("Calling") => Tab::Calling, Some("Contacts") => Tab::Contacts, _ => Tab::Messaging }),
             "OpenDiagnostics" => crate::ui::menu::menu_open(ctx, crate::ui::app_dialogs::HEALTH), // the health checker is the diagnostics window
@@ -49,8 +53,47 @@ impl App {
         if let Some(a) = call_actions(id, self.live_call_state()) { self.apply_call_actions(a); }
     }
 
+    /// Call command `id` does something now; otherwise its key is left to the rest of the app.
+    pub(super) fn call_cmd_applies(&self, id: &str, ctx: &egui::Context) -> bool {
+        let state = self.live_call_state();
+        call_actions(id, state).is_some() || call_view_cmd(id, state, self.call.sharing, self.call.share_pending, self.separate_call_windows(ctx))
+    }
+
+    /// Keys pressed while the call window has the focus (the main window's dispatch sees only its own): the registry's call
+    /// commands, with the user's bindings.
+    pub(crate) fn call_window_shortcuts(&mut self, vctx: &egui::Context) {
+        let reg = super::registry();
+        let events: Vec<(egui::Key, Option<egui::Key>, egui::Modifiers)> = vctx.input(|i| i.events.iter().filter_map(|e| match e {
+            egui::Event::Key { key, physical_key, pressed: true, repeat: false, modifiers } => Some((*key, *physical_key, *modifiers)), _ => None }).collect());
+        for (key, phys, mods) in events {
+            let hit = (0..reg.cmds.len()).find(|&i| {
+                let c = &reg.cmds[i];
+                #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
+                if self.sc.global.is_registered(i) { return false; } // the hotkey thread delivers it
+                c.needs_call() && self.sc.res[i].key.is_some_and(|k| k.matches_at(key, phys, &mods, false)) && self.call_cmd_applies(c.id, vctx)
+            });
+            let Some(i) = hit else { continue };
+            vctx.input_mut(|inp| {
+                let pos = inp.events.iter().position(|e| matches!(e, egui::Event::Key { key: k2, physical_key: p2, pressed: true, modifiers: m2, .. } if *k2 == key && *p2 == phys && *m2 == mods));
+                if let Some(p) = pos { super::take_key(&mut inp.events, p); }
+            });
+            self.run_command(i, vctx);
+        }
+    }
+
     /// The state of the call on screen, if one is still going.
     pub(super) fn live_call_state(&self) -> Option<&CallState> { self.call.cur.as_ref().filter(|c| c.ended_at.is_none()).map(|c| &c.state) }
+}
+
+/// The call window's commands beyond `call_actions`: share (connected, not sharing yet), stop sharing (while sharing) and
+/// full screen (a call window is on screen: separate call windows, not ringing).
+pub(super) fn call_view_cmd(id: &str, state: Option<&CallState>, sharing: bool, share_pending: bool, call_window: bool) -> bool {
+    match (id, state) {
+        ("ShareContent", Some(CallState::Connected)) => !sharing && !share_pending,
+        ("StopSharing", Some(CallState::Connected)) => sharing,
+        ("FullScreen", Some(s)) => call_window && *s != CallState::Incoming,
+        _ => false,
+    }
 }
 
 /// What call command `id` does to a call in `state`; `None` when it does nothing (no call, or not the right moment), so its key

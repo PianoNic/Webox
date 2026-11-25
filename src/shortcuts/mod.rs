@@ -310,8 +310,8 @@ fn normalize(c: &Command, o: &mut Ov) {
 
 impl Command {
     fn kind_native(&self) -> bool { matches!(self.kind, Kind::Native) }
-    /// Commands that act on a running call.
-    pub(crate) fn needs_call(&self) -> bool { matches!(self.id, "AnswerCall" | "DeclineCall" | "EndCall" | "ToggleAudioMute") }
+    /// Commands that act on a running call (they also work while the call window has the focus).
+    pub(crate) fn needs_call(&self) -> bool { matches!(self.id, "AnswerCall" | "DeclineCall" | "EndCall" | "ToggleAudioMute" | "ShareContent" | "StopSharing" | "FullScreen") }
 }
 
 #[cfg(test)]
