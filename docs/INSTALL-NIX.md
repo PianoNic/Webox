@@ -183,21 +183,21 @@ Then set `programs.webox.enable = true;` for that user.
 Same names as the NixOS module: `programs.webox.enable`, `programs.webox.autostart`, `programs.webox.package`.
 
 - `autostart` writes `~/.config/autostart/webox.desktop`. While Home Manager owns that file, the
-  "Webox zusammen mit meinem Computer starten" switch in Webox's settings can't change it.
+  "Start Webox when my computer starts" switch in Webox's settings can't change it.
 - `package` defaults to `webox-nixos` when Home Manager runs as a NixOS module, otherwise to `default`.
 
 </details>
 
 ### Start at login
 
-Tick **Webox zusammen mit meinem Computer starten** (start Webox with my computer) under *Allgemein → Anmelden* in
+Tick **Start Webox when my computer starts** under *General → Sign in* in
 Webox's settings, or use the `autostart` option above. The switch writes your profile's path (or `webox` from `PATH`),
 not a `/nix/store` path, so it keeps working after updates.
 
 <details>
 <summary><b>Open meeting links from the browser</b></summary>
 
-Under *Allgemein → Meetings aus dem Browser*, Webox can take over meeting links from Chrome, Chromium, Edge and Firefox.
+Under *General → Meetings from the browser*, Webox can take over meeting links from Chrome, Chromium, Edge and Firefox.
 The browser needs the Webex extension. While the switch is on, Webox registers itself again at every start, so the
 registration survives updates and garbage collection.
 

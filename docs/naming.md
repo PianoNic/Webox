@@ -4,7 +4,7 @@ This application is **Webox**. It connects to the **Webex** service. The UI uses
 *this application*: its windows, settings, autostart, quit/restart, look, audio processing and keyboard shortcuts.
 "Webex" stays wherever a text names the *service*: the cloud, the account, the meeting site, Webex devices, product
 features (Webex Calling, Webex Meetings, Webex Assistant, Webex-Whiteboard ...), sign-in, the help centre, legal
-notices, or anything the server sends (space titles such as "Webex-Bereich für ..." are shown exactly as sent).
+notices, or anything the server sends (space titles such as "Webex space for ..." are shown exactly as sent).
 
 ## Where the name comes from
 
@@ -36,16 +36,16 @@ Tests (`src/assets/i18n/tests.rs`, `app_name_*`):
 
 | Where | Pack key it mirrors | Old | New |
 |---|---|---|---|
-| Settings › Allgemein › Anmelden (`settings/pages_a.rs`, search index `settings/nav.rs`) | GeneralTabWidget "Start Webex when my computer starts" | Webex zusammen mit meinem Computer starten | Webox zusammen mit meinem Computer starten |
-| Settings › Allgemein › Outlook-Einstellungen (pages_a, nav) | GeneralTabWidget "Connect Webex to Microsoft Outlook" | Verbindung von Webex mit Microsoft Outlook herstellen | Verbindung von Webox mit Microsoft Outlook herstellen |
-| Settings › Allgemein › Zielbildschirm (pages_a) | GeneralTabWidget "Choose what you'd like to see first every time Webex opens." | … wenn Webex geöffnet wird. | … wenn Webox geöffnet wird. |
-| Settings search description for Zielbildschirm (nav) | (clone text) | Was beim Öffnen von Webex zuerst angezeigt wird | Was beim Öffnen von Webox zuerst angezeigt wird |
+| Settings › General › Sign in (`settings/pages_a.rs`, search index `settings/nav.rs`) | GeneralTabWidget "Start Webex when my computer starts" | Webex zusammen mit meinem Computer starten | Webox zusammen mit meinem Computer starten |
+| Settings › General › Outlook Settings (pages_a, nav) | GeneralTabWidget "Connect Webex to Microsoft Outlook" | Verbindung von Webex mit Microsoft Outlook herstellen | Verbindung von Webox mit Microsoft Outlook herstellen |
+| Settings › General › Start screen (pages_a) | GeneralTabWidget "Choose what you'd like to see first every time Webex opens." | … wenn Webex geöffnet wird. | … wenn Webox geöffnet wird. |
+| Settings search description for Start screen (nav) | (clone text) | Was beim Öffnen von Webex zuerst angezeigt wird | Was beim Öffnen von Webox zuerst angezeigt wird |
 | Settings › Erscheinungsbild › Themen (pages_a, nav) | QObject "Choose how you want {{APP_NAME}} to look." | Legen Sie fest, wie Webex aussehen soll. | Legen Sie fest, wie Webox aussehen soll. |
 | Settings › Smart Audio (pages_a) | QObject "{{APP_NAME}} uses artificial intelligence to enhance audio." | Webex verwendet künstliche Intelligenz, um die Audioqualität zu verbessern. | Webox verwendet künstliche Intelligenz, … |
-| Settings › Benachrichtigungen › Ruhezeiten (pages_b) | SettingsNotificationsController "These are based on your Local time zone set through Webex Settings." | … in den Webex-Einstellungen festgelegt haben. | … in den Webox-Einstellungen festgelegt haben. |
-| Settings › Meetings › Meeting vorübergehend verlassen (pages_b) | SettingsMeetingGeneralPage "Allow Webex to show others your Stepped away status …" | Erlauben Sie Webex, anderen Ihren Status Abwesend anzuzeigen, … | Erlauben Sie Webox, … |
-| Settings › Anrufe › Für Anruf markieren (pages_b) | SettingsCallingGeneralController "Before you call, highlight the number in the Webex app to preview." | … in der Webex-App, um eine Vorschau anzuzeigen. | … in der Webox-App, … |
-| Settings › Tastenkombinationen info (`settings_shortcuts.rs`) | SettingsKeyboardShortcutsPage "Global lets you use Webex shortcuts …" | Mit "Global" können Sie Webex-Tastenkombinationen verwenden, … | … Webox-Tastenkombinationen … |
+| Settings › Notifications › Quiet hours (pages_b) | SettingsNotificationsController "These are based on your Local time zone set through Webex Settings." | … in den Webex-Einstellungen festgelegt haben. | … in den Webox-Einstellungen festgelegt haben. |
+| Settings › Meetings › Step away from meeting (pages_b) | SettingsMeetingGeneralPage "Allow Webex to show others your Stepped away status …" | Erlauben Sie Webex, anderen Ihren Status Abwesend anzuzeigen, … | Erlauben Sie Webox, … |
+| Settings › Calling › Highlight to call (pages_b) | SettingsCallingGeneralController "Before you call, highlight the number in the Webex app to preview." | … in der Webex-App, um eine Vorschau anzuzeigen. | … in der Webox-App, … |
+| Settings › Keyboard shortcuts info (`settings_shortcuts.rs`) | SettingsKeyboardShortcutsPage "Global lets you use Webex shortcuts …" | Mit "Global" können Sie Webex-Tastenkombinationen verwenden, … | … Webox-Tastenkombinationen … |
 | Shortcut name OpenPreferences (`shortcuts/table.rs`) | QObject "Open Webex Settings" | Webex-Einstellungen öffnen | Webox-Einstellungen öffnen |
 | Status dialog window title (`profile_menu.rs`) | (window title = app name) | Webex | Webox (`APP_NAME`) |
 | Profile menu "Exit %1" (`profile_menu.rs`) | ApplicationMenuController "Exit %1" | Webox literal | `APP_NAME` (same text: "Webox beenden") |
@@ -122,8 +122,8 @@ German shown; before this change they were unfilled, or filled with "Webex" wher
 * Main window title and eframe app id: `main.rs` "Webox", `with_app_id("webox")`.
 * Tray tooltip: `platform/tray/mod.rs` `tooltip(0)` = "Webox".
 * Toast and tray-menu window titles: "Webox toast", "Webox tray menu" (`platform/notify/mod.rs`).
-* Incoming-call toast, call window and call dock titles: "Webox - Eingehender Anruf", "Webox - Anruf", "Webox - Anruf-Dock".
-* About dialog: "Info über Webox" (`ui/credits.rs`, rail menu).
+* Incoming-call toast, call window and call dock titles: "Webox - Incoming call", "Webox - Call", "Webox - Calling dock".
+* About dialog: "About Webox" (`ui/credits.rs`, rail menu).
 * Linux `.desktop` file (`Name=Webox`), Nix packages and modules, flake. There is no Windows installer in the repo;
   the binary is `webox`.
 
@@ -134,22 +134,22 @@ German shown; before this change they were unfilled, or filled with "Webex" wher
 | Header + menu, Invite page (`header_plus.rs`, `invite.rs`) | Zu Webex einladen (QObject "Invite to {{APP_NAME}}") | Invites a person to the service |
 | Welcome message tooltip (`welcome.rs`) | Weitere Informationen zur Webex-Verschlüsselung | The service's encryption |
 | Personal-room error toast (`meetcall.rs`) | … von Ihrer Webex-Site … | The meeting site |
-| Settings › Allgemein / Datenschutz | … dass Sie in Webex aktiv sind … (2 strings) | Presence on the service, seen by others in any Webex client |
+| Settings › General / Privacy | … dass Sie in Webex aktiv sind … (2 strings) | Presence on the service, seen by others in any Webex client |
 | Settings › Multitasking | Mein(en) Webex-Anruf oder -Meeting … | A Webex call or meeting (service) |
-| Settings › Meetings aus dem Browser | Ersetzt den Webex-Browser-Helper. | Name of an official product |
+| Settings › Meetings from the browser | Ersetzt den Webex-Browser-Helper. | Name of an official product |
 | Settings › Meetings | Webex-Site-Meetings, Einstellungen der Webex-Seite | The meeting site |
-| Settings › Anruf-Dock | Webex Calling-Funktionen | Product name |
+| Settings › Calling dock | Webex Calling-Funktionen | Product name |
 | Calls page (`calls_page`) | … eine andere Person anzurufen, die Webex verwendet … | People on the service |
-| Meetings › Kalender auswählen (`meetings_page.rs`) | Wählen Sie einen Kalender, der mit Webex verwendet werden soll. | The calendar is linked to the Webex account (OAuth on the Webex settings site) |
+| Meetings › Choose a calendar (`meetings_page.rs`) | Wählen Sie einen Kalender, der mit Webex verwendet werden soll. | The calendar is linked to the Webex account (OAuth on the Webex settings site) |
 | Loading banner (`loading.rs`) | Der Webex-Dienst kann nicht erreicht werden … | The service |
 | Blocked-people dialog (`app_dialogs.rs`) | … der Webex-Dienst wird nicht informiert. | The service (the same text already says "nur in Webox gespeichert") |
-| Device pairing (`app_dialogs.rs`) | … auf dem Webex-Gerät angezeigten … Code … | Webex hardware |
-| Calling errors (`cloud/locus`) | Angerufen werden können nur Webex-Adressen (E-Mail). | Service addresses |
-| Notification kickers (`platform/notify/hub.rs`) | Webex-Anrufübersicht, Webex-Whiteboard | Service features |
+| Device pairing (`app_dialogs.rs`) | Enter the 9-character code shown on the Webex device. | Webex hardware |
+| Calling errors (`cloud/locus`) | Only Webex addresses (email) can be called. | Service addresses |
+| Notification kickers (`platform/notify/hub.rs`) | Webex call summary, Webex whiteboard | Service features |
 | Sign-in (`login.rs`) | "Webex" / "Webex for Government" rows, "… the code Webex shows you …", "Complete sign-in in the Webex window" | The account and the service's sign-in page |
 | Sign-in window title (Linux, `platform/webview/platform_gtk.rs`) | Webex | Shows the Webex account sign-in page; `packaging/docker/signin-test.sh` looks the window up by this name |
 | Help/terms links | help.webex.com, settings.webex.com, signup.webex.com | Service websites |
-| Sample data (`cloud/sample.rs`, `app/mod.rs`) | Webex-Bereich für Alex … | Stands in for server data (space titles) |
+| Sample data (`cloud/sample.rs`, `app/mod.rs`) | Alex's Webex space … | Stands in for server data (space titles) |
 | Internal ids and log/error strings | `webex-menu*`, `webex-dialog*`, "content location is not a Webex host", `webexteams://`, icon names | Not UI text, or about service hosts |
 | Pack strings outside the lists | everything with "Webex account / site / service / meeting / device / Assistant / Calling / Meetings", "By using Webex, you accept …", "Send report to Webex", "Selecting Send Feedback will send your Webex activity logs to us …", "Webex will sign you out …", "For your security, Webex requires you to sign in again …", "Update your Webex app to join this webinar" | The service, legal text, or the official app (Webox would make a false claim, e.g. that it sends logs to Cisco) |
 | `{{APP_NAME}}` outside `APP_PLACEHOLDER_SOURCES` | e.g. "{{APP_NAME}} Help", "Welcome to {{APP_NAME}}", "Show {{APP_NAME}} availability in Outlook", "The network … appears to be blocking {{APP_NAME}}" | Default: the service name |

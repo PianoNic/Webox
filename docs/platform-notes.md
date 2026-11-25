@@ -61,10 +61,10 @@ docker run --rm -v "$PWD:/src" -v webox-target:/target -e CARGO_TARGET_DIR=/targ
 - **Menu bar:** a status item with the unread dot and count, and the same menu as the tray elsewhere. Closing the window
   hides Webox there (Settings > "close to tray"); a click on the Dock icon brings it back. The Dock icon shows the unread
   count and bounces once for a new message while Webox is in the background.
-- **App menu:** Webox (Einstellungen ⌘,, Ausblenden ⌘H, Beenden ⌘Q), Bearbeiten (undo, cut, copy, paste, select all),
-  Fenster (Schließen ⌘W, Im Dock ablegen ⌘M).
+- **App menu:** Webox (Settings ⌘,, Hide ⌘H, Quit ⌘Q), Edit (undo, cut, copy, paste, select all),
+  Window (Close ⌘W, Minimize ⌘M).
 - **Shortcuts** use ⌘ where Windows and Linux use Ctrl, written the macOS way (⇧⌘N). Global hotkeys are opt-in
-  (Settings > Tastenkombinationen), as on Linux.
+  (Settings > Keyboard shortcuts), as on Linux.
 - **Notifications** come from Webox in Notification Center; a click opens the space, reminders keep their buttons and an
   incoming call has Annehmen / Ablehnen. Started outside `Webox.app` (`cargo run`) they fall back to plain banners from
   "Script Editor".

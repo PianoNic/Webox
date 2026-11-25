@@ -79,7 +79,7 @@ Read-only inventory, 2026-11-24. Webox is at `main` 2a9cd2a (PR #20, screen shar
 | B8 | Answered / declined elsewhere | "Answered elsewhere" | **done**: `session.rs::evaluate` (`elsewhere`, `ends_quietly`) | – | – | 1 |
 | B9 | **DND / quiet hours suppress call ringing** | presence DND ("Do not disturb until {{0}}"); `SettingsNotificationsCallsPage` `isDirectCallsMuteInCallOption`, "Turn off while in a meeting or call" | **missing**: `ring_sound` and the toast ignore DND and quiet hours | UI | S | 2 |
 | B10 | **Call waiting**: second incoming call while in a call (end and accept, hold and answer, decline) | "Hold and Answer", "End Call and Accept", "Answer incoming call and end current call?", "Select a call to end, before answering this call", "Leave meeting && Answer", "Mute meeting && Answer" | **missing**: one `calls.cur` slot; a new incoming locus is ignored while busy (the caller hears ringing until timeout) | locus, UI | M (L with hold) | 2 |
-| B11 | Missed-call OS notification + missed badge on the Calls rail/tab | "Missed Call", "Missed calls", "Calls tab, unread voice messages" | **missing**: the call card says "Verpasster Anruf"; there is no badge and no OS toast after the window closes | UI | S | 2 |
+| B11 | Missed-call OS notification + missed badge on the Calls rail/tab | "Missed Call", "Missed calls", "Calls tab, unread voice messages" | **missing**: the call card says "Missed call"; there is no badge and no OS toast after the window closes | UI | S | 2 |
 | B12 | Auto-answer / answer when the headset is put on / answer on lock screen | "Auto-answer call", "Answer incoming calls when you put the headset on.", "Answer Calls on Lock Screen" | **missing** | UI (auto-answer), accessories | S–M | 3 |
 | B13 | Block list applied to incoming calls | `Settings/Calling/SettingsCallingBlockListPage.qml`, `AddBlockNumberDialog` (phone numbers) | **partial**: `block_list` is stored locally (`settings/pages_b.rs:185`) and never consulted | UI (local), WxC for numbers | S | 3 |
 | B14 | Group call pickup notifications ("Calls Available For Pickup") | `SettingsNotificationsCallsPage` call pickup section, `WatchlistView` "Pick up %1 %2" | **missing** | WxC | M | 3 |
@@ -100,7 +100,7 @@ Read-only inventory, 2026-11-24. Webox is at `main` 2a9cd2a (PR #20, screen shar
 | C10 | Transfer: blind ("Transfer now") and consult ("Consult first", "Complete transfer", "Cancel transfer") | `PhoneWidget/CallDelegate.qml` (`TransferNow`), `MeetingViewLayout/TransferPopover.qml`, dll `call_transfer_type_consult/now`, `[directTransferCall]` | **missing**: shortcut stub `TransferCall` (`shortcuts/table.rs:116`) | WxC | L | 3 |
 | C11 | Merge calls / conference ("Merge calls", "Select a call to merge with") | `CallAssociationType.Merge`, dll `[mergeCall]` | **missing** | WxC | L | 3 |
 | C12 | **Add people to a 1:1 call** → "Invite and meet" / "Move to Meeting" (escalation) | `EscalationInviteAndMeet/EscalationInviteAndMeetView.qml` (invitee list, `meetNow()`), "Make this a meeting by inviting others or by clicking Meet now.", dll `escalateToMeeting`, `escalationMeetNowAction`, `escalateCallToMeetingNotificationArrived`, `AddPersonAction` | **missing** | locus, meet, media | L | 2 |
-| C13 | Invite / add participant to a group call or meeting | `ParticipantList/InvitePeopleAndDevicePage`, `InvitePhonesPage`; dll `call_addParticipant`, `call_addGuest`, `call_addPSTNGuest`, `call_addSipDeviceGuest` | **done (untested live)**: "Personen anhand von Name oder E-Mail-Adresse hinzufügen" in the participants panel, `PUT {locusUrl}/participant` *(sdk)* (`locus/controls.rs`); e-mail addresses only, test guard applies | locus | M (after A3) | 2 |
+| C13 | Invite / add participant to a group call or meeting | `ParticipantList/InvitePeopleAndDevicePage`, `InvitePhonesPage`; dll `call_addParticipant`, `call_addGuest`, `call_addPSTNGuest`, `call_addSipDeviceGuest` | **done (untested live)**: "Add people by name or email address" in the participants panel, `PUT {locusUrl}/participant` *(sdk)* (`locus/controls.rs`); e-mail addresses only, test guard applies | locus | M (after A3) | 2 |
 | C14 | **Move call** to another device / pull the call here | "Move Call Here", "Move call to device", "Call pull, move an active call here", "Always move call if supported"; dll `[moveMedia]`, `call_move`, `call_pull` | **missing**: the join body only has the literal `moveMediaToResource:false` | locus | M | 3 |
 | C15 | Park / retrieve | "Park", "Call parked at {{0}}", "Call park will expire soon", dll `[parkCall] [resumeCallPark]` | **missing** | WxC | M | 3 |
 | C16 | Call pickup (group / directed) | "Call Pickup", "Directed Pickup", "Enter pickup number", dll `call_pickup` | **missing** | WxC | M | 3 |
@@ -119,7 +119,7 @@ Read-only inventory, 2026-11-24. Webox is at `main` 2a9cd2a (PR #20, screen shar
 | C29 | Music mode / "Optimize for all voices" | "Music mode", "Optimize for all voices", "Optimize for my voice" | **partial**: Smart Audio modes exist; no "music mode" (denoise + AGC off) | media | S | 3 |
 | C30 | Background blur / virtual background / touch up | `Settings/SettingsVideoBackgroundPage.qml`, `MeetingInterstitialPage/VirtualBackgroundSettingView.qml`, "Blur", "Change virtual background" | **missing**: the settings page is hidden (`settings/nav.rs:9`) | media (segmentation) | L | 3 |
 | C31 | End call / leave | "End call", `WidgetCallButtonControlType.EndCall` | **done**: `PUT …/participant/{id}/leave` | – | – | 1 |
-| C32 | End meeting for all | `EndMeeting/*`, "Leave or end the meeting or call" | **done (untested live)** for the host / moderator: "Anruf für alle beenden" with confirmation, `POST {locusUrl}/end` *(sdk)* | locus | S | 3 |
+| C32 | End meeting for all | `EndMeeting/*`, "Leave or end the meeting or call" | **done (untested live)** for the host / moderator: "End call for everyone" with confirmation, `POST {locusUrl}/end` *(sdk)* | locus | S | 3 |
 | C33 | In-call chat panel | `MeetingChat/*`, "Chat panel"; `CallControlSidePaneManager` | **missing** | UI (reuse the conversation view) | M | 2 |
 | C34 | **Participants panel** (roster, states, mute others, remove, admit from lobby) | `ParticipantList/*`, `PhoneWidget/ParticipantsPopup.qml` ("Remove from call", "%1 people in the conference call"), `MuteOptionsMenu`, `LobbyParticipantList/*`, dll `call_removeParticipant`, `call_admitParticipant` | **partial**: `call_win/roster.rs` lists everyone (mute, hand, host, ringing), mutes / asks to unmute and removes *(sdk shapes)*; admitting from the lobby is not done (meetings, A8) | locus, UI | M | 2 |
 | C35 | Screen share **send** | `Sharing/ShareDialog/*`, `LocalShareControlBar/*` | **done** (PR #20): `ui/share_picker/`, `media/share/`, `cloud/locus/share.rs` floor GRANTED/RELEASED | – | – | 1 |
@@ -286,7 +286,7 @@ The notes are grouped by mechanism, because many features share one. Endpoint sh
 * **C43 recovery.**
   * The official client keeps the call through `IceFailure`/`Lost`/`Reconnected` (dll `[reconnectCall]`, `call_reconnect`).
   * Implement an ICE restart: a re-OFFER with new ufrag on the same `mediaId`. If that fails after N seconds, rejoin (`POST {locusUrl}/participant` with a fresh offer) while self is still in the locus.
-  * Play the existing `Reconnect` sound and show "Verbindung wird wiederhergestellt…".
+  * Play the existing `Reconnect` sound and show "Reconnecting…".
 * **C44 TCP/TLS fallback.** webrtc-rs has no ICE-TCP/TLS-443. This needs a custom transport (`ice_socket.rs`), so it is L and only worth it on UDP-blocked networks.
 * **C28 / C29 audio.**
   * C28: run the existing `denoise.rs` on the decoded far-end audio before playback.
@@ -388,8 +388,8 @@ Each batch has 3–6 features. **Lanes** within a batch touch disjoint files, so
 | Lane | Features | Files | Acceptance test |
 |---|---|---|---|
 | locus | C2 mute to Locus, C3 remote-mute banner | `cloud/locus/session.rs`, `locus/mod.rs`, `ui/call/mod.rs` (event only) | Mute in Webox → the official client on the other side shows the muted icon within 2 s; unmuting clears it |
-| ring/toast | B9 DND/quiet hours silence calls, B6 Ignore, B5 decline with quick reply, B13 local block list | `ui/call_toast.rs`, `ui/call/mod.rs::ring_sound`, `call_note_macos.rs` | With DND on, an incoming call does not ring; "Ablehnen mit Nachricht → Kann gerade nicht" declines and posts that text in the 1:1 space |
-| calls page / settings | B11/E2 missed badge + OS notification, C23/F6 dock key fix + Ctrl+Shift+X | `ui/calls_page/mod.rs`, rail badge in `ui/chrome/`, `ui/settings/pages_b.rs`, `shortcuts/commands.rs` | A missed call shows a "1" badge on Anrufe until the tab is opened; toggling "Im Vordergrund halten" in settings changes the dock behaviour |
+| ring/toast | B9 DND/quiet hours silence calls, B6 Ignore, B5 decline with quick reply, B13 local block list | `ui/call_toast.rs`, `ui/call/mod.rs::ring_sound`, `call_note_macos.rs` | With DND on, an incoming call does not ring; "Decline with message → Can't talk right now" declines and posts that text in the 1:1 space |
+| calls page / settings | B11/E2 missed badge + OS notification, C23/F6 dock key fix + Ctrl+Shift+X | `ui/calls_page/mod.rs`, rail badge in `ui/chrome/`, `ui/settings/pages_b.rs`, `shortcuts/commands.rs` | A missed call shows a "1" badge on Calling until the tab is opened; toggling "Keep on top" in settings changes the dock behaviour |
 
 ### Batch 2: group calls and roster (prio 1–2)
 
@@ -419,7 +419,7 @@ Each batch has 3–6 features. **Lanes** within a batch touch disjoint files, so
 
 | Lane | Features | Files | Acceptance test |
 |---|---|---|---|
-| locus (multi-call) | B10 call waiting (end and accept / decline), C9 locus hold/resume (after the trace), F11 hold reminder | `cloud/locus/session.rs` (second call slot), `ui/call/mod.rs` | During a call a second Webex call shows a waiting toast; "Beenden und annehmen" connects the new caller |
+| locus (multi-call) | B10 call waiting (end and accept / decline), C9 locus hold/resume (after the trace), F11 hold reminder | `cloud/locus/session.rs` (second call slot), `ui/call/mod.rs` | During a call a second Webex call shows a waiting toast; "End and answer" connects the new caller |
 | escalation | C12 invite-and-meet escalation, D5 join meeting while in call | new `cloud/locus/escalate.rs`, new `ui/call_win/invite.rs` | Adding a third person in a 1:1 moves all three into one meeting |
 | move | C14 move call here / to my other device, C20 reactions over the LLM data channel | `cloud/locus/join.rs` (move flag), new `cloud/llm.rs`, `ui/call_win/reactions.rs` | A call answered on the phone app can be pulled to Webox with "Hierher holen"; a 👍 reaction sent from Webox appears in the official client |
 
@@ -429,7 +429,7 @@ Prerequisite: the entitlement probe succeeds on a test account.
 
 | Lane | Features | Files | Acceptance test |
 |---|---|---|---|
-| wxc core | Mobius registration, A5/D6 PSTN/extension dialing and receiving, C9 WxC hold/resume, C10 transfer (blind/consult) | new `cloud/wxc/register.rs`, `cloud/wxc/call.rs`, `cloud/locus/mod.rs::call_allowed` | Dialing an external mobile number from Anrufe rings that phone, and hold/resume works |
+| wxc core | Mobius registration, A5/D6 PSTN/extension dialing and receiving, C9 WxC hold/resume, C10 transfer (blind/consult) | new `cloud/wxc/register.rs`, `cloud/wxc/call.rs`, `cloud/locus/mod.rs::call_allowed` | Dialing an external mobile number from Calling rings that phone, and hold/resume works |
 | voicemail | E4 voicemail list/play/delete/mark read/transcript, E2 MWI badge | new `cloud/wxc/voicemail.rs`, `ui/calls_page/voicemail.rs` | A voicemail left on the line appears within 1 min and plays in Webox |
 | settings | F7 forwarding, F16 auto-decline, DND sync, F10 number block list | new `cloud/wxc/settings.rs`, `ui/settings/pages_b.rs` | Setting "Weiterleiten an +41…" in Webox shows the same forwarding in the official app's Calling settings |
 

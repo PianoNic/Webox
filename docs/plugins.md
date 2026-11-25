@@ -9,25 +9,25 @@ They are native libraries (`.dll` on Windows, `.so` on Linux) that Webox loads a
 
 ## Install a plugin
 
-1. Open **Einstellungen > Plugins**.
-2. Switch to the **Verfügbar** tab.
-3. Click **Installieren** next to a plugin and confirm. It runs at once, no restart.
-4. Back on **Installiert**, use the switch to turn it on or off. **Einstellungen** (or **Details**) opens its page.
-5. To remove it, click **Deinstallieren**.
+1. Open **Settings > Plugins**.
+2. Switch to the **Available** tab.
+3. Click **Install** next to a plugin and confirm. It runs at once, no restart.
+4. Back on **Installed**, use the switch to turn it on or off. **Settings** (or **Details**) opens its page.
+5. To remove it, click **Uninstall**.
 
-Updates show as **Aktualisieren auf vX**. Webox checks once a day ("Automatisch nach Updates suchen") and never installs
+Updates show as **Update to vX**. Webox checks once a day ("Automatically check for updates") and never installs
 updates unasked.
 
 ### Add a plugin repository
 
-1. Open **Einstellungen > Plugins > Verfügbar** and scroll to **Repositories**.
-2. Paste the index URL (`https://…/index.min.json`) and click **Hinzufügen**.
-3. Confirm the warning. The repository's plugins appear under **Verfügbare Plugins**.
+1. Open **Settings > Plugins > Available** and scroll to **Repositories**.
+2. Paste the index URL (`https://…/index.min.json`) and click **Add**.
+3. Confirm the warning. The repository's plugins appear under **Available plugins**.
 
-The official repository is always there. Other repositories have **Entfernen**.
+The official repository is always there. Other repositories have **Remove**.
 
 > [!TIP]
-> A loose `.dll` / `.so` also works: **Plugin-Ordner öffnen**, copy the file in, click **Neu laden**.
+> A loose `.dll` / `.so` also works: **Open plugin folder**, copy the file in, click **Reload**.
 
 ---
 
@@ -113,7 +113,7 @@ cargo build --release -p collabhost_hello
 ```
 
 Copy `target/release/collabhost_hello.dll` (Linux: `libcollabhost_hello.so`) into the plugin folder
-(**Einstellungen > Plugins > Plugin-Ordner öffnen**) and click **Neu laden**.
+(**Settings > Plugins > Open plugin folder**) and click **Reload**.
 
 > [!NOTE]
 > To build WeboxPlugins against a local Webox checkout instead of the git dependency, run
@@ -186,7 +186,7 @@ What keeps the boundary stable:
 - Panics never unwind across the boundary. Plugin-side shims catch them (the hook then reports "no change"), and so do
   the host callbacks. A panic in an `extern "C"` function would otherwise abort Webox.
 - A plugin must not keep threads running after `stop` returns. Webox may unload the library afterwards (uninstall,
-  update, "Neu laden").
+  update, "Reload").
 
 </details>
 
@@ -288,9 +288,12 @@ payload version.
   Without a subscribed plugin the menu is unchanged.
 - **`space.menu_action`** (1) — one of the plugin's space-menu entries was picked. Sent only to that plugin. Payload
   `{"space", "item"}`. Answer ignored.
-- **`message.edit_tag_clicked`** (1) — "(bearbeitet)" below a message, or "Bearbeitet" in its header, was clicked. Both
+- **`message.edit_tag_clicked`** (1) — "(edited)" below a message, or "Edited" in its header, was clicked. Both
   are buttons (pointer cursor) only while a plugin subscribes. `text` is the current plain text. Payload
   `{"space", "id", "text", "mine", "published_ms"}`. Answer ignored; the plugin may open `ui.dialog`.
+- **`i18n.strings`** (1) — the plugin's translations are wanted: before it starts and after every language change.
+  Payload `{"lang", "fallbacks"}`. Answer `{"strings": {"English source": "translation"}}`. See
+  [Translations](#reference).
 
 </details>
 
@@ -347,7 +350,7 @@ Call with `host.call(name, json)`. Results are JSON; `{}` means done. The number
   greyed out with `hint` as tooltip), and the selected tab's `text` (spans, see
   [Deleted and edited messages](#reference)), or its `alt` while the switch is on. `selected` defaults to the last tab.
   At most 50 tabs. Does not block, so it may be called from `on_event`. A new one replaces the one shown. It closes with
-  "Schließen", the X or Esc, and when its plugin is switched off.
+  "Close", the X or Esc, and when its plugin is switched off.
 - **`clipboard.write`** (1) — `{"text": "..."}`. Puts the text on the clipboard on the next frame.
 - **`message.keep`** (2) — `{"deleted": [...], "edited": [...], "replace": bool}`. Gives again what the answers to
   `message.deleted` / `message.edited` keep, e.g. after a restart. `deleted` entries are `message.deleted` payloads plus
@@ -361,12 +364,56 @@ Call with `host.call(name, json)`. Results are JSON; `{}` means done. The number
   `hide_self` leaves your own reaction out. Hovering an avatar shows the name. Avatars come from the people and photo
   caches, no network request. `{"enabled": false}` turns them off. Remembered per plugin; a plugin switched off or
   unloaded stops counting, and with several the last enabled one wins. Without any, chips look as before. Safe from any
-  thread. [Wer hat reagiert](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/who-reacted) calls it in `start`
+  thread. [Who reacted](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/who-reacted) calls it in `start`
   and on every settings change. It is a method, not a decoration bit: decorations belong to design plugins (the last
   enabled one wins, and a bit cannot carry `max` or `size`), while a method needs no table change, is versioned by name
   and can be checked with `host.has`.
 - **`camera.filter`**, **`camera.source`**, **`media.open`**, **`media.read`**, **`media.close`** (1) — see
   [Camera pictures](#reference). Safe from any thread.
+- **`i18n.language`** (1) — `{}` → `{"lang": "de", "fallbacks": ["de_CH", "de"]}`: the active Webox language, as
+  `i18n.strings` sends it. See [Translations](#reference). Safe from any thread.
+
+</details>
+
+<details>
+<summary><b>Translations</b> (optional; event <code>i18n.strings</code>, method <code>i18n.language</code>)</summary>
+
+Write every text of a plugin in English. Webox shows that English unless the plugin also supplies translations. Nothing
+else changes: same contract 1.6, no new table entry.
+
+1. List `i18n.strings` in your `EVENTS`.
+2. Webox sends it once the plugin starts and again whenever the language changes:
+
+   ```json
+   { "lang": "de", "fallbacks": ["de_CH", "de"] }
+   ```
+
+   `lang` is the active Webox language code (as in **Settings > General > Language**); `fallbacks` is the chain to try, most
+   specific first (the user's locale, then the code, then its base language).
+3. Answer with the strings you have for the first language you know, keyed by the exact English text:
+
+   ```json
+   { "strings": { "Replace :) with 🙂": "„:)“ durch 🙂 ersetzen", "Counter reset": "Zähler zurückgesetzt" } }
+   ```
+
+Webox keeps the table per plugin and applies it to everything it draws from the plugin: its name and description, the
+settings page (section titles and descriptions, labels, help texts, choice options, the file filter name),
+`message.menu` / `space.menu` entries, `ui.dialog` (title, tab labels and hints, the switch label) and toasts. A text
+missing from the table, an empty answer or no answer at all shows the English text. A plugin that does not subscribe is
+unchanged.
+
+For text the plugin builds itself (messages it sends, dynamic toast text, the result of a settings button), call
+`i18n.language`: it returns the same `{"lang", "fallbacks"}` object.
+
+```rust
+const EVENTS: &'static str = "i18n.strings";
+fn on_event(&mut self, name: &str, _json: &str) -> Option<String> {
+    (name == "i18n.strings").then(|| r#"{"strings":{"Counter reset":"Zähler zurückgesetzt"}}"#.to_string())
+}
+```
+
+The example answers German for every language; a real plugin picks the table from `lang` / `fallbacks` and answers
+`{"strings": {}}` (or nothing) for a language it doesn't have.
 
 </details>
 
@@ -374,32 +421,32 @@ Call with `host.call(name, json)`. Results are JSON; `{}` means done. The number
 <summary><b>Deleted and edited messages</b> (message logger hooks, diff spans)</summary>
 
 **Detection.** Webox compares every list of a space it receives with the one it replaces. A message that turned into the
-"… hat … gelöscht" row (same id), or that is missing although the new list reaches back to it, was deleted. A message
+"… deleted …" row (same id), or that is missing although the new list reaches back to it, was deleted. A message
 whose text changed was edited. Only messages Webox had loaded count: what changed while Webox was closed, or in a space
 not opened since start, fires nothing. In a loaded space a live delete or edit folds the list again at once (the
 service's `tombstone`, cloud/activities), so the events come right away.
 
 **Deleted message styles** (the answer to `message.deleted`):
-- `"style": "text"` — kept where it was written (the "gelöscht" row, which stands at the deletion time, goes). Text in
-  danger red with "(gelöscht)" below, pictures grey (in colour under the pointer).
+- `"style": "text"` — kept where it was written (the "deleted" row, which stands at the deletion time, goes). Text in
+  danger red with "(deleted)" below, pictures grey (in colour under the pointer).
 - `"style": "overlay"` — text keeps its colour, a red wash lies over the message.
-- `"style": "plain"` — drawn like any message (no red, no "(gelöscht)", pictures in colour), e.g. after the person
+- `"style": "plain"` — drawn like any message (no red, no "(deleted)", pictures in colour), e.g. after the person
   switched the highlight off.
-- `"collapsed": true` — a run of such messages of one day without replies folds into one row "N gelöschte Nachrichten"
+- `"collapsed": true` — a run of such messages of one day without replies folds into one row "N deleted messages"
   (link colour, arrow) that unfolds on a click.
 - `"attachments": false` — drawn without its pictures, files ("📎" lines) and link cards.
 
-A kept deleted message has no toolbar. Its menu (right click) has only "Nachricht kopieren" (plus the text or picture
+A kept deleted message has no toolbar. Its menu (right click) has only "Copy message" (plus the text or picture
 actions of what was clicked) and the plugins' `message.menu` entries. A menu never starts or ends with a separator.
 
 **Edit history** (the answer to `message.edited`): `{"history": [...]}` shows the earlier texts above the text, with
-"(bearbeitet)" below it.
+"(edited)" below it.
 - An entry is a string (struck through, secondary grey) or **spans**: `[{"text", "kind"?}]` (or `{"spans": [...]}`).
   Kind `"added"` (green), `"removed"` (red, struck through) or none (secondary grey), e.g. a diff against the next
   version. At most 400 spans and 20,000 characters per line.
 - `"current"`: the current text as spans. Its `added` parts are drawn green in the message when the spans spell exactly
   the text Webox shows (rich text or emoji that change it leave it as is).
-- `"inline": false`: no earlier text in the message, only "(bearbeitet)".
+- `"inline": false`: no earlier text in the message, only "(edited)".
 
 Without such a plugin Webox draws every list exactly as received.
 
@@ -407,7 +454,7 @@ Without such a plugin Webox draws every list exactly as received.
 event is on, and never sends them anywhere. To keep them across restarts the plugin stores the payloads itself
 (`host.set`) and gives them back with `message.keep` on start. To forget one message, an edit history or a space's log,
 the plugin drops it from its records and gives the rest again with `message.keep` and `"replace": true`. A deleted
-message no longer kept goes as Webox deletes any message (its "… gelöscht" row comes back); an edit history no longer
+message no longer kept goes as Webox deletes any message (its "… deleted …" row comes back); an edit history no longer
 given disappears.
 
 The [Nachrichtenprotokoll](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/message-logger) plugin does all of
@@ -474,8 +521,8 @@ focus, a name overlay, a low-light boost).
 <details>
 <summary><b>Plugin settings</b> (contract 1.2)</summary>
 
-A plugin declares its settings as a schema. Webox draws the form on the plugin's page (**Einstellungen > Plugins > a
-plugin > Einstellungen**), validates and saves the values, and passes them to the plugin. No UI code crosses the
+A plugin declares its settings as a schema. Webox draws the form on the plugin's page (**Settings > Plugins > a
+plugin > Settings**), validates and saves the values, and passes them to the plugin. No UI code crosses the
 boundary, only JSON. Built-in plugins (GIF-Extras) use the same format, so their pages look the same.
 
 ```rust
@@ -483,18 +530,18 @@ use collabhost_plugin_api::{Schema, Values};
 
 fn settings(&self) -> Option<Schema> {
     Some(Schema::new()
-        .section("Ersetzungen", "Was beim Senden ersetzt wird.")
-        .toggle("smiley", "„:)“ ersetzen", "", true)
-        .text("shrug_text", "Text für /shrug", "", "¯\\_(ツ)_/¯")
-        .number("delay", "Verzögerung (s)", "", 2.0, 0.0, 10.0, 0.5)   // default, min, max, step
-        .choice("mode", "Modus", "", "a", &[("a", "Einfach"), ("b", "Genau")])
-        .multiline("notes", "Notizen", "", "")
-        .password("token", "API-Schlüssel", "Wird im Schlüsselbund gespeichert.")
-        .file("bg", "Hintergrundbild", "", "Bilder", &["png", "jpg"])
-        .button("reset", "Zähler zurücksetzen", ""))
+        .section("Replacements", "What is replaced when you send a message.")
+        .toggle("smiley", "Replace \":)\"", "", true)
+        .text("shrug_text", "Text for /shrug", "", "¯\\_(ツ)_/¯")
+        .number("delay", "Delay (s)", "", 2.0, 0.0, 10.0, 0.5)   // default, min, max, step
+        .choice("mode", "Mode", "", "a", &[("a", "Simple"), ("b", "Exact")])
+        .multiline("notes", "Notes", "", "")
+        .password("token", "API key", "Stored in the keychain.")
+        .file("bg", "Background image", "", "Images", &["png", "jpg"])
+        .button("reset", "Reset counter", ""))
 }
 fn settings_changed(&mut self, v: &Values) { self.smiley = v.bool("smiley").unwrap_or(true); }
-fn settings_action(&mut self, id: &str) -> Option<String> { (id == "reset").then(|| "Zurückgesetzt".into()) }
+fn settings_action(&mut self, id: &str) -> Option<String> { (id == "reset").then(|| "Counter reset".into()) }
 ```
 
 `host.settings()` returns the same values at any time.
@@ -539,9 +586,9 @@ Rules:
   - choice: one of the options.
   - file: a path without line breaks, at most 4096 characters (`""` = none).
   - A refused value is not saved; the reason appears under the field.
-- `file` (plugin-api 1.6.1): a path field with "Durchsuchen…", which opens the system's open-file dialog (on its own
-  thread) filtered to `extensions` (letters and digits, no dot) under the name `filter`, plus "Alle Dateien".
-  "Entfernen" clears it. The path can also be typed. Older hosts leave the field out, like any unknown type.
+- `file` (plugin-api 1.6.1): a path field with "Browse…", which opens the system's open-file dialog (on its own
+  thread) filtered to `extensions` (letters and digits, no dot) under the name `filter`, plus "All files".
+  "Remove" clears it. The path can also be typed. Older hosts leave the field out, like any unknown type.
 - The plugin always receives every field (buttons excluded). A stored value that no longer validates (e.g. after a
   schema change) is replaced by the default. An unset password is `""`.
 
@@ -601,7 +648,7 @@ code crosses the boundary. `ThemeInfo` gained `text_secondary`, so the plugin ca
   - `AVATAR_RING_SELF` / `AVATAR_RING_ALL` — a ring in the stripe colours around your own avatar / everybody's.
   - `PRESENCE_RING` — a ring around presence dots.
   - `SELECTED_ROW` — a gradient outline on the selected list row.
-  - `TAB_PILLS` — a gradient outline on the selected text tab ("Alle", "Nachrichten", ...).
+  - `TAB_PILLS` — a gradient outline on the selected text tab ("All", "Messages", ...).
   - `NAV_UNDERLINE` — a gradient underline on the selected settings navigation item.
   - `TOGGLE_TRACK` — switched-on toggles with a gradient track.
   - `BADGE_CYCLE` — unread dots (and the rail badge) cycling through the stripes from row to row.
@@ -681,13 +728,13 @@ how many. The rest still loads. Duplicate `pkg` entries keep the first one.
 <details>
 <summary><b>What the app does</b> (fetch, install, update, uninstall)</summary>
 
-- **Repositories** (**Einstellungen > Plugins > Verfügbar**): the official repository
+- **Repositories** (**Settings > Plugins > Available**): the official repository
   (`https://raw.githubusercontent.com/PianoNic/WeboxPlugins/repo/index.min.json`; override with `official` in
   `plugin-repos.json` or the `WEBOX_PLUGIN_REPO` environment variable), plus the ones the user adds or removes. Stored in
   `plugin-repos.json` in the config folder.
-- **Fetching**: when the page opens and on "Aktualisieren", on worker threads. Responses are cached in `plugin-repos/`
+- **Fetching**: when the page opens and on "Refresh", on worker threads. Responses are cached in `plugin-repos/`
   with `ETag` / `Last-Modified` and revalidated with `If-None-Match` / `If-Modified-Since`. The cached list shows at once
-  and stays when a fetch fails. "Automatisch nach Updates suchen" (on by default) checks once a day, only while
+  and stays when a fetch fails. "Automatically check for updates" (on by default) checks once a day, only while
   repository plugins are installed. It reports updates and never installs them unasked. No other background polling.
 - **Install**: the platform's file is downloaded off the UI thread with a progress bar.
   - HTTPS only, capped at the index's `size` or 64 MB, 10 s to connect and 5 min overall.
@@ -701,7 +748,7 @@ how many. The rest still loads. Duplicate `pkg` entries keep the first one.
   removed and the old one comes back. The old folder is deleted only after success.
 - **Uninstall**: stops and unloads the plugin, then deletes `<pkg>/` and its `installed.json` entry.
 - **Every start**: leftover `.staging-*` / `.old-*` folders are removed. Each installed plugin is hashed against the
-  pinned `sha256` before it loads; a file changed on disk is refused ("Datei wurde nach der Installation verändert").
+  pinned `sha256` before it loads; a file changed on disk is refused ("The file was changed after installation").
 - **Warnings**: before the first install at all, and before every install from a non-official repository, a dialog says
   that plugins are native code with full access to the account and the signed-in session, and to install only from
   trusted sources. Adding a non-official repository shows the same warning. `installed.json` records which repository
