@@ -7,10 +7,10 @@
 //!
 //! Settings keys read / written (the Settings page can surface them): `call_separate_windows` (bool, default true),
 //! `call_autohide_controls` (bool, default true = `desktop-auto-hide-call-control-enabled`), `call_win_rect` ([x,y,w,h]),
-//! `dock_auto_covered` (bool, default false: "Mein(en) Webex-Anruf oder -Meeting automatisch in einem unverankerten Minifenster
-//! anzeigen, wenn es von anderen Apps verdeckt wird"), `dock_keep_in_front` (bool, default false: "Anruf-Dock im Vordergrund
-//! beibehalten" = the pin button), `calling_dock` (bool, default true: "Anruf-Dock aktivieren"; off = no automatic dock),
-//! `dock_dont_ask` (bool: "Nicht erneut nachfragen"), `dock_rect` ([x,y,w,h]).
+//! `dock_auto_covered` (bool, default false: "Automatically show my Webex call or meeting
+//! in a floating mini window when other apps cover it"), `dock_keep_in_front` (bool, default false: "Keep the calling dock in
+//! front" = the pin button), `calling_dock` (bool, default true: "Enable the calling dock"; off = no automatic dock),
+//! `dock_dont_ask` (bool: "Don't ask me again"), `dock_rect` ([x,y,w,h]).
 use super::call::{state_text, CallActions, CallView};
 use super::call_toast::{ghost_at, round_at};
 use super::menu::{menu_toggle, webex_menu, Align, Entry, Item, Side};
@@ -36,8 +36,8 @@ const DOCK_MIN: Vec2 = Vec2::new(446.0, 480.0);
 const DOCK_MAX: Vec2 = Vec2::new(588.0, 990.0);
 const DOCK_THUMB: f32 = 60.0; // docked thumbnail size
 const DOCK_SNAP: f32 = 20.0; // docking distance from a screen edge
-const CALL_TITLE: &str = "Webox - Anruf";
-const DOCK_TITLE: &str = "Webox - Anruf-Dock";
+const CALL_TITLE: &str = "Webox - Call"; // window titles are shown through tr()
+const DOCK_TITLE: &str = "Webox - Calling dock";
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) enum DockSide { Left, Right, Top }
@@ -61,7 +61,7 @@ pub(crate) struct WinState {
     // Focus of our windows in the previous frame (main, call window, dock), for "covered by other apps".
     focus_call: bool, focus_dock: bool,
     pub sample_done: bool, rounded: u8, save_t: f64,
-    /// "Anrufstatistik" panel (stats.rs); a full-screen toggle asked for (title bar button, Alt+Eingabe; full_screen.rs).
+    /// "Call statistics" panel (stats.rs); a full-screen toggle asked for (title bar button, Alt+Enter; full_screen.rs).
     pub(crate) stats: stats::StatsUi, pub(crate) full_toggle: bool,
     /// The participants panel (`roster.rs`).
     pub roster: roster::RosterUi,

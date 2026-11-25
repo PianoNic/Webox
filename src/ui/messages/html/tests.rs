@@ -1,4 +1,5 @@
 use super::*;
+use crate::ui::widgets::tr;
 
 fn parse(h: &str) -> Parsed { html_job(h, &mc(&crate::dark()), "", 400.0, false).expect("parsed") }
 fn fmt_of<'a>(p: &'a Parsed, word: &str) -> &'a egui::TextFormat {
@@ -78,14 +79,14 @@ fn reply_quotes_get_a_header_with_the_jump_link() {
     let p = parse("<blockquote><span>Timo Steiner</span><br/>Build ist durch</blockquote>Immerhin etwas");
     let lines: Vec<&str> = p.job.text.lines().collect();
     assert_eq!(lines.len(), 3);
-    assert!(lines[0].ends_with("Timo Steiner \u{2022} Zur Originalnachricht springen"), "{lines:?}");
+    assert!(lines[0].ends_with(&format!("Timo Steiner \u{2022} {}", tr("Go to message"))), "{lines:?}");
     assert!(lines[1].ends_with("Build ist durch"));
     assert_eq!(lines[2], "Immerhin etwas");
     assert_eq!(p.reply_quote, Some(QuoteRef { author: "Timo Steiner".into(), shared: None, text: "Build ist durch".into() }));
     assert_eq!(reply_ref("<blockquote><span>Timo Steiner</span><br/>Build ist durch</blockquote>Immerhin etwas"), p.reply_quote);
     assert_eq!(p.quotes.len(), 1);
     let j = p.links.iter().find(|l| l.1 == JUMP).expect("jump link");
-    assert_eq!(&p.job.text[j.0.clone()], "Zur Originalnachricht springen");
+    assert_eq!(&p.job.text[j.0.clone()], tr("Go to message"));
     // A quote without author line is an ordinary quote.
     let q = parse("<blockquote>nur Text</blockquote>x");
     assert!(q.reply_quote.is_none() && q.links.is_empty());
@@ -163,8 +164,8 @@ const PIC: &str = "<blockquote class='messageQuote'><spark-mention data-object-t
 fn quoted_picture_gets_the_header_and_a_label() {
     let p = parse(PIC);
     let lines: Vec<&str> = p.job.text.lines().collect();
-    assert!(lines[0].ends_with("Lina Roth \u{2022} Zur Originalnachricht springen"), "{lines:?}");
-    assert!(lines[1].ends_with(&*crate::trq!("Shared a file: {{0}}", "IMG_0042.png")), "{lines:?}");
+    assert!(lines[0].ends_with(&format!("Lina Roth \u{2022} {}", tr("Go to message"))), "{lines:?}");
+    assert!(lines[1].ends_with(&cloud::Shared::File("IMG_0042.png".into()).label()), "{lines:?}");
     assert_eq!(lines[2], "Was ist das?");
     let want = QuoteRef { author: "Lina Roth".into(), shared: Some(cloud::Shared::File("IMG_0042.png".into())), text: String::new() };
     assert_eq!(p.reply_quote.as_ref(), Some(&want));
@@ -176,7 +177,7 @@ fn quoted_picture_gets_the_header_and_a_label() {
 #[test]
 fn quoted_picture_with_thumbnail_keeps_a_line_free() {
     let p = html_job_thumb(PIC, &mc(&crate::dark()), "", 400.0, false, true).unwrap();
-    assert!(!p.job.text.contains(&*crate::trq!("Shared a file: {{0}}", "IMG_0042.png")), "{:?}", p.job.text);
+    assert!(!p.job.text.contains(&cloud::Shared::File("IMG_0042.png".into()).label()), "{:?}", p.job.text);
     let at = p.thumb_at.expect("thumbnail place");
     assert_eq!(p.job.text.chars().nth(at), Some('\u{2003}'));
     assert_eq!(p.links.iter().filter(|l| l.1 == JUMP).count(), 2, "header link and the thumbnail");
@@ -186,10 +187,10 @@ fn quoted_picture_with_thumbnail_keeps_a_line_free() {
 fn summary_with_text_and_other_summaries() {
     let p = parse("<blockquote class='messageQuote'>Lina<br/><span class='spark-ignore-file-info'>Shared 3 files</span><br/>Hier die Unterlagen</blockquote>Danke");
     let lines: Vec<&str> = p.job.text.lines().collect();
-    assert!(lines[1].ends_with(&*crate::trq!("Shared {{0}} files", 3)) && lines[2].ends_with("Hier die Unterlagen"), "{lines:?}");
+    assert!(lines[1].ends_with(&cloud::Shared::Files(3).label()) && lines[2].ends_with("Hier die Unterlagen"), "{lines:?}");
     assert_eq!(p.reply_quote, Some(QuoteRef { author: "Lina".into(), shared: Some(cloud::Shared::Files(3)), text: "Hier die Unterlagen".into() }));
     assert_eq!(reply_ref("<blockquote class='messageQuote'>Lina<br/><span class='spark-ignore-file-info'>Shared 3 files</span><br/>Hier die Unterlagen</blockquote>Danke"), p.reply_quote);
-    assert!(parse("<blockquote class='messageQuote'>A<br/>Shared a snapshot: s.png</blockquote>").job.text.contains(&*crate::trq!("Shared a snapshot: {{0}}", "s.png")));
+    assert!(parse("<blockquote class='messageQuote'>A<br/>Shared a snapshot: s.png</blockquote>").job.text.contains(&cloud::Shared::Snapshot("s.png".into()).label()));
     // The words only count as a summary right after the author line.
     let t = parse("<blockquote class='messageQuote'>A<br/>Hallo<br/>Shared a file: x.png</blockquote>");
     assert!(t.job.text.contains("Shared a file: x.png") && t.reply_quote.unwrap().shared.is_none());
@@ -199,7 +200,7 @@ fn summary_with_text_and_other_summaries() {
 fn author_only_message_quote_still_gets_the_header() {
     // What an older Webox sent for a picture: the author line and nothing else.
     let p = parse("<blockquote class='messageQuote'>Lina Roth<br/></blockquote><p>schön</p>");
-    assert!(p.job.text.lines().next().unwrap().ends_with("Lina Roth \u{2022} Zur Originalnachricht springen"), "{:?}", p.job.text);
+    assert!(p.job.text.lines().next().unwrap().ends_with(&format!("Lina Roth \u{2022} {}", tr("Go to message"))), "{:?}", p.job.text);
     assert_eq!(p.reply_quote, Some(QuoteRef { author: "Lina Roth".into(), ..Default::default() }));
     // A plain quote with one line stays an ordinary quote.
     assert!(parse("<blockquote>Lina Roth</blockquote>x").reply_quote.is_none());

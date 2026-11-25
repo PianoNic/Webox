@@ -1,6 +1,6 @@
 //! App side of the space / people / team actions (requests: cloud/spaces_ext/) and their dialogs:
-//! "Bereichsbenachrichtigungen", "Zu einem Team hinzufügen", "Aus Team entfernen?", "Team verlassen",
-//! "Teammitglieder hinzufügen". Signed in, each action sends one request on the user's click (never by itself); with sample
+//! "Space notifications", "Add to a team", "Remove from team?", "Leave the team?",
+//! "Add team members". Signed in, each action sends one request on the user's click (never by itself); with sample
 //! data (`--sample`) it changes the local copy so every control shows its result offline.
 //!
 //! State that has no field in the shared `App` / `Space` structs (notification setting, moderators, full people lists,
@@ -96,11 +96,11 @@ impl App {
         with(|x| { x.notify.insert(id.to_string(), n); });
         self.op(SpaceOp::Notify(id.to_string(), n, false));
     }
-    /// "Benachrichtigungen stummschalten" / "Stummschaltung für Benachrichtigungen aufheben".
+    /// "Mute notifications" / "Unmute notifications".
     pub(crate) fn toggle_mute(&mut self, id: &str, now: f64) {
         let muted = self.notify_of(id).muted();
         self.set_notify(id, if muted { Notify::Global } else { Notify::Off });
-        if !muted { self.toast("Benachrichtigungen sind für diesen Bereich stummgeschaltet.", now); } // QObject "Notifications are muted for this space"
+        if !muted { self.toast(tr("Notifications are muted for this space"), now); }
     }
 
     // People.
@@ -131,9 +131,9 @@ impl App {
         self.op(SpaceOp::Moderator(space.to_string(), p.id.clone(), on));
     }
 
-    /// "Nachricht" / "Chat" for a person: opens the existing 1:1. Without one, sample data creates a local chat; signed in,
+    /// "Message" / "Chat" for a person: opens the existing 1:1. Without one, sample data creates a local chat; signed in,
     /// `Req::Direct` (cloud/header_plus.rs `direct_with`: conversation lookup, created when not found, no text sent) runs on this
-    /// click and the 1:1 opens once the reloaded list has it (`finish_direct`, the same path as "Neue Nachricht").
+    /// click and the 1:1 opens once the reloaded list has it (`finish_direct`, the same path as "New message").
     pub(crate) fn open_or_create_direct(&mut self, p: &Person, now: f64) -> bool {
         if self.nav_open_chat(p) { return true; }
         if self.sample() {
@@ -175,12 +175,12 @@ impl App {
     }
     pub(crate) fn create_team(&mut self, name: &str, summary: &str, people: &[Person]) -> Option<String> {
         if self.op(SpaceOp::TeamCreate { name: name.into(), summary: summary.into(), people: people.iter().map(|p| p.id.clone()).collect() }) { return None; }
-        // Sample: the team and its general space ("Allgemein" in the sample list is the general space of "Product Team").
+        // Sample: the team and its general space ("General" in the sample list is the general space of "Product Team").
         let id = format!("local-team-{}", self.teams.len());
         let general = format!("{id}-general");
         self.teams.push(Team { id: id.clone(), name: name.to_string(), color: None });
         let mut parts = vec![self.me.clone()]; parts.extend(people.iter().cloned());
-        self.spaces.insert(0, Space { id: general.clone(), title: name.to_string(), team: id.clone(), participants: parts, last: "jetzt".into(), ..Default::default() });
+        self.spaces.insert(0, Space { id: general.clone(), title: name.to_string(), team: id.clone(), participants: parts, last: tr("Now").into(), ..Default::default() });
         self.messages.insert(general.clone(), vec![]);
         let me = self.me.id.clone();
         with(|x| { x.teams.insert(id.clone(), TeamInfo { id: id.clone(), general: general.clone(), url: String::new(), archived: false }); x.moderators.entry(general).or_default().insert(me); });
@@ -216,7 +216,7 @@ impl App {
     }
     pub(crate) fn join_team_space(&mut self, team: &str, ts: &TeamSpace) {
         if self.op(SpaceOp::TeamJoin { team: team.to_string(), space: ts.id.clone() }) { return; }
-        self.spaces.insert(0, Space { id: ts.id.clone(), title: ts.title.clone(), team: team.to_string(), participants: vec![self.me.clone()], last: "jetzt".into(), ..Default::default() });
+        self.spaces.insert(0, Space { id: ts.id.clone(), title: ts.title.clone(), team: team.to_string(), participants: vec![self.me.clone()], last: tr("Now").into(), ..Default::default() });
         self.messages.entry(ts.id.clone()).or_default();
     }
 
@@ -260,23 +260,23 @@ impl App {
                         if resp.clicked() { *sel = i; }
                     };
                     let note = |ui: &mut egui::Ui, s: &str, left: f32| { ui.horizontal(|ui| { ui.add_space(left); ui.add(egui::Label::new(RichText::new(s).size(13.0).color(text2)).wrap()); }); };
-                    // Notification dialog strings (German pack).
-                    radio(ui, 0, "Global", &mut sel);
-                    note(ui, "Sie können Ihre Benachrichtigungseinstellungen für all Ihre Bereiche in Einstellungen ändern.", 20.0);
-                    ui.horizontal(|ui| { ui.add_space(32.0); if ui.add(egui::Button::new(RichText::new("Einstellungen").size(13.0))).clicked() { settings = true; } });
+                    // Notification dialog strings (pack sources).
+                    radio(ui, 0, tr("Global"), &mut sel);
+                    note(ui, tr("You can change your notification preferences for all your spaces in Settings."), 20.0);
+                    ui.horizontal(|ui| { ui.add_space(32.0); if ui.add(egui::Button::new(RichText::new(tr("Settings")).size(13.0))).clicked() { settings = true; } });
                     ui.add_space(16.0);
-                    ui.label(RichText::new("Benutzerdefiniert").size(13.0).color(text));
+                    ui.label(RichText::new(tr("Custom")).size(13.0).color(text));
                     ui.add_space(6.0);
-                    note(ui, "Sie können benutzerdefinierte Benachrichtigungen wählen oder alle Benachrichtigungen für diesen Bereich deaktivieren.", 0.0);
-                    radio(ui, 1, "Alle Nachrichten", &mut sel);
-                    radio(ui, 2, "Nur @Erwähnungen", &mut sel);
-                    radio(ui, 3, "Aus", &mut sel);
-                    radio(ui, 4, "Aus und Bereich ausblenden", &mut sel);
-                    note(ui, "Dieser Bereich wird nicht in Ihrer Bereichsliste angezeigt. Er wird in den Suchergebnissen, in Teams oder beim Filtern nach @Erwähnungen oder Markierungen angezeigt.", 23.0);
+                    note(ui, tr("You can choose custom notifications or turn off all notifications for this space."), 0.0);
+                    radio(ui, 1, tr("All messages"), &mut sel);
+                    radio(ui, 2, tr("@Mentions only"), &mut sel);
+                    radio(ui, 3, tr("Off"), &mut sel);
+                    radio(ui, 4, tr("Off and Hide Space"), &mut sel);
+                    note(ui, tr("This space won't show in your spaces list. It will show in search results, in Teams, or when you filter by @Mentions or Flags."), 23.0);
                 };
                 // The title wraps; the shared dialog title is one line, so the name goes on its own line.
-                let head = if title.is_empty() { "Bereichsbenachrichtigungen".to_string() } else { format!("Bereichsbenachrichtigungen für\n{title}") };
-                let res = menu::webex_dialog(ctx, t, "space-notify", &head, "", Some(&mut body), &[Button::primary("save", "Speichern"), Button::secondary("cancel", "Abbrechen")]);
+                let head = if title.is_empty() { tr("Space notifications").to_string() } else { crate::i18n::args(&tr("Space notifications for %1").replace(" %1", "\n%1"), &[&title as &dyn std::fmt::Display]) };
+                let res = menu::webex_dialog(ctx, t, "space-notify", &head, "", Some(&mut body), &[Button::primary("save", tr("Save")), Button::secondary("cancel", tr("Cancel"))]);
                 if settings { self.set_tab(Tab::Settings); }
                 match res.as_deref() {
                     Some("save") => {
@@ -291,12 +291,11 @@ impl App {
             }
             Dlg::TeamPick(space, mut pick) => {
                 let teams: Vec<Team> = self.teams.iter().filter(|tm| !self.team_archived(&tm.id)).cloned().collect();
-                // QObject "This will allow members of {{0}} to find and join {{1}}, but will not add space participants to the team."
                 let sp_title = self.spaces.iter().find(|s| s.id == space).map(|s| s.title.clone()).unwrap_or_default();
                 let tm_name = pick.as_ref().and_then(|p| self.teams.iter().find(|x| &x.id == p)).map(|x| x.name.clone()).unwrap_or_default();
-                let info = if tm_name.is_empty() { String::new() } else { format!("Anschließend können Mitglieder von {tm_name} den Bereich {sp_title} sehen und diesem beitreten, aber es werden keine Bereichsteilnehmer zum Team hinzugefügt.") };
+                let info = if tm_name.is_empty() { String::new() } else { crate::trq!("This will allow members of <b>{{0}}</b> to find and join <b>{{1}}</b>, but will not add space participants to the team.", tm_name, sp_title).replace("<b>", "").replace("</b>", "") };
                 let mut body = |ui: &mut egui::Ui| {
-                    if teams.is_empty() { ui.label(RichText::new("Keine Teams").size(14.0).color(text2)); } // Webox's own wording (teams_page.rs)
+                    if teams.is_empty() { ui.label(RichText::new(tr("No teams")).size(14.0).color(text2)); } // Webox's own wording (teams_page.rs)
                     for tm in &teams {
                         let on = pick.as_deref() == Some(tm.id.as_str());
                         let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 36.0), Sense::click());
@@ -308,7 +307,7 @@ impl App {
                         if resp.clicked() { pick = Some(tm.id.clone()); }
                     }
                 };
-                let res = menu::webex_dialog(ctx, t, "space-team-pick", "Zu einem Team hinzufügen", &info, Some(&mut body), &[Button::secondary("cancel", "Abbrechen"), Button::primary("add", "Hinzufügen")]);
+                let res = menu::webex_dialog(ctx, t, "space-team-pick", tr("Add to a team"), &info, Some(&mut body), &[Button::secondary("cancel", tr("Cancel")), Button::primary("add", tr("Add"))]);
                 match res.as_deref() {
                     Some("add") => match &pick { Some(tm) => self.add_space_to_team(&space, tm), None => keep = Some(Dlg::TeamPick(space, pick)) },
                     Some(_) => {}
@@ -316,13 +315,12 @@ impl App {
                 }
             }
             Dlg::TeamRemove(space, team) => {
-                let res = menu::webex_dialog(ctx, t, "space-team-remove", "Aus Team entfernen?", "", None, &[Button::secondary("cancel", "Abbrechen"), Button::danger("remove", "Entfernen")]);
+                let res = menu::webex_dialog(ctx, t, "space-team-remove", tr("Remove from team?"), "", None, &[Button::secondary("cancel", tr("Cancel")), Button::danger("remove", tr("Remove"))]);
                 match res.as_deref() { Some("remove") => self.remove_space_from_team(&space, &team), Some(_) => {}, None => keep = Some(Dlg::TeamRemove(space, team)) }
             }
             Dlg::TeamLeave(team) => {
-                // QObject "Leave the team?" / "Leaving the team removes you from all of its spaces."
-                let res = menu::webex_dialog(ctx, t, "team-leave", "Team verlassen?", "Wenn Sie dieses Team verlassen, werden Sie aus allen seinen Bereichen entfernt.", None,
-                    &[Button::secondary("cancel", "Abbrechen"), Button::danger("leave", "Verlassen")]);
+                let res = menu::webex_dialog(ctx, t, "team-leave", tr("Leave the team?"), tr("Leaving the team removes you from all of its spaces."), None,
+                    &[Button::secondary("cancel", tr("Cancel")), Button::danger("leave", tr("Leave"))]);
                 match res.as_deref() { Some("leave") => self.leave_team(&team), Some(_) => {}, None => keep = Some(Dlg::TeamLeave(team)) }
             }
             Dlg::TeamMembers(team, mut q) => {
@@ -332,7 +330,7 @@ impl App {
                 let people: Vec<Person> = self.people.iter().filter(|p| ql.is_empty() || p.name.to_lowercase().contains(&ql) || p.email.to_lowercase().contains(&ql)).cloned().collect();
                 let mut picks: Vec<Person> = vec![];
                 let mut body = |ui: &mut egui::Ui| {
-                    ui.add(egui::TextEdit::singleline(&mut q).hint_text("Nach neuen Teammitgliedern suchen").desired_width(f32::INFINITY));
+                    ui.add(egui::TextEdit::singleline(&mut q).hint_text(tr("Search for new team members")).desired_width(f32::INFINITY));
                     ui.add_space(6.0);
                     crate::ui::widgets::vscroll().max_height(260.0).show(ui, |ui| {
                         for p in &people {
@@ -340,29 +338,27 @@ impl App {
                             ui.horizontal(|ui| {
                                 ui.label(RichText::new(format!("{}  {}", p.name, p.email)).size(14.0));
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if already { ui.label(RichText::new("Hinzugefügt").color(text2)); } // pack: "Added"
-                                    else if ui.button("Hinzufügen").clicked() { picks.push(p.clone()); }
+                                    if already { ui.label(RichText::new(tr("Added")).color(text2)); }
+                                    else if ui.button(tr("Add")).clicked() { picks.push(p.clone()); }
                                 });
                             });
                         }
                     });
                 };
-                let res = menu::webex_dialog(ctx, t, "team-add-members", "Teammitglieder hinzufügen", "", Some(&mut body), &[Button::primary("done", "Fertig")]);
+                let res = menu::webex_dialog(ctx, t, "team-add-members", tr("Add team members"), "", Some(&mut body), &[Button::primary("done", tr("Done"))]);
                 for p in picks { self.add_team_member(&team, &p); }
                 if res.is_none() { keep = Some(Dlg::TeamMembers(team, q)); }
             }
             Dlg::ArchiveSpace(space) => {
-                // QObject "Archiving a space will hide it from all team members. Are you sure you want to archive '{{0}}'?"
                 let title = self.spaces.iter().find(|s| s.id == space).map(|s| s.title.clone()).unwrap_or_default();
-                let body = format!("Durch Archivieren eines Bereichs wird er den Teammitgliedern nicht mehr angezeigt. Möchten Sie \"{title}\" wirklich archivieren?");
-                let res = menu::webex_dialog(ctx, t, "space-archive", "Bereich archivieren", &body, None, &[Button::secondary("cancel", "Abbrechen"), Button::danger("archive", "Bereich archivieren")]);
+                let body = crate::trq!("Archiving a space will hide it from all team members. Are you sure you want to archive '{{0}}'?", title);
+                let res = menu::webex_dialog(ctx, t, "space-archive", tr("Archive space"), &body, None, &[Button::secondary("cancel", tr("Cancel")), Button::danger("archive", tr("Archive space"))]);
                 match res.as_deref() { Some("archive") => self.archive_space(&space), Some(_) => {}, None => keep = Some(Dlg::ArchiveSpace(space)) }
             }
             Dlg::ArchiveTeam(team) => {
-                // QObject "Archiving a team will hide the team and all its spaces from all team members. Are you sure …"
                 let name = self.teams.iter().find(|x| x.id == team).map(|x| x.name.clone()).unwrap_or_default();
-                let body = format!("Durch die Archivierung eines Teams werden das Team und die dazugehörigen Bereiche nicht mehr angezeigt. Möchten Sie \"{name}\" wirklich archivieren?");
-                let res = menu::webex_dialog(ctx, t, "team-archive", "Team archivieren", &body, None, &[Button::secondary("cancel", "Abbrechen"), Button::danger("archive", "Team archivieren")]);
+                let body = crate::trq!("Archiving a team will hide the team and all its spaces from all team members. Are you sure you want to archive '{{0}}'?", name);
+                let res = menu::webex_dialog(ctx, t, "team-archive", tr("Archive team"), &body, None, &[Button::secondary("cancel", tr("Cancel")), Button::danger("archive", tr("Archive team"))]);
                 match res.as_deref() { Some("archive") => self.archive_team(&team), Some(_) => {}, None => keep = Some(Dlg::ArchiveTeam(team)) }
             }
         }

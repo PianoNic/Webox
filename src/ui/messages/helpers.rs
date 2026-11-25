@@ -84,7 +84,7 @@ pub(super) struct ScrollFix {
 /// `pinned` = it stays at the bottom, `explicit` = an offset set on purpose this frame (scrollbar, jump to a message) that
 /// must not be corrected, `first` = the chat's first frame with content.
 /// - Pinned to the bottom: nothing to correct, but a frame laid out with the previous maximum shows the content shifted when
-///   the list's height changed (late images, link previews, "Gesehen von", a reload replacing the list): redo it.
+///   the list's height changed (late images, link previews, "Seen by", a reload replacing the list): redo it.
 /// - Scrolled up: the first visible row keeps its on-screen y while rows above it change height (older pages, the spinner row,
 ///   join/leave and date rows, pictures); the frame is redone with the corrected offset, so the jump is never shown.
 #[allow(clippy::too_many_arguments)]
@@ -124,7 +124,7 @@ pub(super) fn should_request_older(seen_frames: u32, pinned: bool, off: f32, vie
     (!pinned && off < view_h) || max < 0.5
 }
 
-/// The readers of "Gesehen von": (lower-case email, person id, name hint), newest reader first; never me.
+/// The readers of "Seen by": (lower-case email, person id, name hint), newest reader first; never me.
 /// The banner belongs to the conversation's newest readable activity, whoever wrote it - not to my newest message: every
 /// participant but me whose read time is at or after it is a reader, sorted by read time, newest first.
 /// Here the anchor is the newest list entry that is a message (not a system notice); a person is a reader when their read
@@ -226,7 +226,7 @@ pub(super) fn day_ref(real: bool) -> (String, String) {
 
 // Messages arriving from the service: each message is converted to local time once when it arrives (`prepare_arrived`, called
 // from App::poll), keeping the UTC values in `Message.utc`; all of them are converted again only when the time zone changes
-// (`zone_changed`, checked once a minute). The "Heute" / "Gestern" labels compare the local date with `day_ref` at drawing
+// (`zone_changed`, checked once a minute). The "Today" / "Yesterday" labels compare the local date with `day_ref` at drawing
 // time, so midnight needs no conversion.
 
 /// Messages that just arrived from the service: date / time made local once and the content revision stamped.

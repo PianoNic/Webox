@@ -1,4 +1,4 @@
-//! The chat header's tabs beyond "Nachrichten" (Personen / Profil / Inhalt / Meetings / +Apps), the pinned-messages popover and
+//! The chat header's tabs beyond "Messages" (People / Profile / Content / Meetings / +Apps), the pinned-messages popover and
 //! the in-conversation search.
 //!
 //! Strings from the German pack. Pinned messages: balloon 400 wide, radius 5, header 46 pt with a centred bold title, empty
@@ -23,7 +23,7 @@ pub(crate) fn find_toggle(ctx: &egui::Context, space: &str) {
     s.find = !s.find; s.focus_find = s.find; s.pins = false;
     put(ctx, s);
 }
-/// Screenshot helper: select the Content sub-tab (0 Dateien, 1 Links, 2 Whiteboards).
+/// Screenshot helper: select the Content sub-tab (0 Files, 1 Links, 2 Whiteboards).
 pub(crate) fn set_content(ctx: &egui::Context, space: &str, n: u8) { let mut s = st(ctx); s.space = space.into(); s.content = n; put(ctx, s); }
 pub(crate) fn pins_toggle(ctx: &egui::Context, space: &str) {
     let mut s = st(ctx);
@@ -33,7 +33,7 @@ pub(crate) fn pins_toggle(ctx: &egui::Context, space: &str) {
 }
 
 fn day_text(date: &str) -> String {
-    if date.is_empty() { String::new() } else if date == system::today() { "Heute".into() } else if date == system::days_ago(1) { "Gestern".into() } else { date.to_string() }
+    if date.is_empty() { String::new() } else if date == system::today() { tr("Today").into() } else if date == system::days_ago(1) { tr("Yesterday").into() } else { date.to_string() }
 }
 fn when(m: &Message) -> String { [day_text(&m.date), m.time.clone()].into_iter().filter(|s| !s.is_empty()).collect::<Vec<_>>().join(" ") }
 

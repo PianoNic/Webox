@@ -7,8 +7,8 @@
 //! * `Spinner_Symphony_color_darker.svg` (40 px) is the small list spinner.
 //! * The list placeholder shape: thumbnail, 12 px bars radius 4, gap 8, 2/3 width second bar, colour = listitem-background
 //!   focused.
-//! * Texts come from the German pack: "Anmelden...", "Verbindung wird hergestellt ...", "Nachrichten werden geladen",
-//!   "Verbindung wird erneut hergestellt ...", "Der Webex-Dienst kann nicht erreicht werden – ...". The pack has no
+//! * Texts are pack sources: "Signing In...", "Connecting...", "Loading messages",
+//!   "We can't reach the {{APP_NAME}} service  •  Reconnecting...". The pack has no
 //!   per-step wording (only one "Connecting..."), so Finding services / Registering / Key service map to it.
 //! * The connectivity banner is styled with theme tokens.
 use crate::*;
@@ -76,15 +76,16 @@ fn logo_frame(ctx: &egui::Context, now: f64) -> Option<egui::TextureId> {
 
 pub(crate) struct Load { pub splash: Option<String>, pub skeleton: bool, pub banner: Option<String> }
 
-/// German wording for the cloud thread's English status lines (pack strings, see module docs).
+/// Pack wording for the cloud thread's status lines (see module docs), in the active language.
 #[allow(dead_code)] // the splash shows the raw status lines
-pub(crate) fn status_de(s: &str) -> &'static str {
-    if s.starts_with("Signing in") || s.starts_with("Renewing") { "Anmelden..." }
-    else if s.starts_with("Connected") { "Nachrichten werden geladen" }
-    else { "Verbindung wird hergestellt ..." }
+pub(crate) fn status_text(s: &str) -> &'static str {
+    if s.starts_with("Signing in") || s.starts_with("Renewing") { tr("Signing In...") }
+    else if s.starts_with("Connected") { tr("Loading messages") }
+    else { tr("Connecting...") }
 }
 
-const BANNER_DE: &str = "Der Webex-Dienst kann nicht erreicht werden – Verbindung wird erneut hergestellt...";
+/// The connectivity banner's text ({{APP_NAME}} here is the service, "Webex").
+fn banner() -> String { crate::trq!("We can't reach the {{APP_NAME}} service  •  Reconnecting...").into_owned() }
 
 impl App {
     pub(crate) fn load_state(&self, ctx: &egui::Context, now: f64) -> Load {
@@ -96,7 +97,7 @@ impl App {
             return match v.as_str() {
                 "1" => Load { splash: Some("Finding services…".into()), ..none },
                 "2" => Load { skeleton: true, ..none },
-                "3" => Load { banner: Some(BANNER_DE.into()), ..none },
+                "3" => Load { banner: Some(banner()), ..none },
                 _ => none,
             };
         }
@@ -110,7 +111,7 @@ impl App {
                 const STEPS: [&str; 5] = ["Signing in…", "Finding services…", "Registering this device…", "Opening the key service…", "Connected"];
                 return if f < 0.85 { Load { splash: Some(STEPS[((f / 0.17) as usize).min(4)].into()), ..none } }
                     else if f < 1.0 { Load { skeleton: true, ..none } }
-                    else if f < 1.3 { Load { banner: Some(BANNER_DE.into()), ..none } }
+                    else if f < 1.3 { Load { banner: Some(banner()), ..none } }
                     else { none };
             }
         }
@@ -125,7 +126,7 @@ impl App {
             if st.starts_with("Reconnecting") {
                 let t0: f64 = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(rid, || now));
                 ctx.request_repaint_after(std::time::Duration::from_secs(1));
-                if now - t0 >= 60.0 { return Load { banner: Some(BANNER_DE.into()), ..none } }
+                if now - t0 >= 60.0 { return Load { banner: Some(banner()), ..none } }
             } else {
                 ctx.data_mut(|d| d.remove::<f64>(rid));
             }
@@ -234,7 +235,8 @@ impl App {
             if r.height() < 20.0 { return }
             let p = ui.painter();
             let mut x = r.center().x;
-            let txt = text.unwrap_or(BANNER_DE);
+            let fallback = banner();
+            let txt = text.unwrap_or(&fallback);
             let galley = p.layout_no_wrap(txt.to_string(), FontId::proportional(13.5), t.text1);
             x -= (galley.size().x + 28.0) / 2.0;
             if let Some(id) = logo { p.image(id, Rect::from_center_size(pos2(x + 10.0, r.center().y), Vec2::splat(22.0)), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE); }

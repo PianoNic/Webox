@@ -33,7 +33,7 @@ impl App {
         let r = Rect::from_min_size(at, sz);
         let id = Id::new(("msg-video", salt.0, salt.1, &a.key, cur_seq(&ctx)));
         let resp = ui.interact(r, id, Sense::click());
-        // Right click: the message's menu with the file's actions (Öffnen, Herunterladen, Speichern unter) on top.
+        // Right click: the message's menu with the file's actions (Open, Download, Save as) on top.
         if resp.secondary_clicked() { super::super::ctx_menu::note_hit(&ctx, salt.0, super::super::ctx_menu::Hit::File { key: a.key.clone(), name: a.name.clone() }); }
         let active = active_key().as_deref() == Some(a.key.as_str());
         // a fetch that has finished: play now
@@ -127,7 +127,7 @@ impl App {
         self.icons.paint(ui, if shown { "open-in-folder_12" } else { "download_12" }, Rect::from_center_size(btn.center(), Vec2::splat(12.0)), fg(0.95));
         let _ = c;
         if bs.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        bs.on_hover_text(if shown { "In Ordner anzeigen" } else { "Herunterladen" }).clicked().then_some(if shown { "folder" } else { "download" })
+        bs.on_hover_text(if shown { crate::ui::widgets::tr("Show in folder") } else { crate::ui::widgets::tr("Download") }).clicked().then_some(if shown { "folder" } else { "download" })
     }
 
     /// A 40 pt spinner: the download's percentage as an arc, or turning while it is not known.

@@ -253,7 +253,7 @@ fn pinned_list_redoes_frames_whose_height_changed() {
     let r = rows(&[("a", 0.0, 500.0), ("b", 500.0, 900.0)]);
     // Opened: laid out once invisibly, redone.
     assert!(scroll_fix(&r, None, 400.0, 400.0, 1.0e5, true, false, true).redo);
-    // A link preview / "Gesehen von" / reload made the list 48 pt taller: the frame laid out at the old maximum is redone.
+    // A link preview / "Seen by" / reload made the list 48 pt taller: the frame laid out at the old maximum is redone.
     let f = scroll_fix(&r, None, 352.0, 400.0, 352.0, true, false, false);
     assert!(f.redo && f.set.is_none());
     // Nothing changed.

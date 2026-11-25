@@ -1,5 +1,6 @@
 //! One row of the list: seen-by, notices, grouping, day lines, measuring and drawing a message.
 use super::*;
+use crate::ui::widgets::tr;
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -28,7 +29,7 @@ fn header_height(ui: &egui::Ui, who: &str) -> f32 {
 }
 
 impl App {
-    /// "Gesehen von": who has seen the conversation's newest message (whoever wrote it). The banner is always the list's last row,
+    /// "Seen by": who has seen the conversation's newest message (whoever wrote it). The banner is always the list's last row,
     /// at the very end of the conversation. The readers come from `seen_keys`; the offline sample has no marks and shows the chat
     /// partner when my message is the newest one.
     pub(super) fn seen_by(&self, id: &str, msgs: &[Message]) -> Option<Vec<Person>> {
@@ -51,11 +52,11 @@ impl App {
     }
 
     /// A system line (call log, joins / leaves, renames, ...): centred secondary text, no avatar, no box, the time at
-    /// the end ("Jonas Weber war nicht erreichbar. 16:11"); height = text + the info-row padding.
+    /// the end ("Jonas Weber was unavailable. 16:11"); height = text + the info-row padding.
     pub(super) fn notice_row(&self, ui: &mut egui::Ui, c: &Mc, m: &Message) {
         let w = ui.available_width();
         // The info row's time is stamped like a message header: "HH:MM" today / yesterday, else
-        // "15.12.2025, 15:08" ("Sie haben Ihre Nachricht gelöscht. 15.12.2025, 15:08").
+        // "15.12.2025, 15:08" ("You deleted your message. 15.12.2025, 15:08").
         let (today, yesterday) = day_ref(self.client.is_some());
         let when = header_time(&m.date, &m.time, &today, &yesterday);
         let mut job = egui::text::LayoutJob::simple(format!("{} {when}", m.notice).trim().to_string(), FontId::proportional(SECOND), c.day, (w - 20.0).max(40.0));
@@ -68,12 +69,12 @@ impl App {
         ui.painter().galley(pos2(r.center().x - g.rect.center().x, r.top() + day_pad() / 2.0), g, c.day);
     }
 
-    /// A run of `n` kept deleted messages a plugin folds (`Message::collapsed`), starting with `first`: "1 gelöschte Nachricht" /
-    /// "N gelöschte Nachrichten" like a collapsed join/leave row (link colour, arrow); a click unfolds or folds them again.
+    /// A run of `n` kept deleted messages a plugin folds (`Message::collapsed`), starting with `first`: "1 deleted message" /
+    /// "N deleted messages" like a collapsed join/leave row (link colour, arrow); a click unfolds or folds them again.
     /// Whether they are unfolded.
     pub(super) fn fold_row(&mut self, ui: &mut egui::Ui, c: &Mc, space: &str, first: &str, n: usize) -> bool {
         let w = ui.available_width();
-        let label = if n == 1 { "1 gelöschte Nachricht".to_string() } else { format!("{n} gelöschte Nachrichten") };
+        let label = if n == 1 { tr("1 deleted message").to_string() } else { crate::trq!("%1 deleted messages", n) };
         let g = ui.painter().layout(label, FontId::proportional(SECOND), c.accent, (w - 60.0).max(40.0));
         let (r, resp) = ui.allocate_exact_size(Vec2::new(w, g.size().y + day_pad()), Sense::click());
         let key = fold_key(space, first);
@@ -189,7 +190,7 @@ impl App {
         let history: Vec<Arc<Galley>> = m.history.iter().map(|old| ui.fonts(|f| f.layout_job(text::spans_job(old, font.clone(), c.head, c.added, c.danger, wrap)))).collect();
         for g in &history { h += g.size().y + HISTORY_GAP; }
         let kept_deleted = m.deleted != 0 && m.deleted != crate::extras::plugins::kept::STYLE_PLAIN;
-        let tag = if kept_deleted { Some(("(gelöscht)", c.danger)) } else if m.deleted == 0 && (!m.history.is_empty() || m.edit_tag) { Some(("(bearbeitet)", c.head)) } else { None };
+        let tag = if kept_deleted { Some((tr("(deleted)"), c.danger)) } else if m.deleted == 0 && (!m.history.is_empty() || m.edit_tag) { Some((tr("(edited)"), c.head)) } else { None };
         let tag = tag.map(|(s, col)| ui.painter().layout_no_wrap(s.to_string(), FontId::proportional(SECOND), col));
         if let Some(g) = &tag { h += g.size().y; }
         let mut first = true;
@@ -204,7 +205,7 @@ impl App {
     }
 
     /// The picture a reply quotes, when its quote names a shared file ("Shared a file: <name>") and the quoted message (found like
-    /// "Zur Originalnachricht springen" does) is loaded in this space with a picture of that name.
+    /// "Go to message" does) is loaded in this space with a picture of that name.
     pub(super) fn quote_thumb(&self, space: &str, m: &Message) -> Option<Attachment> {
         if !m.html.contains("<blockquote") || !m.html.contains("Shared ") { return None; }
         let q = html::reply_ref(&m.html)?;
@@ -308,7 +309,7 @@ impl App {
             if picked { p.rect_filled(boxr, RADIUS, c.checked); } else if hovered { p.rect_filled(boxr, RADIUS, c.hover_bg); }
             // A deleted message kept by a plugin in the overlay style: a red wash over the whole box.
             if m.deleted == crate::extras::plugins::kept::STYLE_OVERLAY { p.rect_filled(boxr, RADIUS, wa(c.danger, 0.15)); }
-            // "Zur Originalnachricht springen": the target flashes for a moment
+            // "Go to message": the target flashes for a moment
             if let Some((fid, t0)) = ui.ctx().data(|d| d.get_temp::<(String, f64)>(Id::new("msg-flash"))) {
                 if fid == m.id { let k = ((ui.input(|i| i.time) - t0) / 1.8) as f32; if k < 1.0 { p.rect_filled(boxr, RADIUS, wa(c.accent, 0.28 * (1.0 - k))); ui.ctx().request_repaint(); } }
             }
@@ -465,7 +466,7 @@ impl App {
         if hovered && !self.space_closed(id) && m.deleted == 0 { self.message_toolbar(ui, t, c, id, m, boxr, head, bar_key, ui.clip_rect().top()); }
     }
 
-    /// "(bearbeitet)" / the header's "Bearbeitet" of message `m` at `r`: while a plugin listens to `message.edit_tag_clicked` it
+    /// "(edited)" / the header's "Edited" of message `m` at `r`: while a plugin listens to `message.edit_tag_clicked` it
     /// is a button (e.g. the plugin's edit history dialog). `salt`: the row's sequence number and which of the two it is.
     fn edit_tag_click(&mut self, ui: &egui::Ui, space: &str, m: &Message, r: Rect, salt: (u32, u8)) {
         if m.deleted != 0 || !self.plugins.subscribed("message.edit_tag_clicked") { return; }

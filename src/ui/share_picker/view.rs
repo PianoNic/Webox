@@ -4,7 +4,7 @@
 //! Source cell: 200 x 156 with 4 px spacing (196 x 152 drawn), 2 px border radius 12 (sharewindow-viewwindow-selected when
 //! picked, -hovered on hover), preview 18 px in from the top / left / right on background-quaternary (radius 6, picture
 //! fitted), the name below in 32 px (windows: 40 px, two lines). No picture: the application icon (24 px, text-secondary).
-//! Options panel: title "Freigabeoptionen" 12 px in, then the entries 12 px below it, 8 px apart.
+//! Options panel: title "Sharing options" 12 px in, then the entries 12 px below it, 8 px apart.
 use super::{key, Act, Picker};
 use crate::media::share::{Kind, Optimize, ShareSource};
 use crate::*;
@@ -18,11 +18,10 @@ const CELL_GAP: f32 = 4.0;
 const PANEL_W: f32 = 280.0;
 const HANDLE_W: f32 = 12.0;
 
-/// The "Anwendung" section (windows; on Wayland the portal's window entry).
+/// The "Application" section (windows; on Wayland the portal's window entry).
 pub(super) fn is_app(s: &ShareSource) -> bool { s.kind == Kind::Window || (s.kind == Kind::Portal && s.handle == 2) }
 
 /// German wording for the optimisation entries where the language pack has none.
-fn de_or(en: &'static str, de: &'static str) -> &'static str { if crate::i18n::active_code().starts_with("de") { de } else { en } }
 
 impl App {
     /// The dialog's content in `r`. `own_window`: the title bar drags the window.
@@ -48,7 +47,7 @@ impl App {
         let grid_r = if p.options { Rect::from_min_max(body.min, pos2(body.right() - PANEL_W - HANDLE_W, body.bottom())) } else { body };
         if self.share_grid(ui, t, p, grid_r) { act = Act::Share; }
         if p.options { self.share_options(ui, t, p, Rect::from_min_max(pos2(body.right() - PANEL_W, body.top()), body.max)); }
-        // bottom bar: "Freigeben" centred (200 wide, XL), the options toggle at the right
+        // bottom bar: "Share" centred (200 wide, XL), the options toggle at the right
         let bottom = Rect::from_min_max(pos2(r.left(), r.bottom() - BOTTOM_H), r.max);
         let share_r = Rect::from_center_size(bottom.center(), Vec2::new(200.0, 40.0));
         let enabled = p.sel.is_some();
@@ -138,7 +137,7 @@ impl App {
         resp.double_clicked()
     }
 
-    /// "Freigabeoptionen": optimise for text / motion, share the computer's sound.
+    /// "Sharing options": optimise for text / motion, share the computer's sound.
     fn share_options(&mut self, ui: &mut egui::Ui, t: &Th, p: &mut Picker, r: Rect) {
         let painter = ui.painter().clone();
         // radius 12 on the left; the right edge runs into the window border
@@ -149,7 +148,7 @@ impl App {
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(r.shrink2(Vec2::new(12.0, 12.0))));
         c.label(RichText::new(crate::trq!("Sharing options")).font(semibold(14.0)).color(t.text1));
         c.add_space(12.0);
-        let opts = [de_or("Optimize for text and images", "Für Text und Bilder optimieren").to_string(), de_or("Optimize for motion and video", "Für Bewegung und Video optimieren").to_string()];
+        let opts = [crate::ui::widgets::tr("Optimize for text and images").to_string(), crate::ui::widgets::tr("Optimize for motion and video").to_string()];
         let cur = if p.optimize == Optimize::Motion { 1 } else { 0 };
         if let Some(i) = crate::ui::settings::kit::combo(&mut c, &mut self.icons, t, "share-optimize", r.width() - 24.0, &opts, cur) {
             p.optimize = if i == 1 { Optimize::Motion } else { Optimize::Text };

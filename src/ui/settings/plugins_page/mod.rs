@@ -3,7 +3,7 @@
 //!   slash commands and an on / off switch that is saved (plugins.json) and takes effect at once. Plugins installed from a repository
 //!   also get "Aktualisieren" (a newer compatible version in a repository) and "Deinstallieren". Design plugins (a plugin that
 //!   supplies a palette) paint over the selected theme's colours; the page says so next to them.
-//! - "Verfügbar" (available.rs): the plugins of all repositories with an install button, and the repository list.
+//! - "Available" (available.rs): the plugins of all repositories with an install button, and the repository list.
 //! Installing shows the native-code warning before the first install and before every install from a repository that is not the
 //! official one (warn.rs). Drawn with the settings kit like the other pages.
 //! Screenshot env: `WEBOX_SHOT_SETTINGS=plugins`, `WEBOX_SHOT_PLUGIN_TAB=available` (`repos`: scrolled to the repository list).
@@ -47,13 +47,13 @@ impl App {
                 Event::Downloaded(inst, staged) => {
                     let (name, version) = (inst.name.clone(), inst.version.clone());
                     match self.plugins.install(inst, &staged) {
-                        Ok(()) => { self.applied = None; self.toast(format!("{name} {version} installiert"), now); }
+                        Ok(()) => { self.applied = None; self.toast(crate::trq!("%1 %2 installed", name, version), now); }
                         Err(e) => self.toast(format!("{name}: {e}"), now),
                     }
                 }
-                Event::Failed(pkg, e) => self.toast(format!("Download von {pkg} fehlgeschlagen: {e}"), now),
-                Event::UpdatesFound(n) => self.toast(if n == 1 { "1 Plugin-Update verfügbar (Einstellungen > Plugins)".to_string() }
-                    else { format!("{n} Plugin-Updates verfügbar (Einstellungen > Plugins)") }, now),
+                Event::Failed(pkg, e) => self.toast(crate::trq!("Download of %1 failed: %2", pkg, e), now),
+                Event::UpdatesFound(n) => self.toast(if n == 1 { tr("1 plugin update available (Settings > Plugins)").to_string() }
+                    else { crate::trq!("%1 plugin updates available (Settings > Plugins)", n) }, now),
             }
         }
         if self.repos.busy() { ctx.request_repaint_after(std::time::Duration::from_millis(100)); }
@@ -93,9 +93,9 @@ impl App {
         self.repos.page_shown(now);
         let updates = self.plugins.list.iter().filter_map(|e| e.source.as_ref()).filter(|i| self.repos.update_for(&i.pkg, &i.version, &i.repo).is_some()).count();
         let n_avail = self.repos.available().len();
-        let inst_label = if updates > 0 { format!("Installiert ({}) · {updates} Update{}", self.plugins.list.len(), if updates == 1 { "" } else { "s" }) }
-            else { format!("Installiert ({})", self.plugins.list.len()) };
-        tabs(ui, t, &mut s.tab, &[(PTab::Installed, inst_label), (PTab::Available, format!("Verfügbar ({n_avail})"))]);
+        let inst_label = if updates > 0 { format!("{} ({}) · {}", tr("Installed"), self.plugins.list.len(), if updates == 1 { tr("1 update").to_string() } else { crate::trq!("%1 updates", updates) }) }
+            else { format!("{} ({})", tr("Installed"), self.plugins.list.len()) };
+        tabs(ui, t, &mut s.tab, &[(PTab::Installed, inst_label), (PTab::Available, format!("{} ({n_avail})", tr("Available")))]);
         ui.add_space(8.0);
         match s.tab {
             PTab::Installed => self.installed_tab(ui, t, &mut s, now),
@@ -108,17 +108,17 @@ impl App {
 
     fn installed_tab(&mut self, ui: &mut egui::Ui, t: &Th, s: &mut PUi, now: f64) {
         let dir = self.plugins.dirs[0].clone();
-        kit::section(ui, t, "Installierte Plugins", &format!("Native Plugins (.{}) aus Repositories und aus dem Plugin-Ordner. Aktivierte Plugins laufen sofort; die Auswahl wird gespeichert.", std::env::consts::DLL_EXTENSION), true, |ui| {
+        kit::section(ui, t, tr("Installed plugins"), &crate::trq!("Native plugins (.%1) from repositories and from the plugin folder. Plugins you turn on run at once; the choice is saved.", std::env::consts::DLL_EXTENSION), true, |ui| {
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                if kit::pill(ui, t, "Neu laden", true, true).clicked() { self.plugins.rescan(); self.applied = None; self.toast("Plugins neu geladen", now); }
+                if kit::pill(ui, t, tr("Reload"), true, true).clicked() { self.plugins.rescan(); self.applied = None; self.toast(tr("Plugins reloaded"), now); }
                 ui.add_space(8.0);
-                if kit::pill(ui, t, "Plugin-Ordner öffnen", true, true).clicked() { system::open_folder(&dir); }
+                if kit::pill(ui, t, tr("Open plugin folder"), true, true).clicked() { system::open_folder(&dir); }
             });
             // No folder path on this page (it holds the account's user name): the button opens the folder.
         });
         if self.plugins.list.is_empty() {
-            kit::section(ui, t, "", "", false, |ui| { kit::text_block(ui, "Keine Plugins installiert. Unter „Verfügbar“ finden Sie Plugins aus den Repositories, oder legen Sie eine Plugin-Datei in den Plugin-Ordner und laden Sie neu.", kit::BODY, t.text2, 0.0); });
+            kit::section(ui, t, "", "", false, |ui| { kit::text_block(ui, tr("No plugins installed. Find plugins from the repositories under Available, or put a plugin file into the plugin folder and reload."), kit::BODY, t.text2, 0.0); });
         }
         let k = kit::tok(t);
         let mut action: Option<(usize, Act2)> = None;
@@ -140,7 +140,7 @@ impl App {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                        let r = ui.add_enabled(err.is_none(), toggle(&mut on, t)).on_hover_text(if on { "Deaktivieren" } else { "Aktivieren" });
+                        let r = ui.add_enabled(err.is_none(), toggle(&mut on, t)).on_hover_text(if on { tr("Turn off") } else { tr("Turn on") });
                         if r.changed() { action = Some((i, Act2::Enable(on))); }
                         ui.vertical(|ui| {
                             ui.horizontal(|ui| {
@@ -150,25 +150,25 @@ impl App {
                             });
                             if !desc.is_empty() { kit::text_block(ui, &desc, kit::BODY, t.text2, 0.0); }
                             if !cmds.is_empty() { ui.label(RichText::new(&cmds).size(kit::SECOND).color(t.link)); }
-                            if design { ui.add_space(2.0); kit::text_block(ui, "Design-Plugin: überschreibt die Farben des ausgewählten Themas (Erscheinungsbild).", kit::SECOND, t.text2, 0.0); }
+                            if design { ui.add_space(2.0); kit::text_block(ui, tr("Design plugin: overrides the colors of the chosen theme (Appearance)."), kit::SECOND, t.text2, 0.0); }
                             let origin = match &repo_title {
-                                Some(r) => format!("Aus Repository: {r}"),
-                                None if builtin => "In Webox integriert".to_string(),
+                                Some(r) => crate::trq!("From repository: %1", r),
+                                None if builtin => tr("Built into Webox").to_string(),
                                 None if shipped => "Mitgeliefert (Programmordner)".to_string(),
-                                None => "Manuell installiert (Plugin-Ordner)".to_string(),
+                                None => tr("Installed manually (plugin folder)").to_string(),
                             };
                             ui.label(RichText::new(origin).size(kit::SECOND).color(t.text2));
-                            if let Some(x) = &err { kit::text_block(ui, &format!("Kann nicht geladen werden: {x}"), kit::SECOND, t.tk("listitem-textmissed"), 0.0); }
+                            if let Some(x) = &err { kit::text_block(ui, &crate::trq!("Can't be loaded: %1", x), kit::SECOND, t.tk("listitem-textmissed"), 0.0); }
                             ui.add_space(6.0);
                             ui.horizontal(|ui| {
-                                if kit::pill(ui, t, if has_settings { "Einstellungen" } else { "Details" }, true, true).clicked() { action = Some((i, Act2::Open)); }
+                                if kit::pill(ui, t, if has_settings { tr("Settings") } else { "Details" }, true, true).clicked() { action = Some((i, Act2::Open)); }
                                 ui.add_space(8.0);
                                 if src.is_some() {
                                     if let Some((v, f)) = &job {
-                                        ui.label(RichText::new(format!("Lädt v{v} …")).size(kit::SECOND).color(t.text2));
+                                        ui.label(RichText::new(crate::trq!("Loading v%1 …", v)).size(kit::SECOND).color(t.text2));
                                         crate::ui::theme::decor::progress(ui, *f, 140.0);
                                     } else if let Some(u) = &update {
-                                        if kit::pill(ui, t, &format!("Aktualisieren auf v{}", u.plugin.version), true, true).clicked() { action = Some((i, Act2::Update(u.clone()))); }
+                                        if kit::pill(ui, t, &crate::trq!("Update to v%1", u.plugin.version), true, true).clicked() { action = Some((i, Act2::Update(u.clone()))); }
                                         ui.add_space(8.0);
                                     }
                                     if job.is_none() && kit::pill(ui, t, "Deinstallieren", true, true).clicked() { action = Some((i, Act2::Uninstall)); }
@@ -185,12 +185,12 @@ impl App {
             Some((i, Act2::Open)) => s.detail = Some(self.plugins.list[i].key.clone()),
             Some((i, Act2::Uninstall)) => {
                 let (pkg, name) = (self.plugins.list[i].source.as_ref().map(|s| s.pkg.clone()).unwrap_or_default(), self.plugins.list[i].name.clone());
-                match self.plugins.uninstall(&pkg) { Ok(()) => { self.applied = None; self.toast(format!("{name} deinstalliert"), now) } Err(e) => self.toast(format!("{name}: {e}"), now) }
+                match self.plugins.uninstall(&pkg) { Ok(()) => { self.applied = None; self.toast(crate::trq!("%1 uninstalled", name), now) } Err(e) => self.toast(format!("{name}: {e}"), now) }
             }
             None => {}
         }
         if !self.plugin_log.is_empty() {
-            kit::section(ui, t, "Plugin-Protokoll", "", false, |ui| {
+            kit::section(ui, t, tr("Plugin log"), "", false, |ui| {
                 for l in self.plugin_log.iter().rev().take(20) { ui.label(RichText::new(l).color(t.text2).monospace().size(11.0)); }
             });
         }

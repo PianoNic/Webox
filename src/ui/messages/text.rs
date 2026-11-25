@@ -67,9 +67,9 @@ pub(super) fn body_job(text: &str, c: &Mc, me: &str, wrap: f32, sys: bool) -> (e
 
 impl JobBuilder {
     /// Edge of an emoji picture at the current font size (17 pt at the 16 pt body size, so 34 pt inside an <h1>).
-    pub(super) fn emoji_px(&self) -> f32 { EMOJI_SIZE * self.st.size.unwrap_or(BODY) / BODY * super::super::widgets::msg_scale() } // Barrierefreiheit > Schriftgröße
+    pub(super) fn emoji_px(&self) -> f32 { EMOJI_SIZE * self.st.size.unwrap_or(BODY) / BODY * super::super::widgets::msg_scale() } // Accessibility > Font size
     pub(super) fn raw(&mut self, s: &str, color: Color32, underline: bool) {
-        let size = self.st.size.unwrap_or(BODY) * super::super::widgets::msg_scale(); // Barrierefreiheit > Schriftgröße
+        let size = self.st.size.unwrap_or(BODY) * super::super::widgets::msg_scale(); // Accessibility > Font size
         let font_id = if self.st.code { FontId::monospace(size * 0.92) } else if self.st.bold { semibold(size) } else { FontId::proportional(size) };
         let ul = underline || self.st.underline;
         let fmt = egui::TextFormat { font_id, color, underline: if ul { Stroke::new(1.0_f32, color) } else { Stroke::NONE }, italics: self.st.italic,

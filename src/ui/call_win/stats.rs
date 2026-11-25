@@ -1,6 +1,6 @@
-//! "Anrufstatistik anzeigen": the call statistics panel of the call window (the official `MediaStatistics` dialog: a title
-//! band, "Übertragen" and "Empfangen" side by side, each with Audio and Video (main / content) columns, rows of 12 px figures,
-//! a "Schließen" button). Opened from the title bar's signal button; drawn over the call window, not a window of its own.
+//! "Show Call Statistics": the call statistics panel of the call window (the official `MediaStatistics` dialog: a title
+//! band, "Transmit" and "Receive" side by side, each with Audio and Video (main / content) columns, rows of 12 px figures,
+//! a "Close" button). Opened from the title bar's signal button; drawn over the call window, not a window of its own.
 //!
 //! The figures come from `cloud::media_stats` (the call's thread reads them every 2 s while the panel is open, and only
 //! then); this file turns two readings into rates. The call window already repaints every 200 ms, so the panel adds no
@@ -13,14 +13,14 @@ const ROW_H: f32 = 28.0;
 const TITLE_H: f32 = 36.0;
 const BAND_H: f32 = 32.0;
 const LABEL_W: f32 = 96.0;
-/// Side by side from this panel width on, else "Empfangen" below "Übertragen".
+/// Side by side from this panel width on, else "Receive" below "Transmit".
 const TWO_COLUMNS: f32 = 640.0;
-/// "Schlechte Netzwerkverbindung" from this loss (%) or round trip (ms) on (calling-gap.md C26).
+/// "Poor network connection" from this loss (%) or round trip (ms) on (calling-gap.md C26).
 const POOR_LOSS: f32 = 5.0;
 const POOR_RTT: f32 = 400.0;
 
-pub(crate) const ROWS: [&str; 7] = ["Paketverlust", "Jitter", "Latenz", "Bitrate", "Codecs", "Auflösung", "Bildrate"];
-const COLS: [&str; 3] = ["Audio", "Video", "Inhalt"];
+pub(crate) const ROWS: [&str; 7] = ["Packet loss", "Jitter", "Latency", "Bit rate", "Codec", "Resolution", "Frame rate"]; // shown through tr()
+const COLS: [&str; 3] = ["Audio", "Video", "Content"];
 const DASH: &str = "–";
 
 /// The panel's state in the call window.
@@ -92,10 +92,10 @@ pub(crate) fn table(prev: Option<&(Snapshot, u64)>, cur: &(Snapshot, u64), rx_si
     out
 }
 
-/// The line on top: "Netzwerk und CPU sind gut", or "Schlechte Netzwerkverbindung" (loss over 5 % or a round trip over 400 ms).
+/// The line on top: "Network & CPU is good", or "Poor network connection" (loss over 5 % or a round trip over 400 ms).
 pub(crate) fn verdict(t: &Table, rtt_ms: Option<f32>) -> (bool, &'static str) {
     let worst = t.iter().flat_map(|d| d[0].iter()).filter_map(|s| s.trim_end_matches(" %").replace(',', ".").parse::<f32>().ok()).fold(0.0, f32::max);
-    if worst > POOR_LOSS || rtt_ms.is_some_and(|r| r > POOR_RTT) { (false, "Schlechte Netzwerkverbindung") } else { (true, "Netzwerk und CPU sind gut") }
+    if worst > POOR_LOSS || rtt_ms.is_some_and(|r| r > POOR_RTT) { (false, tr("Poor network connection")) } else { (true, tr("Network & CPU is good")) }
 }
 
 /// A 40 × `h` icon button of the call window's title bar.
@@ -118,11 +118,11 @@ impl App {
     /// The title bar's own buttons left of the caption buttons: call statistics (connected calls) and full screen.
     pub(super) fn call_title_buttons(&mut self, ui: &mut egui::Ui, t: &Th, bar: Rect, connected: bool, full: bool) {
         let at = |n: f32| Rect::from_min_size(pos2(bar.right() - WIN_BTN_W * (3.0 + n), bar.top()), Vec2::new(WIN_BTN_W, bar.height()));
-        let (icon, tip) = if full { ("fullscreen-exit-regular", "Vollbildmodus beenden") } else { ("fullscreen-regular", "Vollbild") };
+        let (icon, tip) = if full { ("fullscreen-exit-regular", tr("Exit full screen")) } else { ("fullscreen-regular", tr("Full screen")) };
         if title_button(ui, &mut self.icons, t, at(1.0), "full", icon, false, tip).clicked() { self.call.win.full_toggle = true; }
         if connected {
             let open = self.call.win.stats.open;
-            if title_button(ui, &mut self.icons, t, at(2.0), "stats", "cellular-regular", open, "Anrufstatistik anzeigen").clicked() {
+            if title_button(ui, &mut self.icons, t, at(2.0), "stats", "cellular-regular", open, tr("Show Call Statistics")).clicked() {
                 if open { self.call.win.stats.close() } else { self.call.win.stats.open = true }
             }
         }
@@ -146,9 +146,9 @@ impl App {
         p.rect_filled(r, 6.0, t.card);
         let title = Rect::from_min_size(r.min, Vec2::new(w, TITLE_H));
         p.rect_filled(title, egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, t.selected);
-        p.text(pos2(title.left() + 16.0, title.center().y), egui::Align2::LEFT_CENTER, "Statistiken", semibold(14.0), t.text1);
+        p.text(pos2(title.left() + 16.0, title.center().y), egui::Align2::LEFT_CENTER, tr("Statistics"), semibold(14.0), t.text1);
         let x = Rect::from_min_size(pos2(title.right() - TITLE_H, title.top()), Vec2::splat(TITLE_H));
-        if title_button(ui, &mut self.icons, t, x, "stats-x", "cancel-regular", false, "Schließen").clicked() { self.call.win.stats.close(); return; }
+        if title_button(ui, &mut self.icons, t, x, "stats-x", "cancel-regular", false, tr("Close")).clicked() { self.call.win.stats.close(); return; }
         let st = &self.call.win.stats;
         let tab = st.cur.as_ref().map(|c| (table(st.prev.as_ref(), c, rx_pic.as_ref().map(|p| p.image.size)), c.0.rtt_ms));
         let body = Rect::from_min_max(pos2(r.left(), title.bottom()), r.max);
@@ -158,32 +158,32 @@ impl App {
             let (room, _) = ui.allocate_exact_size(Vec2::new(w, content_h), Sense::hover());
             let p = ui.painter();
             let line = Rect::from_min_size(room.min, Vec2::new(w, ROW_H));
-            let (good, says) = match &tab { Some((tb, rtt)) => verdict(tb, *rtt), None => (true, "Statistik wird geladen…") };
+            let (good, says) = match &tab { Some((tb, rtt)) => verdict(tb, *rtt), None => (true, tr("Loading statistics…")) };
             p.circle_filled(pos2(line.left() + 20.0, line.center().y), 4.0, if tab.is_none() { t.text2 } else if good { t.green } else { t.badge });
             p.text(pos2(line.left() + 32.0, line.center().y), egui::Align2::LEFT_CENTER, says, FontId::proportional(12.0), t.text1);
             let half = if two { (w - 8.0) / 2.0 } else { w };
-            for (d, name) in ["Übertragen", "Empfangen"].into_iter().enumerate() {
+            for (d, name) in [tr("Transmit"), tr("Receive")].into_iter().enumerate() {
                 let o = if two { pos2(room.left() + d as f32 * (half + 8.0), line.bottom()) } else { pos2(room.left(), line.bottom() + d as f32 * (table_h + 8.0)) };
                 let band = Rect::from_min_size(o, Vec2::new(half, BAND_H));
                 p.rect_filled(band, 0.0, t.win_b);
                 p.text(pos2(band.left() + 16.0, band.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(16.0), t.text1);
                 let col_w = (half - 16.0 - LABEL_W) / 3.0;
                 let cx = |k: usize| band.left() + 16.0 + LABEL_W + col_w * (k as f32 + 0.5);
-                for (k, h) in COLS.iter().enumerate() { p.text(pos2(cx(k), band.bottom() + ROW_H / 2.0), egui::Align2::CENTER_CENTER, *h, semibold(12.0), t.text2); }
+                for (k, h) in COLS.iter().enumerate() { p.text(pos2(cx(k), band.bottom() + ROW_H / 2.0), egui::Align2::CENTER_CENTER, tr(h), semibold(12.0), t.text2); }
                 for (row, label) in ROWS.iter().enumerate() {
                     let y = band.bottom() + ROW_H * (row as f32 + 1.5);
-                    p.text(pos2(band.left() + 16.0, y), egui::Align2::LEFT_CENTER, *label, FontId::proportional(12.0), t.text2);
+                    p.text(pos2(band.left() + 16.0, y), egui::Align2::LEFT_CENTER, tr(label), FontId::proportional(12.0), t.text2);
                     for k in 0..3 {
                         let v = tab.as_ref().map_or(DASH, |(tb, _)| tb[d][row][k].as_str());
                         p.text(pos2(cx(k), y), egui::Align2::CENTER_CENTER, v, FontId::proportional(12.0), t.text1);
                     }
                 }
             }
-            // "Schließen" (the official closeButton: primary, radius 2, 14 px)
+            // "Close" (the official closeButton: primary, radius 2, 14 px)
             let b = Rect::from_min_size(pos2(room.right() - 16.0 - 96.0, room.bottom() - 40.0), Vec2::new(96.0, 32.0));
             let br = ui.interact(b, ui.id().with("stats-close"), Sense::click());
             ui.painter().rect_filled(b, 16.0, if br.hovered() { t.accent.gamma_multiply(0.85) } else { t.accent });
-            ui.painter().text(b.center(), egui::Align2::CENTER_CENTER, "Schließen", semibold(14.0), Color32::WHITE);
+            ui.painter().text(b.center(), egui::Align2::CENTER_CENTER, tr("Close"), semibold(14.0), Color32::WHITE);
             if br.has_focus() { ui.painter().rect_stroke(b.expand(1.5), 17.5, Stroke::new(2.0_f32, t.focus), egui::StrokeKind::Inside); }
             close = br.clicked();
         });
@@ -242,7 +242,7 @@ mod tests {
         // the share: our picture size and rate; nothing received (no packets) shows dashes
         assert_eq!((tb[0][4][2].as_str(), tb[0][5][2].as_str(), tb[0][6][2].as_str()), ("H.264", "1280 × 720", "8 fps"));
         assert!(tb[1].iter().all(|r| r[2] == DASH), "{:?}", tb[1]);
-        assert_eq!(verdict(&tb, Some(42.0)), (true, "Netzwerk und CPU sind gut"));
+        assert_eq!(verdict(&tb, Some(42.0)), (true, tr("Network & CPU is good")));
         assert_eq!(verdict(&tb, Some(450.0)).0, false, "a round trip over 400 ms");
     }
 
@@ -254,7 +254,7 @@ mod tests {
         assert_eq!(tb[0][3][0], DASH, "no bit rate from one reading");
         let mut bad = a.clone();
         bad.0.rx[AUDIO].lost = 30;
-        assert_eq!(verdict(&table(None, &bad, None), Some(20.0)), (false, "Schlechte Netzwerkverbindung"), "20 % loss");
+        assert_eq!(verdict(&table(None, &bad, None), Some(20.0)), (false, tr("Poor network connection")), "20 % loss");
     }
 
     #[test]

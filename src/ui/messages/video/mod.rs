@@ -199,12 +199,12 @@ impl App {
         }
     }
 
-    /// The card's download button / the bar's "Herunterladen": the file into the download folder. A video that is already here
+    /// The card's download button / the bar's "Download": the file into the download folder. A video that is already here
     /// (played from the cache, or a local file) is copied instead of downloaded again.
     pub(super) fn video_download(&mut self, ctx: &egui::Context, a: &Attachment, now: f64) {
         match source(ctx, a) {
             Src::File(p) if super::super::attach::local_path(&a.key).is_none() && a.key != SAMPLE_KEY && fs_::download(&a.key).is_some_and(|d| d.then != Then::Play) => {
-                let _ = p; // an earlier "Herunterladen": announce it again
+                let _ = p; // an earlier "Download": announce it again
                 self.file_fetch(&a.key, &a.name, Then::Nothing, now);
             }
             Src::File(p) => {
@@ -212,14 +212,14 @@ impl App {
                 self.file_write_local(&a.key, &a.name, &p, &dest, now);
                 // a copy of the playback cache came from the chat: Mark-of-the-Web like a download (not for files of this computer)
                 if super::super::attach::local_path(&a.key).is_none() && a.key != SAMPLE_KEY { fs_::mark_downloaded(&dest); }
-                self.toast(format!("{} – Download beendet", a.name), now);
+                self.toast(format!("{} – {}", a.name, crate::ui::widgets::tr("Download complete")), now);
             }
             _ => self.file_fetch(&a.key, &a.name, Then::Nothing, now),
         }
     }
 }
 
-/// The copy in the download folder (or the local file) that "In Ordner anzeigen" can show; never the playback cache.
+/// The copy in the download folder (or the local file) that "Show in folder" can show; never the playback cache.
 pub(super) fn shown_file(a: &Attachment) -> Option<PathBuf> {
     if let Some(p) = super::super::attach::local_path(&a.key) { return Some(p); }
     fs_::download(&a.key).filter(|d| d.phase == Phase::Done && d.then != Then::Play && d.path.exists() && !cache_dir().is_some_and(|c| d.path.starts_with(c))).map(|d| d.path)

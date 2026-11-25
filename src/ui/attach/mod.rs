@@ -1,7 +1,7 @@
 //! Attachments in the UI: staging files in the composer (file dialog, drag & drop, pasted images, screen captures),
 //! the staged-file bricklets, sending them (encrypted upload, `cloud/files/`), the upload strip with progress / cancel / retry, and
-//! the file actions used by message file cards, the "Inhalt" tab and the image viewer (Öffnen, Herunterladen, Speichern unter,
-//! In Ordner anzeigen).
+//! the file actions used by message file cards, the "Content" tab and the image viewer (Open, Download, Save as,
+//! Show in folder).
 //!
 //! Staged files are drawn as file bricklets:
 //! * size 208 x 60 (100 x 60 for a Giphy; only Giphys hide the file info, images show it).
@@ -11,16 +11,15 @@
 //!   file-type SVG goes into the box inset 30 / 5 (20 px wide), `wx-default-text`.
 //!   Info: the name 16 px / 400, `wx-headingColor-text`, elided at the right, bottom-aligned in
 //!   (box right + 10, top + 9) .. (card right - 20, height / 2 + 2); the size below it, top-aligned, `wx-subheading-text`.
-//! * Close: a 12 x 12 button with margins 10, top right; tooltip "Datei entfernen".
+//! * Close: a 12 x 12 button with margins 10, top right; tooltip "Remove file".
 //! * The staging area: margins 16 / 0 / 16 / 0, height 68 .. 92, scrolling vertically; a flow layout (margins 4 / 0 / 0 / 4,
 //!   horizontal spacing 20, vertical spacing 5).
 //! Colours (dark / light): gray-90 #292929 / gray-05 #F7F7F7, gray-70 #545454 / gray-10 #EDEDED, gray-05 / gray-100,
 //! gray-20 #DEDEDE / gray-90 #292929, gray-40 #B2B2B2 / gray-70 #545454; `wx-progressbar` gray-80 / gray-20, checked blue-50
-//! #00A0D1. Strings (German pack): "Datei: %1, %2", "Datei entfernen", "Pro Nachricht sind maximal %1 Dateien erlaubt",
-//! "{{0}} ist zu groß (Dateigröße: {{1}})", "<b>{{0}}</b> wird hochgeladen", "Anhänge sind nicht zulässig", "Anhänge können
-//! nicht während der Bearbeitung einer Nachricht hinzugefügt werden. Versuchen Sie es mit einer neuen Nachricht erneut.",
-//! "Öffnen", "Speichern unter", "In Ordner anzeigen", "Wiederholen", "Herunterladen", "Download beendet",
-//! "Download fehlgeschlagen", "Fehlgeschlagen". The upload strip above the composer is Webox's own.
+//! #00A0D1. Strings: "File: %1, %2", "Remove file", "A message can have at most %1 files", "%1 is too large (file size: %2)",
+//! "Uploading <b>{{0}}</b>", "Attachments are not allowed", "You can’t add attachments while editing a message. Try again with a
+//! new message", "Open", "Save as", "Show in folder", "Retry", "Download", "Download complete",
+//! "Download failed", "Failed!". The upload strip above the composer is Webox's own.
 use crate::*;
 use crate::app::files::{self as fs_, Phase, Then};
 use super::composer::Chip;
@@ -65,8 +64,8 @@ pub(crate) fn upload_strips_height(space: &str) -> f32 {
     let n = fs_::uploads().iter().filter(|u| u.space == space && !matches!(u.phase, Phase::Done | Phase::Cancelled)).count();
     if n == 0 { 0.0 } else { 6.0 + n as f32 * (STRIP_H + 4.0) }
 }
-pub(crate) const EDIT_REFUSED: &str = "Anhänge können nicht während der Bearbeitung einer Nachricht hinzugefügt werden. Versuchen Sie es mit einer neuen Nachricht erneut.";
-const NOT_ALLOWED: &str = "Anhänge sind nicht zulässig";
+pub(crate) const EDIT_REFUSED: &str = "You can’t add attachments while editing a message. Try again with a new message";
+const NOT_ALLOWED: &str = "Attachments are not allowed";
 /// Pasted images larger than this are not decoded for the bricklet preview (an icon is shown instead).
 const PREVIEW_MAX_BYTES: u64 = 30 * 1024 * 1024;
 
@@ -87,7 +86,7 @@ const BAR_FILL: Color32 = hex(0x00A0D1);
 
 /// Local attachment keys (pending uploads, sample-mode files) -> the file on disk.
 static LOCAL: Mutex<Option<HashMap<String, PathBuf>>> = Mutex::new(None);
-/// What is needed to send an upload again after it failed ("Wiederholen").
+/// What is needed to send an upload again after it failed ("Retry").
 #[derive(Clone)]
 struct Retry { space: String, files: Vec<PathBuf>, text: String, markdown: bool, mentions: Vec<crate::richtext::MentionRef>, parent: Option<String> }
 static RETRY: Mutex<Option<HashMap<String, Retry>>> = Mutex::new(None);
@@ -107,10 +106,12 @@ pub(crate) fn file_icon(name: &str) -> &'static str {
     }
 }
 
-/// Text of the upload strip: "<b>{{0}}</b> wird hochgeladen" (bold name).
-fn uploading_parts(names: &[String]) -> (String, String) {
+/// Text of the upload strip, the pack's "Uploading <b>{{0}}</b>": the text before the bold name, the name, the text after it.
+fn uploading_parts(names: &[String]) -> (String, String, String) {
     let n = match names.len() { 0 => String::new(), 1 => names[0].clone(), k => format!("{} (+{})", names[0], k - 1) };
-    (n, " wird hochgeladen".into())
+    let pat = tr("Uploading <b>{{0}}</b>");
+    let (before, after) = pat.split_once("<b>{{0}}</b>").unwrap_or(("", pat));
+    (before.to_string(), n, after.to_string())
 }
 
 /// Percentage of an upload / download (0..=100).
@@ -216,11 +217,11 @@ pub(super) fn take_pasted(space: &str) -> Option<Vec<u8>> {
 }
 
 impl App {
-    /// The composer's "Datei anhängen" (toolbar, Ctrl+O, the welcome banner's "Eine Datei freigeben"): the open-file dialog;
+    /// The composer's "Attach a file" (toolbar, Ctrl+O, the welcome banner's "Share a file"): the open-file dialog;
     /// the chosen files are staged by the composer of that space.
     pub(crate) fn attach_pick(&mut self, space: &str, now: f64) {
-        if matches!(self.compose, Compose::Edit { .. }) { self.toast(EDIT_REFUSED, now); return; }
-        if !fs_::uploads_allowed() { self.toast(NOT_ALLOWED, now); return; }
+        if matches!(self.compose, Compose::Edit { .. }) { self.toast(tr(EDIT_REFUSED), now); return; }
+        if !fs_::uploads_allowed() { self.toast(tr(NOT_ALLOWED), now); return; }
         if self.shot.is_some() { return; } // screenshot runs never open dialogs
         fs_::pick_files_async(space);
     }
@@ -229,14 +230,14 @@ impl App {
     /// the pack's messages; an image also gets its preview.
     pub(super) fn stage_paths(&mut self, chips: &mut Vec<Chip>, paths: Vec<PathBuf>, edit: bool, now: f64) {
         if paths.is_empty() { return; }
-        if edit { self.toast(EDIT_REFUSED, now); return; }
-        if !fs_::uploads_allowed() { self.toast(NOT_ALLOWED, now); return; }
+        if edit { self.toast(tr(EDIT_REFUSED), now); return; }
+        if !fs_::uploads_allowed() { self.toast(tr(NOT_ALLOWED), now); return; }
         for p in paths {
             let Ok(meta) = std::fs::metadata(&p) else { continue };
             if meta.is_dir() || chips.iter().any(|c| c.path == p) { continue; }
             let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            if chips.len() >= fs_::MAX_FILES { self.toast(format!("Pro Nachricht sind maximal {} Dateien erlaubt", fs_::MAX_FILES), now); break; }
-            if meta.len() > fs_::limit_bytes() { self.toast(format!("{name} ist zu groß (Dateigröße: {})", fs_::size_text(meta.len())), now); continue; }
+            if chips.len() >= fs_::MAX_FILES { self.toast(crate::trq!("A message can have at most %1 files", fs_::MAX_FILES), now); break; }
+            if meta.len() > fs_::limit_bytes() { self.toast(crate::trq!("%1 is too large (file size: %2)", name, fs_::size_text(meta.len())), now); continue; }
             let head = { use std::io::Read; let mut b = [0u8; 64]; let n = std::fs::File::open(&p).and_then(|mut f| f.read(&mut b)).unwrap_or(0); b[..n].to_vec() };
             let image = fs_::mime_of(&name, &head).starts_with("image/");
             if image && meta.len() <= PREVIEW_MAX_BYTES {
@@ -308,14 +309,14 @@ impl App {
         let size = one_line(&fs_::size_text(ch.size), subheading_text(light));
         p.galley(pos2(tx, r.top() + 32.0), size, subheading_text(light));
         let body = ui.interact(card, ui.id().with(("staged-file", i)), Sense::hover());
-        // Accessible name only (no tooltip on the bricklet): "Datei: %1, %2".
-        body.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, format!("Datei: {}, {}", ch.name, fs_::size_text(ch.size))));
+        // Accessible name only (no tooltip on the bricklet): "File: %1, %2".
+        body.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, crate::trq!("File: %1, %2", ch.name, fs_::size_text(ch.size))));
         // Close button: 12 x 12 at the top-right margin 10 (inside the card's top-right corner).
         let xr = Rect::from_min_size(pos2(r.right() - 10.0 - 12.0, r.top() + 10.0), Vec2::splat(12.0));
         let xs = ui.interact(xr, ui.id().with(("staged-x", i)), Sense::click());
         if xs.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
         self.icons.paint(ui, "cancel-bold", xr, default_text(light));
-        xs.on_hover_text("Datei entfernen").clicked()
+        xs.on_hover_text(tr("Remove file")).clicked()
     }
 
     /// Send: the staged files (with the composer's text and mentions) go out as one share activity. A pending message appears in
@@ -361,8 +362,8 @@ impl App {
         }
     }
 
-    /// The uploads of this space above the composer (floating, the composer does not grow): "<b>name</b> wird hochgeladen", a progress
-    /// bar, the percentage and a cancel button; a failed one offers "Wiederholen". Finished uploads leave; the reloaded chat shows the
+    /// The uploads of this space above the composer (floating, the composer does not grow): "Uploading <b>name</b>", a progress
+    /// bar, the percentage and a cancel button; a failed one offers "Retry". Finished uploads leave; the reloaded chat shows the
     /// real message.
     pub(crate) fn upload_strip(&mut self, ui: &mut egui::Ui, t: &Th, composer: Rect, space: &str, now: f64) {
         let light = super::menu::light(t);
@@ -395,12 +396,13 @@ impl App {
                 p.rect_stroke(r, 8.0, Stroke::new(1.0_f32, if light { hex(0xDEDEDE) } else { hex(0x3B3B3B) }), egui::StrokeKind::Inside);
                 self.icons.paint(ui, "attachment-regular", Rect::from_center_size(pos2(r.left() + 18.0, r.center().y), Vec2::splat(16.0)), t.text2);
                 let failed = if let Phase::Failed(e) = &phase { Some(e.clone()) } else { None };
-                let (name, rest) = uploading_parts(&u.names);
+                let (before, name, rest) = uploading_parts(&u.names);
                 let tx = r.left() + 36.0;
                 let right_w = if failed.is_some() { 150.0 } else { 220.0 };
                 let mut job = egui::text::LayoutJob::default();
+                if failed.is_none() && !before.is_empty() { job.append(&before, 0.0, egui::TextFormat::simple(FontId::proportional(13.0), t.text1)); }
                 job.append(&name, 0.0, egui::TextFormat::simple(semibold(13.0), t.text1));
-                if let Some(e) = &failed { job.append(&format!(" – Fehlgeschlagen: {e}"), 0.0, egui::TextFormat::simple(FontId::proportional(13.0), hex(0xFC8B98))); }
+                if let Some(e) = &failed { job.append(&format!(" – {}", crate::trq!("Failed: %1", e)), 0.0, egui::TextFormat::simple(FontId::proportional(13.0), hex(0xFC8B98))); }
                 else { job.append(&rest, 0.0, egui::TextFormat::simple(FontId::proportional(13.0), t.text1)); }
                 job.wrap = egui::text::TextWrapping { max_width: r.width() - 36.0 - right_w, max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
                 let g = ui.fonts(|f| f.layout_job(job));
@@ -414,9 +416,9 @@ impl App {
                     let rs = ui.interact(rr, id.with("retry"), Sense::click());
                     ui.painter().rect_stroke(rr, 13.0, Stroke::new(1.0_f32, t.text2), egui::StrokeKind::Inside);
                     if rs.hovered() { ui.painter().rect_filled(rr, 13.0, t.hover); ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                    ui.painter().text(rr.center(), egui::Align2::CENTER_CENTER, "Wiederholen", semibold(13.0), t.text1);
+                    ui.painter().text(rr.center(), egui::Align2::CENTER_CENTER, tr("Retry"), semibold(13.0), t.text1);
                     if rs.clicked() { self.upload_retry(&u.id, space, now); }
-                    if xs.on_hover_text("Schließen").clicked() {
+                    if xs.on_hover_text(tr("Close")).clicked() {
                         fs_::upload_remove(&u.id);
                         if let Some(l) = self.messages.get_mut(space) { l.retain(|m| m.id != u.id); }
                     }
@@ -427,7 +429,7 @@ impl App {
                     ui.painter().rect_filled(Rect::from_min_size(br.min, Vec2::new(br.width() * pct as f32 / 100.0, br.height())), 2.0, BAR_FILL);
                     let label = if matches!(phase, Phase::Sharing) { "100 %".to_string() } else { format!("{pct} %") };
                     ui.painter().text(pos2(xr.left() - 10.0, r.center().y), egui::Align2::RIGHT_CENTER, label, FontId::proportional(12.0), t.text2);
-                    if xs.on_hover_text("Abbrechen").clicked() { fs_::upload_cancel(&u.id); }
+                    if xs.on_hover_text(tr("Cancel")).clicked() { fs_::upload_cancel(&u.id); }
                 }
             });
         }

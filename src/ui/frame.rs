@@ -13,7 +13,7 @@ impl eframe::App for App {
         if self.shot.is_some() { super::shot_input::inject(self.frames + 1, raw); }
         super::autoscroll::begin_frame(ctx, raw); // middle-click autoscroll: ends on Esc / click, frame time
         #[cfg(target_os = "macos")]
-        crate::platform::macos::appkit::inject(raw); // Bearbeiten menu picked with the mouse (copy, paste, undo, ...)
+        crate::platform::macos::appkit::inject(raw); // Edit menu picked with the mouse (copy, paste, undo, ...)
     }
 
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
@@ -142,14 +142,14 @@ impl eframe::App for App {
         // --screenshot: draw ~120 frames, save the picture, quit.
         if self.shot.is_some() {
             self.frames += 1;
-            // WEBOX_SHOT_CREATE=1 renders the "Bereich erstellen" screen (for layout comparison; nothing is created).
+            // WEBOX_SHOT_CREATE=1 renders the "Create a space" screen (for layout comparison; nothing is created).
             if self.frames == 2 && std::env::var("WEBOX_SHOT_CREATE").is_ok() { self.new_space = Some(String::new()); }
             // WEBOX_SHOT_CALL=ringing|connected|incoming|menu renders the call UI with made-up data (display only, no call).
             if self.frames == 2 { if let Ok(k) = std::env::var("WEBOX_SHOT_CALL") { self.preview_call(&k, now); } }
             // WEBOX_SHOT_OPEN=<space id> opens that (sample) space, e.g. s2 = a direct chat.
             if self.frames == 30 { if let Ok(id) = std::env::var("WEBOX_SHOT_OPEN") { self.open_space(id); } }
             // WEBOX_SHOT_DRAFT=<space id> gives that (sample) space an unsent draft (the list row's draft icon; not saved).
-            if self.frames == 2 { if let Ok(id) = std::env::var("WEBOX_SHOT_DRAFT") { self.drafts.insert(id, "Entwurf".into()); } }
+            if self.frames == 2 { if let Ok(id) = std::env::var("WEBOX_SHOT_DRAFT") { self.drafts.insert(id, "Draft".into()); } }
             // WEBOX_SHOT_THEME=light|dark|<theme id, e.g. MomentumJadeLight> renders that theme (not saved).
             if self.frames == 1 { if let Ok(v) = std::env::var("WEBOX_SHOT_THEME") { self.settings["theme"] = json!(v); } }
             // WEBOX_SHOT_MENU=gear|status|filters|more|row opens that menu (row needs the first list row's dots; opens for s1).
@@ -162,12 +162,12 @@ impl eframe::App for App {
                     if m == "status-dialog" { ctx.data_mut(|d| d.insert_temp(egui::Id::new("status-dialog-text"), String::new())); }
                 }
             }
-            // WEBOX_SHOT_SHORTCUTS=search|settings: the Ctrl+/ search popup, or Settings > Tastenkombinationen. Add :edit (settings:edit) for key capture mode.
+            // WEBOX_SHOT_SHORTCUTS=search|settings: the Ctrl+/ search popup, or Settings > Keyboard shortcuts. Add :edit (settings:edit) for key capture mode.
             if self.frames == 2 { if let Ok(m) = std::env::var("WEBOX_SHOT_SHORTCUTS") { match m.split(':').next().unwrap_or("") { "search" => self.show_shortcuts = true, _ => { self.tab = Tab::Settings; ctx.data_mut(|d| d.insert_temp(egui::Id::new("settings_cat"), 7usize)); } } } }
             // WEBOX_SHOT_EMOJI=1 opens the emoji picker (with sample recents, not saved) for layout comparison.
             if self.frames == 2 && std::env::var("WEBOX_SHOT_EMOJI").is_ok() { self.settings["emoji_recents"] = json!(["🤑", "😭", "🥹"]); self.emoji_picker_toggle(ctx); }
             // WEBOX_SHOT_TAB=calls|voicemail|meetings|contacts|teams|whiteboards opens that page; WEBOX_SHOT_SEL=<n> selects its n-th row
-            // (teams: the team), WEBOX_SHOT_DIAL=1 shows the keypad, WEBOX_SHOT_NEWTEAM=1 the "Ein Team erstellen" form, WEBOX_SHOT_CARD=1 the contact card.
+            // (teams: the team), WEBOX_SHOT_DIAL=1 shows the keypad, WEBOX_SHOT_NEWTEAM=1 the "Create a team" form, WEBOX_SHOT_CARD=1 the contact card.
             if self.frames == 2 {
                 if let Ok(k) = std::env::var("WEBOX_SHOT_TAB") {
                     self.set_tab(match k.as_str() { "calls" => Tab::Calling, "voicemail" => Tab::Voicemail, "meetings" => Tab::Meetings, "contacts" => Tab::Contacts, "teams" => Tab::Teams, "whiteboards" => Tab::Whiteboards, _ => self.tab });

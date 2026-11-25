@@ -7,11 +7,11 @@ impl App {
         let ctx = ui.ctx().clone();
         let mut st = self.pst(&ctx);
         let mut play_req: Option<(usize, u32)> = None;
-        self.list_header(ui, t, "Voicemail", None, None);
+        self.list_header(ui, t, tr("Voicemail"), None, None);
         ui.add_space(8.0);
         ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), 28.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
-            for (i, n) in ["Posteingang", "Gesendet", "Papierkorb"].iter().enumerate() {
+            for (i, n) in [tr("Inbox"), tr("Sent"), tr("Trash")].iter().enumerate() {
                 if text_tab(ui, n, st.vm_tab as usize == i, t, t.tab_on).clicked() { st.vm_tab = i as u8; st.vm_sel = None; }
             }
         });
@@ -30,11 +30,11 @@ impl App {
                 let unread = v.unread && !st.vm_read.contains(&i);
                 let p = self.person_for(&v.name, &v.email);
                 let photo = p.as_ref().and_then(|p| self.photo_for(ui.ctx(), &p.id, &p.email));
-                let sub = format!("{}{}", duration_text(v.secs), if v.urgent { "  ·  Dringend" } else { "" });
+                let sub = format!("{}{}", duration_text(v.secs), if v.urgent { format!("  ·  {}", tr("Urgent")) } else { String::new() });
                 let right = when_text(v.at_ms, nowms);
                 let mut spec = RowSpec::new(format!("vm{i}"), &v.name);
                 spec.sub = &sub; spec.right = &right; spec.bold = unread; spec.dot = unread; spec.selected = st.vm_sel == Some(i); spec.photo = photo;
-                spec.status = p.as_ref().map(|p| p.status.as_str()); spec.action = Some(("play-filled", "Voicemail wiedergeben"));
+                spec.status = p.as_ref().map(|p| p.status.as_str()); spec.action = Some(("play-filled", tr("Play voicemail")));
                 if v.urgent { spec.sub_col = Some(missed_color(t)); }
                 let out = self.page_row(ui, t, &spec);
                 if out.clicked || out.action { st.vm_sel = Some(i); st.vm_read.insert(i); }
@@ -56,14 +56,14 @@ impl App {
         let sel = st.vm_sel.and_then(|i| all.get(i).cloned().map(|v| (i, v)));
         let Some((i, v)) = sel else {
             let (title, body) = match st.vm_tab {
-                1 => ("Keine Sprachnachrichten", "Hier finden Sie alle Sprachnachrichten, die Sie gesendet haben. Ihre gesendeten Elemente sind gerade leer."),
-                2 => ("Keine Sprachnachrichten", "Hallo Recycling-Star! Heute ist nichts im Papierkorb. Wenn Sie Sprachnachrichten löschen, finden Sie sie hier."),
-                _ => ("Keine Sprachnachrichten", "Hier finden Sie alle Ihre Sprachnachrichten. Derzeit sind keine Nachrichten vorhanden. Genießen Sie die Stille."),
+                1 => (tr("No voicemails"), tr("Find all the voicemails you have sent here. Your sent items are empty right now.")),
+                2 => (tr("No voicemails"), tr("Hello, recycling star! Nothing in the trash today. When you delete voicemails, you will find them here.")),
+                _ => (tr("No voicemails"), tr("Find all your voicemails here. There are no messages right now. Enjoy the silence.")),
             };
             // A signed-in account without a voicemail service gets the "not set up" text.
-            let body = if self.client.is_some() { "Offenbar ist Ihre Voicemail-Funktion noch nicht eingerichtet. Wenden Sie sich an Ihren Administrator, um zu beginnen." } else { body };
+            let body = if self.client.is_some() { tr("Looks like your voicemail isn’t set up yet. Reach out to your administrator to get started.") } else { body };
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(ui.max_rect()));
-            self.empty_state(&mut c, t, "empty_voicemail", 160.0, title, if all.is_empty() || st.vm_tab != 0 { body } else { "Wählen Sie eine Sprachnachricht aus der Liste aus." }, None);
+            self.empty_state(&mut c, t, "empty_voicemail", 160.0, title, if all.is_empty() || st.vm_tab != 0 { body } else { tr("Select a voicemail from the list.") }, None);
             return;
         };
         let p = self.person_for(&v.name, &v.email);
@@ -72,7 +72,7 @@ impl App {
         self.person_header(&mut c, t, &v.name, &v.email, p.as_ref(), 72.0);
         if !v.number.is_empty() { c.add_space(4.0); c.label(RichText::new(&v.number).size(13.5).color(t.text2)); }
         c.add_space(18.0);
-        // Player: play / pause, slider, time ("Voicemail wiedergeben"). Voicemails exist only in `--sample` (made up, no audio
+        // Player: play / pause, slider, time ("Play voicemail"). Voicemails exist only in `--sample` (made up, no audio
         // file): the player runs its position over the message's duration; a click on the slider seeks.
         let w = c.available_width().min(560.0);
         let (r, _) = c.allocate_exact_size(Vec2::new(w, 48.0), Sense::hover());
@@ -82,7 +82,7 @@ impl App {
         let (pos, playing) = self.vm_position(i, v.secs, now);
         c.painter().circle_filled(pb.center(), 16.0, if presp.hovered() { t.white_btn.gamma_multiply(0.85) } else { t.white_btn });
         self.icons.paint(&c, if playing { "pause-filled" } else { "play-filled" }, Rect::from_center_size(pb.center(), Vec2::splat(16.0)), t.white_btn_text);
-        if presp.on_hover_text("Voicemail wiedergeben").clicked() { self.vm_toggle(i, v.secs, now); st.vm_read.insert(i); }
+        if presp.on_hover_text(tr("Play voicemail")).clicked() { self.vm_toggle(i, v.secs, now); st.vm_read.insert(i); }
         let tr_ = Rect::from_min_max(pos2(pb.right() + 14.0, r.center().y - 2.0), pos2(r.right() - 100.0, r.center().y + 2.0));
         let frac = if v.secs > 0 { (pos / v.secs as f64).clamp(0.0, 1.0) as f32 } else { 0.0 };
         c.painter().rect_filled(tr_, 2.0, t.ink_a(0.25));
@@ -98,16 +98,16 @@ impl App {
         c.add_space(14.0);
         c.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 10.0;
-            if !v.email.is_empty() && self.pill(ui, t, "Anrufen", Pill::Join, Some("handset-filled")).clicked() { self.start_call(&v.email, &v.name, now); }
-            if self.pill(ui, t, if st.vm_deleted.contains(&i) { "Wiederherstellen" } else { "Löschen" }, Pill::Secondary, None).clicked() {
+            if !v.email.is_empty() && self.pill(ui, t, tr("Call"), Pill::Join, Some("handset-filled")).clicked() { self.start_call(&v.email, &v.name, now); }
+            if self.pill(ui, t, if st.vm_deleted.contains(&i) { tr("Restore") } else { tr("Delete") }, Pill::Secondary, None).clicked() {
                 if !st.vm_deleted.remove(&i) { st.vm_deleted.insert(i); }
                 st.vm_sel = None;
             }
         });
         c.add_space(18.0);
-        c.label(RichText::new("Abschrift").font(semibold(15.0)).color(t.text1));
+        c.label(RichText::new(tr("Transcript")).font(semibold(15.0)).color(t.text1));
         c.add_space(4.0);
-        let text = if v.transcript.is_empty() { "Keine Abschrift verfügbar." } else { v.transcript.as_str() }; // Webox's own wording
+        let text = if v.transcript.is_empty() { tr("No transcript available.") } else { v.transcript.as_str() }; // Webox's own wording
         let mut tc = c.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_size(c.cursor().min, Vec2::new(w, 120.0))));
         tc.add(egui::Label::new(RichText::new(text).size(14.5).color(t.text2)).wrap());
         self.set_pst(&ctx, st);
@@ -115,8 +115,8 @@ impl App {
 
     pub(crate) fn voicemail_menu(&mut self, ctx: &egui::Context, t: &Th, now: f64) {
         let items = vec![
-            Item::new("play", "Voicemail wiedergeben").icon("play-filled").entry(), Item::new("call", "Anrufen").icon("handset-regular").entry(),
-            Item::new("card", "Visitenkarte").icon("contact-card-regular").entry(), Entry::Sep, Item::new("delete", "Löschen").icon("delete-regular").danger().entry(),
+            Item::new("play", tr("Play voicemail")).icon("play-filled").entry(), Item::new("call", tr("Call")).icon("handset-regular").entry(),
+            Item::new("card", tr("Contact card")).icon("contact-card-regular").entry(), Entry::Sep, Item::new("delete", tr("Delete")).icon("delete-regular").danger().entry(),
         ];
         if let Some((key, pick)) = self.page_menu(ctx, t, "vm-row", &items) {
             let all = self.voicemails();

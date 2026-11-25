@@ -1,18 +1,17 @@
-//! Time arithmetic of the status menu (pure, unit-tested): "Bitte nicht stören" durations, the custom status'
-//! "Status löschen nach" end and the date/time picker of "Anpassen..." / "Benutzerdefiniert".
+//! Time arithmetic of the status menu (pure, unit-tested): "Do not disturb" durations, the custom status'
+//! "Clear status after" end and the date/time picker of "Custom…".
 //!
-//! DND submenu entries: 30 Minuten, 1 Stunde, 2 Stunden, 4 Stunden, Heute, Bis zur Deaktivierung, Anpassen...;
-//! "Status löschen nach": 30 Minuten, 1 Stunde, 2 Stunden, 12 Stunden, 1 Tag (default), 7 Tage, 14 Tage, Benutzerdefiniert;
-//! custom range: at least 30 minutes, at most 30 days. "Heute" = until local midnight; the picker is a day list + a
-//! 30-minute time list.
+//! DND submenu entries: 30 minutes, 1 hour, 2 hours, 4 hours, Today, Until turned off, Custom…;
+//! "Clear status after": 30 minutes, 1 hour, 2 hours, 12 hours, 1 day (default), 7 days, 14 days, Custom;
+//! custom range: at least 30 minutes, at most 30 days. "Today" = until local midnight; the picker is a day list + a
+//! 30-minute time list. The labels are English pack sources; they are translated where they are shown.
 
-/// Minutes of each "Status löschen nach" option; `None` = "Benutzerdefiniert" (picker). (The first label has a no-break
-/// space, as the pack's "30\u{a0}Minuten".)
+/// Minutes of each "Clear status after" option; `None` = "Custom" (picker).
 pub(crate) const CLEAR_AFTER: [(&str, Option<i64>); 8] = [
-    ("30\u{a0}Minuten", Some(30)), ("1 Stunde", Some(60)), ("2 Stunden", Some(120)), ("12 Stunden", Some(720)),
-    ("1 Tag", Some(1440)), ("7 Tage", Some(7 * 1440)), ("14 Tage", Some(14 * 1440)), ("Benutzerdefiniert", None),
+    ("30 minutes", Some(30)), ("1 hour", Some(60)), ("2 hours", Some(120)), ("12 hours", Some(720)),
+    ("1 day", Some(1440)), ("7 days", Some(7 * 1440)), ("14 days", Some(14 * 1440)), ("Custom", None),
 ];
-/// "1 Tag" is preselected.
+/// "1 day" is preselected.
 pub(crate) const CLEAR_DEFAULT: usize = 4;
 /// Custom range: 30 minutes .. 30 days.
 pub(crate) const MIN_MINUTES: i64 = 30;
@@ -22,8 +21,8 @@ pub(crate) const MAX_DAYS: i64 = 30;
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) enum Dur { Minutes(i64), Today, NoEnd, Custom }
 pub(crate) const DND: [(&str, &str, Dur); 7] = [
-    ("30", "30 Minuten", Dur::Minutes(30)), ("60", "1 Stunde", Dur::Minutes(60)), ("120", "2 Stunden", Dur::Minutes(120)),
-    ("240", "4 Stunden", Dur::Minutes(240)), ("today", "Heute", Dur::Today), ("always", "Bis zur Deaktivierung", Dur::NoEnd), ("custom", "Anpassen...", Dur::Custom),
+    ("30", "30 minutes", Dur::Minutes(30)), ("60", "1 hour", Dur::Minutes(60)), ("120", "2 hours", Dur::Minutes(120)),
+    ("240", "4 hours", Dur::Minutes(240)), ("today", "Today", Dur::Today), ("always", "Until turned off", Dur::NoEnd), ("custom", "Custom\u{2026}", Dur::Custom),
 ];
 
 const DAY_MS: i64 = 86_400_000;
@@ -73,8 +72,8 @@ mod tests {
     #[test]
     fn options_are_the_official_list() {
         let labels: Vec<&str> = CLEAR_AFTER.iter().map(|o| o.0).collect();
-        assert_eq!(labels, ["30\u{a0}Minuten", "1 Stunde", "2 Stunden", "12 Stunden", "1 Tag", "7 Tage", "14 Tage", "Benutzerdefiniert"]);
-        assert_eq!(CLEAR_AFTER[CLEAR_DEFAULT].0, "1 Tag");
+        assert_eq!(labels, ["30 minutes", "1 hour", "2 hours", "12 hours", "1 day", "7 days", "14 days", "Custom"]);
+        assert_eq!(CLEAR_AFTER[CLEAR_DEFAULT].0, "1 day");
     }
 
     #[test]

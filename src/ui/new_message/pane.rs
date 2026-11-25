@@ -2,7 +2,7 @@
 use super::*;
 
 impl App {
-    /// Opens the pane (from the + menu): remembers the conversation to return to on "Abbrechen".
+    /// Opens the pane (from the + menu): remembers the conversation to return to on "Cancel".
     pub(crate) fn new_message_open(&mut self, ctx: &egui::Context) {
         super::super::invite::close_state(ctx);
         let prev = self.selected.take();
@@ -18,7 +18,7 @@ impl App {
         if let Some(id) = s.prev { if self.spaces.iter().any(|x| x.id == id) { self.open_space(id); } }
     }
 
-    /// The temporary list row (top of "Andere").
+    /// The temporary list row (top of "Other").
     pub(crate) fn new_message_row(&mut self, ui: &mut egui::Ui, t: &Th) {
         let g = crate::ui::theme::density::ListRow::current(self.compact_view()); // the list row's geometry (chrome::row)
         let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), g.pitch), Sense::hover());
@@ -41,7 +41,7 @@ impl App {
         vgrad(ui.painter(), Rect::from_min_max(full.min, pos2(full.max.x + 10.0, full.max.y)), 10.0, t.conv, t.conv_b); // square top-right at the window edge, as the conversation card
         let at = |x: f32, y: f32| pos2(full.left() + x, full.top() + y);
 
-        // Header: title, pencil ("Bereichsnamen bearbeiten") and the hidden name field (placeholder / tooltip "Bereichsname").
+        // Header: title, pencil ("Edit space name") and the hidden name field (placeholder / tooltip "Space name").
         // The pencil hides label + pencil and shows the focused field; Enter / Return sets the title (trimmed text, empty =
         // default "New message"; the name is used when the space is created), Esc leaves the edit mode.
         if s.editing {
@@ -297,7 +297,7 @@ impl App {
         }
     }
 
-    /// Remembers that the direct space with person `p` should open when it appears ("Nachricht" / "Chat" on contact
+    /// Remembers that the direct space with person `p` should open when it appears ("Message" / "Chat" on contact
     /// cards, `App::open_or_create_direct`, which has no egui context: handed over through `finish_direct`).
     pub(crate) fn expect_direct_person(&self, p: &Person) {
         *PENDING_PERSON.lock().unwrap() = Some((p.id.clone(), p.email.clone()));

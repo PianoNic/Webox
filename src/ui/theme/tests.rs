@@ -23,7 +23,7 @@ fn every_field_follows_its_token_in_all_themes() {
     }
 }
 
-/// The light surfaces of the "Hell" theme.
+/// The light surfaces of the "Light" theme.
 #[test]
 fn light_matches_the_official_light_screenshot() {
     let t = Th::of(ThemeId::Light);
@@ -32,11 +32,11 @@ fn light_matches_the_official_light_screenshot() {
     assert_eq!((t.card, t.card_b), (crate::hex(0xFAFAFA), crate::hex(0xFFFFFF))); // list card at the top
     assert_eq!(t.search, crate::hex(0xDEDEDE)); // header search pill
     assert_eq!(over(t.rail_sel, 0xF2), 0xC2); // selected rail circle on #F2F2F2
-    assert_eq!(over(t.tab_on, 0xFB), 0xC9); // "Alle" pill on #FBFBFB
+    assert_eq!(over(t.tab_on, 0xFB), 0xC9); // "All" pill on #FBFBFB
     assert_eq!(t.avatar, crate::hex(0x545454)); // letter avatars
     assert_eq!(t.star, crate::hex(0x7D4705)); // favourites star
     assert_eq!(over(t.white_btn, 0xFB), 0x0D); // dark "+" of the list card
-    assert_eq!(t.tk("modal-decorativeTitle-slate"), crate::hex(0x8C91BD)); // "Öffentlich"
+    assert_eq!(t.tk("modal-decorativeTitle-slate"), crate::hex(0x8C91BD)); // "Public"
     assert_eq!(t.tk("wx-leftpane-shortcut-app-icon-orange"), crate::hex(0x914017)); // team text
 }
 

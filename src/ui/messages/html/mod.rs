@@ -17,7 +17,7 @@ pub(super) struct Parsed { pub job: egui::text::LayoutJob, pub links: Vec<(Range
 /// Font size of the placeholder that keeps a line free for a quoted picture's thumbnail (its row is about 64 pt high).
 const THUMB_FONT: f32 = 54.0;
 
-/// Link target of "Zur Originalnachricht springen" (handled by the message list, never opened).
+/// Link target of "Go to message" (handled by the message list, never opened).
 pub(super) const JUMP: &str = "webox-jump:";
 /// Link target of a person mention: `webox-mention:<person id>\u{1}<shown name>` (a click opens the contact card).
 pub(super) const MENTION: &str = "webox-mention:";
@@ -238,7 +238,7 @@ impl Doc<'_> {
         self.b.st.underline = was;
     }
 
-    /// The header of a reply quote: "<Author> • Zur Originalnachricht springen" (author and bullet dim, the link in the link colour).
+    /// The header of a reply quote: "<Author> • Go to message" (author and bullet dim, the link in the link colour).
     fn reply_header(&mut self, author: &str) {
         self.flush();
         let c = self.c;
@@ -247,7 +247,7 @@ impl Doc<'_> {
         self.b.plain(author.trim(), c.head);
         self.b.plain(" \u{2022} ", c.head);
         let from = self.b.job.text.len();
-        self.b.plain("Zur Originalnachricht springen", c.accent);
+        self.b.plain(crate::ui::widgets::tr("Go to message"), c.accent);
         self.links.push((from..self.b.job.text.len(), JUMP.to_string()));
         self.b.st.size = was;
         self.nls = self.nls.max(1);

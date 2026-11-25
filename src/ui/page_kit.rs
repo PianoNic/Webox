@@ -1,4 +1,4 @@
-//! Shared parts of the main navigation pages (Anrufe, Voicemail, Meetings, Kontakte, Teams, Whiteboards): the two-card frame
+//! Shared parts of the main navigation pages (Calling, Voicemail, Meetings, Contacts, Teams, Whiteboards): the two-card frame
 //! (list card + detail card, like the messaging screen), header, list rows, pill / round buttons, empty states and context menus.
 //!
 //! List card = theme-gradient-secondary (`vgrad`, tokens t.card/t.card_b), detail card = theme-gradient-primary (t.conv/t.conv_b),
@@ -244,7 +244,7 @@ impl App {
             let (c, d) = (cr.center(), 4.0);
             ui.painter().line_segment([c - Vec2::splat(d), c + Vec2::splat(d)], Stroke::new(1.3_f32, t.text1));
             ui.painter().line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.3_f32, t.text1));
-            if resp.on_hover_text("Suche löschen").clicked() { text.clear(); }
+            if resp.on_hover_text(crate::ui::widgets::tr("Clear search")).clicked() { text.clear(); }
         }
     }
 
@@ -297,15 +297,15 @@ pub(crate) fn fit_label(ui: &egui::Ui, center: egui::Pos2, text: &str, font: Fon
     ui.painter().galley(center - g.size() / 2.0, g, color);
 }
 
-/// The "Heute" / "Gestern" / weekday text of a Unix-ms timestamp for list rows ("16:20" today).
+/// The "Today" / "Yesterday" / weekday text of a Unix-ms timestamp for list rows ("16:20" today).
 pub(crate) fn when_text(ms: i64, now_ms: i64) -> String {
     let day = 86_400_000_i64;
     let local_off = 0; // UTC (the data layer's times are UTC too)
     let (d0, d1) = ((ms + local_off).div_euclid(day), (now_ms + local_off).div_euclid(day));
     match d1 - d0 {
         0 => { let s = (ms + local_off).rem_euclid(day) / 1000; format!("{:02}:{:02}", s / 3600, s % 3600 / 60) }
-        1 => "Gestern".into(),
-        2..=6 => ["Do", "Fr", "Sa", "So", "Mo", "Di", "Mi"][(d0.rem_euclid(7)) as usize].into(), // 1970-01-01 was a Thursday
+        1 => crate::ui::widgets::tr("Yesterday").into(),
+        2..=6 => crate::ui::widgets::tr(["Thu", "Fri", "Sat", "Sun", "Mon", "Tue", "Wed"][(d0.rem_euclid(7)) as usize]).into(), // 1970-01-01 was a Thursday
         _ => { let (y, m, d) = civil(d0); let _ = y; format!("{d:02}.{m:02}.") }
     }
 }
@@ -324,8 +324,8 @@ mod tests {
     fn when_text_formats() {
         let now = 1_700_000_000_000_i64; // 2023-11-14 22:13:20 UTC
         assert_eq!(when_text(now - 3_600_000, now), "21:13");
-        assert_eq!(when_text(now - 86_400_000, now), "Gestern");
-        assert_eq!(when_text(now - 86_400_000 * 3, now), "Sa"); // 2023-11-11 was a Saturday
+        assert_eq!(when_text(now - 86_400_000, now), crate::ui::widgets::tr("Yesterday"));
+        assert_eq!(when_text(now - 86_400_000 * 3, now), crate::ui::widgets::tr("Sat")); // 2023-11-11 was a Saturday
         assert_eq!(when_text(now - 86_400_000 * 30, now), "15.10.");
     }
 }

@@ -1,5 +1,5 @@
-//! Settings > Oberfläche anpassen: one section per area of the window (ui/customize.rs). Each element is a row with a check
-//! box, its icon and label; in the rail and the composer toolbar two arrows move it up / down. "Zurücksetzen" under each
+//! Settings > Customize the interface: one section per area of the window (ui/customize.rs). Each element is a row with a check
+//! box, its icon and label; in the rail and the composer toolbar two arrows move it up / down. "Reset" under each
 //! section brings back the default look of that area.
 use super::kit::{self, section};
 use crate::ui::customize::{self as cz, El, Group};
@@ -13,16 +13,16 @@ const ARROW: f32 = 24.0;
 
 impl App {
     pub(super) fn page_customize(&mut self, ui: &mut egui::Ui, t: &Th, now: f64) {
-        kit::text_block(ui, "Blenden Sie Elemente aus, die Sie nicht brauchen, und ordnen Sie die App-Seitenleiste und die Symbolleiste des Nachrichtenfelds neu an. Ausgeblendete Funktionen bleiben über ihre Tastenkombinationen und Menüs erreichbar.", kit::SECOND, t.text2, 0.0);
+        kit::text_block(ui, tr("Hide what you don't need and reorder the app sidebar and the message box toolbar. Hidden features stay reachable through their shortcuts and menus."), kit::SECOND, t.text2, 0.0);
         for (i, g) in cz::GROUPS.into_iter().enumerate() {
             let mut todo = None;
-            section(ui, t, g.title, g.desc, false, |ui| {
-                if i == 0 { kit::text_block(ui, "„Einstellungen“ und „Weitere“ können nicht beide ausgeblendet werden, damit die Einstellungen erreichbar bleiben.", kit::SECOND, t.text2, 0.0); ui.add_space(4.0); }
+            section(ui, t, tr(g.title), tr(g.desc), false, |ui| {
+                if i == 0 { kit::text_block(ui, tr("Settings and More can't both be hidden, so that Settings stays reachable."), kit::SECOND, t.text2, 0.0); ui.add_space(4.0); }
                 let (o, n) = cz::order(&self.settings, g);
                 for pos in 0..n { if let Some(d) = self.customize_row(ui, t, g, &g.els[o[pos] as usize], g.orderable.then_some((pos, n))) { todo = Some(d); } }
                 for e in g.els.iter().filter(|e| e.fixed) { if let Some(d) = self.customize_row(ui, t, g, e, None) { todo = Some(d); } }
                 ui.add_space(8.0);
-                if kit::pill(ui, t, "Zurücksetzen", false, !cz::is_default(&self.settings, g)).clicked() { todo = Some(Do::Reset); }
+                if kit::pill(ui, t, tr("Reset"), false, !cz::is_default(&self.settings, g)).clicked() { todo = Some(Do::Reset); }
             });
             if let Some(d) = todo { self.customize_apply(g, d, now); }
         }
@@ -43,17 +43,17 @@ impl App {
         if !e.icon.is_empty() { self.icons.paint(ui, e.icon, ic, ink); }
         let lr = Rect::from_min_max(pos2(row.left() + 28.0, row.top()), pos2(row.right() - arrows_w, row.bottom()));
         let lresp = ui.interact(lr, egui::Id::new(("cz-label", g.key, e.id)), if enabled { Sense::click() } else { Sense::hover() });
-        crate::ui::chrome::fit_text(ui.painter(), row.left() + 52.0, row.center().y, e.label, FontId::proportional(kit::BODY), ink, lr.right() - row.left() - 56.0);
+        crate::ui::chrome::fit_text(ui.painter(), row.left() + 52.0, row.center().y, tr(e.label), FontId::proportional(kit::BODY), ink, lr.right() - row.left() - 56.0);
         if enabled && lresp.clicked() { out = Some(Do::Show(e.id, !on)); }
-        if !enabled { lresp.on_hover_text("Blenden Sie zuerst „Weitere“ bzw. „Einstellungen“ wieder ein."); }
+        if !enabled { lresp.on_hover_text(tr("Show More or Settings again first.")); }
         if let Some((pos, n)) = order {
-            for (k, (icon, up, tip)) in [("arrow-up-regular", true, "Nach oben"), ("arrow-down-regular", false, "Nach unten")].into_iter().enumerate() {
+            for (k, (icon, up, tip)) in [("arrow-up-regular", true, tr("Move up")), ("arrow-down-regular", false, tr("Move down"))].into_iter().enumerate() {
                 let can = if up { pos > 0 } else { pos + 1 < n };
                 let r = Rect::from_min_size(pos2(row.right() - 2.0 * ARROW - 4.0 + k as f32 * (ARROW + 4.0), row.center().y - ARROW / 2.0), Vec2::splat(ARROW));
                 let resp = ui.interact(r, egui::Id::new(("cz-move", g.key, e.id, up)), if can { Sense::click() } else { Sense::hover() });
                 if can && resp.hovered() { ui.painter().circle_filled(r.center(), ARROW / 2.0, kit::tok(t).btn_hover); }
                 self.icons.paint(ui, icon, Rect::from_center_size(r.center(), Vec2::splat(14.0)), if can { t.text1 } else { alpha(t.text2, 0.4) });
-                if can && resp.on_hover_text(format!("{tip}: {}", e.label)).clicked() { out = Some(Do::Move(pos, up)); }
+                if can && resp.on_hover_text(format!("{tip}: {}", tr(e.label))).clicked() { out = Some(Do::Move(pos, up)); }
             }
         }
         out
@@ -61,7 +61,7 @@ impl App {
 
     fn customize_apply(&mut self, g: &'static Group, d: Do, now: f64) {
         match d {
-            Do::Show(id, show) => { if !cz::set_shown(&mut self.settings, g, id, show) { self.toast("„Einstellungen“ und „Weitere“ können nicht beide ausgeblendet werden.", now); return; } }
+            Do::Show(id, show) => { if !cz::set_shown(&mut self.settings, g, id, show) { self.toast(tr("Settings and More can't both be hidden."), now); return; } }
             Do::Move(pos, up) => cz::move_el(&mut self.settings, g, pos, up),
             Do::Reset => cz::reset(&mut self.settings, g),
         }

@@ -2,7 +2,7 @@
 use super::*;
 
 impl App {
-    /// Body of every tab but "Nachrichten".
+    /// Body of every tab but "Messages".
     pub(crate) fn space_tab_body(&mut self, b: &mut egui::Ui, t: &Th, space: &Space, person: Option<&Person>, msgs: &[Message], now: f64) {
         let ctx = b.ctx().clone();
         let mut s = st(&ctx);
@@ -21,14 +21,14 @@ impl App {
                     self.icons.paint(ui, "apps-regular", Rect::from_center_size(r.center(), Vec2::splat(48.0)), t.text2);
                     ui.add_space(8.0);
                     let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), Sense::hover());
-                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "Die Organisation, die Eigentümer dieses Bereichs ist, hat noch keine Apps aktiviert", FontId::proportional(15.0), t.text2);
+                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, tr("The organization that owns this space hasn't enabled apps yet"), FontId::proportional(15.0), t.text2);
                 });
             }
             ConvTab::Messages => {}
         }
     }
 
-    // Personen.
+    // People.
     pub(super) fn people_tab(&mut self, b: &mut egui::Ui, t: &Th, space: &Space, person: Option<&Person>, mut s: St, now: f64) {
         let ctx = b.ctx().clone();
         let mut list: Vec<Person> = self.space_people(space); // full list (loaded once), else the list's 10
@@ -38,16 +38,16 @@ impl App {
         let q = s.people_q.to_lowercase();
         list.retain(|p| q.is_empty() || p.name.to_lowercase().contains(&q) || p.email.to_lowercase().contains(&q));
         let area = b.max_rect();
-        // Header row: search pill 300 x 32 at the left, "Personen hinzufügen" pill at the right.
+        // Header row: search pill 300 x 32 at the left, "Add people" pill at the right.
         let head = Rect::from_min_size(area.min + Vec2::new(24.0, 14.0), Vec2::new(area.width() - 48.0, 32.0));
         let sr = Rect::from_min_size(head.min, Vec2::new(300.0_f32.min(head.width() - 190.0).max(160.0), 32.0));
         b.painter().rect_filled(sr, 16.0, t.search);
         self.icons.paint(b, "search-regular", Rect::from_center_size(sr.left_center() + Vec2::new(18.0, 0.0), Vec2::splat(16.0)), hex(0xEDEDED));
         let mut c = b.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(sr.min + Vec2::new(34.0, 0.0), sr.max - Vec2::new(12.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-        c.add(egui::TextEdit::singleline(&mut s.people_q).hint_text(RichText::new("Suchen").color(t.text2).size(14.5)).font(FontId::proportional(14.5)).frame(false).desired_width(sr.width() - 50.0));
+        c.add(egui::TextEdit::singleline(&mut s.people_q).hint_text(RichText::new(tr("Search")).color(t.text2).size(14.5)).font(FontId::proportional(14.5)).frame(false).desired_width(sr.width() - 50.0));
         put(&ctx, s.clone());
         if !space.direct {
-            let label = "Personen hinzufügen";
+            let label = tr("Add people");
             let tw = b.fonts(|f| f.layout_no_wrap(label.into(), semibold(14.0), t.white_btn_text).size().x);
             let br = Rect::from_min_size(pos2(head.right() - tw - 52.0, head.top()), Vec2::new(tw + 52.0, 32.0));
             let resp = b.interact(br, egui::Id::new("people-add-btn"), Sense::click());
@@ -64,7 +64,7 @@ impl App {
         let mut ctx_target: Option<(Person, Rect)> = None;
         crate::ui::widgets::vscroll().id_salt(("people-scroll", &space.id)).auto_shrink([false; 2]).show(&mut lst, |ui| {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
-            if list.is_empty() { ui.add_space(30.0); ui.label(RichText::new("Keine Ergebnisse").size(15.0).color(t.text2)); }
+            if list.is_empty() { ui.add_space(30.0); ui.label(RichText::new(tr("No results")).size(15.0).color(t.text2)); }
             for p in &list {
                 let mine = p.id == self.me.id || (!p.email.is_empty() && p.email.eq_ignore_ascii_case(&self.me.email));
                 let pp = self.live_person(p);
@@ -88,16 +88,16 @@ impl App {
         if let Some((id, name, email, status, anchor)) = ctx.data(|d| d.get_temp::<(String, String, String, String, Rect)>(egui::Id::new("people-ctx-target"))) {
             let p = Person { id, name, email, status };
             let mine = p.id == self.me.id || (!p.email.is_empty() && p.email.eq_ignore_ascii_case(&self.me.email));
-            let mut items = vec![Item::new("card", "Kontaktkarte anzeigen").icon("participant-regular").entry()];
-            if !mine { items.push(Item::new("chat", "Nachricht").icon("chat-regular").entry()); }
+            let mut items = vec![Item::new("card", tr("View contact card")).icon("participant-regular").entry()];
+            if !mine { items.push(Item::new("chat", tr("Message")).icon("chat-regular").entry()); }
             // Moderation ("Assign as moderator" / "Remove as moderator" / "Remove from space"): offered in an unmoderated space and to
             // moderators of a moderated one ("This is a moderated space. Only a moderator can …").
             let may = !space.direct && (!self.moderated(&space.id) || self.i_moderate(&space.id));
             if may {
                 items.push(Entry::Sep);
-                if self.is_moderator(&space.id, &p) { items.push(Item::new("unmod", "Als Moderator entfernen").icon("participant-remove-regular").entry()); }
-                else { items.push(Item::new("mod", "Als Moderator zuweisen").icon("participant-add-regular").entry()); }
-                if !mine { items.push(Item::new("remove", "Aus Bereich entfernen").icon("participant-remove-regular").danger().entry()); }
+                if self.is_moderator(&space.id, &p) { items.push(Item::new("unmod", tr("Remove as moderator")).icon("participant-remove-regular").entry()); }
+                else { items.push(Item::new("mod", tr("Assign as moderator")).icon("participant-add-regular").entry()); }
+                if !mine { items.push(Item::new("remove", tr("Remove from space")).icon("participant-remove-regular").danger().entry()); }
             }
             if let Some(a) = menu::webex_menu(&ctx, &mut self.icons, t, "people-ctx", anchor, Side::Below, Align::Left, false, &items) {
                 match a.as_str() {
@@ -112,17 +112,17 @@ impl App {
         }
     }
 
-    // Inhalt.
+    // Content.
     pub(super) fn content_tab(&mut self, b: &mut egui::Ui, t: &Th, msgs: &[Message], mut s: St, now: f64) {
         let _ = now;
         let ctx = b.ctx().clone();
         let area = b.max_rect();
-        // Sub-tabs "Dateien" / "Links" / "Whiteboards".
+        // Sub-tabs "Files" / "Links" / "Whiteboards".
         let trow = Rect::from_min_size(area.min + Vec2::new(24.0, 12.0), Vec2::new(area.width() - 48.0, 28.0));
         let mut h = b.new_child(egui::UiBuilder::new().max_rect(trow).layout(egui::Layout::left_to_right(egui::Align::Center)));
         h.spacing_mut().item_spacing.x = 8.0;
-        for (i, n) in ["Dateien", "Links", "Whiteboards"].iter().enumerate() {
-            if text_tab(&mut h, n, s.content == i as u8, t, t.tab_on).clicked() { s.content = i as u8; put(&ctx, s.clone()); }
+        for (i, n) in ["Files", "Links", "Whiteboards"].iter().enumerate() {
+            if text_tab(&mut h, tr(n), s.content == i as u8, t, t.tab_on).clicked() { s.content = i as u8; put(&ctx, s.clone()); }
         }
         let body = Rect::from_min_max(pos2(area.left(), trow.bottom() + 8.0), area.max);
         let mut lst = b.new_child(egui::UiBuilder::new().max_rect(body).layout(egui::Layout::top_down(egui::Align::Min)));
@@ -134,12 +134,12 @@ impl App {
                 0 => {
                     let files = files_of(msgs, self.client.is_none());
                     ui.add_space(4.0);
-                    ui.horizontal(|ui| { ui.add_space(24.0); ui.label(RichText::new("In den Nachrichten freigegebene Dateien").size(13.0).color(t.text2)); });
+                    ui.horizontal(|ui| { ui.add_space(24.0); ui.label(RichText::new(tr("Files shared in messages")).size(13.0).color(t.text2)); });
                     ui.add_space(6.0);
-                    if files.is_empty() { empty_state(ui, &mut self.icons, t, Some("files-192-cobalt-lime"), "Keine Dateien"); } // "Files Tab, No files" (QObject)
+                    if files.is_empty() { empty_state(ui, &mut self.icons, t, Some("files-192-cobalt-lime"), tr("No files")); }
                     for (i, f) in files.iter().enumerate() {
                         let sub = [f.who.clone(), f.when.clone(), size_text(f.size)].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · ");
-                        // File row: Download / In Ordner anzeigen / In Unterhaltung anzeigen, click = open.
+                        // File row: Download / Show in folder / Show in conversation, click = open.
                         match self.file_row(ui, t, f, &sub, i, now) {
                             Some("chat") => { to_msgs = true; ctx.data_mut(|d| d.insert_temp(egui::Id::new("msg-goto"), (f.msg.clone(), 0u8))); }
                             Some("view") => { to_msgs = true; ctx.data_mut(|d| d.insert_temp(egui::Id::new("lightbox"), f.key.clone())); }
@@ -150,7 +150,7 @@ impl App {
                 1 => {
                     let links = links_of(msgs);
                     ui.add_space(4.0);
-                    if links.is_empty() { empty_state(ui, &mut self.icons, t, Some("files-192-cobalt-lime"), "Keine Links"); } // "Links Tab, No links" (QObject)
+                    if links.is_empty() { empty_state(ui, &mut self.icons, t, Some("files-192-cobalt-lime"), tr("No links")); }
                     for l in &links {
                         let sub = [l.who.clone(), l.when.clone()].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · ");
                         let (open, show) = self.content_row(ui, t, "link-regular", &l.url, t.link, &sub);
@@ -158,13 +158,13 @@ impl App {
                         if show { to_msgs = true; }
                     }
                 }
-                _ => { ui.add_space(4.0); empty_state(ui, &mut self.icons, t, Some("whiteboards-192-cobalt-lime"), "Keine Whiteboards"); } // Webox's own wording
+                _ => { ui.add_space(4.0); empty_state(ui, &mut self.icons, t, Some("whiteboards-192-cobalt-lime"), tr("No whiteboards")); }
             }
         });
         if to_msgs { self.conv_tab = ConvTab::Messages; }
     }
 
-    /// One file / link row (56 pt, radius 12): icon disc, title, "Author · when · size", and on hover "In Unterhaltung anzeigen".
+    /// One file / link row (56 pt, radius 12): icon disc, title, "Author · when · size", and on hover "Show in conversation".
     /// Returns (row clicked, "show in conversation" clicked).
     pub(super) fn content_row(&mut self, ui: &mut egui::Ui, t: &Th, icon: &'static str, title: &str, title_col: Color32, sub: &str) -> (bool, bool) {
         let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 56.0), Sense::hover());
@@ -180,12 +180,12 @@ impl App {
         let right_w = if hot { 190.0 } else { 0.0 };
         super::super::chrome::fit_text(ui.painter(), r.left() + 56.0, r.center().y - 9.0, title, FontId::proportional(15.0), title_col, r.width() - 56.0 - right_w - 12.0);
         super::super::chrome::fit_text(ui.painter(), r.left() + 56.0, r.center().y + 11.0, sub, FontId::proportional(13.0), t.text2, r.width() - 56.0 - right_w - 12.0);
-        if hot { ui.painter().text(lr.right_center(), egui::Align2::RIGHT_CENTER, "In Unterhaltung anzeigen", FontId::proportional(13.5), t.link); }
+        if hot { ui.painter().text(lr.right_center(), egui::Align2::RIGHT_CENTER, tr("Show in conversation"), FontId::proportional(13.5), t.link); }
         (resp.clicked() && !lresp.hovered(), lresp.clicked())
     }
-    /// One file row of "Dateien": icon disc, name, "Author · when · size"; on hover the actions "Download", "In Ordner anzeigen"
-    /// once downloaded and "In Unterhaltung anzeigen"; a click opens the file (pictures open in the viewer); right click = the
-    /// file menu. While downloading the size line shows "Wird heruntergeladen… n %". Returns "chat" / "view" for the caller.
+    /// One file row of "Files": icon disc, name, "Author · when · size"; on hover the actions "Download", "Show in folder"
+    /// once downloaded and "Show in conversation"; a click opens the file (pictures open in the viewer); right click = the
+    /// file menu. While downloading the size line shows "Downloading… n %". Returns "chat" / "view" for the caller.
     /// Geometry as `content_row`.
     pub(super) fn file_row(&mut self, ui: &mut egui::Ui, t: &Th, f: &FileRow, sub: &str, i: usize, now: f64) -> Option<&'static str> {
         use crate::app::files::Phase;
@@ -197,8 +197,8 @@ impl App {
         let done = dl.as_ref().is_some_and(|d| d.phase == Phase::Done && d.path.exists());
         let busy = dl.as_ref().filter(|d| matches!(d.phase, Phase::Preparing | Phase::Uploading));
         // The actions at the right (links), from right to left.
-        let mut acts: Vec<(&'static str, &'static str)> = vec![("chat", "In Unterhaltung anzeigen")];
-        if !f.key.is_empty() { if done { acts.push(("folder", "In Ordner anzeigen")); } else if busy.is_none() { acts.push(("download", "Download")); } }
+        let mut acts: Vec<(&'static str, &'static str)> = vec![("chat", tr("Show in conversation"))];
+        if !f.key.is_empty() { if done { acts.push(("folder", tr("Show in folder"))); } else if busy.is_none() { acts.push(("download", tr("Download"))); } }
         let hot_area = resp.hovered() || super::super::widgets::hover_ok(ui, r);
         let mut x = r.right() - 8.0;
         let mut clicked: Option<&'static str> = None;
@@ -220,7 +220,7 @@ impl App {
         let disc = Rect::from_center_size(pos2(r.left() + 28.0, r.center().y), Vec2::splat(32.0));
         ui.painter().circle_filled(disc.center(), 16.0, t.avatar);
         self.icons.paint(ui, if f.image { "file-image-regular" } else { file_icon(&f.name) }, Rect::from_center_size(disc.center(), Vec2::splat(16.0)), t.avatar_text);
-        let sub = match busy { Some(d) => format!("Wird heruntergeladen… {} %", super::super::attach::percent(d.got, d.total)), None => sub.to_string() };
+        let sub = match busy { Some(d) => crate::trq!("Downloading… %1 %", super::super::attach::percent(d.got, d.total)), None => sub.to_string() };
         super::super::chrome::fit_text(ui.painter(), r.left() + 56.0, r.center().y - 9.0, &f.name, FontId::proportional(15.0), t.text1, r.width() - 56.0 - used - 12.0);
         super::super::chrome::fit_text(ui.painter(), r.left() + 56.0, r.center().y + 11.0, &sub, FontId::proportional(13.0), t.text2, r.width() - 56.0 - used - 12.0);
         let k_menu = format!("file-row-menu-{i}-{}", f.key);
@@ -254,8 +254,8 @@ impl App {
         let (st_, pn) = (space.title.to_lowercase(), person.map(|p| p.name.to_lowercase()).unwrap_or_default());
         let list: Vec<Meeting> = self.meetings.iter().filter(|m| { let mt = m.title.to_lowercase(); (!st_.is_empty() && mt.contains(&st_)) || (!pn.is_empty() && mt.contains(&pn)) }).cloned().collect();
         let area = b.max_rect();
-        // "Meeting starten" top right: a placeholder toast.
-        let label = "Meeting starten";
+        // "Start meeting" top right: a placeholder toast.
+        let label = tr("Start meeting");
         let tw = b.fonts(|f| f.layout_no_wrap(label.into(), semibold(14.0), Color32::WHITE).size().x);
         let br = Rect::from_min_size(pos2(area.right() - 24.0 - tw - 52.0, area.top() + 14.0), Vec2::new(tw + 52.0, 32.0));
         let resp = b.interact(br, egui::Id::new("meeting-start-btn"), Sense::click());
@@ -263,13 +263,13 @@ impl App {
         b.painter().rect_filled(br, 16.0, if resp.is_pointer_button_down_on() { hex(0x17422C) } else if resp.hovered() { hex(0x1C5E3D) } else { hex(0x248052) });
         self.icons.paint(b, "video-regular", Rect::from_center_size(pos2(br.left() + 21.0, br.center().y), Vec2::splat(16.0)), Color32::WHITE);
         b.painter().text(pos2(br.left() + 36.0, br.center().y), egui::Align2::LEFT_CENTER, label, semibold(14.0), Color32::WHITE);
-        if resp.clicked() { self.toast("Das Starten von Meetings ist in dieser Version nicht verfügbar", now); }
+        if resp.clicked() { self.toast(tr("Starting meetings is not available in this version"), now); }
         let body = Rect::from_min_max(pos2(area.left(), br.bottom() + 10.0), area.max);
         let mut lst = b.new_child(egui::UiBuilder::new().max_rect(body).layout(egui::Layout::top_down(egui::Align::Min)));
         lst.set_clip_rect(body.intersect(b.clip_rect()));
         crate::ui::widgets::vscroll().id_salt("meetings-scroll").auto_shrink([false; 2]).show(&mut lst, |ui| {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
-            if list.is_empty() { empty_state(ui, &mut self.icons, t, Some("desert-open-results-192-cobalt-lime"), "Keine Meetings angesetzt"); } // pack: CustomCalendar
+            if list.is_empty() { empty_state(ui, &mut self.icons, t, Some("desert-open-results-192-cobalt-lime"), tr("No meetings scheduled")); }
             for m in &list {
                 let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 52.0), Sense::hover());
                 let r = Rect::from_min_max(full.min + Vec2::new(16.0, 0.0), pos2(full.max.x - 16.0, full.min.y + 50.0));
@@ -286,7 +286,7 @@ impl App {
                 let fill = if m.link.is_empty() { t.ink_a(0.12) } else if jresp.is_pointer_button_down_on() { hex(0x17422C) } else if jresp.hovered() { hex(0x1C5E3D) } else { hex(0x248052) };
                 if jresp.hovered() && !m.link.is_empty() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 ui.painter().rect_filled(jr, 14.0, fill);
-                ui.painter().text(jr.center(), egui::Align2::CENTER_CENTER, "Beitreten", semibold(14.0), if m.link.is_empty() { t.text2 } else { Color32::WHITE });
+                ui.painter().text(jr.center(), egui::Align2::CENTER_CENTER, tr("Join"), semibold(14.0), if m.link.is_empty() { t.text2 } else { Color32::WHITE });
                 if jresp.clicked() { system::open(&m.link); }
             }
         });

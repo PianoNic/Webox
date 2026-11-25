@@ -1,5 +1,5 @@
 //! The emoji picker popup: a dark popover with a pill search field, a scrolling grid grouped by category with German headings
-//! ("Kürzlich verwendet" first), a skin-tone selector and a row of eight category tabs at the bottom (the active tab shows a
+//! ("Recently used" first), a skin-tone selector and a row of eight category tabs at the bottom (the active tab shows a
 //! thick light bar on its top edge).
 //!
 //! Data: order, groups and German names/keywords come from Unicode `emoji-test.txt` + CLDR `de` annotations (generated into
@@ -9,7 +9,7 @@
 //!
 //! Reusable: `App::emoji_picker_toggle(ctx)` opens/closes it, `App::emoji_picker(ui, anchor, &mut |emoji| ..)` draws it
 //! (call every frame; it does nothing while closed) and reports a picked emoji through the callback. Picks are recorded in
-//! "Kürzlich verwendet" (settings JSON `emoji_recents`, newest first, at most 30).
+//! "Recently used" (settings JSON `emoji_recents`, newest first, at most 30).
 use crate::*;
 use std::sync::OnceLock;
 
@@ -30,7 +30,7 @@ fn entries() -> &'static Vec<Entry> {
     }).collect())
 }
 
-const TITLES: [&str; 8] = ["Kürzlich verwendet", "Smileys & Emotionen", "Personen & Gesten", "Essen & Trinken", "Reisen & Orte", "Natur & Aktivitäten", "Symbole & Objekte", "Flaggen"];
+const TITLES: [&str; 8] = ["Recently used", "Smileys & Emotions", "People & Gestures", "Food & Drink", "Travel & Places", "Nature & Activities", "Symbols & Objects", "Flags"];
 const TAB_ICONS: [&str; 8] = ["recents-regular", "emoji-happy-regular", "raise-hand-regular", "food-regular", "location-regular", "green-leaf-regular", "favorites-regular", "flag-regular"];
 /// Skin tones of the selector (#FFCC4C, #FFDCB9, #E6BB91, #C78E63, #A36134, #5C4437).
 const TONES: [u32; 6] = [0xFFCC4C, 0xFFDCB9, 0xE6BB91, 0xC78E63, 0xA36134, 0x5C4437];
@@ -91,7 +91,7 @@ impl App {
     }
 
     /// The same picker drawn INSIDE another popup (the GIF picker's "Emojis" tab): no frame / caret, laid out in `rect`, and it
-    /// never closes itself (Esc / outside clicks belong to the host). Picks are still recorded under "Kürzlich verwendet".
+    /// never closes itself (Esc / outside clicks belong to the host). Picks are still recorded under "Recently used".
     pub(crate) fn emoji_picker_embedded(&mut self, ui: &mut egui::Ui, rect: Rect, on_pick: &mut dyn FnMut(&str)) {
         self.emoji_picker_impl(ui, rect, on_pick, Some(rect), egui::Order::Foreground);
     }
@@ -129,11 +129,11 @@ impl App {
         };
         if q.is_empty() {
             let rec: Vec<usize> = recents.iter().filter_map(|r| all.iter().position(|e| &e.ch == r)).collect();
-            push_group(&mut rows, &mut flat, 0, TITLES[0], rec);
-            for g in 1..=7u8 { push_group(&mut rows, &mut flat, g as usize, TITLES[g as usize], (0..all.len()).filter(|i| all[*i].group == g).collect()); }
+            push_group(&mut rows, &mut flat, 0, crate::ui::widgets::tr(TITLES[0]), rec);
+            for g in 1..=7u8 { push_group(&mut rows, &mut flat, g as usize, crate::ui::widgets::tr(TITLES[g as usize]), (0..all.len()).filter(|i| all[*i].group == g).collect()); }
         } else {
             let hits: Vec<usize> = (0..all.len()).filter(|i| all[*i].hay.contains(&q)).collect();
-            push_group(&mut rows, &mut flat, 0, &format!("{} Suchergebnisse", hits.len()), hits);
+            push_group(&mut rows, &mut flat, 0, &crate::trq!("%1 search results", hits.len()), hits);
         }
         let row_h = |r: &Row| if matches!(r, Row::Head(..)) { HEAD_H } else { CELL };
         let total: f32 = rows.iter().map(row_h).sum::<f32>() + 8.0;
@@ -186,7 +186,7 @@ impl App {
             if focused { p.rect_stroke(sr, 14.0, Stroke::new(1.0_f32, t.tk("wx-emojiPickerSearch-border:focused")), egui::StrokeKind::Inside); }
             self.icons.paint(ui, "search-regular", Rect::from_center_size(sr.left_center() + Vec2::new(18.0, 0.0), Vec2::splat(15.0)), text2);
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(sr.min + Vec2::new(34.0, 0.0), sr.max - Vec2::new(54.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-            let r = c.add(egui::TextEdit::singleline(&mut st.query).id(search_id).hint_text(RichText::new("Suchen").color(text2).size(14.0)).frame(false).margin(Vec2::ZERO).font(FontId::proportional(14.0)).desired_width(sr.width() - 88.0));
+            let r = c.add(egui::TextEdit::singleline(&mut st.query).id(search_id).hint_text(RichText::new(crate::ui::widgets::tr("Search")).color(text2).size(14.0)).frame(false).margin(Vec2::ZERO).font(FontId::proportional(14.0)).desired_width(sr.width() - 88.0));
             if st.focus { r.request_focus(); st.focus = false; }
             if r.changed() { st.sel = None; st.jump = Some(0.0); }
             if !st.query.is_empty() {
@@ -225,7 +225,7 @@ impl App {
                     let c = pos2(area.center().x, area.top() + 90.0);
                     if q.is_empty() { return; }
                     self.icons.art(ui, "emojipicker_illustration", Rect::from_center_size(c, Vec2::splat(110.0)));
-                    let g = ui.painter().layout("Wir finden kein passendes Emoji. Versuche es mit etwas anderem, es gibt eine große Auswahl.".to_string(), FontId::proportional(13.5), text2, area.width() - 40.0);
+                    let g = ui.painter().layout(crate::ui::widgets::tr("We can't find a matching emoji. Try something else, there are plenty to choose from.").to_string(), FontId::proportional(13.5), text2, area.width() - 40.0);
                     ui.painter().galley(pos2(area.left() + 20.0, c.y + 70.0), g, text2);
                     return;
                 }
@@ -281,7 +281,7 @@ impl App {
                 if on { p.rect_filled(Rect::from_min_size(tr.min, Vec2::new(tw, 4.0)), 0.0, t.tk("wx-emojiPickerCategory-border-top:checked")); }
                 else if enabled && resp.hovered() { p.rect_filled(Rect::from_min_size(tr.min, Vec2::new(tw, 4.0)), 0.0, t.tk("wx-emojiPickerCategory-border-top:hovered")); }
                 self.icons.paint(ui, TAB_ICONS[tab], Rect::from_center_size(tr.center() + Vec2::new(0.0, 2.0), Vec2::splat(20.0)), if enabled || !q.is_empty() && tab != 0 { t.tk("wx-emojiPickerCategory-icon") } else { t.tk("wx-emojiPickerCategory-icon:disabled") });
-                if enabled { if resp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); } if resp.on_hover_text(TITLES[tab]).clicked() { st.jump = target; } }
+                if enabled { if resp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); } if resp.on_hover_text(crate::ui::widgets::tr(TITLES[tab])).clicked() { st.jump = target; } }
             }
 
             // Skin-tone chooser under the search field.

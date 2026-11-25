@@ -17,7 +17,7 @@ thread_local! {
     static SEND_AT: RefCell<Option<Rect>> = const { RefCell::new(None) };
 }
 
-/// Whether the OS asks for less motion (Windows: "Animationen in Windows anzeigen" off).
+/// Whether the OS asks for less motion (Windows: "Show animations in Windows" off).
 pub(crate) fn reduce_motion() -> bool {
     #[cfg(windows)]
     {
