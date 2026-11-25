@@ -227,7 +227,7 @@ impl App {
         if open_terms { system::open(giphy::TERMS_URL); }
         if clear_query { st.debounce.reset(); self.gif_show(&mut st, ""); st.focus = true; }
         if load_more {
-            if let Some(kind) = st.kind.clone() { let r = self.gif_rating(); let o = st.next_offset; fetch(&mut st, kind, o, &r); st.loading = true; }
+            if let Some(kind) = st.kind.clone() { let o = st.next_offset; fetch(&mut st, kind, o); st.loading = true; }
         }
         // Click outside (but not on the opening button) closes the popup.
         let pressed = ctx.input(|i| if i.pointer.any_pressed() { i.pointer.interact_pos() } else { None });

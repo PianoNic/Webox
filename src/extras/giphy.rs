@@ -1,8 +1,8 @@
 //! Giphy client for the composer's GIF picker (Giphy is called directly, not via Webex).
 //!
-//! Host `https://api.giphy.com/v1/gifs/`, query keys `rating` and `api_key`, trending on open with `offset 0, limit 30`,
+//! Host `https://api.giphy.com/v1/gifs/`, query key `api_key`, trending on open with `offset 0, limit 30`,
 //! renditions `fixed_width_downsampled` (grid thumbnails), `downsized_medium` (preview / the file that is shared) and
-//! `original_still`. Rating comes from the device policy `ucf-giphy-rating`; here the setting `gif_rating` (default "g").
+//! `original_still`. No `rating` is sent, so Giphy returns results of every rating (no content filter).
 //!
 //! API key: not in the source tree. `build.rs` embeds it from `secrets.toml` (`giphy_api_key`, see `crate::cloud::secrets`),
 //! and the env var `WEBOX_GIPHY_API_KEY` overrides it. Without one the picker shows its error state. The key is never
@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::sync::mpsc::Sender;
 
 pub const API_BASE: &str = "https://api.giphy.com/v1/gifs/";
-/// Stickers (same key / rating): `/v1/stickers/trending` and `/v1/stickers/search`. A shared sticker is sent exactly like a GIF.
+/// Stickers (same key): `/v1/stickers/trending` and `/v1/stickers/search`. A shared sticker is sent exactly like a GIF.
 pub const STICKER_BASE: &str = "https://api.giphy.com/v1/stickers/";
 pub const PAGE_LIMIT: u32 = 30;
 /// Cap for one downloaded thumbnail.
@@ -51,9 +51,8 @@ pub enum Event { Page { ticket: u64, res: Result<Page, FetchError> }, Thumb { id
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Category { pub name: String, pub query: String, pub thumb_url: String }
 
-pub fn categories_url(key: &str, rating: &str) -> String {
-    let rating = if ["g", "pg", "pg-13", "r"].contains(&rating) { rating } else { "g" };
-    format!("{API_BASE}categories?api_key={}&rating={rating}", pct(key))
+pub fn categories_url(key: &str) -> String {
+    format!("{API_BASE}categories?api_key={}", pct(key))
 }
 
 /// Parses `/v1/gifs/categories`: `data[] = { name, name_encoded, subcategories[], gif{ images{ fixed_width_downsampled{url} } } }`.
@@ -72,11 +71,11 @@ pub fn parse_categories(body: &str) -> Result<Vec<Category>, FetchError> {
 }
 
 /// Loads the home-screen categories on a worker thread (read-only GET).
-pub fn fetch_categories(tx: Sender<Event>, rating: String) {
+pub fn fetch_categories(tx: Sender<Event>) {
     std::thread::spawn(move || {
         let res = (|| {
             let key = api_key().ok_or(FetchError::NoKey)?;
-            let r = agent().get(&categories_url(&key, &rating)).call().map_err(|e| match e { ureq::Error::Status(c, _) => FetchError::Http(c), _ => FetchError::Network })?;
+            let r = agent().get(&categories_url(&key)).call().map_err(|e| match e { ureq::Error::Status(c, _) => FetchError::Http(c), _ => FetchError::Network })?;
             let mut body = String::new();
             std::io::Read::read_to_string(&mut std::io::Read::take(r.into_reader(), 4 * 1024 * 1024), &mut body).map_err(|_| FetchError::Network)?;
             parse_categories(&body)
@@ -94,14 +93,13 @@ pub fn pct(s: &str) -> String {
     o
 }
 
-/// Request URL. Giphy's `lang` only exists for search; `rating` is one of g, pg, pg-13, r.
-pub fn build_url(kind: &Kind, key: &str, rating: &str, lang: &str, limit: u32, offset: u32) -> String {
-    let rating = if ["g", "pg", "pg-13", "r"].contains(&rating) { rating } else { "g" };
+/// Request URL. Giphy's `lang` only exists for search. No `rating`: Giphy then returns every rating.
+pub fn build_url(kind: &Kind, key: &str, lang: &str, limit: u32, offset: u32) -> String {
     match kind {
-        Kind::Trending => format!("{API_BASE}trending?api_key={}&limit={limit}&offset={offset}&rating={rating}", pct(key)),
-        Kind::Search(q) => format!("{API_BASE}search?api_key={}&q={}&limit={limit}&offset={offset}&rating={rating}&lang={}", pct(key), pct(q), pct(lang)),
-        Kind::StickerTrending => format!("{STICKER_BASE}trending?api_key={}&limit={limit}&offset={offset}&rating={rating}", pct(key)),
-        Kind::StickerSearch(q) => format!("{STICKER_BASE}search?api_key={}&q={}&limit={limit}&offset={offset}&rating={rating}&lang={}", pct(key), pct(q), pct(lang)),
+        Kind::Trending => format!("{API_BASE}trending?api_key={}&limit={limit}&offset={offset}", pct(key)),
+        Kind::Search(q) => format!("{API_BASE}search?api_key={}&q={}&limit={limit}&offset={offset}&lang={}", pct(key), pct(q), pct(lang)),
+        Kind::StickerTrending => format!("{STICKER_BASE}trending?api_key={}&limit={limit}&offset={offset}", pct(key)),
+        Kind::StickerSearch(q) => format!("{STICKER_BASE}search?api_key={}&q={}&limit={limit}&offset={offset}&lang={}", pct(key), pct(q), pct(lang)),
     }
 }
 
@@ -139,11 +137,11 @@ fn agent() -> &'static ureq::Agent {
 }
 
 /// Loads one page on a worker thread; the answer arrives as `Event::Page` with the same `ticket`.
-pub fn fetch_page(tx: Sender<Event>, ticket: u64, kind: Kind, rating: String, offset: u32) {
+pub fn fetch_page(tx: Sender<Event>, ticket: u64, kind: Kind, offset: u32) {
     std::thread::spawn(move || {
         let res = (|| {
             let key = api_key().ok_or(FetchError::NoKey)?;
-            let url = build_url(&kind, &key, &rating, "de", PAGE_LIMIT, offset);
+            let url = build_url(&kind, &key, "de", PAGE_LIMIT, offset);
             let r = agent().get(&url).call().map_err(|e| match e { ureq::Error::Status(c, _) => FetchError::Http(c), _ => FetchError::Network })?;
             let mut body = String::new();
             std::io::Read::read_to_string(&mut std::io::Read::take(r.into_reader(), 4 * 1024 * 1024), &mut body).map_err(|_| FetchError::Network)?;
@@ -260,19 +258,19 @@ mod tests {
 
     #[test]
     fn builds_urls() {
-        assert_eq!(build_url(&Kind::Trending, "K3Y", "g", "de", 30, 0), "https://api.giphy.com/v1/gifs/trending?api_key=K3Y&limit=30&offset=0&rating=g");
-        let u = build_url(&Kind::Search("katze & hund ä".into()), "K3Y", "pg-13", "de", 30, 60);
-        assert_eq!(u, "https://api.giphy.com/v1/gifs/search?api_key=K3Y&q=katze%20%26%20hund%20%C3%A4&limit=30&offset=60&rating=pg-13&lang=de");
-        assert!(build_url(&Kind::Trending, "K", "nsfw", "de", 30, 0).ends_with("rating=g"), "unknown rating falls back to g");
+        assert_eq!(build_url(&Kind::Trending, "K3Y", "de", 30, 0), "https://api.giphy.com/v1/gifs/trending?api_key=K3Y&limit=30&offset=0");
+        let u = build_url(&Kind::Search("katze & hund ä".into()), "K3Y", "de", 30, 60);
+        assert_eq!(u, "https://api.giphy.com/v1/gifs/search?api_key=K3Y&q=katze%20%26%20hund%20%C3%A4&limit=30&offset=60&lang=de");
+        assert!(!u.contains("rating="), "no content filter");
     }
 
     #[test]
     fn sticker_urls() {
-        assert_eq!(build_url(&Kind::StickerTrending, "K3Y", "g", "de", 30, 0), "https://api.giphy.com/v1/stickers/trending?api_key=K3Y&limit=30&offset=0&rating=g");
-        let u = build_url(&Kind::StickerSearch("hallo welt".into()), "K3Y", "g", "de", 30, 30);
-        assert_eq!(u, "https://api.giphy.com/v1/stickers/search?api_key=K3Y&q=hallo%20welt&limit=30&offset=30&rating=g&lang=de");
+        assert_eq!(build_url(&Kind::StickerTrending, "K3Y", "de", 30, 0), "https://api.giphy.com/v1/stickers/trending?api_key=K3Y&limit=30&offset=0");
+        let u = build_url(&Kind::StickerSearch("hallo welt".into()), "K3Y", "de", 30, 30);
+        assert_eq!(u, "https://api.giphy.com/v1/stickers/search?api_key=K3Y&q=hallo%20welt&limit=30&offset=30&lang=de");
         assert!(Kind::StickerSearch("x".into()).is_sticker() && !Kind::Trending.is_sticker());
-        assert_eq!(categories_url("K3Y", "pg"), "https://api.giphy.com/v1/gifs/categories?api_key=K3Y&rating=pg");
+        assert_eq!(categories_url("K3Y"), "https://api.giphy.com/v1/gifs/categories?api_key=K3Y");
     }
 
     /// Shape of `GET /v1/gifs/categories` (each entry: name, name_encoded, subcategories[{name,name_encoded}], gif{images}).

@@ -5,21 +5,20 @@ fn kind_trending(tab: Tab) -> Kind { if tab == Tab::Stickers { Kind::StickerTren
 fn kind_search(tab: Tab, q: &str) -> Kind { if tab == Tab::Stickers { Kind::StickerSearch(q.to_string()) } else { Kind::Search(q.to_string()) } }
 
 impl State {
-    pub(super) fn fetch(&mut self, kind: Kind, offset: u32, rating: &str) {
+    pub(super) fn fetch(&mut self, kind: Kind, offset: u32) {
         if self.sample { return }
         let Some(tx) = self.tx.clone() else { return };
         self.ticket += 1;
         self.loading = true;
         self.error = None;
         self.kind = Some(kind.clone());
-        giphy::fetch_page(tx, self.ticket, kind, rating.to_string(), offset);
+        giphy::fetch_page(tx, self.ticket, kind, offset);
     }
 }
 
 impl Plugin {
     /// Resets the popup to the GIF tab's home screen (sample mode uses generated GIFs and no network).
     pub(in crate::extras::gif_extras) fn picker_open(&mut self, app: &mut App, ctx: &egui::Context) {
-        let rating = app.gif_rating();
         let st = &mut self.picker;
         st.query.clear(); st.focus = true; st.sel = None; st.debounce.reset(); st.error = None; st.scroll_to_sel = false;
         st.tab = Tab::Gifs; st.view = View::Home; st.gifs.clear(); st.total = 0; st.next_offset = 0; st.loading = false; st.kind = None;
@@ -47,9 +46,9 @@ impl Plugin {
             st.cats = Some(st.sample_cats.clone());
         } else {
             if st.cats.is_none() && !st.cats_loading {
-                if let Some(tx) = st.tx.clone() { st.cats_loading = true; giphy::fetch_categories(tx, rating.clone()); }
+                if let Some(tx) = st.tx.clone() { st.cats_loading = true; giphy::fetch_categories(tx); }
             }
-            if st.trending[0].is_none() { st.fetch(Kind::Trending, 0, &rating); } // preview of the "Angesagte GIFs" tile
+            if st.trending[0].is_none() { st.fetch(Kind::Trending, 0); } // preview of the "Angesagte GIFs" tile
         }
         // Screenshot runs only (WEBOX_SHOT_GIF together with WEBOX_SHOT_GIF_EXTRAS=1).
         if app.shot.is_some() && app.client.is_none() && !self.picker.shot_done {
@@ -93,7 +92,6 @@ impl Plugin {
 
     /// Opens one view of the GIF / Sticker tab.
     pub(in crate::extras::gif_extras) fn enter(&mut self, app: &mut App, view: View, q: &str) {
-        let rating = app.gif_rating();
         let favs: Vec<Gif> = if view == View::Favorites { let sticker = self.picker.tab == Tab::Stickers; self.favs(app).list(sticker).into_iter().map(|x| x.to_gif()).collect() } else { vec![] };
         let st = &mut self.picker;
         let sticker = st.tab == Tab::Stickers;
@@ -102,7 +100,7 @@ impl Plugin {
         match view {
             View::Home => {
                 st.query.clear(); st.kind = None;
-                if st.trending[idx].is_none() { st.fetch(kind_trending(st.tab), 0, &rating); } // preview of the trending tile
+                if st.trending[idx].is_none() { st.fetch(kind_trending(st.tab), 0); } // preview of the trending tile
             }
             View::Favorites => {
                 st.query.clear(); st.kind = None;
@@ -112,7 +110,7 @@ impl Plugin {
             View::Trending => {
                 st.query.clear();
                 if let Some((g, next, total)) = st.trending[idx].clone() { st.ticket += 1; st.gifs = g; st.next_offset = next; st.total = total; st.kind = Some(kind_trending(st.tab)); }
-                else { st.fetch(kind_trending(st.tab), 0, &rating); }
+                else { st.fetch(kind_trending(st.tab), 0); }
             }
             View::Search => {
                 st.query = q.to_string();
@@ -120,7 +118,7 @@ impl Plugin {
                     let pool = if sticker { &st.sample_stk } else { &st.sample_all };
                     st.gifs = pool.iter().filter(|g| g.title.to_lowercase().contains(&q.to_lowercase())).cloned().collect();
                     st.total = st.gifs.len() as u32; st.next_offset = st.total;
-                } else { st.fetch(kind_search(st.tab, q), 0, &rating); }
+                } else { st.fetch(kind_search(st.tab, q), 0); }
             }
         }
     }
