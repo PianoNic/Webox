@@ -81,6 +81,11 @@ impl App {
         }
     }
 
+    /// A message reminder ("Mich erinnern in") is due: "Erinnerungsbenachrichtigung", the author and the text; a click opens the space.
+    pub(crate) fn notify_message_reminder(&mut self, space: &str, author: &str, text: &str) {
+        self.notify.push(Toast::new(Kind::MessageReminder, author, text).kicker("Erinnerungsbenachrichtigung").space(space));
+    }
+
     /// Meeting reminder toasts from the meeting list ("Meeting-Erinnerung"; start times are the list's HH:MM, UTC like the list shows them).
     pub(super) fn meeting_reminders(&mut self) {
         if self.client.is_none() || self.dnd() || !self.nb("meeting_toast_enabled", true) { return; }

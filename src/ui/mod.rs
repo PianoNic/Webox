@@ -58,6 +58,7 @@ pub(crate) mod screen_capture;
 pub(crate) mod share_picker; // "Inhalte freigeben": the screen / window picker of screen sharing
 pub(crate) mod msg_actions;
 pub(crate) mod schedule_send;
+pub(crate) mod msg_remind;
 pub(crate) mod unfurl;
 pub(crate) mod meetcall;
 pub(crate) mod spaces_ext;

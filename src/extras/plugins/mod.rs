@@ -306,6 +306,30 @@ const METHODS: &[(&str, u32, Method)] = &[
     // `{"id"}` closes one clip, `{}` all of this plugin's.
     ("media.close", 1, |c, a| { crate::media::camera::hook::media_close(&c.plugin, a.get("id").and_then(Value::as_u64)); Value::Object(Map::new()) }),
 ];
+/// An entry a plugin adds to a message's menu (`message.menu`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct MenuItem {
+    /// The key of the plugin that offered it (`message.menu_action` goes back to it).
+    pub plugin: String,
+    pub id: String, pub label: String,
+    /// A Momentum icon name ("delete-regular"); empty = none.
+    pub icon: String,
+    pub danger: bool,
+}
+/// At most this many entries per plugin, labels at most this many characters.
+const MENU_MAX: usize = 8;
+const MENU_LABEL_MAX: usize = 80;
+/// The entries in a `message.menu` answer: `{"items": [...]}` or the bare list; entries without an id or a label are skipped.
+fn menu_items(plugin: &str, answer: &str) -> Vec<MenuItem> {
+    let v: Value = serde_json::from_str(answer).unwrap_or(Value::Null);
+    let list = v.get("items").unwrap_or(&v).as_array().cloned().unwrap_or_default();
+    let st = |x: &Value, k: &str| x.get(k).and_then(Value::as_str).unwrap_or("").trim().to_string();
+    list.iter().filter_map(|x| {
+        let (id, label) = (st(x, "id"), st(x, "label"));
+        (!id.is_empty() && !label.is_empty()).then(|| MenuItem { plugin: plugin.to_string(), id, label: label.chars().take(MENU_LABEL_MAX).collect(),
+            icon: st(x, "icon"), danger: x.get("danger").and_then(Value::as_bool).unwrap_or(false) })
+    }).take(MENU_MAX).collect()
+}
 fn ok_or_error(r: Result<(), String>) -> Value { match r { Ok(()) => Value::Object(Map::new()), Err(e) => serde_json::json!({ "error": e }) } }
 /// The events Webox fires: (name, version). A plugin receives those it lists in `Plugin::EVENTS`.
 const EVENTS: &[(&str, u32)] = &[
@@ -321,6 +345,13 @@ const EVENTS: &[(&str, u32)] = &[
     // A message's text changed, once per id and new text. Payload: `{"space","space_name","id","author","mine","old_text",
     // "new_text"}`. Answer `{"history": [...]}` (earlier texts, oldest first) to show them above the text. UI thread.
     ("message.edited", 1),
+    // A message's menu opens (right-click on the message or its "···" button). Payload: `{"space","id","deleted","edited",
+    // "mine"}` (`deleted`: a kept deleted message; `edited`: edited per the service or with earlier texts shown). Answer
+    // `{"items": [{"id","label","icon"?,"danger"?}]}` (or the bare list): entries appended to the menu after a separator.
+    // UI thread, once per opening.
+    ("message.menu", 1),
+    // One of the plugin's own entries was picked. Payload: `{"space","id","item"}`; sent only to the plugin that offered it.
+    ("message.menu_action", 1),
 ];
 /// `host.capabilities`: every method and event with its version, as one flat object.
 fn capabilities() -> Value {
@@ -597,6 +628,23 @@ impl Plugins {
 
     /// Fires event `name` (one of `EVENTS`) at every enabled plugin that subscribed to it: their answers.
     pub fn emit(&self, name: &str, json: &str) -> Vec<String> { self.active().filter_map(|l| l.event(name, json)).collect() }
+
+    /// `message.menu`: the entries the enabled plugins add to the menu of a message (`payload` as the event documents it), in
+    /// plugin order, each tagged with its plugin's key for `message_menu_action`. Without a subscribed plugin: none, and no
+    /// plugin is called.
+    pub fn message_menu(&self, payload: &Value) -> Vec<MenuItem> {
+        if !self.subscribed("message.menu") { return vec![]; }
+        let json = payload.to_string();
+        self.list.iter().filter(|e| e.enabled).filter_map(|e| e.loaded.as_ref().map(|l| (e, l)))
+            .filter_map(|(e, l)| l.event("message.menu", &json).map(|a| (e, a)))
+            .flat_map(|(e, a)| menu_items(&e.key, &a)).collect()
+    }
+
+    /// `message.menu_action`: the entry `item` of the plugin `plugin` was picked on message `id` of `space`. Sent to that plugin only.
+    pub fn message_menu_action(&self, plugin: &str, space: &str, id: &str, item: &str) {
+        let Some(l) = self.list.iter().filter(|e| e.enabled && e.key == plugin).find_map(|e| e.loaded.as_ref()) else { return };
+        l.event("message.menu_action", &serde_json::json!({ "space": space, "id": id, "item": item }).to_string());
+    }
 
     /// Whether an enabled plugin subscribed to event `name`.
     pub fn subscribed(&self, name: &str) -> bool { self.active().any(|l| l.c.on_event.is_some() && l.events.iter().any(|e| e == name)) }
@@ -1005,6 +1053,60 @@ pub(super) mod tests {
         let mut l = again.clone();
         p.reapply_kept("s1", &mut l);
         assert_eq!(rows(&l), [row("m1", "eins", "", 0, &[]), row("m2", "", GONE, 0, &[]), row("m3", "drei!", "", 0, &[])]);
+        drop(p);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Adds two entries to the menu of deleted messages (one without a label, skipped) and records the picks.
+    static MENU_SEEN: std::sync::Mutex<Vec<(String, serde_json::Value)>> = std::sync::Mutex::new(vec![]);
+    #[derive(Default)]
+    struct MenuPlugin;
+    impl collabhost_plugin_api::Plugin for MenuPlugin {
+        const NAME: &'static str = "MenuPlugin"; const AUTHOR: &'static str = ""; const VERSION: &'static str = ""; const DESCRIPTION: &'static str = "";
+        const EVENTS: &'static str = "message.menu message.menu_action";
+        fn on_event(&mut self, name: &str, payload: &str) -> Option<String> {
+            let v: serde_json::Value = serde_json::from_str(payload).unwrap();
+            MENU_SEEN.lock().unwrap().push((name.into(), v.clone()));
+            (name == "message.menu" && v["deleted"] == true).then(|| serde_json::json!({ "items": [
+                { "id": "forget", "label": "Gelöschte Nachricht entfernen", "icon": "delete-regular", "danger": true },
+                { "id": "nolabel" },
+                { "id": "clear", "label": "Protokoll dieses Bereichs leeren" }] }).to_string())
+        }
+    }
+
+    #[test]
+    fn plugin_menu_entries_round_trip() {
+        let (p, dir) = load_in_process::<MenuPlugin>(6);
+        let key = p.list.last().unwrap().key.clone();
+        // A normal message: the plugin is asked, adds nothing.
+        assert!(p.message_menu(&serde_json::json!({ "space": "s1", "id": "m1", "deleted": false, "edited": false, "mine": false })).is_empty());
+        let items = p.message_menu(&serde_json::json!({ "space": "s1", "id": "m2", "deleted": true, "edited": false, "mine": true }));
+        assert_eq!(items, [
+            super::MenuItem { plugin: key.clone(), id: "forget".into(), label: "Gelöschte Nachricht entfernen".into(), icon: "delete-regular".into(), danger: true },
+            super::MenuItem { plugin: key.clone(), id: "clear".into(), label: "Protokoll dieses Bereichs leeren".into(), icon: String::new(), danger: false },
+        ]);
+        p.message_menu_action(&key, "s1", "m2", "forget");
+        p.message_menu_action("someone-else", "s1", "m2", "forget"); // not this plugin's entry: never delivered
+        {
+            let seen = MENU_SEEN.lock().unwrap();
+            assert_eq!(seen.len(), 3);
+            assert_eq!(seen[1].1, serde_json::json!({ "space": "s1", "id": "m2", "deleted": true, "edited": false, "mine": true }));
+            assert_eq!(seen[2], ("message.menu_action".to_string(), serde_json::json!({ "space": "s1", "id": "m2", "item": "forget" })));
+        }
+        // The bare list is an answer too; more than MENU_MAX entries are cut.
+        let many: Vec<serde_json::Value> = (0..20).map(|i| serde_json::json!({ "id": format!("i{i}"), "label": "x" })).collect();
+        assert_eq!(super::menu_items("k", &serde_json::Value::Array(many).to_string()).len(), super::MENU_MAX);
+        assert!(super::menu_items("k", "kein json").is_empty());
+        drop(p);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn without_a_menu_plugin_the_menu_gets_nothing() {
+        let dir = std::env::temp_dir().join(format!("collabhost-nomenu-{}", std::process::id()));
+        let p = super::Plugins::with_root(&dir, dir.join("installed"));
+        assert!(p.message_menu(&serde_json::json!({ "space": "s1", "id": "m1", "deleted": true, "edited": true, "mine": true })).is_empty());
+        p.message_menu_action("x", "s1", "m1", "forget"); // nothing to deliver to, no panic
         drop(p);
         let _ = std::fs::remove_dir_all(dir);
     }

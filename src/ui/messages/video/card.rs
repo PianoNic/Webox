@@ -33,6 +33,8 @@ impl App {
         let r = Rect::from_min_size(at, sz);
         let id = Id::new(("msg-video", salt.0, salt.1, &a.key, cur_seq(&ctx)));
         let resp = ui.interact(r, id, Sense::click());
+        // Right click: the message's menu with the file's actions (Öffnen, Herunterladen, Speichern unter) on top.
+        if resp.secondary_clicked() { super::super::ctx_menu::note_hit(&ctx, salt.0, super::super::ctx_menu::Hit::File { key: a.key.clone(), name: a.name.clone() }); }
         let active = active_key().as_deref() == Some(a.key.as_str());
         // a fetch that has finished: play now
         if !active && wanted(&a.key) && matches!(src, Src::File(_)) { self.video_start(&ctx, a, now); }
