@@ -11,6 +11,30 @@ pub mod share;
 pub mod sounds;
 pub mod video;
 
+/// `gst::init()`, then a second try at the plugins that GStreamer's registry cache marks as broken (Linux). WebKit's
+/// sandboxed web process shares the user's registry (`~/.cache/gstreamer-1.0`) but sees only WebKit's own libraries, so
+/// when it scans first (after an install or update) it blacklists every plugin outside them, openh264enc and x264enc
+/// among them. GStreamer never retries a blacklisted file that hasn't changed, and Nix store files never change.
+/// Dropping those entries and rescanning (in the plugin scanner subprocess, as usual) brings back the ones that load here.
+#[cfg(target_os = "linux")]
+pub(crate) fn gst_init() -> Result<(), String> {
+    use gstreamer as gst;
+    gst::init().map_err(|e| format!("GStreamer: {e}"))?;
+    static RETRY: std::sync::Once = std::sync::Once::new();
+    RETRY.call_once(|| {
+        let reg = gst::Registry::get();
+        let blacklisted = || reg.plugins().into_iter().filter(|p| p.plugin_flags().contains(gst::PluginFlags::BLACKLISTED)).collect::<Vec<_>>();
+        let broken = blacklisted();
+        if broken.is_empty() { return; }
+        for p in &broken { reg.remove_plugin(p); }
+        match gst::update_registry() {
+            Ok(()) => eprintln!("GStreamer: retried {} blacklisted plugins, {} still fail to load", broken.len(), blacklisted().len()),
+            Err(e) => eprintln!("GStreamer: rescan of {} blacklisted plugins failed: {e}", broken.len()),
+        }
+    });
+    Ok(())
+}
+
 /// Tests: a CI runner (GitHub Actions and the like), where there is no speaker, microphone, camera or interactive desktop
 /// and often no GPU or media codecs. Tests that need any of them skip there with the reason; the pure tests always run.
 #[cfg(test)]
