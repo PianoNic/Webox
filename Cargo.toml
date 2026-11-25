@@ -5,7 +5,7 @@ resolver = "2"
 
 [package]
 name = "webox"
-version = "0.3.8"
+version = "0.3.9"
 edition = "2021"
 
 [[bin]]
