@@ -63,7 +63,7 @@ fn raw_caps(size: Option<(u32, u32)>, fps: u32) -> gst::Caps {
 }
 
 pub(super) fn run(src: &ShareSource, opts: Opts, out: &Out) -> Result<(), String> {
-    gst::init().map_err(|e| format!("GStreamer: {e}"))?;
+    crate::media::gst_init()?;
     let ctl = &out.ctl;
     // the encoder first, so a missing plugin fails before the desktop's share dialog comes up
     let encoder = pick_encoder()?;

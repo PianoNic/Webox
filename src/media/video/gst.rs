@@ -50,7 +50,7 @@ fn known_container(path: &Path) -> Result<(), String> {
 
 pub(super) fn open(path: &Path, max: (u32, u32), with_audio: bool) -> Result<(Box<dyn Source>, Info), String> {
     known_container(path)?;
-    gst::init().map_err(|e| format!("GStreamer: {e}"))?;
+    crate::media::gst_init()?;
     let abs = std::fs::canonicalize(path).map_err(|e| e.to_string())?;
     let uri = crate::app::files::file_uri(&abs);
     let pipeline = gst::ElementFactory::make("playbin").property("uri", &uri).build().map_err(|_| "GStreamer: playbin is missing (gstreamer1.0-plugins-base)".to_string())?;
