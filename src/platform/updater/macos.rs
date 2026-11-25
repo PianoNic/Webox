@@ -25,52 +25,52 @@ fn suffixed(p: &Path, s: &str) -> PathBuf {
 
 fn run(cmd: &mut Command, what: &str) -> Result<(), String> {
     let st = cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().map_err(|e| format!("{what}: {e}"))?;
-    if st.success() { Ok(()) } else { Err(format!("{what} fehlgeschlagen ({st})")) }
+    if st.success() { Ok(()) } else { Err(crate::trq!("{{0}} failed ({{1}})", what, st)) }
 }
 
 /// Swaps `new` in for `app`; `app` becomes `<app>.old`. The old bundle comes back when the second rename fails.
 pub fn swap_bundle(app: &Path, new: &Path) -> Result<(), String> {
     let old = old_bundle(app);
-    if old.exists() { std::fs::remove_dir_all(&old).map_err(|e| format!("Alte Sicherung lässt sich nicht löschen: {e}"))?; }
-    std::fs::rename(app, &old).map_err(|e| format!("Webox.app lässt sich nicht umbenennen: {e}"))?;
+    if old.exists() { std::fs::remove_dir_all(&old).map_err(|e| crate::trq!("The old backup can't be deleted: {{0}}", e))?; }
+    std::fs::rename(app, &old).map_err(|e| crate::trq!("Webox.app can't be renamed: {{0}}", e))?;
     if let Err(e) = std::fs::rename(new, app) {
         let back = std::fs::rename(&old, app);
         return Err(match back {
-            Ok(()) => format!("Neue Version lässt sich nicht einsetzen: {e}"),
-            Err(b) => format!("Neue Version lässt sich nicht einsetzen ({e}), Wiederherstellung fehlgeschlagen: {b}"),
+            Ok(()) => crate::trq!("The new version can't be put in place: {{0}}", e),
+            Err(b) => crate::trq!("The new version can't be put in place ({{0}}), restoring failed: {{1}}", e, b),
         });
     }
     Ok(())
 }
 
 pub fn run_install(rel: &Release, done: &AtomicU64, total: &AtomicU64) -> Result<(), String> {
-    let exe = std::env::current_exe().map_err(|e| format!("Programmdatei nicht gefunden: {e}"))?;
-    let app = bundle_of(&exe).ok_or("Webox läuft nicht aus Webox.app: bitte die App von der Release-Seite installieren.")?;
+    let exe = std::env::current_exe().map_err(|e| crate::trq!("Program file not found: {{0}}", e))?;
+    let app = bundle_of(&exe).ok_or_else(|| crate::trq!("Webox is not running from Webox.app: please install the app from the release page.").into_owned())?;
     let parent = app.parent().ok_or("Programmordner unbekannt")?;
     if !super::swap::folder_writable(&app) {
-        return Err(format!("Der Ordner {} ist schreibgeschützt. Laden Sie die neue Version von der Release-Seite.", parent.display()));
+        return Err(crate::trq!("The folder {{0}} is read-only. Download the new version from the release page.", parent.display()));
     }
-    let asset = super::release::platform_asset(&rel.assets, "macos", std::env::consts::ARCH).ok_or("Für macOS gibt es in dieser Version keinen Download.")?;
-    let sums = super::release::checksum_asset(&rel.assets, &asset.name).ok_or("Die Prüfsumme fehlt in dieser Version; Update abgebrochen.")?;
+    let asset = super::release::platform_asset(&rel.assets, "macos", std::env::consts::ARCH).ok_or_else(|| crate::trq!("This version has no download for macOS.").into_owned())?;
+    let sums = super::release::checksum_asset(&rel.assets, &asset.name).ok_or_else(|| crate::trq!("This version has no checksum; update canceled.").into_owned())?;
     let sha = super::release::parse_checksum(&super::net::text(&sums.url).map_err(|f| f.text())?, &asset.name)
-        .ok_or("Die Prüfsumme ist nicht lesbar; Update abgebrochen.")?;
+        .ok_or_else(|| crate::trq!("The checksum can't be read; update canceled.").into_owned())?;
     let version = rel.version.to_string();
     let stage = staging(&app, &version);
     let _ = std::fs::remove_dir_all(&stage);
-    std::fs::create_dir_all(&stage).map_err(|e| format!("Neue Version kann nicht abgelegt werden: {e}"))?;
+    std::fs::create_dir_all(&stage).map_err(|e| crate::trq!("The new version can't be stored: {{0}}", e))?;
     let res = (|| {
         let zip = stage.join(&asset.name);
         super::net::download(&asset.url, &zip, asset.size, done, total).map_err(|f| f.text())?;
         super::set(|s| s.phase = super::Phase::Installing);
         let got = super::swap::sha256_file(&zip)?;
-        if !got.eq_ignore_ascii_case(sha.trim()) { return Err("Prüfsumme (SHA-256) stimmt nicht; Update verworfen".to_string()); }
-        run(Command::new("/usr/bin/ditto").arg("-x").arg("-k").arg(&zip).arg(&stage), "Entpacken")?;
+        if !got.eq_ignore_ascii_case(sha.trim()) { return Err(crate::trq!("Checksum (SHA-256) does not match; update discarded").into_owned()); }
+        run(Command::new("/usr/bin/ditto").arg("-x").arg("-k").arg(&zip).arg(&stage), &crate::trq!("Unpacking"))?;
         let new = stage.join("Webox.app");
         if !new.join("Contents/MacOS/webox").is_file() { return Err("Im Download fehlt Webox.app".into()); }
         let _ = run(Command::new("/usr/bin/xattr").args(["-dr", "com.apple.quarantine"]).arg(&new), "xattr");
-        run(Command::new("/usr/bin/codesign").args(["--verify", "--deep", "--strict"]).arg(&new), "Signaturprüfung")?;
+        run(Command::new("/usr/bin/codesign").args(["--verify", "--deep", "--strict"]).arg(&new), &crate::trq!("Signature check"))?;
         super::swap::probe_version(&new.join("Contents/MacOS/webox"), &version)?;
-        if super::IN_CALL.load(std::sync::atomic::Ordering::Relaxed) { return Err("Während eines Anrufs wird nicht aktualisiert.".into()); }
+        if super::IN_CALL.load(std::sync::atomic::Ordering::Relaxed) { return Err(crate::trq!("No update during a call.").into_owned()); }
         swap_bundle(&app, &new)
     })();
     let _ = std::fs::remove_dir_all(&stage);
@@ -80,18 +80,18 @@ pub fn run_install(rel: &Release, done: &AtomicU64, total: &AtomicU64) -> Result
 /// Starts the new bundle (a new instance through Launch Services, with `--updated`).
 pub fn restart(args: &[String]) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let app = bundle_of(&exe).ok_or("kein App-Bundle")?;
+    let app = bundle_of(&exe).ok_or_else(|| crate::trq!("no app bundle").into_owned())?;
     Command::new("/usr/bin/open").arg("-n").arg(&app).arg("--args").arg(super::UPDATED_FLAG).args(args).spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
 /// Undoes a swap: the new bundle goes, `Webox.app.old` comes back.
 pub fn rollback() -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let app = bundle_of(&exe).ok_or("kein App-Bundle")?;
+    let app = bundle_of(&exe).ok_or_else(|| crate::trq!("no app bundle").into_owned())?;
     let old = old_bundle(&app);
-    if !old.exists() { return Err("Keine Sicherung vorhanden".into()); }
+    if !old.exists() { return Err(crate::trq!("No backup there").into_owned()); }
     let _ = std::fs::remove_dir_all(&app);
-    std::fs::rename(&old, &app).map_err(|e| format!("Wiederherstellung fehlgeschlagen: {e}"))
+    std::fs::rename(&old, &app).map_err(|e| crate::trq!("Restoring failed: {{0}}", e))
 }
 
 /// At start: deletes `Webox.app.old` and unfinished staging folders.

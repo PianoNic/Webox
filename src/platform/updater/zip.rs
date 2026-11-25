@@ -7,7 +7,7 @@ fn u32_at(b: &[u8], i: usize) -> Option<u32> { b.get(i..i + 4).map(|s| u32::from
 
 /// The bytes of the first entry whose file name (last path part) equals `name`, ignoring case. `cap` limits the unpacked size.
 pub fn extract(zip: &[u8], name: &str, cap: u64) -> Result<Vec<u8>, String> {
-    let bad = || "Archiv beschädigt".to_string();
+    let bad = || crate::trq!("Archive damaged").into_owned();
     // End of central directory: the last "PK\x05\x06" within the final 64 KiB + 22 bytes.
     let from = zip.len().saturating_sub(65_557);
     let eocd = (from..zip.len().saturating_sub(21)).rev().find(|&i| zip[i..i + 4] == [0x50, 0x4b, 0x05, 0x06]).ok_or_else(bad)?;
@@ -24,7 +24,7 @@ pub fn extract(zip: &[u8], name: &str, cap: u64) -> Result<Vec<u8>, String> {
         let entry = String::from_utf8_lossy(zip.get(p + 46..p + 46 + n).ok_or_else(bad)?).replace('\\', "/");
         p += 46 + n + e + c;
         if !entry.rsplit('/').next().is_some_and(|f| f.eq_ignore_ascii_case(name)) { continue; }
-        if usize_ > cap { return Err(format!("{name} ist größer als erlaubt")); }
+        if usize_ > cap { return Err(crate::trq!("{{0}} is larger than allowed", name)); }
         if u32_at(zip, local) != Some(0x0403_4b50) { return Err(bad()); }
         let data_at = local + 30 + u16_at(zip, local + 26).ok_or_else(bad)? + u16_at(zip, local + 28).ok_or_else(bad)?;
         let raw = zip.get(data_at..data_at + csize).ok_or_else(bad)?;
@@ -35,7 +35,7 @@ pub fn extract(zip: &[u8], name: &str, cap: u64) -> Result<Vec<u8>, String> {
                 flate2::read::DeflateDecoder::new(raw).take(cap + 1).read_to_end(&mut out).map_err(|_| bad())?;
                 out
             }
-            m => return Err(format!("Packverfahren {m} wird nicht unterstützt")),
+            m => return Err(crate::trq!("Compression method {{0}} is not supported", m)),
         };
         let mut h = flate2::Crc::new();
         h.update(&out);

@@ -51,7 +51,7 @@ pub(super) fn unavailable() -> Option<String> {
     if permitted() { return None; }
     static ASKED: std::sync::Once = std::sync::Once::new();
     ASKED.call_once(|| { unsafe { CGRequestScreenCaptureAccess(); } });
-    Some("Bildschirmfreigabe nicht erlaubt: Erlauben Sie Webox unter Systemeinstellungen > Datenschutz & Sicherheit > Bildschirm- & Systemaudioaufnahme und starten Sie Webox danach neu.".into())
+    Some(crate::trq!("Screen sharing is not allowed: allow Webox under System Settings > Privacy & Security > Screen & System Audio Recording, then restart Webox.").into_owned())
 }
 
 /// A Retained moved from a completion handler's thread to the waiting one.
@@ -88,7 +88,7 @@ pub(super) fn sources() -> Vec<ShareSource> {
     for (i, d) in unsafe { c.displays() }.iter().enumerate() {
         let id = unsafe { d.displayID() };
         let size = unsafe { (CGDisplayPixelsWide(id) as u32, CGDisplayPixelsHigh(id) as u32) };
-        v.push(ShareSource { kind: Kind::Screen, handle: id as isize, index: i as u32, name: format!("Bildschirm {}", i + 1), app: String::new(), size, primary: id == main, minimized: false });
+        v.push(ShareSource { kind: Kind::Screen, handle: id as isize, index: i as u32, name: format!("{} {}", crate::trq!("Screen"), i + 1), app: String::new(), size, primary: id == main, minimized: false });
     }
     v.sort_by_key(|s| !s.primary);
     let scale = main_scale(&c);
@@ -183,16 +183,16 @@ struct Capture { stream: Retained<SCStream>, _sink: Retained<StreamSink>, latest
 impl Capture {
     /// Starts an SCStream of the screen or window `s`, delivering at most `fps` pictures of `size` pixels.
     fn start(s: &ShareSource, size: (u32, u32), fps: u32, cursor: bool) -> Result<Capture, String> {
-        let c = content().ok_or("ScreenCaptureKit: keine Bildschirminhalte (Bildschirmaufnahme nicht erlaubt?)")?;
+        let c = content().ok_or_else(|| format!("ScreenCaptureKit: {}", crate::trq!("no screen content (screen recording not allowed?)")))?;
         unsafe {
             let filter = match s.kind {
                 Kind::Screen => {
-                    let d: Retained<SCDisplay> = c.displays().iter().find(|d| d.displayID() as isize == s.handle).ok_or("Der Bildschirm ist nicht mehr da")?;
+                    let d: Retained<SCDisplay> = c.displays().iter().find(|d| d.displayID() as isize == s.handle).ok_or_else(|| crate::trq!("The screen is gone").into_owned())?;
                     let own: Vec<Retained<SCWindow>> = c.windows().iter().filter(|w| is_own(w)).collect();
                     SCContentFilter::initWithDisplay_excludingWindows(SCContentFilter::alloc(), &d, &NSArray::from_retained_slice(&own))
                 }
                 _ => {
-                    let w: Retained<SCWindow> = c.windows().iter().find(|w| w.windowID() as isize == s.handle).ok_or("Das Fenster ist nicht mehr da")?;
+                    let w: Retained<SCWindow> = c.windows().iter().find(|w| w.windowID() as isize == s.handle).ok_or_else(|| crate::trq!("The window is gone").into_owned())?;
                     SCContentFilter::initWithDesktopIndependentWindow(SCContentFilter::alloc(), &w)
                 }
             };
@@ -215,7 +215,7 @@ impl Capture {
             match rx.recv_timeout(Duration::from_secs(10)) {
                 Ok(None) => Ok(Capture { stream, _sink: sink, latest }),
                 Ok(Some(e)) => Err(format!("ScreenCaptureKit: {e}")),
-                Err(_) => Err("ScreenCaptureKit: keine Antwort".into()),
+                Err(_) => Err(format!("ScreenCaptureKit: {}", crate::trq!("no answer"))),
             }
         }
     }

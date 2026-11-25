@@ -33,7 +33,7 @@ impl App {
     /// A message arrived in `space`. Returns true when the main window is not in front, so the caller must not show the in-window toast:
     /// the OS-level toast (when the settings allow it) and the taskbar flash take over. With the window in front nothing changes.
     pub(crate) fn notify_incoming(&mut self, space: &str, m: &Message) -> bool {
-        if self.quiet_now() { return true; } // Ruhezeiten: no toast at all (ui/settings_effects.rs)
+        if self.quiet_now() { return true; } // quiet hours: no toast at all (ui/settings_effects.rs)
         if self.window_active() { return false; }
         if self.dnd() { return true; }
         let (title, direct) = self.spaces.iter().find(|s| s.id == space).map(|s| (s.title.clone(), s.direct)).unwrap_or_default();
@@ -42,16 +42,16 @@ impl App {
         if self.nb("notif_taskbar_flash", true) { self.notify.want_flash = true; }
         if !self.nb("notif_desktop", true) { return true; }
         let preview = self.nb("notif_preview", true);
-        let text = if preview { m.text.clone() } else { "Neue Nachricht".into() }; // "Neue Nachricht": Webox's own wording, the pack has no string for the hidden preview
+        let text = if preview { m.text.clone() } else { crate::trq!("New message").into_owned() }; // the hidden preview
         let file = m.text.starts_with('\u{1F4CE}'); // the data layer renders non-image files as "📎 name"
         let mut t = if mention {
             Toast::new(Kind::Mention, if direct { m.author.clone() } else { title }, if preview { text } else { String::new() })
-                .lead(if direct { "hat Sie erwähnt".to_string() } else { format!("{} hat Sie erwähnt", m.author) }, Tone::Mention) // pack: "{{0}} hat Sie erwähnt • {{1}}"
+                .lead(if direct { crate::trq!("mentioned you").into_owned() } else { crate::trq!("{{0}} mentioned you", m.author) }, Tone::Mention) // pack: "{{0}} mentioned you • {{1}}"
         } else if file {
             Toast::new(Kind::Message, if direct { m.author.clone() } else { title }, m.text.trim_start_matches('\u{1F4CE}').trim().to_string())
-                .lead(if direct { "Hat eine Datei freigegeben".to_string() } else { format!("{}: Hat eine Datei freigegeben", m.author) }, Tone::File)
+                .lead(if direct { crate::trq!("Shared a file").into_owned() } else { format!("{}: {}", m.author, crate::trq!("Shared a file")) }, Tone::File)
         } else if !m.parent.is_empty() {
-            Toast::new(Kind::Message, if direct { m.author.clone() } else { title }, text).lead(if direct { "Antwort".to_string() } else { format!("{}, Antwort", m.author) }, Tone::Reply)
+            Toast::new(Kind::Message, if direct { m.author.clone() } else { title }, text).lead(if direct { crate::trq!("Reply").into_owned() } else { format!("{}, {}", m.author, crate::trq!("Reply")) }, Tone::Reply)
         } else if direct { Toast::new(Kind::Message, m.author.clone(), text) }
         // A space message: space name, then the sender line, then the text.
         else { Toast::new(Kind::Message, title, text).lead(m.author.clone(), Tone::Reply) };
@@ -62,31 +62,31 @@ impl App {
 
     /// A plugin's toast (`ui.toast` / `host.toast`). In the window while it is in front; otherwise a desktop toast like a
     /// message's, because the in-window one is gone after 5 s and nobody sees it while Webox is behind other windows or in the
-    /// tray (an Auto-Antwort suggestion, a provider error). Ruhezeiten and Nicht stören keep it in the window.
+    /// tray (an auto-reply suggestion, a provider error). Quiet hours and Do not disturb keep it in the window.
     pub(crate) fn plugin_toast(&mut self, plugin: String, text: String, now: f64) {
         if self.window_active() || self.quiet_now() || self.dnd() { self.toast(format!("{plugin}: {text}"), now); return; }
         self.notify.push(Toast::new(Kind::Info, plugin, text));
     }
 
-    /// An incoming call rang out unanswered ("Entgangener Anruf", "Sie haben einen Anruf verpasst."). The rail badge counts it
+    /// An incoming call rang out unanswered ("Missed Call", "You missed a call."). The rail badge counts it
     /// regardless (ui/calls_page); this is the toast: in the window while it is in front, otherwise on the desktop.
     pub(crate) fn notify_missed_call(&mut self, name: &str, email: &str, now: f64) {
         match missed_call_note(self.quiet_now(), self.dnd(), self.window_active(), self.nb("notif_desktop", true)) {
             MissedNote::Silent => {}
-            MissedNote::InWindow => self.toast(format!("Entgangener Anruf: {name}"), now),
+            MissedNote::InWindow => self.toast(format!("{}: {name}", crate::trq!("Missed Call")), now),
             MissedNote::Desktop => {
                 if self.nb("notif_taskbar_flash", true) { self.notify.want_flash = true; }
-                self.notify.push(Toast::new(Kind::MissedCall, name, "Sie haben einen Anruf verpasst.").kicker("Entgangener Anruf").avatar(name, email).space(OPEN_CALLS));
+                self.notify.push(Toast::new(Kind::MissedCall, name, crate::trq!("You missed a call.")).kicker(&crate::trq!("Missed Call")).avatar(name, email).space(OPEN_CALLS));
             }
         }
     }
 
-    /// A message reminder ("Mich erinnern in") is due: "Erinnerungsbenachrichtigung", the author and the text; a click opens the space.
+    /// A message reminder ("Remind me in") is due: "Reminder Notification", the author and the text; a click opens the space.
     pub(crate) fn notify_message_reminder(&mut self, space: &str, author: &str, text: &str) {
-        self.notify.push(Toast::new(Kind::MessageReminder, author, text).kicker("Erinnerungsbenachrichtigung").space(space));
+        self.notify.push(Toast::new(Kind::MessageReminder, author, text).kicker(&crate::tr!("MessageReminderToast", "Reminder Notification")).space(space));
     }
 
-    /// Meeting reminder toasts from the meeting list ("Meeting-Erinnerung"; start times are the list's HH:MM, UTC like the list shows them).
+    /// Meeting reminder toasts from the meeting list ("Meeting reminder"; start times are the list's HH:MM, UTC like the list shows them).
     pub(super) fn meeting_reminders(&mut self) {
         if self.client.is_none() || self.dnd() || !self.nb("meeting_toast_enabled", true) { return; }
         let ahead = self.settings["meeting_toast_minutes"].as_u64().unwrap_or(5) as i64;
@@ -100,29 +100,32 @@ impl App {
             if self.notify.fired.contains(&key) || due > ahead || due < -5 { continue; }
             self.notify.fired.insert(key.clone());
             self.notify.snoozed.remove(&key);
-            let body = match due { d if d <= 0 => "Startet jetzt".to_string(), 1 => "Startet in 1 Minute".into(), d => format!("Startet in {d} Minuten") }; // the pack only has "%1, startet jetzt." / "will start %2"
-            let mut t = Toast::new(Kind::MeetingReminder, m.title.clone(), body).kicker("Meeting-Erinnerung").button("join", "Beitreten", true).button("snooze", "Schlummern", false);
+            let body = match due { d if d <= 0 => crate::trq!("Starts now").into_owned(), 1 => crate::trq!("Starts in 1 minute").into_owned(), d => crate::trq!("Starts in {{0}} minutes", d) }; // the pack only has "%1, starting now." / "will start %2"
+            let mut t = Toast::new(Kind::MeetingReminder, m.title.clone(), body).kicker(&crate::trq!("Meeting reminder"))
+                .button("join", &crate::tr!("MeetingReminderToast", "Join"), true).button("snooze", &crate::trq!("Snooze"), false);
             t.key = key; t.link = Some(m.link.clone());
             self.notify.push(t);
         }
     }
 
     pub(super) fn sample_toast(&mut self, what: &str) {
-        let big = "Hast du kurz Zeit für das Review? \u{1F600} Ich schicke dir gleich die Unterlagen und den Link zum Board, damit wir vor dem Meeting alles durchgehen können.";
+        let big = "Do you have a minute for the review? \u{1F600} I'll send you the documents and the link to the board right away so we can go through everything before the meeting.";
         for w in what.split(',') {
             let t = match w.trim() {
                 "message" => Toast::new(Kind::Message, "Jonas Weber", big).avatar("Jonas Weber", "jonas@example.com").space("s2"),
-                "group" => Toast::new(Kind::Message, "Development", "Der Build ist wieder grün \u{1F44D}").lead("Timo Steiner", Tone::Reply).avatar("Timo Steiner", "timo@example.com").space("s6"),
-                "file" => Toast::new(Kind::Message, "Lina Roth", "Quartalsbericht.pdf").lead("Hat eine Datei freigegeben", Tone::File).avatar("Lina Roth", "lina@example.com").space("s10"),
-                "reply" => Toast::new(Kind::Message, "Projekt Alpha", "Ja, das passt so.").lead("Mara Lind, Antwort", Tone::Reply).avatar("Mara Lind", "mara@example.com").space("s11"),
-                "mention" => Toast::new(Kind::Mention, "Development", "@Alex bitte schau dir den Pull Request an, wenn du Zeit hast.").lead("Timo Steiner hat Sie erwähnt", Tone::Mention).avatar("Timo Steiner", "timo@example.com").space("s6"),
-                "reminder" => Toast::new(Kind::MeetingReminder, "Weekly Sync", "Startet in 5 Minuten").kicker("Meeting-Erinnerung").button("join", "Beitreten", true).button("snooze", "Schlummern", false),
-                "msgreminder" => Toast::new(Kind::MessageReminder, "Jonas Weber", "Bitte noch die Rechnung prüfen.").kicker("Erinnerungsbenachrichtigung").space("s2"),
-                "summary" => Toast::new(Kind::CallSummary, "Ihre Anrufübersicht ist fertig", "Jonas Weber \u{2022} 16.11.2026, 15:12").kicker("Webex-Anrufübersicht").button("view", "Ansicht", true),
-                "recording" => Toast::new(Kind::Recording, "Ihre Aufzeichnung ist bereit.", ""),
-                "whiteboard" => Toast::new(Kind::Whiteboard, "Webex-Whiteboard", "Sprint-Planung").button("open", "Öffnen", true),
-                "info" => Toast::new(Kind::Info, "Webox", "Das Anruf-Dock ist nicht verfügbar."),
-                "missed" => Toast::new(Kind::MissedCall, "Jonas Weber", "Sie haben einen Anruf verpasst.").kicker("Entgangener Anruf").avatar("Jonas Weber", "jonas@example.com").space(OPEN_CALLS),
+                "group" => Toast::new(Kind::Message, "Development", "The build is green again \u{1F44D}").lead("Timo Steiner", Tone::Reply).avatar("Timo Steiner", "timo@example.com").space("s6"),
+                "file" => Toast::new(Kind::Message, "Lina Roth", "Quarterly report.pdf").lead(crate::trq!("Shared a file"), Tone::File).avatar("Lina Roth", "lina@example.com").space("s10"),
+                "reply" => Toast::new(Kind::Message, "Project Alpha", "Yes, that works.").lead(format!("Mara Lind, {}", crate::trq!("Reply")), Tone::Reply).avatar("Mara Lind", "mara@example.com").space("s11"),
+                "mention" => Toast::new(Kind::Mention, "Development", "@Alex please have a look at the pull request when you have time.").lead(crate::trq!("{{0}} mentioned you", "Timo Steiner"), Tone::Mention).avatar("Timo Steiner", "timo@example.com").space("s6"),
+                "reminder" => Toast::new(Kind::MeetingReminder, "Weekly Sync", crate::trq!("Starts in {{0}} minutes", 5)).kicker(&crate::trq!("Meeting reminder"))
+                    .button("join", &crate::tr!("MeetingReminderToast", "Join"), true).button("snooze", &crate::trq!("Snooze"), false),
+                "msgreminder" => Toast::new(Kind::MessageReminder, "Jonas Weber", "Please check the invoice.").kicker(&crate::tr!("MessageReminderToast", "Reminder Notification")).space("s2"),
+                "summary" => Toast::new(Kind::CallSummary, crate::trq!("Your call summary is ready"), "Jonas Weber \u{2022} 11/16/2026, 3:12 PM").kicker(&crate::tr!("CallSummaryToast", "Webex call summary"))
+                    .button("view", &crate::tr!("CallSummaryToast", "View"), true),
+                "recording" => Toast::new(Kind::Recording, crate::trq!("Your recording is ready."), ""),
+                "whiteboard" => Toast::new(Kind::Whiteboard, crate::tr!("WhiteboardToast", "Webex whiteboard"), "Sprint planning").button("open", &crate::tr!("WhiteboardToast", "Open"), true),
+                "info" => Toast::new(Kind::Info, "Webox", "The calling dock is not available."),
+                "missed" => Toast::new(Kind::MissedCall, "Jonas Weber", crate::trq!("You missed a call.")).kicker(&crate::trq!("Missed Call")).avatar("Jonas Weber", "jonas@example.com").space(OPEN_CALLS),
                 _ => continue,
             };
             self.notify.push(t);
@@ -133,14 +136,15 @@ impl App {
     pub(super) fn tray_entries(&self) -> Vec<ui::menu::Entry> {
         use ui::menu::{Entry, Item};
         vec![
-            Item::new("dock", "Anruf-Dock einblenden").entry(), Item::new("health", "Zustandsüberprüfung").entry(), Item::new("feedback", "Feedback senden").entry(),
-            Item::new("about", "Info").entry(), Entry::Sep, Item::new("signout", "Abmelden").enabled(!self.need_login && self.client.is_some()).entry(), Item::new("quit", "Verlassen").entry(),
+            Item::new("dock", crate::trq!("Show Calling Dock").into_owned()).entry(), Item::new("health", crate::trq!("Health Checker").into_owned()).entry(),
+            Item::new("feedback", crate::trq!("Send Feedback").into_owned()).entry(), Item::new("about", crate::trq!("About").into_owned()).entry(), Entry::Sep,
+            Item::new("signout", crate::trq!("Sign Out").into_owned()).enabled(!self.need_login && self.client.is_some()).entry(), Item::new("quit", crate::trq!("Exit").into_owned()).entry(),
         ]
     }
 
     pub(super) fn pick_tray(&mut self, id: &str, ctx: &egui::Context, now: f64) {
         match id {
-            // The calling dock window; without separate call windows the calling features live on the "Anrufe" page.
+            // The calling dock window; without separate call windows the calling features live on the "Calling" page.
             "dock" => if !self.show_calling_dock(ctx) { self.show_main(ctx); self.set_tab(Tab::Calling); },
             "health" => { self.show_main(ctx); ui::menu::menu_open(ctx, ui::app_dialogs::HEALTH); }
             "feedback" => { self.show_main(ctx); ui::menu::menu_open(ctx, ui::app_dialogs::FEEDBACK); }
@@ -226,7 +230,7 @@ impl App {
             }
         }
         // Wayland can't hide a window (winit ignores Visible(false)): there the X minimizes instead (the tray / a notification
-        // brings it back through xdg-activation), so a running call goes on. Strg+Q / "Verlassen" (quitting) still quit.
+        // brings it back through xdg-activation), so a running call goes on. Ctrl+Q / "Exit" (quitting) still quit.
         // Without xdg-activation nothing could bring a minimized window back from the tray: the X quits there.
         #[cfg(target_os = "linux")]
         let (can_hide, can_restore) = (crate::platform::linux::session() != crate::platform::linux::Session::Wayland, crate::platform::linux::activation::available());
@@ -410,7 +414,8 @@ impl App {
                 if ts.dismissed { continue; }
                 let lead = ts.lead.as_ref().map(|l| l.0.as_str()).unwrap_or("");
                 let body = [ts.kicker.as_str(), lead, ts.body.as_str()].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join("\n");
-                let mut actions: Vec<(&str, &str)> = vec![("default", "Öffnen")];
+                let open = crate::trq!("Open");
+                let mut actions: Vec<(&str, &str)> = vec![("default", open.as_ref())];
                 actions.extend(ts.buttons.iter().map(|(id, l, _)| (*id, l.as_str())));
                 hub.native_wait.push((n::send(ctx, &ts.title, &body, &actions, 1), ts)); // urgency normal; 2 (critical) is for incoming calls
             }
@@ -489,8 +494,8 @@ fn at_word(low: &str, word: &str) -> bool {
 #[derive(Debug, PartialEq)]
 enum MissedNote { Silent, InWindow, Desktop }
 
-/// Where a missed call is announced. Ruhezeiten and Nicht stören mute it (the badge still counts it), like message toasts;
-/// so does "Desktop-Benachrichtigungen" off while the window is behind other windows.
+/// Where a missed call is announced. Quiet hours and Do not disturb mute it (the badge still counts it), like message toasts;
+/// so does "Desktop notifications" off while the window is behind other windows.
 fn missed_call_note(quiet: bool, dnd: bool, window_active: bool, desktop: bool) -> MissedNote {
     if quiet || dnd { MissedNote::Silent } else if window_active { MissedNote::InWindow } else if desktop { MissedNote::Desktop } else { MissedNote::Silent }
 }
@@ -515,23 +520,23 @@ mod tests {
     fn a_missed_call_is_a_desktop_toast_unless_muted_or_the_window_is_in_front() {
         assert_eq!(missed_call_note(false, false, false, true), MissedNote::Desktop);
         assert_eq!(missed_call_note(false, false, true, true), MissedNote::InWindow);
-        assert_eq!(missed_call_note(true, false, false, true), MissedNote::Silent, "Ruhezeiten");
-        assert_eq!(missed_call_note(false, true, false, true), MissedNote::Silent, "Nicht stören");
+        assert_eq!(missed_call_note(true, false, false, true), MissedNote::Silent, "quiet hours");
+        assert_eq!(missed_call_note(false, true, false, true), MissedNote::Silent, "do not disturb");
         assert_eq!(missed_call_note(false, false, false, false), MissedNote::Silent, "desktop notifications off");
     }
 
     #[test]
     fn mentions_are_whole_words() {
         let me = "Alex Muster";
-        assert!(mentions_me("@all bitte lesen", "", me) && mentions_me("(@Alex) schau mal", "", me));
-        assert!(mentions_me("danke @alex muster.", "", me) && mentions_me("@alle: Meeting", "", me));
+        assert!(mentions_me("@all please read", "", me) && mentions_me("(@Alex) have a look", "", me));
+        assert!(mentions_me("thanks @alex muster.", "", me) && mentions_me("@alle: Meeting", "", me));
         // An e-mail address or a longer word is no mention.
-        assert!(!mentions_me("schreib an x@allianz.com", "", me));
-        assert!(!mentions_me("max@all.example und @allison", "", me));
-        assert!(!mentions_me("kontakt: info@alex.ch", "", me));
+        assert!(!mentions_me("write to x@allianz.com", "", me));
+        assert!(!mentions_me("max@all.example and @allison", "", me));
+        assert!(!mentions_me("contact: info@alex.ch", "", me));
         assert!(!mentions_me("@all", "", ""), "no name known: nothing counts (as before)");
         // The rich text's @all mention counts, even when the plain text shows the name without "@".
-        assert!(mentions_me("All bitte lesen", "<spark-mention data-object-type=\"groupMention\" data-group-type=\"all\">All</spark-mention> bitte lesen", me));
+        assert!(mentions_me("All please read", "<spark-mention data-object-type=\"groupMention\" data-group-type=\"all\">All</spark-mention> please read", me));
         assert!(!mentions_me("data-object-type=\"groupMention\"", "data-object-type=\"groupMention\"", me), "only inside a mention tag");
     }
 }

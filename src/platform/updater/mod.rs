@@ -60,7 +60,7 @@ fn set(f: impl FnOnce(&mut Status)) { if let Ok(mut s) = STATE.lock() { f(&mut s
 
 /// Screenshot runs (`WEBOX_SHOT_UPDATE`): a made-up release 99.0.0, found or half downloaded. Never touches the network.
 pub fn sample(downloading: bool) {
-    let notes = "## Neu\n- Beispiel: schnellere Suche\n- Beispiel: neue Tastenkombinationen\n## Behoben\n- Beispiel: Anzeige von Bildern".to_string();
+    let notes = "## New\n- Example: faster search\n- Example: new keyboard shortcuts\n## Fixed\n- Example: showing pictures".to_string();
     let assets = ["webox-99.0.0-windows-x64.zip", "webox-99.0.0-linux-x86_64.tar.gz"].iter()
         .map(|n| release::Asset { name: n.to_string(), url: format!("https://github.com/PianoNic/Webox/releases/download/v99.0.0/{n}"), size: 0 }).collect();
     let rel = Release { version: semver::Version::new(99, 0, 0), notes, page: release::RELEASES_PAGE.into(), assets };
@@ -78,7 +78,7 @@ pub fn from_nix_store() -> bool {
 }
 
 /// The running program, for the swap.
-fn exe() -> Result<PathBuf, String> { std::env::current_exe().map_err(|e| format!("Programmdatei nicht gefunden: {e}")) }
+fn exe() -> Result<PathBuf, String> { std::env::current_exe().map_err(|e| crate::trq!("Program file not found: {{0}}", e)) }
 
 /// Checks for a newer release on a worker. `background`: from the daily timer (an "up to date" or an error stays silent).
 pub fn check(background: bool) {
@@ -129,13 +129,13 @@ fn run_install(rel: &Release) -> Result<(), String> {
     #[allow(unreachable_code)]
     let exe = exe()?;
     if !swap::folder_writable(&exe) {
-        return Err("Der Programmordner ist schreibgeschützt. Installieren Sie die neue Version mit dem Setup von der Release-Seite.".into());
+        return Err(crate::trq!("The program folder is read-only. Install the new version with the setup from the release page.").into_owned());
     }
     let asset = release::platform_asset(&rel.assets, std::env::consts::OS, std::env::consts::ARCH)
-        .ok_or("Für dieses System gibt es in dieser Version keinen Download.")?;
-    let sums = release::checksum_asset(&rel.assets, &asset.name).ok_or("Die Prüfsumme fehlt in dieser Version; Update abgebrochen.")?;
+        .ok_or_else(|| crate::trq!("This version has no download for this system.").into_owned())?;
+    let sums = release::checksum_asset(&rel.assets, &asset.name).ok_or_else(|| crate::trq!("This version has no checksum; update canceled.").into_owned())?;
     let sha = release::parse_checksum(&net::text(&sums.url).map_err(|f| f.text())?, &asset.name)
-        .ok_or("Die Prüfsumme ist nicht lesbar; Update abgebrochen.")?;
+        .ok_or_else(|| crate::trq!("The checksum can't be read; update canceled.").into_owned())?;
     let dir = std::env::temp_dir().join(format!("webox-update-{}", rel.version));
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let zip = dir.join(&asset.name);
@@ -143,7 +143,7 @@ fn run_install(rel: &Release) -> Result<(), String> {
         set(|s| s.phase = Phase::Installing);
         let version = rel.version.to_string();
         let new = swap::stage(&zip, &sha, &exe, |p| swap::probe_version(p, &version))?;
-        if IN_CALL.load(Ordering::Relaxed) { let _ = std::fs::remove_file(&new); return Err("Während eines Anrufs wird nicht aktualisiert.".into()); }
+        if IN_CALL.load(Ordering::Relaxed) { let _ = std::fs::remove_file(&new); return Err(crate::trq!("No update during a call.").into_owned()); }
         swap::swap(&exe, &new)
     });
     let _ = std::fs::remove_dir_all(&dir);
@@ -158,7 +158,7 @@ pub fn restart() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     if let Err(e) = macos::restart(&args) {
         let back = macos::rollback();
-        let msg = format!("Neustart fehlgeschlagen: {e}");
+        let msg = crate::trq!("Restart failed: {{0}}", e);
         set(|s| s.phase = Phase::Failed(msg.clone()));
         return back.and(Err(msg));
     } else { return Ok(()); }
@@ -167,7 +167,7 @@ pub fn restart() -> Result<(), String> {
         Ok(_) => Ok(()),
         Err(e) => {
             let back = swap::rollback(&exe);
-            let msg = format!("Neustart fehlgeschlagen: {e}");
+            let msg = crate::trq!("Restart failed: {{0}}", e);
             set(|s| s.phase = Phase::Failed(msg.clone()));
             back.and(Err(msg))
         }

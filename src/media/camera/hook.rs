@@ -245,7 +245,7 @@ pub fn cover(src: &[u8], sw: usize, sh: usize, dw: usize, dh: usize) -> Vec<u8> 
 fn still(path: &Path) -> Result<Option<(usize, usize, Vec<u8>)>, String> {
     let r = image::ImageReader::open(path).map_err(|e| e.to_string())?.with_guessed_format().map_err(|e| e.to_string())?;
     if r.format().is_none() { return Ok(None); }
-    let img = r.decode().map_err(|e| format!("Bild: {e}"))?.to_rgba8();
+    let img = r.decode().map_err(|e| format!("{}: {e}", crate::tr!("ImageRender", "Image")))?.to_rgba8();
     let (w, h) = img.dimensions();
     Ok(Some((w as usize, h as usize, img.into_raw())))
 }
@@ -261,7 +261,7 @@ pub struct Clip {
 impl Clip {
     /// Opens `path` for pictures of `w` x `h`. Blocks until the first picture is there (a video: up to 10 s).
     pub fn open(path: &Path, w: usize, h: usize) -> Result<Clip, String> {
-        if !(16..=3840).contains(&w) || !(16..=2160).contains(&h) { return Err("Größe ausserhalb 16x16 bis 3840x2160".into()); }
+        if !(16..=3840).contains(&w) || !(16..=2160).contains(&h) { return Err(crate::trq!("Size outside 16x16 to 3840x2160").into_owned()); }
         if let Some((sw, sh, px)) = still(path)? { return Ok(Clip { w, h, cur: cover(&px, sw, sh, w, h), pts: 0.0, rx: None }); }
         let (tx, rx) = sync_channel::<(f64, Vec<u8>)>(2);
         let (otx, orx) = channel::<String>();
@@ -276,7 +276,7 @@ impl Clip {
         }).map_err(|e| e.to_string())?;
         match rx.recv_timeout(Duration::from_secs(10)) {
             Ok((pts, cur)) => Ok(Clip { w, h, cur, pts, rx: Some(rx) }),
-            Err(_) => Err(orx.try_recv().unwrap_or_else(|_| "Video lässt sich nicht öffnen".into())),
+            Err(_) => Err(orx.try_recv().unwrap_or_else(|_| crate::trq!("The video can't be opened").into_owned())),
         }
     }
     pub fn is_still(&self) -> bool { self.rx.is_none() }
@@ -297,7 +297,7 @@ static SOURCE: Mutex<Option<(String, PathBuf)>> = Mutex::new(None);
 /// `owner` replaces the camera with the file at `path`; None brings the camera back (only from the plugin that set the file).
 /// The preview takes it into its key, so it reopens.
 pub fn set_source(owner: &str, path: Option<PathBuf>) -> Result<(), String> {
-    if let Some(p) = &path { if !p.is_file() { return Err(format!("Datei nicht gefunden: {}", p.display())); } }
+    if let Some(p) = &path { if !p.is_file() { return Err(crate::trq!("File not found: {{0}}", p.display())); } }
     let mut s = lock(&SOURCE);
     if path.is_some() || s.as_ref().is_some_and(|(o, _)| o == owner) { *s = path.map(|p| (owner.to_string(), p)); }
     Ok(())
@@ -338,7 +338,7 @@ impl Source for FileSource {
 pub fn open_source(path: &Path, max_h: u32) -> Result<Box<dyn Source>, Fail> {
     let (w, h) = file_size(max_h);
     let clip = Clip::open(path, w, h).map_err(|e| Fail::Other(format!("{}: {e}", path.display())))?;
-    let name = path.file_name().map_or_else(|| "Datei".into(), |n| n.to_string_lossy().into_owned());
+    let name = path.file_name().map_or_else(|| crate::tr!("FileTab", "File").into_owned(), |n| n.to_string_lossy().into_owned());
     Ok(Box::new(FileSource { clip, name, t0: Instant::now(), first: None, next_at: Instant::now() }))
 }
 
@@ -350,7 +350,7 @@ static NEXT_CLIP: AtomicU64 = AtomicU64::new(1);
 const CLIPS_MAX: usize = 4;
 
 pub fn media_open(owner: &str, path: &Path, w: usize, h: usize) -> Result<(u64, bool), String> {
-    if lock(&CLIPS).iter().filter(|c| c.1 == owner).count() >= CLIPS_MAX { return Err(format!("höchstens {CLIPS_MAX} offene Dateien")); }
+    if lock(&CLIPS).iter().filter(|c| c.1 == owner).count() >= CLIPS_MAX { return Err(crate::trq!("{{0}} open files at most", CLIPS_MAX)); }
     let clip = Clip::open(path, w, h)?;
     let still = clip.is_still();
     let id = NEXT_CLIP.fetch_add(1, Ordering::SeqCst);
@@ -363,8 +363,8 @@ pub fn media_open(owner: &str, path: &Path, w: usize, h: usize) -> Result<(u64, 
 pub fn media_read(owner: &str, id: u64, dst: &mut [u8], w: usize, h: usize, stride: usize) -> Result<f64, String> {
     let clip = lock(&CLIPS).iter().find(|c| c.0 == id && c.1 == owner).map(|c| c.2.clone()).ok_or("unbekannte id")?;
     let mut c = lock(&clip);
-    if (w, h) != (c.w, c.h) { return Err(format!("Grösse {}x{} erwartet", c.w, c.h)); }
-    if stride < w * 4 || dst.len() < stride * (h - 1) + w * 4 { return Err("Puffer zu klein".into()); }
+    if (w, h) != (c.w, c.h) { return Err(crate::trq!("Size {{0}}x{{1}} expected", c.w, c.h)); }
+    if stride < w * 4 || dst.len() < stride * (h - 1) + w * 4 { return Err(crate::trq!("Buffer too small").into_owned()); }
     c.advance(Duration::ZERO);
     for y in 0..h { dst[y * stride..y * stride + w * 4].copy_from_slice(&c.cur[y * w * 4..(y + 1) * w * 4]); }
     Ok(c.pts)

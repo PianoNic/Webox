@@ -43,7 +43,7 @@ use std::time::Duration;
 /// What a source is (the picker's two sections, plus the system dialog and the built-in test picture).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Kind {
-    /// A whole monitor ("Bildschirm").
+    /// A whole monitor ("Screen").
     Screen,
     /// One application window ("Anwendung").
     Window,

@@ -18,10 +18,10 @@ pub enum Fail { NoRelease, RateLimited, Offline, Status(u16), Other(String) }
 impl Fail {
     pub fn text(&self) -> String {
         match self {
-            Fail::NoRelease => "Es wurde noch keine Version veröffentlicht.".into(),
-            Fail::RateLimited => "GitHub hat zu viele Anfragen gezählt. Versuchen Sie es in einer Stunde erneut.".into(),
-            Fail::Offline => "Keine Verbindung zu GitHub. Prüfen Sie Ihre Internetverbindung.".into(),
-            Fail::Status(c) => format!("GitHub antwortet mit HTTP {c}."),
+            Fail::NoRelease => crate::trq!("No version has been published yet.").into_owned(),
+            Fail::RateLimited => crate::trq!("GitHub counted too many requests. Try again in an hour.").into_owned(),
+            Fail::Offline => crate::trq!("No connection to GitHub. Check your internet connection.").into_owned(),
+            Fail::Status(c) => crate::trq!("GitHub answers with HTTP {{0}}.", c),
             Fail::Other(s) => s.clone(),
         }
     }
@@ -42,14 +42,14 @@ fn host_ok(url: &str) -> bool {
 }
 
 fn get(url: &str, accept: &str, timeout: Duration) -> Result<ureq::Response, Fail> {
-    if !host_ok(url) { return Err(Fail::Other("Adresse außerhalb von GitHub abgelehnt".into())); }
+    if !host_ok(url) { return Err(Fail::Other(crate::trq!("Address outside GitHub refused").into_owned())); }
     let agent = crate::cloud::tls::agent_for(url).user_agent(USER_AGENT).timeout_connect(Duration::from_secs(10)).timeout(timeout).redirects(5).build();
     let resp = match agent.get(url).set("Accept", accept).call() {
         Ok(r) => r,
         Err(ureq::Error::Status(code, r)) => return Err(status_fail(code, r.header("x-ratelimit-remaining"))),
         Err(_) => return Err(Fail::Offline),
     };
-    if !host_ok(resp.get_url()) { return Err(Fail::Other("Weiterleitung außerhalb von GitHub abgelehnt".into())); }
+    if !host_ok(resp.get_url()) { return Err(Fail::Other(crate::trq!("Redirect outside GitHub refused").into_owned())); }
     Ok(resp)
 }
 
@@ -72,21 +72,21 @@ pub fn download(url: &str, dest: &Path, size: u64, done: &AtomicU64, total: &Ato
     let res = (|| {
         let resp = get(url, "application/octet-stream", Duration::from_secs(600))?;
         let len = resp.header("content-length").and_then(|v| v.parse::<u64>().ok()).unwrap_or(size);
-        if len > ARCHIVE_MAX { return Err(Fail::Other("Download größer als erlaubt".into())); }
+        if len > ARCHIVE_MAX { return Err(Fail::Other(crate::trq!("Download larger than allowed").into_owned())); }
         total.store(len, Ordering::Relaxed);
-        let mut f = std::fs::File::create(dest).map_err(|e| Fail::Other(format!("Datei kann nicht angelegt werden: {e}")))?;
+        let mut f = std::fs::File::create(dest).map_err(|e| Fail::Other(crate::trq!("The file can't be created: {{0}}", e)))?;
         let mut r = resp.into_reader().take(ARCHIVE_MAX + 1);
         let (mut buf, mut n) = (vec![0u8; 64 << 10], 0u64);
         loop {
             let k = r.read(&mut buf).map_err(|_| Fail::Offline)?;
             if k == 0 { break; }
             n += k as u64;
-            if n > ARCHIVE_MAX { return Err(Fail::Other("Download größer als erlaubt".into())); }
-            f.write_all(&buf[..k]).map_err(|e| Fail::Other(format!("Schreiben fehlgeschlagen: {e}")))?;
+            if n > ARCHIVE_MAX { return Err(Fail::Other(crate::trq!("Download larger than allowed").into_owned())); }
+            f.write_all(&buf[..k]).map_err(|e| Fail::Other(crate::trq!("Writing failed: {{0}}", e)))?;
             done.store(n, Ordering::Relaxed);
         }
         f.sync_all().map_err(|e| Fail::Other(e.to_string()))?;
-        if size > 0 && n != size { return Err(Fail::Other(format!("Download unvollständig ({n} von {size} Bytes)"))); }
+        if size > 0 && n != size { return Err(Fail::Other(crate::trq!("Download incomplete ({{0}} of {{1}} bytes)", n, size))); }
         Ok(())
     })();
     if res.is_err() { let _ = std::fs::remove_file(dest); }

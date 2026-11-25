@@ -42,7 +42,7 @@ pub(super) fn sources() -> Vec<ShareSource> {
 /// Why nothing can be shared, for the picker: on Wayland without a ScreenCast portal (and no `WEBOX_SHARE_X11`).
 pub(super) fn unavailable() -> Option<String> {
     (wayland() && !x11_wanted() && portal::available() == Some(false))
-        .then(|| "Bildschirmfreigabe nicht verfügbar: xdg-desktop-portal fehlt (oder bietet keine Bildschirmaufnahme)".into())
+        .then(|| crate::trq!("Screen sharing is not available: xdg-desktop-portal is missing (or offers no screen capture)").into_owned())
 }
 
 pub(super) fn thumbnail(s: &ShareSource, max: (u32, u32)) -> Option<(u32, u32, Vec<u8>)> {

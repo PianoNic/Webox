@@ -140,7 +140,7 @@ fn checksum_mismatch_aborts() {
     std::fs::write(&zp, make_zip(&[("webox.exe", b"new", true)])).unwrap();
     let probed = std::cell::Cell::new(false);
     let err = swap::stage(&zp, &"0".repeat(64), &exe, |_| { probed.set(true); Ok(()) }).unwrap_err();
-    assert!(err.contains("Prüfsumme"));
+    assert_eq!(err, crate::trq!("Checksum (SHA-256) does not match; update discarded"));
     assert!(!probed.get() && !swap::new_path(&exe).exists());
     assert_eq!(std::fs::read(&exe).unwrap(), b"old");
     let _ = std::fs::remove_dir_all(&d);
@@ -187,7 +187,7 @@ fn swap_failure_rolls_back() {
     std::fs::write(&exe, b"old").unwrap();
     // The staged file is missing, so moving it in fails after the old program was renamed: the rename is undone.
     let err = swap::swap(&exe, &d.join("gone.new")).unwrap_err();
-    assert!(err.contains("Neue Version"));
+    assert!(err.starts_with(crate::trq!("The new version can't be put in place: {{0}}", "").as_str()), "{err}");
     assert_eq!(std::fs::read(&exe).unwrap(), b"old");
     assert!(!swap::old_path(&exe).exists());
     // A restart that fails after a good swap: rollback() brings the old program back.

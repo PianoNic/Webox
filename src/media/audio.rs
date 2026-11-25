@@ -24,7 +24,7 @@ const MAX_CAPTURED: usize = 3 * FRAME;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Dev { pub name: String, pub default: bool }
 
-/// The user's choices (names; empty = system default). `smart` is Settings > Smart Audio > Mikrofonaudio (`smart_mic`).
+/// The user's choices (names; empty = system default). `smart` is Settings > Smart audio > Microphone audio (`smart_mic`).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Choice { pub input: String, pub output: String, pub ringtone: String, pub volume: f32, pub smart: SmartMic }
 
@@ -345,11 +345,16 @@ pub(crate) fn first_ok(cfgs: &[(cpal::StreamConfig, cpal::SampleFormat)], mut bu
     last
 }
 
+/// A device error, led by the device ("Microphone: ..." / "Speaker: ...", official labels).
+fn mic_err(e: impl std::fmt::Display) -> String { format!("{}: {e}", crate::tr!("ComputerAudioOptionsView", "Microphone")) }
+fn speaker_err(e: impl std::fmt::Display) -> String { format!("{}: {e}", crate::tr!("ComputerAudioOptionsView", "Speaker")) }
+fn unsupported(f: cpal::SampleFormat) -> String { crate::trq!("Format {{0}} is not supported", format!("{f:?}")) }
+
 fn open_streams(io: &Arc<Io>, input: Option<&str>, output: Option<&str>) -> Result<(Vec<cpal::Stream>, String), String> {
     let mut streams = vec![];
     let mut info = vec![];
     if let Some(dev) = input.and_then(|i| pick(i, true)) {
-        let cfgs = stream_configs(&dev, true, Some(BUF_FRAMES)).map_err(|e| format!("Mikrofon: {e}"))?;
+        let cfgs = stream_configs(&dev, true, Some(BUF_FRAMES)).map_err(mic_err)?;
         // The microphone chain runs on its own thread so it never holds up the device callback. The callback only mixes
         // down, resamples to 48 kHz and hands the block over; the thread ends when the stream (and so `blocks`) is dropped.
         let (blocks, rx) = channel::<Vec<f32>>();
@@ -370,7 +375,7 @@ fn open_streams(io: &Arc<Io>, input: Option<&str>, output: Option<&str>) -> Resu
                     while q.len() > MAX_CAPTURED { q.drain(..FRAME); }
                 }
             }
-        }).map_err(|e| format!("Mikrofon: {e}"))?;
+        }).map_err(mic_err)?;
         let build = |cfg: &cpal::StreamConfig, fmt: cpal::SampleFormat| -> Result<cpal::Stream, String> {
             let (ch, blocks) = (cfg.channels as usize, blocks.clone());
             let (mut lin, mut mono, mut res) = (Lin::new(cfg.sample_rate.0, RATE), Vec::<f32>::new(), Vec::<f32>::new());
@@ -388,17 +393,17 @@ fn open_streams(io: &Arc<Io>, input: Option<&str>, output: Option<&str>) -> Resu
                 cpal::SampleFormat::F32 => dev.build_input_stream(cfg, move |d: &[f32], _| handle(&mut d.iter().copied()), err, None),
                 cpal::SampleFormat::I16 => dev.build_input_stream(cfg, move |d: &[i16], _| handle(&mut d.iter().map(|&s| to_f32(s))), err, None),
                 cpal::SampleFormat::U16 => dev.build_input_stream(cfg, move |d: &[u16], _| handle(&mut d.iter().map(|&s| to_f32(s))), err, None),
-                f => return Err(format!("Mikrofon: Format {f:?} wird nicht unterstützt")),
-            }.map_err(|e| format!("Mikrofon: {e}"))
+                f => return Err(mic_err(unsupported(f))),
+            }.map_err(mic_err)
         };
         let st = first_ok(&cfgs, build)?;
         drop(blocks); // the stream holds the sender now; the chain's thread ends with it
-        st.play().map_err(|e| format!("Mikrofon: {e}"))?;
+        st.play().map_err(mic_err)?;
         streams.push(st);
         info.push(format!("In: {}", dev.name().unwrap_or_default()));
     }
     if let Some(dev) = output.and_then(|o| pick(o, false)) {
-        let cfgs = stream_configs(&dev, false, Some(BUF_FRAMES)).map_err(|e| format!("Lautsprecher: {e}"))?;
+        let cfgs = stream_configs(&dev, false, Some(BUF_FRAMES)).map_err(speaker_err)?;
         let build = |cfg: &cpal::StreamConfig, fmt: cpal::SampleFormat| -> Result<cpal::Stream, String> {
             let (rate, ch) = (cfg.sample_rate.0, cfg.channels as usize);
             let io2 = io.clone();
@@ -424,15 +429,15 @@ fn open_streams(io: &Arc<Io>, input: Option<&str>, output: Option<&str>) -> Resu
                 cpal::SampleFormat::F32 => dev.build_output_stream(cfg, move |d: &mut [f32], _| { let n = d.len(); play_into(n, Box::new(|i, v| d[i] = v)) }, err, None),
                 cpal::SampleFormat::I16 => dev.build_output_stream(cfg, move |d: &mut [i16], _| { let n = d.len(); play_into(n, Box::new(|i, v| d[i] = (v.clamp(-1.0, 1.0) * i16::MAX as f32) as i16)) }, err, None),
                 cpal::SampleFormat::U16 => dev.build_output_stream(cfg, move |d: &mut [u16], _| { let n = d.len(); play_into(n, Box::new(|i, v| d[i] = ((v.clamp(-1.0, 1.0) * 0.5 + 0.5) * u16::MAX as f32) as u16)) }, err, None),
-                f => return Err(format!("Lautsprecher: Format {f:?} wird nicht unterstützt")),
-            }.map_err(|e| format!("Lautsprecher: {e}"))
+                f => return Err(speaker_err(unsupported(f))),
+            }.map_err(speaker_err)
         };
         let st = first_ok(&cfgs, build)?;
-        st.play().map_err(|e| format!("Lautsprecher: {e}"))?;
+        st.play().map_err(speaker_err)?;
         streams.push(st);
         info.push(format!("Out: {}", dev.name().unwrap_or_default()));
     }
-    if streams.is_empty() { return Err("Keine Audiogeräte gefunden".into()); }
+    if streams.is_empty() { return Err(crate::trq!("No audio devices found").into_owned()); }
     Ok((streams, info.join(", ")))
 }
 

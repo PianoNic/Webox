@@ -193,7 +193,7 @@ pub struct Looping { src: Box<dyn Source>, path: std::path::PathBuf, max: (u32, 
 impl Looping {
     pub fn open(path: &Path, max: (u32, u32)) -> Result<Looping, String> {
         let (src, info) = backend::open(path, max, false)?;
-        if !info.has_video { return Err("keine Bildspur".into()); }
+        if !info.has_video { return Err(crate::trq!("no video track").into_owned()); }
         Ok(Looping { src, path: path.to_path_buf(), max, base: 0.0, end: 0.0, round: 0, loops: 0 })
     }
     /// The next picture (blocking while it decodes); after the last one the first one again.
@@ -209,7 +209,7 @@ impl Looping {
                 Some(_) => continue,
                 None => {
                     // a round without a single picture would loop for ever
-                    if self.round == 0 { return Err("kein Bild in der Datei".into()); }
+                    if self.round == 0 { return Err(crate::trq!("no picture in the file").into_owned()); }
                     // the next round starts one frame after the last picture
                     self.base = self.end + 1.0 / 30.0;
                     self.loops += 1;
