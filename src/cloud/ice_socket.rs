@@ -8,7 +8,9 @@
 //!
 //! It also notes the SSRCs that H.264 (the video lines' payload type) arrives from (`SeenSsrc`, the last two different
 //! ones: the far end's camera on `video/main` and its share on `video/slides`): the RTP header is not encrypted by SRTP,
-//! and with several m-lines webrtc-rs drops a stream whose SSRC the answer didn't declare.
+//! and with several m-lines webrtc-rs drops a stream whose SSRC the answer didn't declare. The same for Opus (the
+//! audio lines' payload type): the call offers all four m-lines from the start, so the server's audio is taken only once
+//! its SSRC is declared (`Media::redeclare`).
 use std::future::Future;
 use std::io::ErrorKind;
 use std::net::{IpAddr, SocketAddr};
@@ -21,7 +23,11 @@ use webrtc::util::{Conn, Error};
 
 type Fut<'a, T> = Pin<Box<dyn Future<Output = Result<T, Error>> + Send + 'a>>;
 
-pub struct IceSocket { sock: tokio::net::UdpSocket, video_ssrc: Arc<SeenSsrc>, video_pt: u8, errs: Errs }
+pub struct IceSocket { sock: tokio::net::UdpSocket, seen: Seen, errs: Errs }
+
+/// What the socket notes about arriving RTP: the SSRCs of the video lines' payload type and of the audio lines' (Opus).
+#[derive(Clone)]
+pub struct Seen { pub video: Arc<SeenSsrc>, pub video_pt: u8, pub audio: Arc<SeenSsrc>, pub audio_pt: u8 }
 
 /// The read errors in a row and when one was last logged (at most once a second).
 #[derive(Default)]
@@ -44,14 +50,16 @@ impl SeenSsrc {
     }
     /// Anything seen at all.
     pub fn any(&self) -> bool { self.last.load(Ordering::Relaxed) != 0 }
+    /// The SSRC seen last (0 = none).
+    pub fn newest(&self) -> u32 { self.last.load(Ordering::Relaxed) }
 }
 
-/// A UDP mux on `ip` (an ephemeral port). Needs a running tokio runtime. RTP with payload type `video_pt` leaves its SSRC
-/// in `video_ssrc`.
-pub fn mux(ip: IpAddr, video_ssrc: Arc<SeenSsrc>, video_pt: u8) -> std::io::Result<UDPNetwork> {
+/// A UDP mux on `ip` (an ephemeral port; the unspecified address = every interface). Needs a running tokio runtime.
+/// RTP of the video and audio payload types leaves its SSRC in `seen`.
+pub fn mux(ip: IpAddr, seen: Seen) -> std::io::Result<UDPNetwork> {
     let s = std::net::UdpSocket::bind(SocketAddr::new(ip, 0))?;
     s.set_nonblocking(true)?;
-    let conn = IceSocket { sock: tokio::net::UdpSocket::from_std(s)?, video_ssrc, video_pt, errs: Errs::default() };
+    let conn = IceSocket { sock: tokio::net::UdpSocket::from_std(s)?, seen, errs: Errs::default() };
     Ok(UDPNetwork::Muxed(UDPMuxDefault::new(UDPMuxParams::new(conn))))
 }
 
@@ -71,7 +79,7 @@ pub fn rtp_ssrc(b: &[u8], pt: u8) -> Option<u32> {
 impl IceSocket {
     fn note(&self, b: &[u8]) {
         self.errs.row.store(0, Ordering::Relaxed);
-        if let Some(s) = rtp_ssrc(b, self.video_pt) { self.video_ssrc.note(s); }
+        if let Some(s) = rtp_ssrc(b, self.seen.video_pt) { self.seen.video.note(s); } else if let Some(s) = rtp_ssrc(b, self.seen.audio_pt) { self.seen.audio.note(s); }
     }
 
     /// A read error that is read past: logged at most once a second (the kind only), and after a few in a row the next

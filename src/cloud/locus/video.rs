@@ -1,21 +1,19 @@
 //! Camera video in a call (calling parity C4 send, C5 receive; docs/calling-gap.md Batch 3), in the official client's
 //! order (`spark-windows-desktop-ui.dll`: "Connection::startVideoTrack()", "Connection::muteVideo()",
-//! "muteVideoWithTrackOpen", "Video track not ready when muteVideo", "<update_media>: roap flow" / "<update_media>: normal
-//! flow"; `call-flow-spec.md` §6):
+//! "muteVideoWithTrackOpen", "Video track not ready when muteVideo", "<update_media>: normal flow"; `call-flow-spec.md` §6):
 //!
-//! 1. The camera needs the video lines. Once per call one ROAP re-OFFER on the same session adds them (`video/main`
-//!    sendrecv, `audio/slides`, `video/slides`; `Media::add_lines` via `Session::negotiate_lines`, shared with the screen
-//!    share); the server ANSWERs, we send OK. Only with the call connected on this device and no other ROAP round open.
-//! 2. The camera starts on `video/main` (`Media::feed_camera`: capture, the plugins' frame filters, H.264) and Locus is told
-//!    `videoMuted: false` (`PUT {self.url}/media` without ROAP, `local_mute_body`); every later ROAP message carries the same
-//!    flag (`roap_local_sdp_av`).
+//! 1. `video/main` (sendrecv, H.264) is in the call's first offer, like the official client's four m-lines; nothing is
+//!    added or renegotiated for the camera.
+//! 2. On: once the call is connected on this device and its first ROAP round is done, the camera starts on `video/main`
+//!    (`Media::feed_camera`: capture, the plugins' frame filters, H.264) and Locus is told `videoMuted: false`
+//!    (`PUT {self.url}/media` without ROAP, `local_mute_body`); every later ROAP message carries the same flag
+//!    (`roap_local_sdp_av`).
 //! 3. Off: the camera stops, the line stays ("muteVideoWithTrackOpen"), `videoMuted: true`. On again: no negotiation.
 //! 4. Another camera mid-call: a new feed on the same line, no negotiation; the first picture is a key frame.
 //!
-//! The far end's camera: a participant other than us whose `status.videoStatus` is SENDRECV / SENDONLY (`peer_video`) makes
-//! sure the lines exist, so the server can send it; its pictures arrive on `video/main` and are decoded into
-//! `video_rx::MAIN`. When they arrive from an SSRC the answer didn't declare (seen on the ICE socket, nothing taken by
-//! webrtc-rs), the lines are offered once more to declare it, like a received share.
+//! The far end's camera: a participant other than us whose `status.videoStatus` is SENDRECV / SENDONLY (`peer_video`).
+//! Its pictures arrive on `video/main` and are decoded into `video_rx::MAIN`; when they come from an SSRC the answer
+//! didn't declare, it is declared on our side (`Session::media_tick`, `Media::redeclare`).
 //!
 //! The UI's side (call window): `CallReq::Video(Some(PreviewKey))` / `CallReq::Video(None)`, `Resp::CallVideo(VideoInfo)`,
 //! the pictures from `cloud::video_rx::{remote, self_view}`.
@@ -44,10 +42,8 @@ pub struct CallVideo {
     feed: Option<CamSend>,
     /// Locus knows our camera as on (`videoMuted: false` sent).
     unmuted: bool,
-    /// The far end's camera is on, since when, and whether the lines were offered again for its SSRC.
+    /// The far end's camera is on.
     remote: bool,
-    remote_since: Option<Instant>,
-    rx_reoffered: bool,
     /// The info last sent to the UI.
     shown: Option<VideoInfo>,
 }
@@ -83,18 +79,12 @@ pub fn fail_text(f: &Fail) -> String {
 
 /// The step to take for the camera now. Pure, for the tests.
 #[derive(Debug, PartialEq)]
-pub enum Step { Wait, Negotiate, Start, Reoffer }
+pub enum Step { Wait, Start }
 
-/// `up`: the call is connected on this device with no ROAP round open; `lines`: the video lines exist; `want`: the user
-/// wants the camera; `feeding`: it runs; `remote`: the far end's camera is on; `undeclared`: its pictures arrive from an
-/// SSRC webrtc-rs doesn't take (for `since` this long, `reoffered` already once).
-#[allow(clippy::too_many_arguments)]
-pub fn next_step(up: bool, lines: bool, want: bool, feeding: bool, remote: bool, undeclared: bool, since: Option<Duration>, reoffered: bool) -> Step {
-    if !up { return Step::Wait; }
-    if !lines { return if want || remote { Step::Negotiate } else { Step::Wait }; }
-    if want && !feeding { return Step::Start; }
-    if remote && undeclared && !reoffered && since.is_some_and(|s| s > share::RX_SSRC_WAIT) { return Step::Reoffer; }
-    Step::Wait
+/// `up`: the call is connected on this device with no ROAP round open; `lines`: the server answered the call's lines
+/// (`video/main` among them); `want`: the user wants the camera; `feeding`: it runs. Never a negotiation.
+pub fn next_step(up: bool, lines: bool, want: bool, feeding: bool) -> Step {
+    if up && lines && want && !feeding { Step::Start } else { Step::Wait }
 }
 
 impl Session {
@@ -120,8 +110,7 @@ impl Session {
         Ok(())
     }
 
-    /// Every tick and after each change: negotiates the lines when needed, starts the camera, follows a failing camera,
-    /// and declares the far end's camera SSRC once when it arrives undeclared.
+    /// Every tick and after each change: starts the camera once the call's media is up, follows a failing camera.
     pub(super) fn video_tick(&mut self) {
         let Some(c) = self.calls.cur.as_mut() else { return };
         if let Some(SendState::Failed(f)) = c.video.feed.as_ref().map(|f| f.state()) {
@@ -134,23 +123,16 @@ impl Session {
             return self.video_sync();
         }
         let Some(m) = c.media.as_ref() else { return self.video_sync() };
-        let up = c.answered && c.roap_done && c.lines_seq.is_none() && m.state() == MediaState::Connected;
-        let undeclared = m.undeclared_video().1.is_some() && m.rx_main.load(Ordering::Relaxed) == 0;
-        let since = c.video.remote_since.map(|t| t.elapsed());
-        let step = next_step(up, m.has_lines(), self.calls.video_want.is_some(), c.video.feed.is_some(), c.video.remote, undeclared, since, c.video.rx_reoffered);
-        match step {
-            Step::Wait => {}
-            Step::Negotiate => {
-                dbg_conn(&format!("call: video: adding the video lines ({})", if self.calls.video_want.is_some() { "our camera" } else { "the far end's camera" }));
-                if let Err(e) = self.negotiate_lines(false) { self.video_lines_failed(&e); }
-            }
-            Step::Reoffer => {
-                c.video.rx_reoffered = true;
-                dbg_conn("call: video: the far end's camera arrives from an undeclared SSRC, negotiating again");
-                if let Err(e) = self.negotiate_lines(true) { self.lines_failed(&e); }
-            }
-            Step::Start => self.video_start(),
+        let up = c.answered && c.roap_done && m.state() == MediaState::Connected;
+        let want = self.calls.video_want.is_some();
+        if up && want && c.video.feed.is_none() && !m.lines_negotiated() {
+            // the server never answered the call's video lines: say so once, the camera stays off
+            dbg_conn("call: video: the media server did not accept the video line, camera off");
+            self.calls.video_want = None;
+            let _ = self.out.send(Resp::Error(crate::trq!("Video not possible: the media server didn't accept this call's video line.").into_owned()));
+            return self.video_sync();
         }
+        if next_step(up, m.lines_negotiated(), want, c.video.feed.is_some()) == Step::Start { self.video_start(); }
         self.video_sync();
     }
 
@@ -164,17 +146,6 @@ impl Session {
             Err(e) => { self.calls.video_want = None; let _ = self.out.send(Resp::Error(crate::trq!("Video not possible: {{0}}", e))); return; }
         }
         self.video_mute(false);
-    }
-
-    /// Negotiating the video lines failed: a camera waiting for them is off again (the user is told once, by `lines_failed`
-    /// or here).
-    pub(super) fn video_lines_failed(&mut self, why: &str) {
-        let waiting = self.calls.cur.as_ref().is_some_and(|c| c.video.feed.is_none()) && self.calls.video_want.is_some();
-        if !waiting { return; }
-        self.calls.video_want = None;
-        dbg_conn(&format!("call: video: lines refused: {why}"));
-        let _ = self.out.send(Resp::Error(crate::trq!("Video not possible: {{0}}", why)));
-        self.video_sync();
     }
 
     /// Tells Locus whether our camera is sent (`videoMuted`), the "normal flow" without ROAP; only when it changes.
@@ -199,7 +170,7 @@ impl Session {
         let on = peer_video(l, &c.self_id);
         if on == c.video.remote { return; }
         dbg_conn(&format!("call: video: the far end's camera {}", if on { "on" } else { "off" }));
-        (c.video.remote, c.video.remote_since, c.video.rx_reoffered) = (on, on.then(Instant::now), false);
+        c.video.remote = on;
         if let Some(m) = c.media.as_ref() {
             if on { m.expect.fetch_or(crate::cloud::media::EXPECT_VIDEO, Ordering::Relaxed); } else { m.expect.fetch_and(!crate::cloud::media::EXPECT_VIDEO, Ordering::Relaxed); }
         }
@@ -250,18 +221,13 @@ mod tests {
     }
 
     #[test]
-    fn the_camera_waits_for_the_call_and_negotiates_once() {
+    fn the_camera_waits_for_the_call_and_never_negotiates() {
         use Step::*;
-        let s = Some(Duration::from_secs(5));
-        assert_eq!(next_step(false, false, true, false, false, false, None, false), Wait, "not connected yet (or a ROAP round open)");
-        assert_eq!(next_step(true, false, true, false, false, false, None, false), Negotiate, "camera on: lines first");
-        assert_eq!(next_step(true, false, false, false, true, false, None, false), Negotiate, "far end's camera: lines to receive it");
-        assert_eq!(next_step(true, false, false, false, false, false, None, false), Wait, "audio call: no video lines");
-        assert_eq!(next_step(true, true, true, false, false, false, None, false), Start, "lines there: camera starts, no new offer");
-        assert_eq!(next_step(true, true, true, true, false, false, None, false), Wait, "running");
-        assert_eq!(next_step(true, true, false, false, true, true, s, false), Reoffer, "far end's camera undeclared: offer once more");
-        assert_eq!(next_step(true, true, false, false, true, true, s, true), Wait, "only once");
-        assert_eq!(next_step(true, true, false, false, true, true, Some(Duration::from_secs(1)), false), Wait, "not at once");
+        assert_eq!(next_step(false, true, true, false), Wait, "not connected yet (or a ROAP round open)");
+        assert_eq!(next_step(true, false, true, false), Wait, "the line was not answered: nothing to start on");
+        assert_eq!(next_step(true, true, true, false), Start, "the first offer's video line: the camera starts, no new offer");
+        assert_eq!(next_step(true, true, true, true), Wait, "running");
+        assert_eq!(next_step(true, true, false, false), Wait, "camera off");
     }
 
     #[test]

@@ -21,11 +21,11 @@
 //!   ICE) and TURN discovery (`TURN_DISCOVERY_REQUEST`), both only needed when UDP to the media cluster is blocked; the
 //!   `reachability` data (media cluster choice). Interop with Locus' media servers is only tested against a second local
 //!   webrtc-rs peer.
-//! * **Camera video** (`video.rs`): the video lines (one ROAP re-OFFER, shared with the screen share), our camera on
+//! * **Camera video** (`video.rs`): all four m-lines are in the first offer (`Media::offer`); our camera on
 //!   `video/main` with `videoMuted` following it, the far end's camera decoded into `video_rx::MAIN`.
-//! * **Screen share**, sending: `share.rs` (capture, ROAP re-OFFER with the `slides` lines, floor request on the locus'
-//!   `content` media share). Receiving: the `content` floor GRANTED to the other side (`share_rx::remote_sharer`) makes
-//!   sure the `slides` lines exist; their H.264 is decoded in `cloud/share_rx.rs` and shown as the call window's stage.
+//! * **Screen share**, sending: `share.rs` (capture, floor request on the locus' `content` media share; the `slides`
+//!   lines exist from the first offer). Receiving: the `content` floor GRANTED to the other side (`share_rx::remote_sharer`);
+//!   its H.264 is decoded in `cloud/share_rx.rs` and shown as the call window's stage.
 //! * **Locus state** follows the official client's `SequenceManager`: full loci newer than ours replace it, deltas
 //!   (`baseSequence`) are merged onto the sequence they name, a delta we can't place (missed / out-of-order event) makes
 //!   us re-read the whole locus (`apply_event`). The call ends as soon as the other side declined or left
@@ -335,6 +335,53 @@ pub fn reasons(l: &Value) -> String {
     format!("state={} self_reason={} reasons={}", clean(&l["fullState"]["state"]), clean(&l["self"]["reason"]), others.join(","))
 }
 
+/// Every reason and state field of our own participant (`self`, its devices, their intents and media connections),
+/// as `path=VALUE`, for the call log when a call ends: which side ended it and why (e.g. `reason=MEDIA_INACTIVITY`,
+/// `devices.0.state=LEFT`). Only enum-like values (letters, digits, `_`, `-`, `.`), never urls, ids or names.
+pub fn self_reason_fields(l: &Value) -> String {
+    fn walk(v: &Value, path: &str, depth: usize, out: &mut Vec<String>) {
+        let enum_like = |s: &str| !s.is_empty() && s.len() <= 48 && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'));
+        match v {
+            Value::Object(m) => for (k, x) in m {
+                if out.len() >= 40 { return; }
+                let p = if path.is_empty() { k.clone() } else { format!("{path}.{k}") };
+                let kl = k.to_ascii_lowercase();
+                let wanted = kl.contains("reason") || kl.ends_with("state") || kl == "type" && path.contains("intent") || kl.contains("status");
+                match x {
+                    Value::String(s) if wanted && enum_like(s) => out.push(format!("{p}={s}")),
+                    Value::Bool(b) if wanted => out.push(format!("{p}={b}")),
+                    Value::Object(_) | Value::Array(_) if depth < 4 && !matches!(kl.as_str(), "person" | "identity" | "controls") => walk(x, &p, depth + 1, out),
+                    _ => {}
+                }
+            },
+            Value::Array(a) => for (i, x) in a.iter().enumerate().take(8) { walk(x, &format!("{path}.{i}"), depth + 1, out) },
+            _ => {}
+        }
+    }
+    let mut out = vec![];
+    walk(&l["self"], "self", 0, &mut out);
+    out.join(" ")
+}
+
+/// Why the call ended from Locus' side, for the toast (English), or None when the other side simply left / declined
+/// (the call window says that itself). `why`: the end state's reason (`call_state`).
+pub fn end_notice(l: &Value, why: &str) -> Option<String> {
+    let self_state = st(&l["self"], "state");
+    let reason = |v: &Value| v.as_str().unwrap_or("").chars().filter(|c| c.is_ascii_alphanumeric() || *c == '_').take(40).collect::<String>();
+    let mut r = reason(&l["self"]["reason"]);
+    if r.is_empty() { r = l["self"]["devices"].as_array().into_iter().flatten().map(|d| reason(&d["reason"])).find(|x| !x.is_empty()).unwrap_or_default(); }
+    let others_gone = l["participants"].as_array().into_iter().flatten()
+        .any(|p| st(p, "id") != st(&l["self"], "id") && matches!(st(p, "state").as_str(), "LEFT" | "DECLINED"));
+    if self_state == "LEFT" {
+        return Some(if r.is_empty() { "Webex removed this device from the call (no reason given).".into() } else { format!("Webex ended the call for this device (reason: {r}).") });
+    }
+    let fs = reason(&l["fullState"]["state"]);
+    if matches!(fs.as_str(), "INACTIVE" | "TERMINATING") && !others_gone && why != "declined" && why != "missed" && why != "unanswered" {
+        return Some(if r.is_empty() { format!("Webex ended the call (call state {fs}).") } else { format!("Webex ended the call (reason: {r}).") });
+    }
+    None
+}
+
 /// The other side looks gone only because every one of their devices shows LEFT, while they are still JOINED. That
 /// happens in passing (the call moves to another of their devices, their client rejoins after a network blip, a delta
 /// lists the old device first), so the call ends only when it is still so after `DEVICES_GONE_GRACE`.
@@ -368,13 +415,8 @@ struct Active {
     offer_at: Option<Instant>,
     /// Screen share of this call (`share.rs`), and whether the other side's share was already announced.
     share: Option<share::Share>,
-    /// The ROAP seq of our OFFER that (re)negotiates the share's lines while its ANSWER is awaited, and since when.
-    lines_seq: Option<u32>, lines_at: Option<Instant>,
-    /// The far end shares (its name), since when, and whether the lines were negotiated once more to declare the SSRC
-    /// its share really arrives from (`share_rx_tick`).
-    remote_share: Option<String>, remote_since: Option<Instant>, rx_reoffered: bool, rx_warned: bool,
-    /// The lines were offered once for the far end's current share (`share_rx_tick` doesn't keep trying).
-    rx_lines_tried: bool,
+    /// The far end shares (its name), since when, and whether "no picture" was said already (`share_rx_tick`).
+    remote_share: Option<String>, remote_since: Option<Instant>, rx_warned: bool,
     /// The mute state last sent to the UI.
     mute_info: Option<MuteInfo>,
     /// A group space's meeting (the space id): stays up while others come and go (session.rs `group_state`).
@@ -390,6 +432,10 @@ struct Active {
     /// ICE recovery: since when the media is not connected after having been up, and when the last ICE restart OFFER
     /// went out (`ice_tick`).
     media_down_at: Option<Instant>, ice_restart_at: Option<Instant>,
+    /// The last ROAP ERROR the server sent for this call (its cause fields, for the end reason in the call log).
+    roap_error: String,
+    /// The Locus media keep-alive (`keepAliveUrl`, every `keepAliveSecs`; `keepalive_tick`) and when it last went out.
+    keep_alive: Option<KeepAlive>, keep_alive_at: Option<Instant>,
 }
 
 impl Active {
@@ -397,8 +443,8 @@ impl Active {
         Active { url, self_id, self_url, media_id: String::new(), correlation_id: String::new(), outgoing, name, email, last: None, answered: outgoing,
             media: None, roap_seq: 0, roap_done: false, roap_applied: 0, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None,
             locus: Value::Null, joined_at: None, media_up_at: None, offer_at: None, share: None,
-            lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false, rx_lines_tried: false, mute_info: None, space: None, roster_sent: None,
-            video: Default::default(), gone_since: None, fresh_at: None, media_down_at: None, ice_restart_at: None }
+            remote_share: None, remote_since: None, rx_warned: false, mute_info: None, space: None, roster_sent: None,
+            video: Default::default(), gone_since: None, fresh_at: None, media_down_at: None, ice_restart_at: None, roap_error: String::new(), keep_alive: None, keep_alive_at: None }
     }
 }
 
@@ -462,6 +508,32 @@ pub fn media_id_of(r: &Value, device_url: &str) -> String {
     let first = |v: &Value| v["mediaConnections"].as_array().into_iter().flatten().map(|c| st(c, "mediaId")).find(|m| !m.is_empty());
     let devs = locus_of(r)["self"]["devices"].as_array().cloned().unwrap_or_default();
     first(r).or_else(|| devs.iter().filter(|d| st(d, "url") == device_url).chain(devs.iter()).find_map(first)).unwrap_or_default()
+}
+
+/// The Locus keep-alive of a joined device: `mediaConnections[{keepAliveUrl, keepAliveSecs}]` of the join answer (at the
+/// top, else under this device in `self.devices[]`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct KeepAlive { pub url: String, pub secs: u64 }
+
+/// The keep-alive request: `GET keepAliveUrl`, no body (official client, `spark-windows-desktop-ui.dll` RVA 0x5757bcd: the
+/// Locus request helper with method code 0 = GET, tag "keep_alive", "Cannot perform locus request. keepAliveUrl is
+/// empty.", errors "Locus keepAlive error. httpStatus = ").
+pub const KEEPALIVE_VERB: &str = "GET";
+
+/// How often the keep-alive goes out: `(keepAliveSecs - 1) * 330 ms`, 6.27 s for the usual 20, like the official
+/// `LocusManager::createKeepAliveTimer` (`(secs - 1) * 33 * 10` ms, a repeating timer; it refuses keepAliveSecs < 2).
+pub fn keep_alive_every(secs: u64) -> Duration {
+    Duration::from_millis(secs.saturating_sub(1).max(1) * 330)
+}
+
+pub fn keep_alive_of(r: &Value, device_url: &str) -> Option<KeepAlive> {
+    let of = |v: &Value| v["mediaConnections"].as_array().into_iter().flatten().find_map(|c| {
+        let url = st(c, "keepAliveUrl");
+        let secs = c["keepAliveSecs"].as_u64().or_else(|| c["keepAliveSecs"].as_str().and_then(|s| s.parse().ok())).unwrap_or(0);
+        (!url.is_empty() && secs > 0).then_some(KeepAlive { url, secs })
+    });
+    let devs = locus_of(r)["self"]["devices"].as_array().cloned().unwrap_or_default();
+    of(r).or_else(|| devs.iter().filter(|d| st(d, "url") == device_url).chain(devs.iter()).find_map(of))
 }
 
 /// The cause fields of a ROAP ERROR (short enum-like values only) for the debug log.
