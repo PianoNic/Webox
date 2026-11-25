@@ -315,3 +315,13 @@ fn minutes_and_reaction_names() {
     assert_eq!(reaction_name("❤️"), "heart");
     assert_eq!(reaction_name("🙌"), "🙌"); // not a legacy name: the emoji itself
 }
+
+#[test]
+fn folded_deleted_messages_group_into_runs_of_one_day() {
+    let m = |id: &str, deleted: u8, collapsed: bool, date: &str| Message { id: id.into(), deleted, collapsed, date: date.into(), ..Default::default() };
+    let l = [m("a", 1, true, "d1"), m("b", 2, true, "d1"), m("c", 0, false, "d1"), m("d", 1, true, "d1"), m("e", 1, true, "d2"), m("f", 1, false, "d2"), m("g", 1, true, "d2"), m("h", 1, true, "d2")];
+    let roots: Vec<&Message> = l.iter().collect();
+    // "g" has replies: it is drawn as it is (its thread hangs off it), so "h" starts a run of its own.
+    assert_eq!(rows::fold_runs(&roots, |id| id == "g"), [(0, 2), (3, 1), (4, 1), (7, 1)]);
+    assert!(rows::fold_runs(&roots[2..3], |_| false).is_empty());
+}

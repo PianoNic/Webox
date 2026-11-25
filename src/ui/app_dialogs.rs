@@ -37,6 +37,52 @@ impl App {
         self.sessions_dialog(ctx, t);
         self.hide_from_dialog(ctx, t);
         self.plugin_confirm_dialog(ctx, t);
+        self.plugin_dialog(ctx, t);
+    }
+
+    /// A plugin's read-only dialog (`ui.dialog`, extras/plugins/dialog.rs): its switch, a row of tabs (a disabled one greyed
+    /// out with its hint as tooltip), the selected tab's text (diff spans in green / red); "Schließen", the X and Esc close it.
+    fn plugin_dialog(&mut self, ctx: &egui::Context, t: &Th) {
+        let Some(d) = self.plugins.dialog_shown().cloned() else { self.plugins.dialog = None; return };
+        let k = format!("plugin-dialog-{}", d.serial);
+        let (ks, kt) = (egui::Id::new((&k, "switch")), egui::Id::new((&k, "tab")));
+        let mut on = ctx.data(|x| x.get_temp::<bool>(ks)).unwrap_or(d.switch.as_ref().is_some_and(|s| s.1));
+        // WEBOX_SHOT_DIALOG_TAB=<n> (screenshot checks only): tab <n> is shown first.
+        let first = self.shot.as_ref().and_then(|_| std::env::var("WEBOX_SHOT_DIALOG_TAB").ok()?.parse().ok()).unwrap_or(d.selected);
+        let mut tab = ctx.data(|x| x.get_temp::<usize>(kt)).unwrap_or(first).min(d.tabs.len() - 1);
+        if !menu::menu_is_open(ctx, &k) { menu::menu_open(ctx, &k); }
+        menu::set_dialog_width(ctx, &k, 600.0);
+        let (added, removed) = if t.light { (hex(0x1A7F37), hex(0xD43519)) } else { (hex(0x85E89D), hex(0xF55868)) };
+        let mut body = |ui: &mut egui::Ui| {
+            if let Some((label, _)) = &d.switch {
+                ui.horizontal(|ui| {
+                    ui.add(crate::ui::widgets::toggle(&mut on, t));
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(label).size(14.0).color(t.text1));
+                });
+                ui.add_space(10.0);
+            }
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
+                for (i, tb) in d.tabs.iter().enumerate() {
+                    let label = if tb.label.is_empty() && tb.time_ms > 0 { local_stamp(tb.time_ms) } else { tb.label.clone() };
+                    if tb.disabled {
+                        let r = ui.add(egui::Label::new(RichText::new(format!("  {label}  ")).size(14.0).color(alpha(t.text2, 0.45))).sense(Sense::hover()));
+                        if !tb.hint.is_empty() { r.on_hover_text(&tb.hint); }
+                    } else if crate::ui::widgets::text_tab(ui, &label, i == tab, t, t.tab_on).clicked() { tab = i; }
+                }
+            });
+            ui.add_space(12.0);
+            let tb = &d.tabs[tab];
+            let spans = if on && !tb.alt.is_empty() { &tb.alt } else { &tb.text };
+            crate::ui::widgets::vscroll().max_height(360.0).show(ui, |ui| {
+                let job = crate::ui::messages::spans_job(spans, FontId::proportional(15.0), t.text1, added, removed, ui.available_width());
+                ui.add(egui::Label::new(job).selectable(true));
+            });
+        };
+        let res = menu::webex_dialog(ctx, t, &k, &d.title, "", Some(&mut body), &[Button::primary("close", "Schließen")]);
+        ctx.data_mut(|x| { x.insert_temp(ks, on); x.insert_temp(kt, tab); });
+        if res.is_some() { self.plugins.dialog = None; menu::menu_close(ctx, &k); }
     }
 
     /// A plugin asks before it acts (`ui.confirm`, extras/plugins/confirm.rs): its text with its two buttons; the X and Esc
@@ -262,3 +308,13 @@ impl App {
         let _ = now;
     }
 }
+
+/// Unix ms as a local date and time: "25.11.2026, 14:05".
+pub(crate) fn local_stamp(ms: i64) -> String {
+    let secs = ms.div_euclid(1000);
+    let local = secs + crate::i18n::local_offset_secs(secs) as i64;
+    let (y, m, d) = crate::i18n::civil_from_days(local.div_euclid(86_400));
+    let s = local.rem_euclid(86_400);
+    format!("{d:02}.{m:02}.{y}, {:02}:{:02}", s / 3600, s % 3600 / 60)
+}
+

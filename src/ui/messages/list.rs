@@ -89,6 +89,8 @@ impl App {
         if self.shot.is_some() && self.frames == 6 { // screenshot checks only: pre-select text / open the viewer
             if let Ok(v) = std::env::var("WEBOX_SHOT_SELECT") { ctx.data_mut(|d| d.insert_temp(Id::new("msg-sel"), (format!("{id}-{v}"), 4usize, 22usize))); }
             if let Ok(v) = std::env::var("WEBOX_SHOT_MENU") { menu::menu_open(&ctx, &format!("msg-more-{id}-{v}")); } // WEBOX_SHOT_HOVER_MSG must point at the same message
+            // WEBOX_SHOT_CTX=<n>: the right-click menu of message <n>, as if its text was right-clicked (with the plugins' entries).
+            if let Ok(v) = std::env::var("WEBOX_SHOT_CTX") { if let Some(m) = msgs.iter().find(|m| m.id == format!("{id}-{v}")) { self.shot_context_menu(&ctx, id, m); } }
             if std::env::var("WEBOX_SHOT_DELETE").is_ok() { ctx.data_mut(|d| d.insert_temp(Id::new("msg-delete-confirm"), format!("{id}-7"))); }
             if let Ok(v) = std::env::var("WEBOX_SHOT_LIGHTBOX") { ctx.data_mut(|d| d.insert_temp(Id::new("lightbox"), v)); }
             if let Ok(v) = std::env::var("WEBOX_SHOT_GOTO") { ctx.data_mut(|d| d.insert_temp(Id::new("msg-goto"), (format!("{id}-{v}"), 0u8))); } // scroll to message <n>
@@ -124,7 +126,10 @@ impl App {
             let (mut prev, mut day) = (String::new(), String::new());
             let (mut prev_min, mut prev_share) = (None::<i32>, false);
             let mut prev_ms = 0i64;
-            for m in roots.iter() {
+            // Kept deleted messages a plugin folds: one "N gelöschte Nachrichten" row per run, the run itself only when unfolded.
+            let runs = rows::fold_runs(&roots, |id| replies_of.get(id).is_some_and(|r| !r.is_empty()));
+            let mut folded_until = 0usize;
+            for (ri, m) in roots.iter().enumerate() {
                 if !m.date.is_empty() && m.date != day {
                     // A day banner only between two rows of different days, never above the first loaded row.
                     let had_previous = !day.is_empty();
@@ -133,6 +138,11 @@ impl App {
                     if had_previous { self.day_line(ui, t, &day_label(&day, &today, &yesterday), c.day); }
                 }
                 if m.id == new_first { self.day_line(ui, t, "Neue Nachrichten", c.accent); prev.clear(); } // chat-new-message-newMessageBanner-text
+                if let Some(&(_, n)) = runs.iter().find(|r| r.0 == ri) {
+                    if !self.fold_row(ui, &c, id, &m.id, n) { folded_until = ri + n; }
+                    prev.clear();
+                }
+                if ri < folded_until { continue; }
                 if !m.notice.is_empty() && !m.group.is_empty() { self.group_row(ui, &c, m); prev.clear(); prev_share = false; continue; }
                 if !m.notice.is_empty() { self.notice_row(ui, &c, m); prev.clear(); prev_share = false; continue; }
                 // Grouping: same sender, within a few minutes, and not right after a share.

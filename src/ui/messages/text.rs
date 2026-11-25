@@ -216,6 +216,62 @@ pub(super) fn indent_quotes(g: std::sync::Arc<Galley>, quotes: &[(usize, usize)]
     std::sync::Arc::new(gal)
 }
 
+/// The layout job of plugin-given spans (`kept::SPAN_*`; an earlier text, a diff, a dialog tab): `base` for plain text (struck
+/// through for `SPAN_OLD`), `added` for added parts, `removed` struck through for removed ones. The whole line is trimmed.
+pub(crate) fn spans_job(spans: &[crate::cloud::Span], font: FontId, base: Color32, added: Color32, removed: Color32, wrap: f32) -> egui::text::LayoutJob {
+    use crate::extras::plugins::kept::{SPAN_ADDED, SPAN_OLD, SPAN_REMOVED};
+    let mut job = egui::text::LayoutJob::default();
+    job.wrap.max_width = wrap;
+    let n = spans.len();
+    for (i, (t, k)) in spans.iter().enumerate() {
+        let t = normalize_breaks(t);
+        let t = if i == 0 { t.trim_start() } else { t.as_str() };
+        let t = if i + 1 == n { t.trim_end() } else { t };
+        if t.is_empty() { continue; }
+        let (color, strike) = match *k { SPAN_ADDED => (added, false), SPAN_REMOVED => (removed, true), SPAN_OLD => (base, true), _ => (base, false) };
+        job.append(t, 0.0, egui::TextFormat { font_id: font.clone(), color, strikethrough: if strike { Stroke::new(1.0_f32, color) } else { Stroke::NONE }, ..Default::default() });
+    }
+    job
+}
+
+/// A plugin's diff view of the current text (`Message::current`): the added parts of `job` (a message's laid-out text) in the
+/// added colour. Only when `job` shows exactly the text the spans spell (emoji placeholders or rich text that changed it leave
+/// it as it is).
+pub(super) fn mark_spans(job: &mut egui::text::LayoutJob, spans: &[crate::cloud::Span], c: &Mc) {
+    use crate::extras::plugins::kept::SPAN_ADDED;
+    if !spans.iter().any(|s| s.1 == SPAN_ADDED) { return; }
+    let full: String = spans.iter().map(|s| s.0.as_str()).collect();
+    let (ft, lead) = (full.trim(), full.len() - full.trim_start().len());
+    if ft.is_empty() || job.text.trim() != ft { return; }
+    let Some(off) = job.text.find(ft) else { return };
+    // Byte ranges of the added parts in `job.text`.
+    let mut ranges: Vec<std::ops::Range<usize>> = Vec::new();
+    let mut at = 0;
+    for (t, k) in spans {
+        let (a, b) = (at, at + t.len());
+        at = b;
+        if *k != SPAN_ADDED { continue; }
+        let (a, b) = (a.max(lead), b.min(lead + ft.len()));
+        if a < b { ranges.push(a - lead + off..b - lead + off); }
+    }
+    let mut out = Vec::with_capacity(job.sections.len() + 2 * ranges.len());
+    for s in std::mem::take(&mut job.sections) {
+        // Cut the section at the range edges inside it; the pieces in a range take the added colour.
+        let mut cuts = vec![s.byte_range.start, s.byte_range.end];
+        for r in &ranges { for x in [r.start, r.end] { if x > s.byte_range.start && x < s.byte_range.end { cuts.push(x); } } }
+        cuts.sort_unstable();
+        cuts.dedup();
+        for (j, w) in cuts.windows(2).enumerate() {
+            let mut p = s.clone();
+            p.byte_range = w[0]..w[1];
+            if j > 0 { p.leading_space = 0.0; }
+            if ranges.iter().any(|r| r.start <= w[0] && w[1] <= r.end) { p.format.color = c.added; }
+            out.push(p);
+        }
+    }
+    job.sections = out;
+}
+
 #[cfg(test)]
 mod tests {
     use super::{link_hint, url_spans};
@@ -255,5 +311,26 @@ mod tests {
         assert_eq!(link_hint("https://evil.example/login"), Some("https://evil.example/login"));
         assert_eq!(link_hint(super::html::JUMP), None);
         assert_eq!(link_hint(&format!("{}p1\u{1}Mara", super::html::MENTION)), None);
+    }
+
+    #[test]
+    fn diff_spans_colour_the_history_and_the_current_text() {
+        use super::*;
+        use crate::extras::plugins::kept::{SPAN_ADDED, SPAN_OLD, SPAN_PLAIN, SPAN_REMOVED};
+        let c = mc(&crate::dark());
+        let sp = |v: &[(&str, u8)]| v.iter().map(|(t, k)| (t.to_string(), *k)).collect::<Vec<_>>();
+        let j = spans_job(&sp(&[(" Hallo ", SPAN_PLAIN), ("Welt", SPAN_REMOVED), ("Leute ", SPAN_ADDED)]), FontId::proportional(12.0), c.head, c.added, c.danger, 300.0);
+        assert_eq!(j.text, "Hallo WeltLeute");
+        assert_eq!(j.sections.iter().map(|s| (s.format.color, s.format.strikethrough.width > 0.0)).collect::<Vec<_>>(), [(c.head, false), (c.danger, true), (c.added, false)]);
+        assert!(spans_job(&sp(&[("alt", SPAN_OLD)]), FontId::proportional(12.0), c.head, c.added, c.danger, 300.0).sections[0].format.strikethrough.width > 0.0);
+        // The current text: the added part of a plain message turns green, the rest keeps its colour.
+        let (mut job, _, _) = body_job("Hallo liebe Leute", &c, "", 300.0, false);
+        mark_spans(&mut job, &sp(&[("Hallo ", SPAN_PLAIN), ("liebe ", SPAN_ADDED), ("Leute", SPAN_PLAIN)]), &c);
+        let col: Vec<(&str, Color32)> = job.sections.iter().map(|s| (&job.text[s.byte_range.clone()], s.format.color)).collect();
+        assert_eq!(col, [("Hallo ", c.body), ("liebe ", c.added), ("Leute", c.body)]);
+        // Spans that do not spell the shown text change nothing.
+        let (mut job, _, _) = body_job("Etwas anderes", &c, "", 300.0, false);
+        mark_spans(&mut job, &sp(&[("Hallo ", SPAN_PLAIN), ("neu", SPAN_ADDED)]), &c);
+        assert_eq!(job.sections.len(), 1);
     }
 }

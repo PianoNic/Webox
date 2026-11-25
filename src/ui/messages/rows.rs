@@ -68,6 +68,27 @@ impl App {
         ui.painter().galley(pos2(r.center().x - g.rect.center().x, r.top() + day_pad() / 2.0), g, c.day);
     }
 
+    /// A run of `n` kept deleted messages a plugin folds (`Message::collapsed`), starting with `first`: "1 gelöschte Nachricht" /
+    /// "N gelöschte Nachrichten" like a collapsed join/leave row (link colour, arrow); a click unfolds or folds them again.
+    /// Whether they are unfolded.
+    pub(super) fn fold_row(&mut self, ui: &mut egui::Ui, c: &Mc, space: &str, first: &str, n: usize) -> bool {
+        let w = ui.available_width();
+        let label = if n == 1 { "1 gelöschte Nachricht".to_string() } else { format!("{n} gelöschte Nachrichten") };
+        let g = ui.painter().layout(label, FontId::proportional(SECOND), c.accent, (w - 60.0).max(40.0));
+        let (r, resp) = ui.allocate_exact_size(Vec2::new(w, g.size().y + day_pad()), Sense::click());
+        let key = fold_key(space, first);
+        let mut open = ui.ctx().data(|d| d.get_temp::<bool>(key)).unwrap_or(false);
+        if resp.clicked() { open = !open; ui.ctx().data_mut(|d| d.insert_temp(key, open)); }
+        if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        let tw = g.size().x + 12.0 + 12.0;
+        let x0 = r.center().x - tw / 2.0;
+        let ty = r.top() + day_pad() / 2.0;
+        let gh = g.size().y;
+        ui.painter().galley(pos2(x0, ty), g, c.accent);
+        self.icons.paint(ui, if open { "arrow-up_12" } else { "arrow-down_12" }, Rect::from_center_size(pos2(x0 + tw - 6.0, ty + gh / 2.0), Vec2::splat(12.0)), c.accent);
+        open
+    }
+
     /// A collapsed join/leave row: the info row in the link colour (`text-hyperlink`) with arrow-down_12 / arrow-up_12 12 pt from
     /// the right of the text; a click opens a popover (428 wide) listing the people; leaving the row closes it.
     pub(super) fn group_row(&mut self, ui: &mut egui::Ui, c: &Mc, m: &Message) {
@@ -149,24 +170,23 @@ impl App {
         let (galley, links, emojis, quotes, jump) = if let Some(p) = rich {
             // Quoted rows (wrapped ones too) are shifted right by their nesting depth after layout, so lay out that much narrower.
             let mut job = p.job;
+            text::mark_spans(&mut job, &m.current, c);
             job.wrap.max_width -= text::quote_depth_max(&p.quotes) as f32 * text::QUOTE_INDENT;
             let g = text::indent_quotes(ui.fonts(|f| f.layout_job(job)), &p.quotes);
             (Some(g), p.links, p.runs, p.quotes, p.reply_quote)
         } else if body.trim().is_empty() { (None, Vec::new(), Vec::new(), Vec::new(), None) } else {
-            let (job, links, emojis) = body_job(body, c, &self.me.name, wrap, sys);
+            let (mut job, links, emojis) = body_job(body, c, &self.me.name, wrap, sys);
+            text::mark_spans(&mut job, &m.current, c);
             (Some(ui.fonts(|f| f.layout_job(job))), links, emojis, Vec::new(), None)
         };
         let mut h = 0.0;
-        // Earlier texts (`message.edited`), each struck through in the secondary grey, above everything else of the body.
-        let history: Vec<Arc<Galley>> = m.history.iter().map(|old| {
-            let mut job = egui::text::LayoutJob::default();
-            job.wrap.max_width = wrap;
-            let font = FontId::proportional(SECOND * super::super::widgets::msg_scale());
-            job.append(normalize_breaks(old).trim(), 0.0, egui::TextFormat { font_id: font, color: c.head, strikethrough: Stroke::new(1.0_f32, c.head), ..Default::default() });
-            ui.fonts(|f| f.layout_job(job))
-        }).collect();
+        // Earlier texts (`message.edited`) above everything else of the body: a plain one struck through in the secondary grey,
+        // a plugin's diff with its added / removed parts in green / red.
+        let font = FontId::proportional(SECOND * super::super::widgets::msg_scale());
+        let history: Vec<Arc<Galley>> = m.history.iter().map(|old| ui.fonts(|f| f.layout_job(text::spans_job(old, font.clone(), c.head, c.added, c.danger, wrap)))).collect();
         for g in &history { h += g.size().y + HISTORY_GAP; }
-        let tag = if m.deleted != 0 { Some(("(gelöscht)", c.danger)) } else if !m.history.is_empty() { Some(("(bearbeitet)", c.head)) } else { None };
+        let kept_deleted = m.deleted != 0 && m.deleted != crate::extras::plugins::kept::STYLE_PLAIN;
+        let tag = if kept_deleted { Some(("(gelöscht)", c.danger)) } else if m.deleted == 0 && (!m.history.is_empty() || m.edit_tag) { Some(("(bearbeitet)", c.head)) } else { None };
         let tag = tag.map(|(s, col)| ui.painter().layout_no_wrap(s.to_string(), FontId::proportional(SECOND), col));
         if let Some(g) = &tag { h += g.size().y; }
         let mut first = true;
@@ -191,7 +211,7 @@ impl App {
         if m.rev != 0 && std::ptr::eq(shown, m.text.as_str()) {
             (1u8, &m.id, m.rev).hash(&mut h);
         } else {
-            (0u8, &m.id, shown, &m.text, &m.html, m.deleted, &m.history).hash(&mut h);
+            (0u8, &m.id, shown, &m.text, &m.html, m.deleted, &m.history, &m.current, m.edit_tag).hash(&mut h);
             for p in &m.previews { (&p.title, &p.description, &p.site).hash(&mut h); }
             m.reactions.is_empty().hash(&mut h);
         }
@@ -300,7 +320,11 @@ impl App {
                 x += name.size().x + HEADER_GAP;
                 p.galley(pos2(x, hy), time.clone(), c.head);
                 x += time.size().x + HEADER_GAP;
-                if let Some(e) = edited { p.galley(pos2(x, hy), e.clone(), c.head); x += e.size().x + HEADER_GAP; }
+                if let Some(e) = edited {
+                    p.galley(pos2(x, hy), e.clone(), c.head);
+                    self.edit_tag_click(ui, id, m, Rect::from_min_size(pos2(x, hy), e.size()), (seq, 0));
+                    x += e.size().x + HEADER_GAP;
+                }
                 if self.flags.contains(&(id.to_string(), m.id.clone())) { self.icons.paint(ui, "flag-active_12", Rect::from_min_size(pos2(x, hy + (hdr_h - 14.0) / 2.0), Vec2::splat(14.0)), c.accent); }
                 y += hdr_h + header_to_body();
             }
@@ -382,7 +406,11 @@ impl App {
                 }
                 y += g.size().y;
             }
-            if let Some(g) = &ct.tag { p.galley(pos2(tx, y), g.clone(), c.head); y += g.size().y; }
+            if let Some(g) = &ct.tag {
+                p.galley(pos2(tx, y), g.clone(), c.head);
+                if m.deleted == 0 { self.edit_tag_click(ui, id, m, Rect::from_min_size(pos2(tx, y), g.size()), (seq, 1)); }
+                y += g.size().y;
+            }
             if !m.reactions.is_empty() { self.reactions_row(ui, t, c, pos2(tx, y + 2.0), m); }
         }
         // Right click anywhere on the row: the message menu, with the actions of the part under the pointer on top.
@@ -391,4 +419,35 @@ impl App {
         // Nor has a deleted message a plugin keeps: it is gone on the service.
         if hovered && !self.space_closed(id) && m.deleted == 0 { self.message_toolbar(ui, t, c, id, m, boxr, head, bar_key, ui.clip_rect().top()); }
     }
+
+    /// "(bearbeitet)" / the header's "Bearbeitet" of message `m` at `r`: while a plugin listens to `message.edit_tag_clicked` it
+    /// is a button (e.g. the plugin's edit history dialog). `salt`: the row's sequence number and which of the two it is.
+    fn edit_tag_click(&mut self, ui: &egui::Ui, space: &str, m: &Message, r: Rect, salt: (u32, u8)) {
+        if m.deleted != 0 || !self.plugins.subscribed("message.edit_tag_clicked") { return; }
+        let resp = ui.interact(r, Id::new(("msg-edit-tag", space, &m.id, salt)), Sense::click());
+        if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
+        if resp.clicked() {
+            let p = json!({ "space": space, "id": m.id, "text": m.text, "mine": m.mine, "published_ms": m.published_ms });
+            self.plugins.emit("message.edit_tag_clicked", &p.to_string());
+        }
+    }
 }
+
+/// Whether the fold of kept deleted messages starting with `first` is open (`App::fold_row`).
+pub(super) fn fold_key(space: &str, first: &str) -> Id { Id::new(("msg-fold", space, first)) }
+
+/// The runs of folded kept deleted messages among the top-level rows `roots`: (index of the first, length). A run is a stretch
+/// of consecutive such messages of one day without replies (`has_replies`).
+pub(super) fn fold_runs(roots: &[&Message], has_replies: impl Fn(&str) -> bool) -> Vec<(usize, usize)> {
+    let mut out: Vec<(usize, usize)> = Vec::new();
+    let folds = |m: &Message| m.deleted != 0 && m.collapsed && m.notice.is_empty() && !has_replies(&m.id);
+    for (i, m) in roots.iter().enumerate() {
+        if !folds(m) { continue; }
+        match out.last_mut() {
+            Some((a, n)) if *a + *n == i && roots[*a].date == m.date => *n += 1,
+            _ => out.push((i, 1)),
+        }
+    }
+    out
+}
+
