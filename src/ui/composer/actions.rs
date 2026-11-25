@@ -3,7 +3,7 @@ use super::*;
 
 impl App {
     pub(super) fn emoji_autocomplete_on(&self) -> bool { self.settings["emoji_autocomplete"].as_bool().unwrap_or(true) } // "Emoji-Autovervollständigung verwenden", default on
-    pub(super) fn emoticons_on(&self) -> bool { self.settings["emoticons_to_emojis"].as_bool().unwrap_or(true) } // feature flag desktop-emoticons-to-emojis
+    pub(super) fn emoticons_on(&self) -> bool { self.settings["emoticons_to_emojis"].as_bool().unwrap_or(false) } // feature flag desktop-emoticons-to-emojis
 
     /// Height of the composer card (it grows with the text rows, the edit header, the chips and the rich-text toolbar).
     pub(crate) fn composer_height(&self, ctx: &egui::Context) -> f32 {
