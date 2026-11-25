@@ -256,6 +256,7 @@ impl App {
         let picked = msel(ui.ctx(), id).highlighted(&m.id);
 
         let vis = ui.is_rect_visible(row.expand(40.0));
+        let mut text_at: Option<(Rect, usize)> = None; // the text's rect and length, for the double click on the row
         if vis {
             let (today_s, yest_s) = day_ref(self.client.is_some());
             let hdr = head.then(|| {
@@ -306,6 +307,7 @@ impl App {
             }
             for g in &ct.history { p.galley(pos2(tx, y), g.clone(), c.head); y += g.size().y + HISTORY_GAP; }
             let n_attach = self.draw_attachments(ui, t, c, m, &ct, pos2(tx, y), wrap, &mut y);
+            if let Some(g) = &ct.text { text_at = Some((Rect::from_min_size(pos2(tx, y + if n_attach > 0 { CAPTION_GAP } else { 0.0 }), g.size()), g.job.text.chars().count())); }
             if let Some(g) = &ct.text {
                 if n_attach > 0 { y += CAPTION_GAP; }
                 let tr_ = Rect::from_min_size(pos2(tx, y), g.size());
@@ -384,6 +386,14 @@ impl App {
             }
             if let Some(g) = &ct.tag { p.galley(pos2(tx, y), g.clone(), c.head); y += g.size().y; }
             if !m.reactions.is_empty() { self.reactions_row(ui, t, c, pos2(tx, y + 2.0), m); }
+        }
+        // Double click on the row outside the text (the box's empty part, the header): selects the whole text, like in an
+        // editor. On the text itself a double click stays a word, a triple click the paragraph.
+        if let Some((tr_, total)) = text_at {
+            let dbl = ui.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
+            if dbl && ui.input(|i| i.pointer.interact_pos()).is_some_and(|pp| row.contains(pp) && !tr_.contains(pp)) && crate::ui::widgets::hover_ok(ui, row) {
+                ui.ctx().data_mut(|d| d.insert_temp(Id::new("msg-sel"), (m.id.clone(), 0usize, total)));
+            }
         }
         // Right click anywhere on the row: the message menu, with the actions of the part under the pointer on top.
         self.row_context_menu(ui, t, id, m, &ct, row);
