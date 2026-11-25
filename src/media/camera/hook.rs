@@ -1,8 +1,8 @@
 //! Plugin hooks on the camera picture (host methods of contract 1.6, docs/plugins.md "Camera pictures"):
 //!
 //! * `camera.filter`: a plugin's frame filter edits every captured picture in place (RGBA, full size) before anything uses it.
-//!   `apply` is the one place every camera frame passes (the capture worker in mod.rs calls it right after decoding; today the
-//!   Settings > Video preview is its only consumer, a call's video will be the next). Each filter runs on a thread of its own,
+//!   `apply` is the one place every camera frame passes (the capture worker in mod.rs calls it right after decoding; the
+//!   Settings > Video preview and the call's camera, `send.rs`, so what the far end sees is filtered too). Each filter runs on a thread of its own,
 //!   and the camera thread waits at most `BUDGET` per frame for all of them. A filter that misses it is skipped for that frame:
 //!   its previous result is shown again (a replaced background never flashes the real room), or black before it has one. A
 //!   filter still busy with an earlier frame is skipped at once. Without filters `apply` is one atomic load.

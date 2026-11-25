@@ -6,8 +6,9 @@
 //! and 0.17) then stops reading that socket for good, so ICE never completes even though the other port works. Here
 //! such reads are skipped.
 //!
-//! It also notes the SSRC that H.264 on the share's payload type arrives from (`video_ssrc`): the RTP header is not
-//! encrypted by SRTP, and with several m-lines webrtc-rs drops a stream whose SSRC the answer didn't declare.
+//! It also notes the SSRCs that H.264 (the video lines' payload type) arrives from (`SeenSsrc`, the last two different
+//! ones: the far end's camera on `video/main` and its share on `video/slides`): the RTP header is not encrypted by SRTP,
+//! and with several m-lines webrtc-rs drops a stream whose SSRC the answer didn't declare.
 use std::future::Future;
 use std::io::ErrorKind;
 use std::net::{IpAddr, SocketAddr};
@@ -20,11 +21,30 @@ use webrtc::util::{Conn, Error};
 
 type Fut<'a, T> = Pin<Box<dyn Future<Output = Result<T, Error>> + Send + 'a>>;
 
-pub struct IceSocket { sock: tokio::net::UdpSocket, video_ssrc: Arc<AtomicU32>, video_pt: u8 }
+pub struct IceSocket { sock: tokio::net::UdpSocket, video_ssrc: Arc<SeenSsrc>, video_pt: u8 }
+
+/// The last two different SSRCs a payload type arrived from (0 = none). Two streams arriving interleaved leave both.
+#[derive(Debug, Default)]
+pub struct SeenSsrc { last: AtomicU32, prev: AtomicU32 }
+
+impl SeenSsrc {
+    pub fn note(&self, s: u32) {
+        let last = self.last.load(Ordering::Relaxed);
+        if last != s { self.prev.store(last, Ordering::Relaxed); self.last.store(s, Ordering::Relaxed); }
+    }
+    /// The SSRCs seen, newest first, without `known` ones (streams webrtc-rs already takes).
+    pub fn candidates(&self, known: &[u32]) -> Vec<u32> {
+        let mut v = vec![];
+        for s in [self.last.load(Ordering::Relaxed), self.prev.load(Ordering::Relaxed)] { if s != 0 && !known.contains(&s) && !v.contains(&s) { v.push(s); } }
+        v
+    }
+    /// Anything seen at all.
+    pub fn any(&self) -> bool { self.last.load(Ordering::Relaxed) != 0 }
+}
 
 /// A UDP mux on `ip` (an ephemeral port). Needs a running tokio runtime. RTP with payload type `video_pt` leaves its SSRC
 /// in `video_ssrc`.
-pub fn mux(ip: IpAddr, video_ssrc: Arc<AtomicU32>, video_pt: u8) -> std::io::Result<UDPNetwork> {
+pub fn mux(ip: IpAddr, video_ssrc: Arc<SeenSsrc>, video_pt: u8) -> std::io::Result<UDPNetwork> {
     let s = std::net::UdpSocket::bind(SocketAddr::new(ip, 0))?;
     s.set_nonblocking(true)?;
     let conn = IceSocket { sock: tokio::net::UdpSocket::from_std(s)?, video_ssrc, video_pt };
@@ -41,7 +61,7 @@ pub fn rtp_ssrc(b: &[u8], pt: u8) -> Option<u32> {
 }
 
 impl IceSocket {
-    fn note(&self, b: &[u8]) { if let Some(s) = rtp_ssrc(b, self.video_pt) { self.video_ssrc.store(s, Ordering::Relaxed); } }
+    fn note(&self, b: &[u8]) { if let Some(s) = rtp_ssrc(b, self.video_pt) { self.video_ssrc.note(s); } }
 }
 
 // The trait is declared with async_trait; these are its expanded signatures.
@@ -82,5 +102,16 @@ mod tests {
         assert_eq!(rtp_ssrc(&rtp, 200 & 0x7f), None);
         assert_eq!(rtp_ssrc(&[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 102), None, "STUN");
         assert_eq!(rtp_ssrc(&[0x80, 102], 102), None, "too short");
+    }
+
+    #[test]
+    fn two_interleaved_video_streams_are_both_seen() {
+        let s = SeenSsrc::default();
+        assert!(!s.any() && s.candidates(&[]).is_empty());
+        for x in [7, 7, 9, 7, 9, 9] { s.note(x); }
+        assert_eq!(s.candidates(&[]), vec![9, 7], "newest first");
+        assert_eq!(s.candidates(&[9]), vec![7], "the stream webrtc-rs takes already is no candidate");
+        s.note(5);
+        assert_eq!(s.candidates(&[]), vec![5, 9]);
     }
 }

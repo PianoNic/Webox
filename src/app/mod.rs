@@ -145,6 +145,7 @@ impl App {
                 Resp::Call(ev) => self.on_call_event(ev, now),
                 Resp::CallShare(on) => { self.call.sharing = on; self.call.share_pending = false; }
                 Resp::RemoteShare(who) => self.on_remote_share(who),
+                Resp::CallVideo(v) => self.call.video = v,
                 Resp::CallMute(m) => self.on_call_mute(m, now),
                 Resp::CallRoster(r) => self.call.roster = r,
                 Resp::Cover(b) => { self.cover_bytes = Some(b); self.cover = None; }

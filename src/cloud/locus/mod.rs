@@ -19,8 +19,10 @@
 //! * **Media transport** (`media.rs`): webrtc-rs peer connection (ICE, DTLS-SRTP, RTP), Opus 48 kHz via `ropus`, devices via `cpal` (`audio.rs`).
 //! * **Not done:** media over TCP / TLS 443 (the server's TCP and `xTLS` candidates are dropped, webrtc-rs only does UDP
 //!   ICE) and TURN discovery (`TURN_DISCOVERY_REQUEST`), both only needed when UDP to the media cluster is blocked; the
-//!   `reachability` data (media cluster choice), camera video. Interop with Locus' media servers is only tested against a
-//!   second local webrtc-rs peer.
+//!   `reachability` data (media cluster choice). Interop with Locus' media servers is only tested against a second local
+//!   webrtc-rs peer.
+//! * **Camera video** (`video.rs`): the video lines (one ROAP re-OFFER, shared with the screen share), our camera on
+//!   `video/main` with `videoMuted` following it, the far end's camera decoded into `video_rx::MAIN`.
 //! * **Screen share**, sending: `share.rs` (capture, ROAP re-OFFER with the `slides` lines, floor request on the locus'
 //!   `content` media share). Receiving: the `content` floor GRANTED to the other side (`share_rx::remote_sharer`) makes
 //!   sure the `slides` lines exist; their H.264 is decoded in `cloud/share_rx.rs` and shown as the call window's stage.
@@ -159,7 +161,12 @@ pub enum CallReq { Dial(String, audio::Choice), Answer(audio::Choice), HangUp, M
     /// Start sharing the picked screen / window (`Some`), or stop (`None`); see `share.rs`.
     Share(Option<share::ShareReq>),
     /// "Treffen" / "Beitreten" in a group space (its id): join the space's meeting, or start it (session.rs `join_space`).
-    JoinSpace(String, audio::Choice) }
+    JoinSpace(String, audio::Choice),
+    /// Our camera in the call: on with this camera (`Some`; again with another device = camera switch), or off (`None`).
+    /// May be sent before `Dial` / `Answer`: the camera then starts once the call's media is up. See `video.rs`.
+    /// (The call window's video button sends it; until that lands only the tests do.)
+    #[allow(dead_code)]
+    Video(Option<crate::media::camera::PreviewKey>) }
 
 /// `POST {locusUrl}/sendDtmf` body.
 pub fn dtmf_body(device_url: &str, tones: &str, correlation_id: &str) -> Value {
@@ -350,6 +357,8 @@ struct Active {
     space: Option<String>,
     /// The roster last sent to the UI.
     roster_sent: Option<controls::Roster>,
+    /// Camera video of this call, both ways (`video.rs`).
+    video: video::CallVideo,
 }
 
 impl Active {
@@ -357,7 +366,8 @@ impl Active {
         Active { url, self_id, self_url, media_id: String::new(), correlation_id: String::new(), outgoing, name, email, last: None, answered: outgoing,
             media: None, roap_seq: 0, roap_done: false, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None,
             locus: Value::Null, joined_at: None, media_up_at: None, offer_at: None, share: None,
-            lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false, mute_info: None, space: None, roster_sent: None }
+            lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false, mute_info: None, space: None, roster_sent: None,
+            video: Default::default() }
     }
 }
 
@@ -383,14 +393,20 @@ pub fn media_stall(now: Instant, offer_at: Option<Instant>, joined_at: Option<In
 pub struct Calls {
     pub(super) device_type: String, pub(super) jobs: Option<Sender<Job>>,
     cur: Option<Active>, last_dial: Option<Instant>, live: Arc<AtomicBool>, engine: Option<audio::Engine>, muted: bool,
+    /// The camera the user wants on in the call (`CallReq::Video`); kept from before the call is placed / answered, and
+    /// for the whole call. None = camera off.
+    video_want: Option<crate::media::camera::PreviewKey>,
 }
 
-/// The ROAP v2 message envelope Locus expects in `localMedias[].localSdp` (JSON string).
-pub fn roap_local_sdp(message_type: &str, sdp: Option<&str>, seq: u32, muted: bool) -> String {
+/// The ROAP v2 message envelope Locus expects in `localMedias[].localSdp` (JSON string), camera off.
+pub fn roap_local_sdp(message_type: &str, sdp: Option<&str>, seq: u32, muted: bool) -> String { roap_local_sdp_av(message_type, sdp, seq, muted, true) }
+
+/// `roap_local_sdp` with the camera's state (`videoMuted` false while our camera is sent).
+pub fn roap_local_sdp_av(message_type: &str, sdp: Option<&str>, seq: u32, muted: bool, video_muted: bool) -> String {
     let mut m = json!({"messageType": message_type, "version": "2", "seq": seq});
     if let Some(s) = sdp { m["sdps"] = json!([s]); }
     if message_type == "OFFER" { m["tieBreaker"] = json!(4294967294u64); }
-    json!({"roapMessage": m, "audioMuted": muted, "videoMuted": true}).to_string()
+    json!({"roapMessage": m, "audioMuted": muted, "videoMuted": video_muted}).to_string()
 }
 
 /// A ROAP message out of a mercury `locus.message.roap` event: (messageType, seq, first SDP).
@@ -429,3 +445,4 @@ mod tests;
 pub mod controls;
 mod session;
 pub mod share;
+pub mod video;
