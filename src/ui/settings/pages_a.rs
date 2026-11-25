@@ -277,7 +277,7 @@ impl App {
         });
         // Typed emoticons such as :) or xD become emoji when a space follows and when sending (ui/composer, `emoticons_on`).
         section(ui, t, "Emoticons", "", false, |ui| {
-            self.pcheck(ui, t, "emoticons_to_emojis", true, "Emoticons wie :) oder xD in Emojis umwandeln");
+            self.pcheck(ui, t, "emoticons_to_emojis", false, "Emoticons wie :) oder xD in Emojis umwandeln");
         });
         // Bereichsliste: the compact view (ui/chrome/compact_list.rs).
         section(ui, t, &crate::trq!("Space list"), "", false, |ui| {
