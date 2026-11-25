@@ -227,7 +227,7 @@
           "type": "[Participant]"
         },
         {
-          "doc": "My side: {muted, muted_by_host, unmute_allowed, asked_to_unmute, video, video_sending, sharing, hand, host}.",
+          "doc": "My side: {muted, muted_by_host, unmute_allowed, asked_to_unmute, video, video_sending, camera?, video_width?, video_height?, video_fps?, sharing, hand, host}.",
           "keys": [
             "muted",
             "muted_by_host",
@@ -235,6 +235,10 @@
             "asked_to_unmute",
             "video",
             "video_sending",
+            "camera",
+            "video_width",
+            "video_height",
+            "video_fps",
             "sharing",
             "hand",
             "host"
@@ -242,6 +246,12 @@
           "name": "me",
           "scope": "calls.state",
           "type": "object"
+        },
+        {
+          "doc": "The other side's camera is on.",
+          "name": "remote_video",
+          "scope": "calls.state",
+          "type": "bool"
         },
         {
           "doc": "Who shares a screen.",
@@ -865,6 +875,13 @@
           "optional": true,
           "scope": "app",
           "type": "string"
+        },
+        {
+          "doc": "Its setting values (passwords left out).",
+          "name": "settings",
+          "optional": true,
+          "scope": "app",
+          "type": "object"
         }
       ],
       "scope": "app"

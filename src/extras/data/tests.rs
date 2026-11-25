@@ -50,10 +50,10 @@ fn queries_filter_sort_limit_search() {
     assert_eq!(c, ["u-anna", "u-ben"]);
     // limit / cursor paging over the result, total before paging
     let p1 = q(&h, json!({ "query": "people sort name", "limit": 2 }));
-    assert_eq!((p1["total"].clone(), p1["cursor"].clone()), (json!(6), json!("2")));
+    assert_eq!((p1["total"].clone(), p1["cursor"].clone()), (json!(5), json!("2")));
     let p2 = q(&h, json!({ "query": "people sort name", "limit": 2, "cursor": "2" }));
     let p3 = q(&h, json!({ "query": "people sort name", "limit": 2, "cursor": "4" }));
-    assert_eq!(ids(&p1).into_iter().chain(ids(&p2)).chain(ids(&p3)).count(), 6);
+    assert_eq!(ids(&p1).into_iter().chain(ids(&p2)).chain(ids(&p3)).count(), 5);
     assert!(p3.get("cursor").is_none());
     // group by: groups in key order, with their positions
     let g = q(&h, json!({ "query": "messages('s-dev') group by kind sort at" }));

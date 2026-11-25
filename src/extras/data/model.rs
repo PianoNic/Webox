@@ -62,6 +62,7 @@ const fn volatile(mut x: Field) -> Field { x.volatile = true; x.opt = true; x }
 
 /// One entity kind of the model.
 pub struct Entity {
+    #[cfg_attr(not(test), allow(dead_code))] // checked against the table order by the tests
     pub kind: Kind,
     pub name: &'static str,
     /// The default scope of its fields.

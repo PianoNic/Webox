@@ -253,6 +253,7 @@ impl Hub {
     pub fn take_events(&self) -> Vec<(String, String)> { std::mem::take(&mut lock(&self.0.st).events) }
 
     /// Builds and subscription runs so far.
+    #[cfg(test)]
     pub fn work(&self) -> u64 { lock(&self.0.st).work }
 
     /// The scopes a plugin's data reads used, for Settings > Plugins ("reads message content").
