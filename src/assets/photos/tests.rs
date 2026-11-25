@@ -25,6 +25,29 @@ fn animated_gif_loops_through_frames() {
     assert_eq!(p.image_frame(&ctx, "g", 10.25).unwrap().0, first); // loops
 }
 
+/// Unfocused with "GIFs nur abspielen, wenn Webox das aktive Fenster ist" (default on), a repaint (mouse move) keeps the
+/// frame; back in focus the GIF goes on from there.
+#[test]
+fn gif_stands_still_while_unfocused() {
+    let ctx = egui::Context::default();
+    let focus = |f: bool| {
+        let mut raw = egui::RawInput::default();
+        raw.viewports.entry(egui::ViewportId::ROOT).or_default().focused = Some(f);
+        let _ = ctx.run(raw, |_| {});
+    };
+    let mut p = Photos::default();
+    p.add_images(vec![("g".into(), gif(&[[255, 0, 0, 255], [0, 255, 0, 255]]))]);
+    let first = p.image(&ctx, "g").unwrap().0;
+    assert_eq!(p.image_frame(&ctx, "g", 10.0).unwrap().0, first);
+    assert_eq!(p.image_frame(&ctx, "g", 10.09).unwrap().0, first); // last focused draw, 90 ms in
+    focus(false);
+    assert_eq!(p.image_frame(&ctx, "g", 10.11).unwrap().0, first); // focus lost after the 100 ms boundary: still frame 0
+    assert_eq!(p.image_frame(&ctx, "g", 13.37).unwrap().0, first); // a mouse move later
+    focus(true);
+    assert_eq!(p.image_frame(&ctx, "g", 20.0).unwrap().0, first); // goes on at 90 ms
+    assert_ne!(p.image_frame(&ctx, "g", 20.02).unwrap().0, first); // 110 ms → frame 1
+}
+
 #[test]
 fn long_gif_keeps_its_loop_duration() {
     // 1000 frames × 10 ms = 10 s must stay 10 s with at most MAX_FRAMES frames.

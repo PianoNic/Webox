@@ -186,7 +186,7 @@ impl App {
             self.pradio(ui, t, "density", Density::Standard.key(), &opts);
         });
         section(ui, t, "GIFs", "", false, |ui| {
-            self.pcheck(ui, t, "gifs_pause_unfocused", false, "GIFs nur abspielen, wenn Webox das aktive Fenster ist");
+            self.pcheck(ui, t, "gifs_pause_unfocused", true, "GIFs nur abspielen, wenn Webox das aktive Fenster ist");
             self.pcheck(ui, t, "gif_send_instantly", false, "GIFs beim Anklicken sofort senden (sonst als Anhang hinzufügen)");
         });
         section(ui, t, "Meetings", "", false, |ui| {
