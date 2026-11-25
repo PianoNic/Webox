@@ -216,7 +216,8 @@ extern "C" fn h_set(c: Ptr, k: *const c_char, v: *const c_char) {
         let m = d.entry(c.plugin.clone()).or_insert_with(|| Value::Object(Map::new()));
         if !m.is_object() { *m = Value::Object(Map::new()); }
         m[s(k)] = Value::String(s(v));
-        let _ = std::fs::write(&c.data_file, serde_json::to_string_pretty(&*d).unwrap_or_default());
+        // Owner-only (0600 on unix): plugins keep tokens and the like here.
+        let _ = crate::system::write_private(&c.data_file, serde_json::to_string_pretty(&*d).unwrap_or_default().as_bytes());
     })
 }
 extern "C" fn h_settings(c: Ptr) -> *mut c_char { guard(c, std::ptr::null_mut(), |c| cs(&Value::Object(lock(&c.settings).clone()).to_string()).into_raw()) }
@@ -311,9 +312,11 @@ const METHODS: &[(&str, u32, Method)] = &[
     ("media.read", 1, |c, a| {
         let n = |k: &str| a.get(k).and_then(Value::as_u64).unwrap_or(0) as usize;
         let (ptr, w, h, stride) = (n("data"), n("width"), n("height"), n("stride"));
-        if ptr == 0 || w == 0 || h == 0 || stride < w * 4 { return serde_json::json!({ "error": "data, width, height, stride required" }); }
+        // Checked: wrapped products would pass the test and describe a slice other than the plugin's buffer.
+        let len = w.checked_mul(4).filter(|&row| stride >= row).and_then(|_| stride.checked_mul(h)).filter(|&l| l <= isize::MAX as usize);
+        let Some(len) = len.filter(|_| ptr != 0 && w != 0 && h != 0) else { return serde_json::json!({ "error": "data, width, height, stride required" }) };
         // SAFETY: the plugin owns `stride * height` writable bytes at `data` for the duration of the call.
-        let dst = unsafe { std::slice::from_raw_parts_mut(ptr as *mut u8, stride * h) };
+        let dst = unsafe { std::slice::from_raw_parts_mut(ptr as *mut u8, len) };
         match crate::media::camera::hook::media_read(&c.plugin, n("id") as u64, dst, w, h, stride) {
             Ok(pts) => serde_json::json!({ "pts": pts }),
             Err(e) => serde_json::json!({ "error": e }),

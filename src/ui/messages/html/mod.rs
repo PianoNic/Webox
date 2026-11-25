@@ -408,6 +408,7 @@ impl Doc<'_> {
 
 /// Lays out `html`; `me` is my person id (to tell my mentions from others'). `None` when there's nothing visible to show,
 /// so the caller falls back to the plain text.
+#[cfg(test)]
 pub(super) fn html_job(html: &str, c: &Mc, me: &str, wrap: f32, sys: bool) -> Option<Parsed> { html_job_thumb(html, c, me, wrap, sys, false) }
 
 /// `html_job`; `thumb`: the quoted picture's thumbnail is drawn (the quote's summary line becomes a free line, `Parsed::thumb_at`).

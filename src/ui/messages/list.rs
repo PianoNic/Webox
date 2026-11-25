@@ -244,10 +244,10 @@ impl App {
         // longer fits is discarded and laid out again at once, so no frame ever shows the content shifted (the jitter).
         let k_anchor = Id::new(("msg-anchor", id));
         let fix = {
-            let spans = ctx.data(|d| d.get_temp::<Vec<(String, f32, f32)>>(Id::new("msg-rowspans"))).unwrap_or_default();
             let prev = ctx.data(|d| d.get_temp::<(String, f32)>(k_anchor));
             let explicit = explicit_set || scripted_up || ctx.data(|d| d.get_temp::<f32>(k_set)).is_some();
-            scroll_fix(&spans, prev.as_ref(), off, max, applied, next_pinned, explicit, settle)
+            // The spans read in place (`get_temp` would copy every row's id each frame).
+            ctx.data_mut(|d| scroll_fix(d.get_temp_mut_or_default::<Vec<(String, f32, f32)>>(Id::new("msg-rowspans")), prev.as_ref(), off, max, applied, next_pinned, explicit, settle))
         };
         if let Some(to) = fix.set { ctx.data_mut(|d| d.insert_temp(k_set, to)); }
         match &fix.anchor { Some(a) => ctx.data_mut(|d| d.insert_temp(k_anchor, a.clone())), None => ctx.data_mut(|d| d.remove::<(String, f32)>(k_anchor)) }

@@ -166,17 +166,21 @@ impl Repos {
     pub fn busy(&self) -> bool { !self.jobs.is_empty() || self.states.iter().any(|s| s.loading) }
 
     /// Every plugin of every repository, the official one first.
-    pub fn available(&self) -> Vec<Avail> {
-        let v = env!("CARGO_PKG_VERSION");
-        self.states.iter().filter_map(|s| s.index.as_ref().map(|i| (s, i))).flat_map(|(s, i)| i.plugins.iter().map(move |p| Avail {
-            repo: s.url.clone(), repo_title: s.title(), official: s.url == self.cfg.official, plugin: p.clone(),
-            compat: index::compatible(p, v).cloned(),
-        })).collect()
+    pub fn available(&self) -> Vec<Avail> { self.offered().map(|(s, p)| self.avail(s, p)).collect() }
+    /// Every (repository, plugin) pair, without copying anything.
+    fn offered(&self) -> impl Iterator<Item = (&RepoState, &IndexPlugin)> {
+        self.states.iter().filter_map(|s| s.index.as_ref().map(|i| (s, i))).flat_map(|(s, i)| i.plugins.iter().map(move |p| (s, p)))
     }
-    /// The newest compatible version of `pkg` newer than `have`; the repository it was installed from wins a tie.
+    fn avail(&self, s: &RepoState, p: &IndexPlugin) -> Avail {
+        Avail { repo: s.url.clone(), repo_title: s.title(), official: s.url == self.cfg.official, plugin: p.clone(),
+            compat: index::compatible(p, env!("CARGO_PKG_VERSION")).cloned() }
+    }
+    /// The newest compatible version of `pkg` newer than `have`; the repository it was installed from wins a tie. Asked every
+    /// frame per installed plugin on the Plugins page: only the winner is copied.
     pub fn update_for(&self, pkg: &str, have: &str, from: &str) -> Option<Avail> {
-        self.available().into_iter().filter(|a| a.plugin.pkg == pkg && a.compat.is_ok() && index::newer(&a.plugin.version, have))
-            .max_by(|a, b| semver::Version::parse(&a.plugin.version).ok().cmp(&semver::Version::parse(&b.plugin.version).ok()).then((a.repo == from).cmp(&(b.repo == from))))
+        self.offered().filter(|(_, p)| p.pkg == pkg && index::newer(&p.version, have) && index::compatible(p, env!("CARGO_PKG_VERSION")).is_ok())
+            .max_by(|(sa, a), (sb, b)| semver::Version::parse(&a.version).ok().cmp(&semver::Version::parse(&b.version).ok()).then((sa.url == from).cmp(&(sb.url == from))))
+            .map(|(s, p)| self.avail(s, p))
     }
     pub fn job(&self, pkg: &str) -> Option<&Job> { self.jobs.iter().find(|j| j.pkg == pkg) }
 

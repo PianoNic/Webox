@@ -236,7 +236,23 @@ fn fetch_page(url: &str) -> Option<(String, String)> {
 /// The preview image: jpg / png / gif only, at most MAX_IMAGE, and it must decode.
 fn fetch_image(img: &str) -> Option<Vec<u8>> {
     let (_, r) = get(img, "image/png,image/jpeg,image/gif,image/*;q=0.5")?;
-    read_capped(r, MAX_IMAGE).filter(|b| allowed_image(b) && (!b.starts_with(b"GIF") || crate::assets::photos::gif_canvas_ok(b)) && image::load_from_memory(b).is_ok())
+    read_capped(r, MAX_IMAGE).filter(|b| allowed_image(b) && (!b.starts_with(b"GIF") || crate::assets::photos::gif_canvas_ok(b)) && decodes(b))
+}
+
+/// Largest side / decode memory of a preview picture: far above any card image, but a few KB of PNG / JPEG from any web page
+/// can't claim a 512 MB canvas (the decoder's default cap) on every fetch thread.
+const MAX_IMAGE_SIDE: u32 = 16384;
+const MAX_IMAGE_ALLOC: u64 = 256 * 1024 * 1024;
+
+/// The picture decodes within `MAX_IMAGE_SIDE` / `MAX_IMAGE_ALLOC` (the size is checked from the header, before decoding).
+fn decodes(b: &[u8]) -> bool {
+    let Ok(mut r) = image::ImageReader::new(std::io::Cursor::new(b)).with_guessed_format() else { return false };
+    let mut l = image::Limits::default(); // non_exhaustive: set the fields one by one
+    l.max_image_width = Some(MAX_IMAGE_SIDE);
+    l.max_image_height = Some(MAX_IMAGE_SIDE);
+    l.max_alloc = Some(MAX_IMAGE_ALLOC);
+    r.limits(l);
+    r.decode().is_ok()
 }
 
 fn fetch(url: &str) -> Done {
@@ -262,7 +278,8 @@ impl App {
         let tx = tx.clone();
         let Some(list) = self.messages.get_mut(space) else { return };
         let n = list.len();
-        for m in list.iter_mut().skip(n.saturating_sub(MAX_MESSAGES)).filter(|m| m.notice.is_empty() && m.previews.is_empty()) {
+        // Runs every frame: a text without "http" / "www." has no link `url_spans` would find, so it isn't scanned.
+        for m in list.iter_mut().skip(n.saturating_sub(MAX_MESSAGES)).filter(|m| m.notice.is_empty() && m.previews.is_empty() && (m.text.contains("http") || m.text.contains("www."))) {
             let urls: Vec<String> = super::messages::url_spans(&m.text).into_iter().map(|(a, b)| m.text[a..b].to_string())
                 .map(|u| if u.starts_with("www.") { format!("https://{u}") } else { u }).filter(|u| fetchable(u)).take(MAX_URLS_PER_MESSAGE).collect();
             let mut got = Vec::new();

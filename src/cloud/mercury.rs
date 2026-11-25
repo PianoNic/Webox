@@ -54,8 +54,8 @@ pub(super) fn mercury(ws: String, gen: u64, jobs: Sender<Job>, kms: Sender<Strin
                     if !session_current(gen) { let _ = sock.close(None); let _ = sock.flush(); return }
                     match sock.read() {
                         Ok(M::Text(t)) => if handle(&t, &mut sock, &jobs, &kms, &out, &mut ping, &mut last_pong, &mut online, down_since) == Flow::Stop { return },
-                        Ok(M::Binary(b)) => if let Ok(t) = String::from_utf8(b.to_vec()) {
-                            if handle(&t, &mut sock, &jobs, &kms, &out, &mut ping, &mut last_pong, &mut online, down_since) == Flow::Stop { return }
+                        Ok(M::Binary(b)) => if let Ok(t) = std::str::from_utf8(&b) {
+                            if handle(t, &mut sock, &jobs, &kms, &out, &mut ping, &mut last_pong, &mut online, down_since) == Flow::Stop { return }
                         },
                         Ok(M::Close(f)) => { close = f.map(|f| (u16::from(f.code), f.reason.to_string())); dbg_conn(&format!("mercury closed by the service: {close:?}")); }
                         Ok(_) => {}

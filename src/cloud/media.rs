@@ -288,7 +288,7 @@ async fn receive_video(track: Arc<webrtc::track::track_remote::TrackRemote>, slo
         sb.push(pkt);
         while let Some(s) = sb.pop() {
             if s.prev_dropped_packets > 0 { dec.keyframe.store(true, Ordering::SeqCst); }
-            dec.push(s.data.to_vec());
+            dec.push(s.data);
         }
     }
     dbg_conn(&format!("call: {what}: video from the far end ended"));

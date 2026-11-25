@@ -52,7 +52,7 @@ impl App {
     pub(super) fn image_copy(&mut self, ctx: &egui::Context, key: &str) {
         let bytes = self.photos.image_bytes(&format!("full:{key}")).or_else(|| self.photos.image_bytes(key)).map(|b| b.to_vec());
         if let Some(img) = bytes.and_then(|b| image::load_from_memory(&b).ok()) {
-            let rgba = img.to_rgba8();
+            let rgba = img.into_rgba8();
             ctx.copy_image(egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], rgba.as_raw()));
         }
     }
@@ -90,7 +90,7 @@ impl App {
             self.viewer_request(&key);
             ctx.data_mut(|d| { d.insert_temp(k_open, key.clone()); d.insert_temp(k_view, (1.0f32, Vec2::ZERO)); });
         }
-        let keys: Vec<String> = msgs.iter().flat_map(|m| m.images.iter().map(|a| a.key.clone())).collect();
+        let keys: Vec<&str> = msgs.iter().flat_map(|m| m.images.iter().map(|a| a.key.as_str())).collect(); // per frame: no copies
         let att = msgs.iter().flat_map(|m| m.images.iter()).find(|a| a.key == key).cloned();
         let at = keys.iter().position(|k| *k == key);
         let screen = ctx.screen_rect();
@@ -178,7 +178,7 @@ impl App {
         }
         if let Some(n) = nav {
             self.viewer_release(&key);
-            ctx.data_mut(|d| { d.insert_temp(k_key, keys[n].clone()); d.remove::<String>(k_open); });
+            ctx.data_mut(|d| { d.insert_temp(k_key, keys[n].to_string()); d.remove::<String>(k_open); });
         } else if want_close { close(self, ctx, &key); }
     }
 

@@ -26,7 +26,7 @@ impl App {
         ui.add_space(6.0);
         let ql = q.to_lowercase();
         let mut people: Vec<Person> = self.people.iter().filter(|p| ql.is_empty() || p.name.to_lowercase().contains(&ql) || p.email.to_lowercase().contains(&ql)).cloned().collect();
-        people.sort_by_key(|p| p.name.to_lowercase());
+        people.sort_by_cached_key(|p| p.name.to_lowercase()); // per frame: one lowercase copy per person, not per comparison
         let (fav, other): (Vec<Person>, Vec<Person>) = people.into_iter().partition(|p| self.is_favorite_person(p).is_some_and(|f| f.1));
         ui.spacing_mut().scroll = egui::style::ScrollStyle { bar_width: 10.0, bar_inner_margin: 2.0, bar_outer_margin: 0.0, ..egui::style::ScrollStyle::solid() };
         let mut menu_req: Option<(String, Rect)> = None;

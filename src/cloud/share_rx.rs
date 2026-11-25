@@ -84,21 +84,21 @@ pub fn remote_sharer(l: &Value, self_url: &str) -> Option<String> {
 
 /// The decode side of a received share: access units in, pictures out (`latest`). `keyframe` is raised when a key frame
 /// is needed (the RTP reader sends the PLI).
-pub struct Decode { tx: SyncSender<Vec<u8>>, pub keyframe: Arc<AtomicBool>, pub decoded: Arc<AtomicU64> }
+pub struct Decode { tx: SyncSender<bytes::Bytes>, pub keyframe: Arc<AtomicBool>, pub decoded: Arc<AtomicU64> }
 
 impl Decode {
     /// Starts a decoder thread whose pictures go to `slot` (the share's `SHARE`, the camera's `video_rx::MAIN`); it ends
     /// when the `Decode` is dropped. `what` names the thread and its log lines; `decoded` counts the pictures (the call's
     /// counter, kept across streams).
     pub fn start_into(slot: &'static Slot, what: &'static str, decoded: Arc<AtomicU64>) -> Decode {
-        let (tx, rx) = sync_channel::<Vec<u8>>(3);
+        let (tx, rx) = sync_channel::<bytes::Bytes>(3);
         let keyframe = Arc::new(AtomicBool::new(true)); // a key frame first
         let (k, n) = (keyframe.clone(), decoded.clone());
         let _ = std::thread::Builder::new().name(format!("webox-{what}-decode")).spawn(move || decode_loop(rx, k, n, slot, what));
         Decode { tx, keyframe, decoded }
     }
     /// One access unit (Annex B). A full queue drops it and asks for a key frame: the UI shows the newest picture only.
-    pub fn push(&self, au: Vec<u8>) {
+    pub fn push(&self, au: bytes::Bytes) {
         match self.tx.try_send(au) {
             Ok(()) => {}
             Err(TrySendError::Full(_)) => self.keyframe.store(true, Ordering::SeqCst),
@@ -107,7 +107,7 @@ impl Decode {
     }
 }
 
-fn decode_loop(rx: Receiver<Vec<u8>>, keyframe: Arc<AtomicBool>, decoded: Arc<AtomicU64>, slot: &'static Slot, what: &str) {
+fn decode_loop(rx: Receiver<bytes::Bytes>, keyframe: Arc<AtomicBool>, decoded: Arc<AtomicU64>, slot: &'static Slot, what: &str) {
     let mut dec = match openh264::decoder::Decoder::new() { Ok(d) => d, Err(e) => { dbg_conn(&format!("call: {what} decoder failed to start: {e}")); return } };
     let mut rgba: Vec<u8> = vec![];
     while let Ok(au) = rx.recv() {

@@ -20,6 +20,8 @@ const MAX_BUFFER: usize = RATE as usize; // 1 s
 /// Captured audio waiting for the call sender is capped at 60 ms: if the microphone's clock runs faster than the sender's,
 /// the oldest 20 ms are dropped instead of the delay growing.
 const MAX_CAPTURED: usize = 3 * FRAME;
+/// Microphone blocks queued for the mic chain (a few seconds of device callbacks; normally one or two wait).
+const MAX_BLOCKS: usize = 200;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Dev { pub name: String, pub default: bool }
@@ -224,7 +226,8 @@ impl Io {
     pub fn play(&self, pcm: &[i16]) {
         if let Ok(mut q) = self.to_play.lock() {
             q.extend(pcm.iter().copied());
-            while q.len() > MAX_BUFFER { q.pop_front(); }
+            let over = q.len().saturating_sub(MAX_BUFFER);
+            q.drain(..over);
         }
     }
     /// Like `play` but never drops audio (ringtones / sound files longer than the 1 s call buffer).
@@ -357,7 +360,8 @@ fn open_streams(io: &Arc<Io>, input: Option<&str>, output: Option<&str>) -> Resu
         let cfgs = stream_configs(&dev, true, Some(BUF_FRAMES)).map_err(mic_err)?;
         // The microphone chain runs on its own thread so it never holds up the device callback. The callback only mixes
         // down, resamples to 48 kHz and hands the block over; the thread ends when the stream (and so `blocks`) is dropped.
-        let (blocks, rx) = channel::<Vec<f32>>();
+        // bounded: a chain that falls far behind (an overloaded machine) drops blocks instead of queueing without limit
+        let (blocks, rx) = std::sync::mpsc::sync_channel::<Vec<f32>>(MAX_BLOCKS);
         let io3 = io.clone();
         std::thread::Builder::new().name("mic-dsp".into()).spawn(move || {
             let mut chain = super::mic::MicChain::new();
@@ -385,7 +389,8 @@ fn open_streams(io: &Arc<Io>, input: Option<&str>, output: Option<&str>) -> Resu
                 for s in frames { acc += s; n += 1; if n == ch { mono.push(acc / ch as f32); acc = 0.0; n = 0; } }
                 res.clear();
                 lin.push(&mono, &mut res);
-                let _ = blocks.send(res.clone());
+                let n = res.len();
+                let _ = blocks.try_send(std::mem::replace(&mut res, Vec::with_capacity(n)));
             };
             let io4 = io.clone();
             let err = stream_error(io4, "input");

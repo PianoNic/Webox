@@ -142,9 +142,12 @@ pub(super) fn seen_keys(msgs: &[Message], marks: &[cloud::ReadMark]) -> Vec<(Str
             None => out.push((time.to_string(), (e, pid.to_string(), name.to_string()))),
         }
     };
+    // A mark counts when the first message with its activity id is at or after the anchor: in the (short) tail and not before
+    // it. Runs every frame: marks outside the tail are skipped without a scan of the whole list.
+    let tail = &msgs[anchor..];
     for mk in marks {
-        let Some(at) = msgs.iter().position(|m| m.id == mk.activity) else { continue };
-        if at >= anchor { add(&mk.time, &mk.email, &mk.person, ""); }
+        if !tail.iter().any(|m| m.id == mk.activity) || msgs[..anchor].iter().any(|m| m.id == mk.activity) { continue; }
+        add(&mk.time, &mk.email, &mk.person, "");
     }
     for m in &msgs[anchor..] { if !m.mine && !m.email.is_empty() && m.notice.is_empty() { add("", &m.email, "", &m.author); } }
     out.sort_by(|a, b| b.0.cmp(&a.0)); // stable: equal times keep the order found

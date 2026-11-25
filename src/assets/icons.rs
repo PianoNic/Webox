@@ -220,7 +220,8 @@ impl Sized {
 }
 
 #[derive(Default)]
-pub struct Icons(HashMap<&'static str, TextureHandle>, Sized, Sized);
+/// (plain icons, art rasters per size, emoji rasters per size, whether an art SVG is single-colour; parsed once per name)
+pub struct Icons(HashMap<&'static str, TextureHandle>, Sized, Sized, HashMap<&'static str, bool>);
 
 impl Icons {
     fn tex(&mut self, ctx: &egui::Context, name: &'static str) -> Option<egui::TextureId> {
@@ -236,13 +237,13 @@ impl Icons {
     pub fn art(&mut self, ui: &egui::Ui, name: &'static str, rect: Rect) -> bool {
         let Some(data) = lookup(name) else { return false };
         // Single-colour black line art (the Momentum fallbacks contacts-320 / message-send-320, ...) is drawn in the theme's ink,
-        // like the -black / -white art variants switch by theme.
-        let mono = mono_black(data);
+        // like the -black / -white art variants switch by theme. Found once with the raster (kept with it), not every frame.
         // Rasterised at the drawn size in device pixels (cached per size), snapped to the pixel grid, like `paint`: a 256 px raster
         // shrunk with mipmaps also shrank the transparent margin below a pixel, so a full disc touched the quad's border again
         // and was cut flat on whichever sides the sub-pixel position put on that border.
         let ppp = ui.ctx().pixels_per_point();
         let px = (rect.width() * ppp).round().clamp(1.0, 1024.0) as u32;
+        let mono = *self.3.entry(name).or_insert_with(|| mono_black(data));
         let ctx = ui.ctx();
         let Some(id) = self.1.get(ctx, (name, px), || raster_px(data, mono, px, None).map(|img| ctx.load_texture(format!("art-{name}@{px}"), img, egui::TextureOptions::LINEAR))) else { return false };
         let tint = if mono { art_ink() } else { Color32::WHITE };
@@ -252,15 +253,11 @@ impl Icons {
 
     /// Draws a colour emoji; false when there is no picture for that character.
     pub fn emoji(&mut self, ui: &egui::Ui, s: &str, rect: Rect) -> bool {
-        let file = emoji_file(s);
-        let bare = file.replace("-fe0f", "");
-        let with_vs = format!("{bare}-fe0f"); // e.g. ❤ is stored as 2764-fe0f
-        let Some((key, data)) = [file.as_str(), bare.as_str(), with_vs.as_str()].into_iter()
-            .find_map(|f| EMOJI_TABLE.binary_search_by(|e| e.0.cmp(f)).ok().map(|i| EMOJI_TABLE[i])) else { return false };
+        let Some(key) = emoji_key(s) else { return false }; // e.g. ❤ is stored as 2764-fe0f
         // Rasterised at the drawn size, like `paint`: a small emoji keeps its details (a 64 px raster scaled down lost the mouth).
         let px = (rect.width() * ui.ctx().pixels_per_point()).round().clamp(1.0, 256.0) as u32;
         let ctx = ui.ctx();
-        let Some(id) = self.2.get(ctx, (key, px), || raster_px(data, false, px, None).map(|img| ctx.load_texture(format!("{key}@{px}"), img, egui::TextureOptions::LINEAR))) else { return false };
+        let Some(id) = self.2.get(ctx, (key, px), || find(EMOJI_TABLE, key).and_then(|data| raster_px(data, false, px, None)).map(|img| ctx.load_texture(format!("{key}@{px}"), img, egui::TextureOptions::LINEAR))) else { return false };
         ui.painter().image(id, grow(on_grid(rect, px, ui.ctx().pixels_per_point()), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
         true
     }
@@ -326,7 +323,18 @@ fn on_grid(rect: Rect, px: u32, ppp: f32) -> Rect {
 pub fn emoji_exists(s: &str) -> bool { emoji_key(s).is_some() }
 
 /// The name of the emoji file for a character sequence: an EXACT code-point match (with / without U+FE0F), never a fuzzy one.
+/// Memoised per thread: the UI asks for every emoji it draws (messages, reactions, the picker's cells) each frame.
 pub fn emoji_key(s: &str) -> Option<&'static str> {
+    thread_local! {
+        static KEYS: std::cell::RefCell<HashMap<String, Option<&'static str>>> = std::cell::RefCell::new(HashMap::new());
+    }
+    if let Some(k) = KEYS.with(|m| m.borrow().get(s).copied()) { return k; }
+    let found = emoji_key_uncached(s);
+    KEYS.with(|m| { let mut m = m.borrow_mut(); if m.len() >= 8192 { m.clear(); } m.insert(s.to_string(), found); });
+    found
+}
+
+fn emoji_key_uncached(s: &str) -> Option<&'static str> {
     let file = emoji_file(s);
     let bare = file.replace("-fe0f", "");
     let with_vs = format!("{bare}-fe0f");

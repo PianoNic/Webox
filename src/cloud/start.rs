@@ -147,7 +147,10 @@ pub fn debug_log_enabled() -> bool {
 pub fn dbg_conn(s: &str) {
     if !debug_log_enabled() { return; }
     use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(crate::system::config_dir().join("connect-debug.log")) {
+    let mut o = std::fs::OpenOptions::new();
+    o.create(true).append(true);
+    #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; o.mode(0o600); } // the trace names spaces, people and hosts
+    if let Ok(mut f) = o.open(crate::system::config_dir().join("connect-debug.log")) {
         let ms = keepalive_now().rem_euclid(86_400_000);
         let _ = writeln!(f, "{:02}:{:02}:{:02}.{:03} {s}", ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, ms % 1000);
     }

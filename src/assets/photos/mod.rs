@@ -158,7 +158,7 @@ fn decode_anim(ctx: &egui::Context, key: &str, bytes: &[u8]) -> Option<Anim> {
     }
     match image::load_from_memory(bytes) {
         Ok(img) => {
-            let mut img = img.to_rgba8();
+            let mut img = img.into_rgba8(); // no copy of an RGBA picture (a large one would briefly need twice its memory)
             let max_side = if key.starts_with("full:") { MAX_FULL_SIDE } else { MAX_TEXTURE_SIDE };
             if img.width().max(img.height()) > max_side { // larger than useful (viewer) or than a GPU texture can be: scale down
                 let s = max_side as f32 / img.width().max(img.height()) as f32;
@@ -399,8 +399,10 @@ impl Photos {
 
     /// The decoded picture for a person id, uuid or email (decoded lazily, cached); `None` if there is none.
     pub fn texture(&mut self, ctx: &egui::Context, key: &str) -> Option<egui::TextureId> {
-        let key = if self.bytes.contains_key(key) { key.to_string() } else { key.to_lowercase() };
         for id in self.forget_round.drain(..) { round::forget(ctx, id); }
+        // Already decoded under this exact key (called per avatar and frame): no key copy.
+        if let Some(t) = self.tex.get(key) { return t.as_ref().map(|t| t.id()); }
+        let key = if self.bytes.contains_key(key) { key.to_string() } else { key.to_lowercase() };
         if !self.bytes.contains_key(&key) { return None; }
         if !self.tex.contains_key(&key) {
             let t = match image::load_from_memory(&self.bytes[&key]) {

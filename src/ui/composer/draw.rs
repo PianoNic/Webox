@@ -249,7 +249,16 @@ impl App {
             // Colour pictures over the transparent placeholders.
             let d = draft.clone();
             let cl: Vec<(usize, usize)> = super::super::emoji_text::clusters(&d).into_iter().filter(|(a, b)| super::super::emoji_text::resolve(&d[*a..*b]).is_some()).collect();
-            let ranges: Vec<(usize, usize)> = cl.iter().map(|(a, b)| (ct::char_of(&d, *a), ct::char_of(&d, *b))).collect();
+            // Char ranges counted in one pass (clusters are in order and don't overlap): `char_of` per cluster rescanned the draft
+            // from its start, every frame.
+            let (mut cb, mut cc) = (0usize, 0usize);
+            let ranges: Vec<(usize, usize)> = cl.iter().map(|&(a, b)| {
+                cc += d[cb..a].chars().count();
+                let ca = cc;
+                cc += d[a..b].chars().count();
+                cb = b;
+                (ca, cc)
+            }).collect();
             let rects = cluster_rects(&out.galley, &ranges);
             let clip = out.text_clip_rect.intersect(mr); // scrolled-away emoji pictures stay inside the box
             for ((a, b), r) in cl.iter().zip(rects) {

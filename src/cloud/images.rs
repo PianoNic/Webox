@@ -160,6 +160,7 @@ fn download(agent: &ureq::Agent, token: &str, scr: &Scr, cap: u64) -> Result<Vec
     if giphy_host(&scr.loc) {
         // A GIF share points at Giphy's public CDN: plain GET, no Authorization header, content is not encrypted.
         let url = scr.loc.replacen("http://", "https://", 1); // always over TLS
+        if !url.starts_with("https://") { return Err("download url is not https".into()); }
         let r = agent.get(&url).call().map_err(|e| format!("giphy {}", short(&e)))?;
         let mut blob = vec![];
         r.into_reader().take(cap + 1).read_to_end(&mut blob).map_err(|e| e.to_string())?;

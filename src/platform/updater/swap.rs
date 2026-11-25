@@ -9,6 +9,7 @@ pub const EXE_NAME: &str = "webox.exe";
 /// Upper bound for the unpacked program (bytes).
 const EXE_MAX: u64 = 512 << 20;
 
+#[cfg(any(test, target_os = "macos"))]
 pub fn sha256_file(p: &Path) -> Result<String, String> {
     let mut f = std::fs::File::open(p).map_err(|e| crate::trq!("File not readable: {{0}}", e))?;
     let mut h = Sha256::new();
@@ -35,11 +36,12 @@ pub fn folder_writable(exe: &Path) -> bool {
 }
 
 /// Checks `zip` against `want_sha`, unpacks the program to `webox.exe.new` beside `exe` and runs `probe` on it.
-/// The zip is never opened when the checksum differs; the unpacked file is deleted when anything fails.
+/// The zip is never unpacked when the checksum differs; the unpacked file is deleted when anything fails.
 pub fn stage(zip: &Path, want_sha: &str, exe: &Path, probe: impl Fn(&Path) -> Result<(), String>) -> Result<PathBuf, String> {
-    let got = sha256_file(zip)?;
-    if !got.eq_ignore_ascii_case(want_sha.trim()) { return Err(crate::trq!("Checksum (SHA-256) does not match; update discarded").into_owned()); }
+    // Read once and hash those bytes: what is unpacked is exactly what was checked (no second read the file could change under).
     let bytes = std::fs::read(zip).map_err(|e| crate::trq!("Download not readable: {{0}}", e))?;
+    let got: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
+    if !got.eq_ignore_ascii_case(want_sha.trim()) { return Err(crate::trq!("Checksum (SHA-256) does not match; update discarded").into_owned()); }
     let program = super::zip::extract(&bytes, EXE_NAME, EXE_MAX)?;
     let new = new_path(exe);
     let res = std::fs::write(&new, &program).map_err(|e| crate::trq!("The new version can't be stored: {{0}}", e)).and_then(|_| probe(&new));

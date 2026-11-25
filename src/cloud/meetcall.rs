@@ -63,7 +63,7 @@ pub fn parse_user_sessions(v: &Value) -> Vec<CallRecord> {
     let mut out: Vec<CallRecord> = v["userSessions"].as_array().into_iter().flatten().filter(|s| s["isDeleted"].as_bool() != Some(true)).map(|s| {
         let o = &s["other"];
         let (start_ms, end_ms) = (ms(&st(s, "startTime")), ms(&st(s, "endTime")));
-        let secs = s["durationSeconds"].as_u64().or_else(|| s["durationSecs"].as_u64()).unwrap_or_else(|| ((end_ms - start_ms).max(0) / 1000) as u64) as u32;
+        let secs = s["durationSeconds"].as_u64().or_else(|| s["durationSecs"].as_u64()).unwrap_or_else(|| (end_ms.saturating_sub(start_ms).max(0) / 1000) as u64) as u32;
         let callback = [st(o, "callbackAddress"), st(&s["links"], "callbackAddress")].into_iter().find(|x| !x.is_empty()).unwrap_or_default();
         let email = [st(o, "email"), st(o, "contact")].into_iter().find(|x| x.contains('@')).or_else(|| callback.contains('@').then(|| callback.clone())).unwrap_or_default();
         let name = [st(o, "name"), st(o, "primaryDisplayString"), st(o, "phoneNumber"), email.clone()].into_iter().find(|x| !x.is_empty()).unwrap_or_default();
@@ -92,7 +92,7 @@ pub fn parse_calendar(v: &Value, mut dec: impl FnMut(&str, &str) -> String) -> V
         let key = st(e, "encryptionKeyUrl");
         let mut d = |s: String| if s.is_empty() { s } else { dec(&s, &key) };
         let start_ms = crate::i18n::parse_iso_ms(&st(e, "start")).unwrap_or(0);
-        let end_ms = start_ms + e["durationMinutes"].as_i64().unwrap_or(0) * 60_000;
+        let end_ms = start_ms.saturating_add(e["durationMinutes"].as_i64().unwrap_or(0).saturating_mul(60_000));
         let link = [st(&e["meetingJoinInfo"], "meetingJoinURL"), st(e, "webexURL"), st(e, "spaceMeetURL")].into_iter().find(|x| !x.is_empty()).map(&mut d).unwrap_or_default();
         CalEvent {
             id: st(e, "id"), title: d(st(e, "encryptedSubject")), start_ms, end_ms, organizer: d(st(&e["encryptedOrganizer"], "encryptedName")),

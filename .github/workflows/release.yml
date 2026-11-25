@@ -6,6 +6,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+
 jobs:
   ci:
     name: Gates
@@ -76,6 +79,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.sync-version.outputs.sha }}
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
@@ -143,6 +147,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.sync-version.outputs.sha }}
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
@@ -181,6 +186,7 @@ jobs:
         uses: useblacksmith/checkout@75c49b6ed30ce59336e9252425796cfcfac155f8 # v1
         with:
           ref: ${{ needs.sync-version.outputs.sha }}
+          persist-credentials: false
 
       # docs/LINUX.md: WebKitGTK + GTK for the sign-in window, ALSA, GStreamer headers for video playback.
       - name: Install the build dependencies

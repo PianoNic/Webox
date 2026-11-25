@@ -78,9 +78,11 @@ impl App {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new_banners(&mut self, ui: &mut egui::Ui, list: Rect, space: &str, msgs: &[Message], off: f32, view_h: f32, max: f32, k_set: Id) {
         let ctx = ui.ctx().clone();
-        let spans = ctx.data(|d| d.get_temp::<Vec<(String, f32, f32)>>(Id::new("msg-rowspans"))).unwrap_or_default();
+        // The rows' spans, copied out of the context only when a target is looked up (not every frame without banners).
+        let spans_once: std::cell::OnceCell<Vec<(String, f32, f32)>> = std::cell::OnceCell::new();
         // A reply inside a collapsed thread has no row of its own: its thread root stands for it.
         let row = |id: &str| -> Option<(f32, f32)> {
+            let spans = spans_once.get_or_init(|| ctx.data(|d| d.get_temp::<Vec<(String, f32, f32)>>(Id::new("msg-rowspans"))).unwrap_or_default());
             let find = |x: &str| spans.iter().find(|s| s.0 == x).map(|s| (s.1, s.2));
             find(id).or_else(|| msgs.iter().find(|m| m.id == id).and_then(|m| find(&m.parent)))
         };

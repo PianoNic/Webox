@@ -105,7 +105,7 @@ impl Session {
     /// known for the space instead when that is not one. The space's `last_seen` moves on locally, so a reload of the same
     /// list (reactions, edits) doesn't send it again. Verb "acknowledge", object {id, objectType "activity"}.
     pub(crate) fn ack(&mut self, id: &str, activity: &str) -> Result<(), String> {
-        let acts = self.hist.acts.get(id).cloned().unwrap_or_default();
+        let acts = self.hist.acts.get(id).map(Vec::as_slice).unwrap_or_default();
         let readable = |a: &&Value| (a["verb"] == "post" || a["verb"] == "share") && a["parent"]["type"] != "edit";
         let target = acts.iter().filter(readable).find(|a| st(a, "id") == activity).or_else(|| acts.iter().filter(readable).last());
         let Some(target) = target.cloned() else { return Ok(()) };
