@@ -1,5 +1,8 @@
 use crate::*;
 
+/// How long the text cursor keeps blinking after the last input.
+const CURSOR_BLINK_SECS: f64 = 10.0;
+
 impl eframe::App for App {
     // The main window's backdrop. The popups (toasts, tray menu, incoming-call toast) are immediate viewports, which eframe
     // always clears to transparent; their see-through padding comes from tray::see_through, not from this colour.
@@ -26,13 +29,23 @@ impl eframe::App for App {
             let mut l = LAST.lock().unwrap();
             l.1 += 1;
             for c in ctx.repaint_causes() { l.2.push(format!("{}:{} {}", c.file, c.line, c.reason)); }
+            // WEBOX_PROBE=2: every frame, the focused widget and the visible layers (what changes between idle frames).
+            if std::env::var_os("WEBOX_PROBE").is_some_and(|v| v == "2") {
+                let mut layers: Vec<String> = ctx.memory(|m| m.areas().visible_layer_ids().into_iter().map(|l| format!("{:?}/{:?}", l.order, l.id)).collect());
+                layers.sort();
+                eprintln!("FRAME t={t:.2} focus={:?} layers={layers:?}", ctx.memory(|m| m.focused()));
+            }
             if t - l.0 > 5.0 {
                 let mut m: std::collections::BTreeMap<String, u32> = Default::default();
                 for k in l.2.drain(..) { *m.entry(k).or_default() += 1; }
                 let mut v: Vec<_> = m.into_iter().collect(); v.sort_by(|a, b| b.1.cmp(&a.1));
                 let (n, bytes) = ctx.tex_manager().read().allocated().fold((0usize, 0usize), |(n, b), (_, m)| (n + 1, b + m.size[0] * m.size[1] * m.bytes_per_pixel));
                 let heap = crate::platform::memprobe::heap().map(|(live, _)| format!(" heap_mb={:.1}", live as f64 / 1048576.0)).unwrap_or_default();
-                eprintln!("PROBE {:.0}s frames={} textures={} tex_mb={}{heap} causes={:?}", t - l.0, l.1, n, bytes >> 20, &v[..v.len().min(12)]);
+                let atlas = ctx.fonts(|f| f.font_image_size());
+                let heap = format!("{heap} input_idle_s={:.0} font_atlas={}x{}", t - self.last_input, atlas[0], atlas[1]);
+                let resps = crate::platform::memprobe::RESPS.swap(0, std::sync::atomic::Ordering::Relaxed);
+                eprintln!("PROBE {:.0}s frames={} cloud_answers={resps} textures={} tex_mb={}{heap} rows={} {} causes={:?}", t - l.0, l.1, n, bytes >> 20,
+                    super::messages::row_cache_len(), self.photos.mem_report(), &v[..v.len().min(12)]);
                 l.0 = t; l.1 = 0;
             }
         }
@@ -52,8 +65,13 @@ impl eframe::App for App {
         { let h = crate::platform::linux::note_window(frame, ctx); if self.hwnd.is_none() { self.hwnd = h; } }
         let now = ctx.input(|i| i.time);
         // The presence keepalive's input clock where the system has none (cloud/keepalive.rs; Windows uses GetLastInputInfo).
-        if ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { .. } | egui::Event::PointerButton { .. } | egui::Event::PointerMoved(_) | egui::Event::MouseWheel { .. } | egui::Event::Text(_)))) {
+        // A pointer "move" to where the pointer already was is no input (Windows repeats WM_MOUSEMOVE for a resting cursor).
+        let last_pos = self.last_pointer;
+        if let Some(p) = ctx.input(|i| i.events.iter().rev().find_map(|e| if let egui::Event::PointerMoved(p) = e { Some(*p) } else { None })) { self.last_pointer = Some(p); }
+        if ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { .. } | egui::Event::PointerButton { .. } | egui::Event::MouseWheel { .. } | egui::Event::Text(_))
+            || matches!(e, egui::Event::PointerMoved(p) if Some(*p) != last_pos))) {
             cloud::keepalive::note_input(crate::ui::chrome::now_ms());
+            self.last_input = now;
         }
         // --signin [email]: once the window handle exists, start the native sign-in automatically
         // (same path as clicking Next on the login screen). The remembered idbroker session in our
@@ -73,6 +91,11 @@ impl eframe::App for App {
         let can_restore = true;
         if self.minimize { self.minimize = false; if can_restore { ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)); } }
         self.poll(now);
+        // Hidden in the tray or minimised: the pictures' textures are freed (decoded again when the window is back).
+        let away = crate::platform::tray::HIDDEN.load(std::sync::atomic::Ordering::Relaxed) || ctx.input(|i| i.viewport().minimized == Some(true));
+        crate::assets::photos::AWAY.store(away, std::sync::atomic::Ordering::Relaxed);
+        if away && !self.textures_released { self.photos.release_textures(ctx); }
+        self.textures_released = away;
         super::sample_scale::tour(self, ctx); // WEBOX_SAMPLE_TOUR (sample runs only)
         self.typing_frame(ctx); // my typing → the service (throttled), typers' overlay animation (ui/typing.rs)
         self.poll_webview();
@@ -83,6 +106,11 @@ impl eframe::App for App {
             if let Ok(v) = std::env::var("WEBOX_SHOT_COMPACT_VIEW") { self.settings["compact_view"] = json!(v == "1"); } }
         crate::ui::theme::density::set_from(&self.settings);
         let t = self.apply_theme(ctx);
+        // Every blink of the text cursor redraws the whole window (egui has no partial redraws): it blinks while you work and
+        // stays on, without redraws, from 10 s after the last key press or mouse move, so a window left open is really idle.
+        let blink = now - self.last_input < CURSOR_BLINK_SECS;
+        if ctx.style().visuals.text_cursor.blink != blink { ctx.style_mut(|s| s.visuals.text_cursor.blink = blink); }
+        if blink { ctx.request_repaint_after(std::time::Duration::from_secs_f64(CURSOR_BLINK_SECS - (now - self.last_input) + 0.01)); }
         self.shortcuts_frame(ctx); // registry dispatch, global hotkeys
         self.type_focus_frame(ctx); // typing with nothing focused goes to the composer (ui/type_focus.rs)
         self.settings_window(ctx, &t, now); // collects file-dialog results, screenshot hook (ui/settings/)

@@ -1,5 +1,5 @@
 //! The memory / CPU floor of an eframe (glow) window on this machine: the same window options as Webox, one label, nothing
-//! else. Compare its private bytes with Webox's to tell the OpenGL driver's share from Webox's own (docs/performance.md).
+//! else. Compare its private bytes with Webox's (`--sample`, `WEBOX_PROBE=1`) to tell the OpenGL driver's share from Webox's own.
 //! `cargo run --release --example blank_window`
 use eframe::egui;
 

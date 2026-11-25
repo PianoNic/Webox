@@ -24,6 +24,9 @@ mod imp {
     static A: Counting = Counting;
 }
 
+/// Cloud answers handled by the window (each one is a redraw), for the `WEBOX_PROBE=1` report.
+pub static RESPS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// Live heap bytes and the peak so far (only with the `profile-mem` feature).
 pub fn heap() -> Option<(usize, usize)> {
     #[cfg(feature = "profile-mem")]

@@ -3,4 +3,5 @@
 pub mod icons;
 pub mod cisco_assets;
 pub mod photos;
+pub mod font_file; // system font files without heap copies (mapped on Windows)
 pub mod i18n;
