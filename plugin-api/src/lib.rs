@@ -101,7 +101,7 @@ pub mod deco {
     pub const AVATAR_RING_ALL: u64 = 1 << 3;
     /// A gradient outline on the selected list row.
     pub const SELECTED_ROW: u64 = 1 << 4;
-    /// A gradient outline on the selected text tab pill ("Alle", "Nachrichten", ...).
+    /// A gradient outline on the selected text tab pill ("All", "Messages", ...).
     pub const TAB_PILLS: u64 = 1 << 5;
     /// A gradient underline under the selected settings navigation item.
     pub const NAV_UNDERLINE: u64 = 1 << 6;

@@ -1,6 +1,6 @@
 //! Plugin repositories (Aniyomi-style extension repos, docs/plugins.md): the official repository plus ones the person adds, each an
-//! index URL. Indexes are fetched when the Plugins page opens, on "Aktualisieren", and once a day when "Automatisch nach Updates
-//! suchen" is on; downloads run on worker threads and report progress. Installing itself (moving the verified file into place and
+//! index URL. Indexes are fetched when the Plugins page opens, on "Refresh", and once a day when "Automatically check for
+//! updates" is on; downloads run on worker threads and report progress. Installing itself (moving the verified file into place and
 //! loading it) happens on the UI thread through `Plugins::install`. The list of repositories, the auto-check switch and whether the
 //! first-install warning was confirmed are kept in `plugin-repos.json` in the config folder; indexes are cached in `plugin-repos/`.
 pub mod index;
@@ -121,9 +121,9 @@ impl Repos {
     /// file, not yet in the list).
     pub fn check_repo_url(&self, url: &str) -> Result<String, String> {
         let p = net::parse_url(url, self.policy)?;
-        if !p.path().to_ascii_lowercase().ends_with(".json") { return Err("Die Adresse muss auf die Index-Datei zeigen (endet auf .json, z. B. index.min.json)".into()); }
+        if !p.path().to_ascii_lowercase().ends_with(".json") { return Err(crate::trq!("The address must point to the index file (ending in .json, e.g. index.min.json)").into_owned()); }
         let u = p.to_string();
-        if self.urls().contains(&u) { return Err("Dieses Repository ist schon eingetragen".into()); }
+        if self.urls().contains(&u) { return Err(crate::trq!("This repository is already in the list").into_owned()); }
         Ok(u)
     }
 
@@ -182,14 +182,14 @@ impl Repos {
 
     /// Starts downloading `a` (the caller has shown the warnings). The file is verified on the worker thread.
     pub fn start_install(&mut self, a: &Avail) -> Result<(), String> {
-        if self.sample { return Err("Im Beispielmodus werden keine Plugins installiert".into()); }
+        if self.sample { return Err(crate::trq!("No plugins are installed in sample mode").into_owned()); }
         if crate::system::side_loading_protection() { return Err(super::plugins::policy_block_reason()); }
         let f = a.compat.clone()?;
-        if self.job(&a.plugin.pkg).is_some() { return Err("wird schon heruntergeladen".into()); }
+        if self.job(&a.plugin.pkg).is_some() { return Err(crate::trq!("already downloading").into_owned()); }
         let url = net::resolve(&a.repo, &f.file, self.policy)?;
         let file = url.path_segments().and_then(|mut s| s.next_back()).unwrap_or_default().to_string();
         if !index::valid_file_name(&file) || !file.ends_with(&format!(".{}", std::env::consts::DLL_EXTENSION)) {
-            return Err(format!("unerwarteter Dateiname '{file}'"));
+            return Err(crate::trq!("unexpected file name '{{0}}'", file));
         }
         let inst = store::Installed { pkg: a.plugin.pkg.clone(), name: a.plugin.name.clone(), version: a.plugin.version.clone(), file,
             sha256: f.sha256.clone(), repo: a.repo.clone() };

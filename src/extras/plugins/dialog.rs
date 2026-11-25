@@ -1,7 +1,7 @@
 //! `ui.dialog`: a plugin shows a read-only dialog: a title, tabs of rich text (spans as in `message.keep`), and optionally one
-//! switch that shows each tab's second text instead (e.g. "Unterschiede anzeigen" for a diff). Webox draws it
+//! switch that shows each tab's second text instead (e.g. "Show differences" for a diff). Webox draws it
 //! (ui/app_dialogs.rs); nothing goes back to the plugin. It does not block, so it may be called from `on_event` (the UI
-//! thread). A new dialog replaces the one on screen; it closes with its X / Esc / "Schließen", or when its plugin is switched off.
+//! thread). A new dialog replaces the one on screen; it closes with its X / Esc / "Close", or when its plugin is switched off.
 use super::kept::{spans, SPAN_PLAIN};
 use super::{post, Ctx};
 use crate::cloud::Span;
@@ -41,14 +41,14 @@ pub struct Dialog {
 /// `ui.dialog {"title", "tabs": [{"label"?, "time_ms"?, "text": spans|string, "alt"?: spans|string, "disabled"?, "hint"?}],
 /// "selected"?, "switch"?: {"label", "on"?}}` -> `{}` (or `{"error"}` without a title or tabs).
 pub(super) fn parse(plugin: &str, a: &Value) -> Result<Dialog, String> {
-    let title = a.get("title").and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty()).ok_or("title fehlt")?;
+    let title = a.get("title").and_then(Value::as_str).map(str::trim).filter(|t| !t.is_empty()).ok_or("title missing")?;
     let st = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).unwrap_or("").trim().chars().take(120).collect::<String>();
     let tabs: Vec<Tab> = a.get("tabs").and_then(Value::as_array).into_iter().flatten().take(TABS_MAX).map(|t| Tab {
         label: st(t, "label"), time_ms: t.get("time_ms").and_then(Value::as_i64).unwrap_or(0),
         text: spans(t.get("text").unwrap_or(&Value::Null), SPAN_PLAIN), alt: spans(t.get("alt").unwrap_or(&Value::Null), SPAN_PLAIN),
         disabled: t.get("disabled").and_then(Value::as_bool).unwrap_or(false), hint: st(t, "hint"),
     }).collect();
-    if tabs.is_empty() { return Err("tabs fehlen".into()); }
+    if tabs.is_empty() { return Err("tabs missing".into()); }
     let n = tabs.len();
     let mut selected = a.get("selected").and_then(Value::as_u64).map_or(n - 1, |i| (i as usize).min(n - 1));
     if tabs[selected].disabled { selected = tabs.iter().rposition(|t| !t.disabled).unwrap_or(selected); }
@@ -74,13 +74,13 @@ mod tests {
     fn a_dialog_needs_a_title_and_tabs() {
         assert!(parse("p", &json!({ "tabs": [{ "text": "a" }] })).is_err());
         assert!(parse("p", &json!({ "title": "T", "tabs": [] })).is_err());
-        let d = parse("p", &json!({ "title": "Bearbeitungsverlauf", "switch": { "label": "Unterschiede anzeigen", "on": true }, "tabs": [
-            { "time_ms": 5, "disabled": true, "hint": "nicht protokolliert", "text": "" },
-            { "time_ms": 10, "text": "Hallo Welt", "alt": [{ "text": "Hallo " }, { "text": "Welt", "kind": "removed" }, { "text": "Leute", "kind": "added" }] },
-            { "label": "Aktuell", "text": "Hallo Leute" } ] })).unwrap();
-        assert_eq!((d.plugin.as_str(), d.title.as_str(), d.tabs.len(), d.selected), ("p", "Bearbeitungsverlauf", 3, 2), "the last tab is shown first");
-        assert_eq!(d.switch, Some(("Unterschiede anzeigen".to_string(), true)));
-        assert_eq!(d.tabs[1].alt, [("Hallo ".to_string(), SPAN_PLAIN), ("Welt".to_string(), SPAN_REMOVED), ("Leute".to_string(), SPAN_ADDED)]);
+        let d = parse("p", &json!({ "title": "Edit history", "switch": { "label": "Show differences", "on": true }, "tabs": [
+            { "time_ms": 5, "disabled": true, "hint": "not logged", "text": "" },
+            { "time_ms": 10, "text": "Hello world", "alt": [{ "text": "Hello " }, { "text": "world", "kind": "removed" }, { "text": "everyone", "kind": "added" }] },
+            { "label": "Current", "text": "Hello everyone" } ] })).unwrap();
+        assert_eq!((d.plugin.as_str(), d.title.as_str(), d.tabs.len(), d.selected), ("p", "Edit history", 3, 2), "the last tab is shown first");
+        assert_eq!(d.switch, Some(("Show differences".to_string(), true)));
+        assert_eq!(d.tabs[1].alt, [("Hello ".to_string(), SPAN_PLAIN), ("world".to_string(), SPAN_REMOVED), ("everyone".to_string(), SPAN_ADDED)]);
         assert!(d.tabs[0].disabled && d.tabs[0].text.is_empty());
         // A disabled tab is never the one shown.
         assert_eq!(parse("p", &json!({ "title": "T", "selected": 0, "tabs": [{ "disabled": true, "text": "a" }, { "text": "b" }] })).unwrap().selected, 1);

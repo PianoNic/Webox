@@ -21,8 +21,8 @@ pub struct Hit { pub key: String, pub plugin: String, pub label: String, pub des
 impl Plugins {
     /// Validates and saves a new value for setting `id` of plugin `i`, then tells the plugin.
     pub fn set_setting(&mut self, i: usize, id: &str, v: Value) -> Result<(), String> {
-        let e = self.list.get_mut(i).ok_or("kein Plugin")?;
-        let schema = e.settings.schema.clone().ok_or("dieses Plugin hat keine Einstellungen")?;
+        let e = self.list.get_mut(i).ok_or_else(|| crate::trq!("no plugin").into_owned())?;
+        let schema = e.settings.schema.clone().ok_or_else(|| crate::trq!("this plugin has no settings").into_owned())?;
         let v = schema.validate(id, &v)?;
         if schema.field(id).is_some_and(|f| f.kind == Kind::Secret) {
             self.settings_store.save_secret(&e.key, id, v.as_str().unwrap_or_default())?;

@@ -17,7 +17,7 @@ pub(crate) fn giphy_to_gif(a: &cloud::Attachment) -> Option<Gif> {
     Some(Gif { id: g.id.clone(), title: title.to_string(), thumb_url: format!("{dir}/200w_d.gif"), thumb_w: 200, thumb_h: (200 * h / w).max(1), media_url: g.url.clone(), media_w: w, media_h: h })
 }
 
-fn tip(fav: bool) -> &'static str { if fav { "Aus Favoriten entfernen" } else { "Zu Favoriten hinzufügen" } }
+fn tip(fav: bool) -> std::borrow::Cow<'static, str> { if fav { crate::tr!("AppPickerGridViewDelegate", "Remove from favorites") } else { crate::trq!("Add to favorites") } }
 
 impl Plugin {
     /// The round star chip on a Giphy GIF in the chat (28 pt, 8 pt from the picture's top right corner).

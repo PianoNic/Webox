@@ -108,13 +108,13 @@ fn compatibility() {
     assert!(index::check_contract(MA + 1, 0).is_err());
     let p = |c: &str| index::parse(&format!("[{}]", plugin_json("dev.webox.a", "1.0.0", c, "a.dll", b"x"))).unwrap().plugins.remove(0);
     assert!(index::compatible(&p(&format!("{MA}.{MI}")), "46.10.0").is_ok());
-    assert!(index::compatible(&p(&format!("{}.0", MA + 1)), "46.10.0").unwrap_err().contains("gebaut"));
+    assert!(index::compatible(&p(&format!("{}.0", MA + 1)), "46.10.0").unwrap_err().contains(&format!("{}.0", MA + 1)));
     let mut q = p("1.0");
     q.min_webox = Some("99.0.0".into());
     assert!(index::compatible(&q, "46.10.0").unwrap_err().contains("99.0.0"));
     q.min_webox = None;
     q.files = [("plan9-mips".to_string(), q.files.values().next().unwrap().clone())].into();
-    assert!(index::compatible(&q, "46.10.0").unwrap_err().contains("Plattform"));
+    assert!(index::compatible(&q, "46.10.0").unwrap_err().contains(&index::platform()));
     assert!(index::newer("1.10.0", "1.9.0") && !index::newer("1.0.0", "1.0.0") && !index::newer("x", "1.0.0"));
 }
 
@@ -141,7 +141,7 @@ fn repo_list_persists() {
     assert_eq!(r.urls(), vec![OFFICIAL_URL.to_string()]);
     assert!(r.add_repo("http://example.com/i.json").is_err());
     assert!(r.check_repo_url("https://example.com/plugins/").unwrap_err().contains(".json"));
-    assert!(r.check_repo_url(OFFICIAL_URL).unwrap_err().contains("schon"));
+    assert!(r.check_repo_url(OFFICIAL_URL).unwrap_err() == crate::trq!("This repository is already in the list"));
     assert_eq!(r.check_repo_url(" https://example.com/x/INDEX.JSON ").unwrap(), "https://example.com/x/INDEX.JSON");
     r.add_repo("https://example.com/a/index.json").unwrap();
     assert!(r.add_repo("https://example.com/a/index.json").is_err());
@@ -186,7 +186,7 @@ fn refuses_sha_mismatch_size_and_foreign_redirects() {
     assert!(!dest.exists(), "an unverified file must not stay on disk");
     assert!(net::download(&u("/p.dll"), &FileRef { size: 3, ..good.clone() }, &dest, LOOPBACK, &a, &b).is_err());
     assert!(!dest.exists());
-    assert!(net::download(&u("/away.dll"), &good, &dest, LOOPBACK, &a, &b).unwrap_err().contains("abgelehnt"));
+    assert!(net::download(&u("/away.dll"), &good, &dest, LOOPBACK, &a, &b).unwrap_err() == crate::trq!("Redirect to {{0}} refused", "evil.example.net"));
     net::download(&u("/hop.dll"), &good, &dest, LOOPBACK, &a, &b).unwrap();
     assert_eq!(std::fs::read(&dest).unwrap(), b"payload");
 }

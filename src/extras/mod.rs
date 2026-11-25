@@ -1,4 +1,4 @@
-//! Optional extras: the Giphy search (`giphy`), the built-in "GIF-Extras" plugin (`gif_extras`: extended picker, stickers,
+//! Optional extras: the Giphy search (`giphy`), the built-in "GIF Extras" plugin (`gif_extras`: extended picker, stickers,
 //! favourites of Giphy and uploaded GIFs, stars), the plugin host (`plugins`), plugin settings (`plugin_settings`) and plugin
 //! repositories (`plugin_repo`).
 pub mod gif_extras;

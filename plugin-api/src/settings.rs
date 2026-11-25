@@ -6,10 +6,10 @@
 //! ```ignore
 //! fn settings(&self) -> Option<Schema> {
 //!     Some(Schema::new()
-//!         .section("Ersetzungen", "")
-//!         .toggle("smiley", "':)' durch ein Emoji ersetzen", "", true)
-//!         .text("shrug", "Text für /shrug", "", "¯\\_(ツ)_/¯")
-//!         .button("reset", "Zähler zurücksetzen", ""))
+//!         .section("Replacements", "")
+//!         .toggle("smiley", "Replace ':)' with an emoji", "", true)
+//!         .text("shrug", "Text for /shrug", "", "¯\\_(ツ)_/¯")
+//!         .button("reset", "Reset counter", ""))
 //! }
 //! ```
 //! The schema format is documented in Webox's docs/plugins.md ("Plugin settings").
@@ -66,7 +66,7 @@ impl Schema {
     }
     /// A button; pressing it calls [`crate::Plugin::settings_action`] with `id`.
     pub fn button(self, id: &str, label: &str, description: &str) -> Schema { self.field("button", id, label, description, String::new()) }
-    /// A file path with a "Durchsuchen…" button that opens the system's file dialog, filtered to `extensions` (without dots;
+    /// A file path with a "Browse…" button that opens the system's file dialog, filtered to `extensions` (without dots;
     /// empty = all files) under the name `filter`. The value is the absolute path ("" = none). Hosts from before this field
     /// type leave the field out.
     pub fn file(self, id: &str, label: &str, description: &str, filter: &str, extensions: &[&str]) -> Schema {

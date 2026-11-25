@@ -43,7 +43,7 @@ pub(super) fn spaces_list(c: &Ctx, a: &Value) -> Value {
 /// search), newest first, each with its space.
 pub(super) fn messages_search(c: &Ctx, a: &Value) -> Value {
     let q = query(a);
-    if q.is_empty() { return json!({ "error": "query fehlt" }); }
+    if q.is_empty() { return json!({ "error": "query missing" }); }
     let only = a.get("space").and_then(Value::as_str);
     let titles: HashMap<String, String> = lock(&c.view).spaces.iter().map(|s| (s.id.clone(), s.title.clone())).collect();
     let r = lock(&c.recent);
@@ -63,7 +63,7 @@ pub(super) fn messages_search(c: &Ctx, a: &Value) -> Value {
 /// presence (`status`, as the service names it, e.g. "active", "inactive", "dnd"; "" = unknown).
 pub(super) fn people_search(c: &Ctx, a: &Value) -> Value {
     let q = query(a);
-    if q.is_empty() { return json!({ "error": "query fehlt" }); }
+    if q.is_empty() { return json!({ "error": "query missing" }); }
     let v = lock(&c.view);
     let l: Vec<Value> = v.people.iter().filter(|p| has(&p.name, &q) || has(&p.email, &q)).take(limit(a, 20, 200))
         .map(|p| json!({ "id": p.id, "name": p.name, "email": p.email, "status": p.status })).collect();

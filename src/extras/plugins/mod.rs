@@ -69,10 +69,10 @@ pub struct ReactionAvatars {
 pub const REACTION_AVATARS_MAX: usize = 10;
 /// Parses `{"enabled","max","size","hide_self"}` (all optional: on, 3, "small", false). `Ok(None)` = switched off.
 fn reaction_avatars(a: &Value) -> Result<Option<ReactionAvatars>, &'static str> {
-    let Some(o) = a.as_object() else { return Err("Objekt erwartet") };
+    let Some(o) = a.as_object() else { return Err("object expected") };
     if !o.get("enabled").and_then(Value::as_bool).unwrap_or(true) { return Ok(None) }
     let max = o.get("max").and_then(Value::as_u64).unwrap_or(3).clamp(1, REACTION_AVATARS_MAX as u64) as usize;
-    let size = match o.get("size").and_then(Value::as_str).unwrap_or("small") { "small" => 14.0, "medium" => 18.0, _ => return Err("size: small oder medium") };
+    let size = match o.get("size").and_then(Value::as_str).unwrap_or("small") { "small" => 14.0, "medium" => 18.0, _ => return Err("size: small or medium") };
     Ok(Some(ReactionAvatars { max, size, hide_self: o.get("hide_self").and_then(Value::as_bool).unwrap_or(false) }))
 }
 
@@ -228,12 +228,12 @@ const METHODS: &[(&str, u32, Method)] = &[
     // space I cannot write in). The composer is not touched.
     ("space.send", 1, |c, a| match (a.get("space").and_then(Value::as_str), a.get("text").and_then(Value::as_str)) {
         (Some(sp), Some(t)) => { post(c, |o| o.sends_to.push((sp.to_string(), t.to_string()))); Value::Object(Map::new()) }
-        _ => serde_json::json!({ "error": "space und text erforderlich" }),
+        _ => serde_json::json!({ "error": "space and text required" }),
     }),
     // `{"space","limit"}`: the last `limit` loaded messages, oldest first, without system lines. No network request.
     // 2: each message also has "id", "email", "date", "time" (UTC) and "published_ms".
     ("space.history", 2, |c, a| {
-        let Some(sp) = a.get("space").and_then(Value::as_str) else { return serde_json::json!({ "error": "space fehlt" }) };
+        let Some(sp) = a.get("space").and_then(Value::as_str) else { return serde_json::json!({ "error": "space missing" }) };
         let n = a.get("limit").and_then(Value::as_u64).unwrap_or(RECENT_MAX as u64) as usize;
         let r = lock(&c.recent);
         let l = r.get(sp).map_or(&[][..], |l| &l[l.len().saturating_sub(n)..]);
@@ -253,7 +253,7 @@ const METHODS: &[(&str, u32, Method)] = &[
     // on the next frame; the plugin then gets `settings.changed`.
     ("settings.set", 1, |c, a| match (a.get("id").and_then(Value::as_str), a.get("value")) {
         (Some(id), Some(v)) => { post(c, |o| o.settings_set.push((c.plugin.clone(), id.to_string(), v.clone()))); Value::Object(Map::new()) }
-        _ => serde_json::json!({ "error": "id und value erforderlich" }),
+        _ => serde_json::json!({ "error": "id and value required" }),
     }),
     // `{"text"}`: puts the text on the clipboard (next frame).
     ("clipboard.write", 1, |c, a| with_text(a, |t| post(c, |o| o.clipboard = Some(t.to_string())))),
@@ -291,7 +291,7 @@ const METHODS: &[(&str, u32, Method)] = &[
     // `{"path", "width", "height"}` -> `{"id", "still"}`: a video (looping) or an image as pictures of that size, for `media.read`.
     ("media.open", 1, |c, a| {
         let n = |k: &str| a.get(k).and_then(Value::as_u64).unwrap_or(0) as usize;
-        let Some(p) = a.get("path").and_then(Value::as_str).filter(|p| !p.is_empty()) else { return serde_json::json!({ "error": "path fehlt" }) };
+        let Some(p) = a.get("path").and_then(Value::as_str).filter(|p| !p.is_empty()) else { return serde_json::json!({ "error": "path missing" }) };
         match crate::media::camera::hook::media_open(&c.plugin, Path::new(p), n("width"), n("height")) {
             Ok((id, still)) => serde_json::json!({ "id": id, "still": still }),
             Err(e) => serde_json::json!({ "error": e }),
@@ -301,7 +301,7 @@ const METHODS: &[(&str, u32, Method)] = &[
     ("media.read", 1, |c, a| {
         let n = |k: &str| a.get(k).and_then(Value::as_u64).unwrap_or(0) as usize;
         let (ptr, w, h, stride) = (n("data"), n("width"), n("height"), n("stride"));
-        if ptr == 0 || w == 0 || h == 0 || stride < w * 4 { return serde_json::json!({ "error": "data, width, height, stride erforderlich" }); }
+        if ptr == 0 || w == 0 || h == 0 || stride < w * 4 { return serde_json::json!({ "error": "data, width, height, stride required" }); }
         // SAFETY: the plugin owns `stride * height` writable bytes at `data` for the duration of the call.
         let dst = unsafe { std::slice::from_raw_parts_mut(ptr as *mut u8, stride * h) };
         match crate::media::camera::hook::media_read(&c.plugin, n("id") as u64, dst, w, h, stride) {
@@ -356,7 +356,7 @@ const EVENTS: &[(&str, u32)] = &[
     // A message's text changed, once per id and new text. Payload: `{"space","space_name","id","author","mine","old_text",
     // "new_text"}`. Answer `{"history": [...]}` (earlier texts, oldest first) to show them above the text. UI thread.
     // 2: "email", "team" / "team_name", "published_ms", "old_edited" (the old text was itself an edit). The answer may also
-    // give spans instead of strings, "current" (the current text as spans) and "inline": false (only "(bearbeitet)" shows).
+    // give spans instead of strings, "current" (the current text as spans) and "inline": false (only "(edited)" shows).
     ("message.edited", 2),
     // A message's menu opens (right-click on the message or its "···" button). Payload: `{"space","id","deleted","edited",
     // "mine"}` (`deleted`: a kept deleted message; `edited`: edited per the service or with earlier texts shown). Answer
@@ -370,7 +370,7 @@ const EVENTS: &[(&str, u32)] = &[
     ("space.menu", 1),
     // One of the plugin's own space-menu entries was picked. Payload: `{"space","item"}`; sent only to that plugin.
     ("space.menu_action", 1),
-    // "(bearbeitet)" (below a message a plugin logs edits of) or the header's "Bearbeitet" was clicked. Payload: `{"space","id",
+    // "(edited)" (below a message a plugin logs edits of) or the header's "Edited" was clicked. Payload: `{"space","id",
     // "text","mine","published_ms"}` (`text`: the current plain text). Answer ignored; the plugin may open `ui.dialog`. UI thread.
     ("message.edit_tag_clicked", 1),
 ];
@@ -380,7 +380,7 @@ fn capabilities() -> Value {
 }
 /// Runs `f` with the argument's `text`: `{}` on success, `{"error": ...}` without one.
 fn with_text(a: &Value, f: impl FnOnce(&str)) -> Value {
-    match a.get("text").and_then(Value::as_str) { Some(t) => { f(t); Value::Object(Map::new()) } None => serde_json::json!({ "error": "text fehlt" }) }
+    match a.get("text").and_then(Value::as_str) { Some(t) => { f(t); Value::Object(Map::new()) } None => serde_json::json!({ "error": "text missing" }) }
 }
 /// Runs `method` from `table`; null for an unknown method.
 fn dispatch(table: &[(&str, u32, Method)], c: &Ctx, method: &str, json: &str) -> *mut c_char {
@@ -395,7 +395,7 @@ fn read_json(p: &Path) -> Map<String, Value> {
 
 /// The reason nothing outside the program folder may load while the side-loading policy is on.
 pub fn policy_block_reason() -> String {
-    format!("blockiert: Schutz vor Side-Loading ist aktiv (Richtlinie {}); nur Plugins neben Webox werden geladen", crate::system::SIDE_LOADING_POLICY)
+    crate::trq!("blocked: side-loading protection is on (policy {{0}}); only plugins next to Webox are loaded", crate::system::SIDE_LOADING_POLICY)
 }
 
 /// The plugin folder of the Linux package layout, relative to the program's folder (`<prefix>/bin`).
@@ -497,7 +497,7 @@ impl Plugins {
             // Loading a library runs its code: only files the person put in a plugin folder, or verified repository installs, get here.
             let lib = unsafe { libloading::Library::new(&e.file) }.map_err(|x| x.to_string())?;
             let entry: libloading::Symbol<extern "C" fn() -> *const PluginVTable> =
-                unsafe { lib.get(ENTRY_SYMBOL) }.map_err(|_| "kein Webox-Plugin (collabhost_plugin fehlt)".to_string())?;
+                unsafe { lib.get(ENTRY_SYMBOL) }.map_err(|_| crate::trq!("not a Webox plugin (collabhost_plugin missing)").into_owned())?;
             // Plugins from before the contract symbol were built for 1.0.
             let contract = unsafe { lib.get::<extern "C" fn() -> u32>(CONTRACT_SYMBOL) }.map(|f| f()).unwrap_or(1 << 16);
             let (major, minor) = unpack_contract(contract);
@@ -519,10 +519,10 @@ impl Plugins {
 
     /// Checks a plugin's table (read only as far as contract `minor` has it) and gives the plugin its host context.
     fn attach(&self, e: &mut Entry, key: &str, vt: *const PluginVTable, minor: u16, lib: libloading::Library) -> Result<Loaded, String> {
-        if vt.is_null() || unsafe { (*vt).abi } != ABI_VERSION { return Err("für eine andere Plugin-Schnittstelle gebaut".into()); }
+        if vt.is_null() || unsafe { (*vt).abi } != ABI_VERSION { return Err(crate::trq!("built for a different plugin interface").into_owned()); }
         let v = unsafe { &*vt };
-        let c = calls(v, minor).ok_or("unvollständige Funktionstabelle")?;
-        if v.instance.is_null() { return Err("Plugin hat keine Instanz angelegt".into()); }
+        let c = calls(v, minor).ok_or_else(|| crate::trq!("incomplete function table").into_owned())?;
+        if v.instance.is_null() { return Err(crate::trq!("the plugin created no instance").into_owned()); }
         e.name = s(v.name); e.author = s(v.author); e.version = s(v.version); e.description = s(v.description);
         e.commands = s(v.commands).split_whitespace().map(String::from).collect();
         let name = if e.name.trim().is_empty() { key.to_string() } else { e.name.clone() };
@@ -591,7 +591,7 @@ impl Plugins {
         // Hashed again on this thread right before it can run: what is loaded is exactly what was pinned.
         if !store::sha256_file(staged).is_ok_and(|h| h.eq_ignore_ascii_case(&inst.sha256)) {
             discard();
-            return Err("Prüfsumme (SHA-256) stimmt nicht; nicht installiert".into());
+            return Err(crate::trq!("Checksum (SHA-256) does not match; not installed").into_owned());
         }
         let old_i = self.list.iter().position(|e| e.source.as_ref().is_some_and(|s| s.pkg == inst.pkg));
         let enabled = old_i.map_or(true, |i| self.list[i].enabled || self.list[i].error.is_some());
@@ -612,7 +612,7 @@ impl Plugins {
         if let Some(x) = e.error.take() {
             store::rollback(&self.install_root, &inst, c);
             reload_old(self);
-            return Err(format!("neue Version lässt sich nicht laden: {x}"));
+            return Err(crate::trq!("the new version cannot be loaded: {{0}}", x));
         }
         if let Err(x) = store::finish(&self.install_root, &inst, old.as_ref(), c) { unload(&mut e); return Err(x); }
         self.list.push(e);
@@ -622,7 +622,7 @@ impl Plugins {
 
     /// Unloads a repository plugin and deletes its files.
     pub fn uninstall(&mut self, pkg: &str) -> Result<(), String> {
-        let i = self.list.iter().position(|e| e.source.as_ref().is_some_and(|s| s.pkg == pkg)).ok_or("nicht installiert")?;
+        let i = self.list.iter().position(|e| e.source.as_ref().is_some_and(|s| s.pkg == pkg)).ok_or_else(|| crate::trq!("not installed").into_owned())?;
         let mut e = self.list.remove(i);
         unload(&mut e);
         self.drop_kept_unless_logging();
@@ -930,7 +930,7 @@ pub(super) mod tests {
         };
         assert_eq!(call("nope", "{}"), None);
         assert_eq!(call("settings.get", "").as_deref(), Some(r#"{"x":true}"#));
-        assert_eq!(call("ui.toast", "not json").as_deref(), Some(r#"{"error":"text fehlt"}"#));
+        assert_eq!(call("ui.toast", "not json").as_deref(), Some(r#"{"error":"text missing"}"#));
         assert_eq!(call("log.write", r#"{"text":"t"}"#).as_deref(), Some("{}"));
         assert_eq!(ctx.out.lock().unwrap().logs, vec!["[k] t".to_string()]);
         // A null context and a panicking handler both answer null instead of unwinding into the plugin.
@@ -964,15 +964,15 @@ pub(super) mod tests {
 
         let (mut p, dir) = load_in_process::<Listener>(6);
         assert!(p.subscribed("message.received"));
-        p.message_received("s1", "m1", "Anna", "Hallo", false, true, false);
+        p.message_received("s1", "m1", "Anna", "Hello", false, true, false);
         // The same activity again (live event + reloaded list): not a second time.
-        p.message_received("s1", "m1", "Anna", "Hallo", false, true, false);
-        p.message_received("s2", "m2", "Ich", "ok", true, false, true);
+        p.message_received("s1", "m1", "Anna", "Hello", false, true, false);
+        p.message_received("s2", "m2", "Me", "ok", true, false, true);
         // Events it did not subscribe to never reach it.
         assert!(p.emit("test.other", "{}").is_empty());
         assert_eq!(*RECEIVED.lock().unwrap(), [
-            serde_json::json!({ "space": "s1", "id": "m1", "author": "Anna", "text": "Hallo", "mine": false, "direct": true, "mentioned": false }),
-            serde_json::json!({ "space": "s2", "id": "m2", "author": "Ich", "text": "ok", "mine": true, "direct": false, "mentioned": true }),
+            serde_json::json!({ "space": "s1", "id": "m1", "author": "Anna", "text": "Hello", "mine": false, "direct": true, "mentioned": false }),
+            serde_json::json!({ "space": "s2", "id": "m2", "author": "Me", "text": "ok", "mine": true, "direct": false, "mentioned": true }),
         ]);
         // Switched off: not subscribed any more, nothing fires.
         let i = p.list.len() - 1;
@@ -990,8 +990,8 @@ pub(super) mod tests {
         let dir = std::env::temp_dir().join(format!("collabhost-space-{}", std::process::id()));
         let p = super::Plugins::with_root(&dir, dir.join("installed"));
         let msg = |author: &str, mine: bool, text: &str| crate::cloud::Message { author: author.into(), mine, text: text.into(), ..Default::default() };
-        let notice = crate::cloud::Message { notice: "Anna ist beigetreten".into(), ..Default::default() };
-        p.note_space("s1", &[msg("Anna", false, "eins"), notice, msg("Ich", true, "zwei"), msg("Anna", false, "drei")]);
+        let notice = crate::cloud::Message { notice: "Anna joined".into(), ..Default::default() };
+        p.note_space("s1", &[msg("Anna", false, "one"), notice, msg("Me", true, "two"), msg("Anna", false, "three")]);
         let ctx = super::Ctx { plugin: "k".into(), name: "K".into(), out: p.out.clone(), data: Default::default(), data_file: Default::default(), settings: Default::default(), recent: p.recent.clone(), kept: Default::default(),
             view: p.view.clone(), confirms: Default::default(), ui_thread: None, avatars: Default::default() };
         let c = &ctx as *const super::Ctx as super::Ptr;
@@ -1005,15 +1005,15 @@ pub(super) mod tests {
         // The last `limit`, oldest first, system lines left out; an unknown space has none.
         assert_eq!(call("space.history", serde_json::json!({ "space": "s1", "limit": 2 })),
             serde_json::json!({ "messages": [
-                { "id": "", "author": "Ich", "email": "", "mine": true, "text": "zwei", "date": "", "time": "", "published_ms": 0 },
-                { "id": "", "author": "Anna", "email": "", "mine": false, "text": "drei", "date": "", "time": "", "published_ms": 0 }] }));
+                { "id": "", "author": "Me", "email": "", "mine": true, "text": "two", "date": "", "time": "", "published_ms": 0 },
+                { "id": "", "author": "Anna", "email": "", "mine": false, "text": "three", "date": "", "time": "", "published_ms": 0 }] }));
         assert_eq!(call("space.history", serde_json::json!({ "space": "s1" }))["messages"].as_array().unwrap().len(), 3);
         assert_eq!(call("space.history", serde_json::json!({ "space": "nope", "limit": 5 })), serde_json::json!({ "messages": [] }));
         assert!(call("space.history", serde_json::json!({})).get("error").is_some());
-        assert_eq!(call("space.send", serde_json::json!({ "space": "s1", "text": "Bis gleich!" })), serde_json::json!({}));
-        assert!(call("space.send", serde_json::json!({ "text": "wohin?" })).get("error").is_some());
+        assert_eq!(call("space.send", serde_json::json!({ "space": "s1", "text": "See you soon!" })), serde_json::json!({}));
+        assert!(call("space.send", serde_json::json!({ "text": "where to?" })).get("error").is_some());
         let out = std::mem::take(&mut *p.out.lock().unwrap());
-        assert_eq!(out.sends_to, [("s1".to_string(), "Bis gleich!".to_string())]);
+        assert_eq!(out.sends_to, [("s1".to_string(), "See you soon!".to_string())]);
         assert!(out.sends.is_empty(), "never the open space");
         drop(p);
         let _ = std::fs::remove_dir_all(dir);
@@ -1039,7 +1039,7 @@ pub(super) mod tests {
     fn msg(id: &str, text: &str, ms: i64) -> crate::cloud::Message {
         crate::cloud::Message { id: id.into(), author: "Anna".into(), text: text.into(), published_ms: ms, date: "2026-11-24".into(), time: "10:00".into(), ..Default::default() }
     }
-    fn tomb(id: &str, ms: i64) -> crate::cloud::Message { crate::cloud::Message { id: id.into(), notice: "Anna hat ihre Nachricht gelöscht.".into(), published_ms: ms, ..Default::default() } }
+    fn tomb(id: &str, ms: i64) -> crate::cloud::Message { crate::cloud::Message { id: id.into(), notice: "Anna deleted their own message.".into(), published_ms: ms, ..Default::default() } }
     type Row = (String, String, String, u8, Vec<String>);
     /// (id, text, notice, deleted, history as plain texts) of every row.
     fn rows(l: &[crate::cloud::Message]) -> Vec<Row> {
@@ -1049,51 +1049,51 @@ pub(super) mod tests {
     fn row(id: &str, text: &str, notice: &str, deleted: u8, history: &[&str]) -> Row {
         (id.into(), text.into(), notice.into(), deleted, history.iter().map(|h| h.to_string()).collect())
     }
-    const GONE: &str = "Anna hat ihre Nachricht gelöscht.";
+    const GONE: &str = "Anna deleted their own message.";
 
     #[test]
     fn deleted_and_edited_fire_once_and_what_is_kept_stays() {
         let (mut p, dir) = load_in_process::<Logger>(6);
         assert!(p.logs_messages());
-        let old = vec![msg("m1", "eins", 1000), msg("m2", "zwei", 2000), msg("m3", "drei", 3000)];
+        let old = vec![msg("m1", "one", 1000), msg("m2", "two", 2000), msg("m3", "three", 3000)];
         // m2 became a tombstone (the service puts it at the deletion time, its row has no `published_ms`), m3 was edited.
-        let mut new = vec![msg("m1", "eins", 1000), msg("m3", "drei!", 3000), tomb("m2", 0)];
+        let mut new = vec![msg("m1", "one", 1000), msg("m3", "three!", 3000), tomb("m2", 0)];
         p.list_arrived(at("s1", "Team"), Some(&old), &mut new);
-        assert_eq!(rows(&new), [row("m1", "eins", "", 0, &[]), row("m2", "zwei", "", super::kept::STYLE_OVERLAY, &[]), row("m3", "drei!", "", 0, &["drei"])]);
+        assert_eq!(rows(&new), [row("m1", "one", "", 0, &[]), row("m2", "two", "", super::kept::STYLE_OVERLAY, &[]), row("m3", "three!", "", 0, &["three"])]);
         {
             let l = LOGGED.lock().unwrap();
             assert_eq!(l.len(), 2);
             assert_eq!(l[0], ("message.deleted".to_string(), serde_json::json!({ "space": "s1", "space_name": "Team", "team": "", "team_name": "", "id": "m2", "author": "Anna",
-                "email": "", "text": "zwei", "mine": false, "parent": "", "published_ms": 2000, "date": "2026-11-24", "time": "10:00" })));
+                "email": "", "text": "two", "mine": false, "parent": "", "published_ms": 2000, "date": "2026-11-24", "time": "10:00" })));
             assert_eq!(l[1], ("message.edited".to_string(), serde_json::json!({ "space": "s1", "space_name": "Team", "team": "", "team_name": "", "id": "m3", "author": "Anna",
-                "email": "", "mine": false, "published_ms": 3000, "old_edited": false, "old_text": "drei", "new_text": "drei!" })));
+                "email": "", "mine": false, "published_ms": 3000, "old_edited": false, "old_text": "three", "new_text": "three!" })));
         }
         // The next load of the space (the tombstone again): no second event, the kept rows are drawn again.
-        let mut again = vec![msg("m1", "eins", 1000), msg("m3", "drei!", 3000), tomb("m2", 0)];
+        let mut again = vec![msg("m1", "one", 1000), msg("m3", "three!", 3000), tomb("m2", 0)];
         p.list_arrived(at("s1", "Team"), Some(&new), &mut again);
         assert_eq!(rows(&again), rows(&new));
         assert_eq!(LOGGED.lock().unwrap().len(), 2);
         // m1 vanished (a delete without a tombstone) inside the range the new list covers: kept where it stood.
-        let mut gone = vec![msg("m0", "null", 500), msg("m3", "drei!", 3000), tomb("m2", 0)];
+        let mut gone = vec![msg("m0", "zero", 500), msg("m3", "three!", 3000), tomb("m2", 0)];
         p.list_arrived(at("s1", "Team"), Some(&again), &mut gone);
         assert_eq!(gone.iter().map(|m| (m.id.as_str(), m.deleted)).collect::<Vec<_>>(), [("m0", 0), ("m1", 2), ("m2", 2), ("m3", 0)]);
         assert_eq!(LOGGED.lock().unwrap().len(), 3);
         // A newer window that does not reach back to a message is not a delete of it.
-        let mut newer = vec![msg("m3", "drei!", 3000), msg("m4", "vier", 4000)];
+        let mut newer = vec![msg("m3", "three!", 3000), msg("m4", "four", 4000)];
         p.list_arrived(at("s1", "Team"), Some(&gone), &mut newer);
         assert_eq!(LOGGED.lock().unwrap().len(), 3);
         // The plugin gives its log back with another style (a settings change): the full copy stays, only the style changes.
-        p.kept.lock().unwrap().keep(&serde_json::json!({ "replace": true, "deleted": [{ "space": "s1", "id": "m2", "text": "aus dem Protokoll", "style": "text" }] }));
+        p.kept.lock().unwrap().keep(&serde_json::json!({ "replace": true, "deleted": [{ "space": "s1", "id": "m2", "text": "from the log", "style": "text" }] }));
         let mut l = again.clone();
         p.reapply_kept("s1", &mut l);
-        assert_eq!(rows(&l), [row("m1", "eins", "", 0, &[]), row("m2", "zwei", "", super::kept::STYLE_TEXT, &[]), row("m3", "drei!", "", 0, &[])]);
+        assert_eq!(rows(&l), [row("m1", "one", "", 0, &[]), row("m2", "two", "", super::kept::STYLE_TEXT, &[]), row("m3", "three!", "", 0, &[])]);
         // Switched off: nothing stays kept, the window draws its lists again (the tombstone comes back).
         let i = p.list.len() - 1;
         p.set_enabled(i, false);
         assert!(std::mem::take(&mut p.out.lock().unwrap().kept_changed));
         let mut l = again.clone();
         p.reapply_kept("s1", &mut l);
-        assert_eq!(rows(&l), [row("m1", "eins", "", 0, &[]), row("m2", "", GONE, 0, &[]), row("m3", "drei!", "", 0, &[])]);
+        assert_eq!(rows(&l), [row("m1", "one", "", 0, &[]), row("m2", "", GONE, 0, &[]), row("m3", "three!", "", 0, &[])]);
         drop(p);
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -1109,9 +1109,9 @@ pub(super) mod tests {
             let v: serde_json::Value = serde_json::from_str(payload).unwrap();
             MENU_SEEN.lock().unwrap().push((name.into(), v.clone()));
             (name == "message.menu" && v["deleted"] == true).then(|| serde_json::json!({ "items": [
-                { "id": "forget", "label": "Gelöschte Nachricht entfernen", "icon": "delete-regular", "danger": true },
+                { "id": "forget", "label": "Remove deleted message", "icon": "delete-regular", "danger": true },
                 { "id": "nolabel" },
-                { "id": "clear", "label": "Protokoll dieses Bereichs leeren" }] }).to_string())
+                { "id": "clear", "label": "Clear this space's log" }] }).to_string())
         }
     }
 
@@ -1123,8 +1123,8 @@ pub(super) mod tests {
         assert!(p.message_menu(&serde_json::json!({ "space": "s1", "id": "m1", "deleted": false, "edited": false, "mine": false })).is_empty());
         let items = p.message_menu(&serde_json::json!({ "space": "s1", "id": "m2", "deleted": true, "edited": false, "mine": true }));
         assert_eq!(items, [
-            super::MenuItem { plugin: key.clone(), id: "forget".into(), label: "Gelöschte Nachricht entfernen".into(), icon: "delete-regular".into(), danger: true },
-            super::MenuItem { plugin: key.clone(), id: "clear".into(), label: "Protokoll dieses Bereichs leeren".into(), icon: String::new(), danger: false },
+            super::MenuItem { plugin: key.clone(), id: "forget".into(), label: "Remove deleted message".into(), icon: "delete-regular".into(), danger: true },
+            super::MenuItem { plugin: key.clone(), id: "clear".into(), label: "Clear this space's log".into(), icon: String::new(), danger: false },
         ]);
         p.message_menu_action(&key, "s1", "m2", "forget");
         p.message_menu_action("someone-else", "s1", "m2", "forget"); // not this plugin's entry: never delivered
@@ -1137,7 +1137,7 @@ pub(super) mod tests {
         // The bare list is an answer too; more than MENU_MAX entries are cut.
         let many: Vec<serde_json::Value> = (0..20).map(|i| serde_json::json!({ "id": format!("i{i}"), "label": "x" })).collect();
         assert_eq!(super::menu_items("k", &serde_json::Value::Array(many).to_string()).len(), super::MENU_MAX);
-        assert!(super::menu_items("k", "kein json").is_empty());
+        assert!(super::menu_items("k", "no json").is_empty());
         drop(p);
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -1157,13 +1157,13 @@ pub(super) mod tests {
         let dir = std::env::temp_dir().join(format!("collabhost-nolog-{}", std::process::id()));
         let mut p = super::Plugins::with_root(&dir, dir.join("installed"));
         assert!(!p.logs_messages());
-        let old = vec![msg("m1", "eins", 1000), msg("m2", "zwei", 2000)];
-        let mut new = vec![tomb("m1", 1000), msg("m2", "zwei?", 2000)];
+        let old = vec![msg("m1", "one", 1000), msg("m2", "two", 2000)];
+        let mut new = vec![tomb("m1", 1000), msg("m2", "two?", 2000)];
         p.list_arrived(at("s1", ""), Some(&old), &mut new);
-        assert_eq!(rows(&new), [row("m1", "", GONE, 0, &[]), row("m2", "zwei?", "", 0, &[])]);
-        let mut vanished = vec![msg("m2", "zwei?", 2000)];
+        assert_eq!(rows(&new), [row("m1", "", GONE, 0, &[]), row("m2", "two?", "", 0, &[])]);
+        let mut vanished = vec![msg("m2", "two?", 2000)];
         p.list_arrived(at("s1", ""), Some(&new), &mut vanished);
-        assert_eq!(rows(&vanished), [row("m2", "zwei?", "", 0, &[])]);
+        assert_eq!(rows(&vanished), [row("m2", "two?", "", 0, &[])]);
         drop(p);
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -1185,13 +1185,13 @@ pub(super) mod tests {
         };
         // After a restart: a deleted message (as `message.deleted` delivered it, plus a style) and an edit history.
         assert_eq!(call(serde_json::json!({
-            "deleted": [{ "space": "s1", "id": "m2", "author": "Anna", "text": "zwei", "mine": false, "published_ms": 2000, "date": "2026-11-24", "time": "09:00", "style": "text" },
+            "deleted": [{ "space": "s1", "id": "m2", "author": "Anna", "text": "two", "mine": false, "published_ms": 2000, "date": "2026-11-24", "time": "09:00", "style": "text" },
                         { "id": "no-space" }],
-            "edited": [{ "id": "m3", "history": ["drei", "drei?"] }] })), "{}");
+            "edited": [{ "id": "m3", "history": ["three", "three?"] }] })), "{}");
         assert!(std::mem::take(&mut p.out.lock().unwrap().kept_changed));
-        let mut l = vec![msg("m1", "eins", 1000), msg("m3", "drei!", 3000)];
+        let mut l = vec![msg("m1", "one", 1000), msg("m3", "three!", 3000)];
         p.reapply_kept("s1", &mut l);
-        assert_eq!(rows(&l), [row("m1", "eins", "", 0, &[]), row("m2", "zwei", "", super::kept::STYLE_TEXT, &[]), row("m3", "drei!", "", 0, &["drei", "drei?"])]);
+        assert_eq!(rows(&l), [row("m1", "one", "", 0, &[]), row("m2", "two", "", super::kept::STYLE_TEXT, &[]), row("m3", "three!", "", 0, &["three", "three?"])]);
         assert_eq!((l[1].date.as_str(), l[1].time.as_str(), l[1].published_ms), ("2026-11-24", "09:00", 2000));
         // Another space is not touched.
         let mut other = vec![msg("x", "y", 2500)];
@@ -1200,7 +1200,7 @@ pub(super) mod tests {
         // `replace` drops what was kept before: the rows go again.
         assert_eq!(call(serde_json::json!({ "replace": true })), "{}");
         p.reapply_kept("s1", &mut l);
-        assert_eq!(rows(&l), [row("m1", "eins", "", 0, &[]), row("m3", "drei!", "", 0, &[])]);
+        assert_eq!(rows(&l), [row("m1", "one", "", 0, &[]), row("m3", "three!", "", 0, &[])]);
         drop(p);
         let _ = std::fs::remove_dir_all(dir);
     }

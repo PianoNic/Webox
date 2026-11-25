@@ -48,7 +48,7 @@ impl Plugin {
             if st.cats.is_none() && !st.cats_loading {
                 if let Some(tx) = st.tx.clone() { st.cats_loading = true; giphy::fetch_categories(tx); }
             }
-            if st.trending[0].is_none() { st.fetch(Kind::Trending, 0); } // preview of the "Angesagte GIFs" tile
+            if st.trending[0].is_none() { st.fetch(Kind::Trending, 0); } // preview of the "Trending GIFs" tile
         }
         // Screenshot runs only (WEBOX_SHOT_GIF together with WEBOX_SHOT_GIF_EXTRAS=1).
         if app.shot.is_some() && app.client.is_none() && !self.picker.shot_done {
@@ -64,11 +64,11 @@ impl Plugin {
                         if mode == "favs" { let pick: Vec<Gif> = [1, 4, 6].iter().filter_map(|i| self.picker.sample_all.get(*i).cloned()).collect(); for g in &pick { self.favs(app).toggle(g, false); } }
                         self.enter(app, View::Favorites, "");
                     }
-                    "upfavs" => { // an uploaded GIF kept as a favourite (temporary folder), shown in "Favoriten" beside a Giphy one
+                    "upfavs" => { // an uploaded GIF kept as a favourite (temporary folder), shown in "Favorites" beside a Giphy one
                         let dir = upload_stars::upload_fav_dir(app);
                         let (g0, g3) = (self.picker.sample_all.first().cloned(), self.picker.sample_all.get(3).map(|g| g.id.clone()));
                         if let (Some(g0), Some(b)) = (g0, g3.and_then(|id| self.picker.thumbs.get(&id))) {
-                            if let Ok(f) = upload_favs::star(&dir, "Eigene Animation.gif", &b) { self.favs(app).toggle(&g0, false); self.favs(app).insert(f); }
+                            if let Ok(f) = upload_favs::star(&dir, "My animation.gif", &b) { self.favs(app).toggle(&g0, false); self.favs(app).insert(f); }
                         }
                         self.enter(app, View::Favorites, "");
                     }

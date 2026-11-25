@@ -59,8 +59,8 @@ fn validation() {
     assert!(s.validate("t", &json!("x".repeat(schema::TEXT_MAX + 1))).is_err());
     assert!(s.validate("m", &json!("two\nlines")).is_ok());
     assert!(s.validate("n", &json!(2.5)).is_ok());
-    assert!(s.validate("n", &json!(2.25)).unwrap_err().contains("Schritten"));
-    assert!(s.validate("n", &json!(11)).unwrap_err().contains("zwischen"));
+    assert!(s.validate("n", &json!(2.25)).unwrap_err() == crate::trq!("must be in steps of {{0}}", "0.5"));
+    assert!(s.validate("n", &json!(11)).unwrap_err() == crate::trq!("must be between {{0}} and {{1}}", "0", "10"));
     assert!(s.validate("c", &json!("y")).is_ok() && s.validate("c", &json!("z")).is_err());
     assert!(s.validate("go", &json!(true)).is_err() && s.validate("missing", &json!(1)).is_err());
 }
@@ -139,9 +139,9 @@ fn native_plugin_gets_its_settings() {
     assert!(p.set_setting(i, "smiley", json!("no")).is_err());
     assert!(p.set_setting(i, "shrug_text", json!("a\nb")).is_err());
     assert_eq!(p.command("/shrug").as_deref(), Some("meh"));
-    assert_eq!(p.settings_action(i, "reset_count").as_deref(), Some("Zähler zurückgesetzt"));
+    assert_eq!(p.settings_action(i, "reset_count").as_deref(), Some("Counter reset"));
     assert_eq!(p.settings_action(i, "smiley"), None, "only buttons are actions");
-    assert!(p.search_settings("shrug").iter().any(|h| h.label == "Text für /shrug"));
+    assert!(p.search_settings("shrug").iter().any(|h| h.label == "Text for /shrug"));
     drop(p);
     // Saved, and handed over before the next start.
     let p = open();

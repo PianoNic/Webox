@@ -39,10 +39,10 @@ fn plugin_reacts_to_a_message_end_to_end() {
         p.set_setting(i, id, Value::from(t)).unwrap();
     }
 
-    // The 1:1 with Manuel: an older exchange, then "hoi" and "hoi 2" arriving live, as `Resp::Incoming` hands them on.
+    // The 1:1 with Manuel: an older exchange, then "hi" and "hi 2" arriving live, as `Resp::Incoming` hands them on.
     let msg = |id: &str, author: &str, mine: bool, text: &str| crate::cloud::Message { id: id.into(), author: author.into(), mine, text: text.into(), ..Default::default() };
-    let mut list = vec![msg("m0", "Manuel Wullschleger", false, "Kannst du mir das Protokoll von gestern schicken?"), msg("m1", "Ich", true, "Klar, kommt gleich")];
-    for (id, text) in [("m2", "hoi"), ("m3", "hoi 2")] {
+    let mut list = vec![msg("m0", "Manuel Wullschleger", false, "Can you send me yesterday's minutes?"), msg("m1", "Me", true, "Sure, coming right up")];
+    for (id, text) in [("m2", "hi"), ("m3", "hi 2")] {
         list.push(msg(id, "Manuel Wullschleger", false, text));
         p.note_space("dm-manuel", &list);
         p.message_received("dm-manuel", id, "Manuel Wullschleger", text, false, true, false);
