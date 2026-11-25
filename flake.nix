@@ -3,7 +3,7 @@
   #
   #   nix run .                    start it (or: nix run github:PianoNic/Webox)
   #   nix build .                  ./result/bin/webox
-  #   nix profile install .        install for this user
+  #   nix profile add .            install for this user
   #   nix develop                  dev shell: cargo build / cargo run / cargo test
   #
   # NixOS:        imports = [ webox.nixosModules.default ];        programs.webox.enable = true;

@@ -39,8 +39,8 @@
   # run accelerated, anything else falls back to software rendering. Costs ~800 MiB; the NixOS module turns it off.
   withMesaFallback ? true,
   # Video playback plays what the GStreamer plugins decode. -base / -good / -bad cover MP4, MOV, MKV, WebM, AVI with VP8, VP9,
-  # AV1 (dav1d), H.264 (openh264) and VA-API hardware decoding; gst-libav adds HEVC and older codecs but brings FFmpeg into the
-  # closure, so it is off unless asked for (Webox bundles no FFmpeg of its own).
+  # AV1 (libaom's av1dec; nixpkgs has dav1d only in gst-plugins-rs), H.264 (openh264) and VA-API hardware decoding; gst-libav
+  # adds HEVC and older codecs but brings FFmpeg into the closure, so it is off unless asked for (Webox bundles no FFmpeg of its own).
   withLibav ? false,
 }:
 
