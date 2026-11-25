@@ -53,6 +53,7 @@ pub fn settings_schema() -> String {
     collabhost_plugin_api::Schema::new()
         .section("GIF-Auswahl", "")
         .toggle(COMPACT, "Kompakte Größe", "Die kleinere GIF-Auswahl (350 × 390) wie in früheren Webox-Versionen.", false)
+        .toggle(SEND_INSTANTLY, "Send GIFs on click", "A picked GIF is sent at once instead of being added to the message.", false)
         .section("Favoriten-Sterne", "Ein Stern speichert ein GIF in den Favoriten der erweiterten GIF-Auswahl.")
         .toggle("stars_chat", "Stern an GIFs im Chat", "Erscheint oben rechts auf einem GIF, solange der Mauszeiger darüber steht.", true)
         .toggle("stars_viewer", "Stern in der Bildansicht", "Ein Stern-Knopf neben den Knöpfen der Bildansicht.", true)
@@ -71,6 +72,11 @@ pub(crate) fn settings_action(app: &mut App, id: &str) -> Option<String> {
 }
 
 fn on(app: &App, id: &str) -> bool { app.plugins.setting_bool(KEY, id, true) }
+
+/// Setting id of "Send GIFs on click" (default off): a picked GIF goes out at once instead of waiting in the composer.
+pub const SEND_INSTANTLY: &str = "send_instantly";
+/// Whether a picked GIF is sent at once: only while the plugin is on and its setting is set.
+pub(crate) fn send_instantly(app: &App) -> bool { ext::active(&app.plugins, None) && app.plugins.setting_bool(KEY, SEND_INSTANTLY, false) }
 
 /// Setting id of the compact popup size (default off).
 pub const COMPACT: &str = "compact";

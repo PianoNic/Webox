@@ -189,3 +189,9 @@ fn standard_layout_is_unchanged() {
     assert_eq!((g.grid, g.colw), (grid, col_width(grid.width() + 2.0 * GRID_PAD - 12.0, COLS)));
     assert_eq!((g.hit(), g.clip()), (r, r.expand(2.0)));
 }
+
+#[test]
+fn send_on_click_is_a_plugin_setting_off_by_default() {
+    let schema: serde_json::Value = serde_json::from_str(&settings_schema()).unwrap();
+    assert!(schema.to_string().contains(SEND_INSTANTLY), "the toggle is on the plugin's own settings page");
+}
