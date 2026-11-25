@@ -157,7 +157,7 @@ impl App {
     // Anrufe (general / dock / block list).
     pub(super) fn page_calling(&mut self, ui: &mut egui::Ui, t: &Th) {
         section(ui, t, "Eingehende Anrufe", "Wenn dieser Computer für Anrufe verwendet wird:", true, |ui| {
-            self.pcheck(ui, t, "answer_with_video", false, "Anrufe mit eingeschaltetem Video annehmen");
+            self.pcheck(ui, t, "answer_with_video", false, "Anrufe mit eingeschalteter Videokamera annehmen");
             text_note(ui, t, "Diese Option gilt nur für Ihr Video. Sie sehen das Video der anderen Person nur dann, wenn es eingeschaltet ist.");
             self.pcheck(ui, t, "bring_hold_into_view", true, "Gehaltene Anrufe nach Beendigung des aktiven Anrufs anzeigen");
         });

@@ -86,7 +86,7 @@ impl App {
                     if p.email.is_empty() { self.toast("Calls work in direct spaces", now) } else { self.start_call(&p.email, &p.name, now) }
                 }
                 if pill(ui, &mut self.icons, t, "video-regular", "Videoanruf", Pill::Green).clicked() {
-                    if p.email.is_empty() { self.toast("Calls work in direct spaces", now) } else { self.start_call(&p.email, &p.name, now) }
+                    if p.email.is_empty() { self.toast("Calls work in direct spaces", now) } else { self.start_call_with(&p.email, &p.name, now, true) }
                 }
                 if pill(ui, &mut self.icons, t, "chat-regular", "Nachricht", Pill::Outline).clicked() {
                     // Opens the 1:1 (or creates it, see `open_or_create_direct`).

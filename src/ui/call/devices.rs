@@ -1,6 +1,8 @@
 //! Audio devices of calls: the saved choice, the device lists (enumerated on a worker thread), the level meter, the device
-//! pickers of Settings > Audio and the device menu behind the call card's device button.
+//! pickers of Settings > Audio and the device menu behind the call card's device button; the camera list and the video
+//! menu behind the call window's video button.
 use super::*;
+use crate::media::camera;
 
 impl App {
     pub(crate) fn choice(&mut self) -> Choice {
@@ -123,7 +125,55 @@ impl App {
         if c != before { self.save_choice(c); }
     }
 
-    /// The balloon menu behind the device button: "Mikrofon" and "Lautsprecher" lists (checked = in use) and a test tone.
+    /// Camera list for the video menu: on a worker thread, every 2 s while the menu is open (hot-plug); a sample run shows
+    /// the made-up camera of Settings > Video.
+    pub(super) fn refresh_cams(&mut self, now: f64) {
+        let sample = self.call.sample || self.shot.is_some();
+        let v = &mut self.call.video_ui;
+        if sample { if v.cams.is_empty() { v.cams = vec![camera::CamDev { id: "sample".into(), name: "Testkamera".into() }]; } return; }
+        if let Some(rx) = &v.cam_job {
+            match rx.try_recv() {
+                Ok(l) => { v.cams = l; v.cam_job = None; }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => v.cam_job = None,
+                Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            }
+        }
+        if v.cam_job.is_none() && (v.cams_at == 0.0 || now - v.cams_at > 2.0) {
+            v.cams_at = now;
+            let (tx, rx) = std::sync::mpsc::channel();
+            let _ = std::thread::Builder::new().name("camera-list".into()).spawn(move || { let _ = tx.send(camera::list()); crate::ui::wake(); });
+            v.cam_job = Some(rx);
+        }
+    }
+
+    /// The menu behind the video button's arrow (`CallControlBarView` VideoMenu): "Kamera" with every camera (checked = in
+    /// use; "Kamera, {{0}}, ausgewählt"), then the self view: hide / show it and mirror it.
+    pub(crate) fn video_menu(&mut self, ctx: &egui::Context, t: &Th, now: f64, anchor: Rect) {
+        if !menu_is_open(ctx, "call-video") { return; }
+        self.refresh_cams(now);
+        let want = self.settings["camera"].as_str().unwrap_or("").to_string();
+        let cur = video::pick_camera(&self.call.video_ui.cams, &want).map(|c| c.name.clone()).unwrap_or_default();
+        let mut items = vec![Entry::Title("Kamera".into())];
+        if self.call.video_ui.cams.is_empty() { items.push(Item::new("none", "Keine Kamera gefunden").disabled().entry()); }
+        for c in &self.call.video_ui.cams { items.push(Item::new(&format!("cam:{}", c.name), c.name.clone()).checked(c.name == cur).entry()); }
+        items.push(Entry::Sep);
+        let (on, hidden, mirror) = (self.call.video.wanted, self.call.video_ui.hidden, self.self_view_mirrored());
+        // "Sie können Ihr Selbstansichtsvideo nur einblenden, wenn Ihr Video aktiviert ist."
+        let sv = if hidden { Item::new("selfview", "Selbstansichtsvideo einblenden") } else { Item::new("selfview", "Selbstansicht ausblenden") }.icon("selfview_16");
+        items.push(if on { sv.entry() } else { sv.disabled().entry() });
+        items.push(Item::new("mirror", if mirror { "Eigene Videoansicht nicht spiegeln" } else { "Eigene Videoansicht spiegeln" }).icon("mirror-regular").entry());
+        let Some(id) = webex_menu(ctx, &mut self.icons, t, "call-video", anchor, Side::Above, Align::Center, true, &items) else { return };
+        match id.as_str() {
+            "selfview" => self.call.video_ui.hidden = !hidden,
+            "mirror" => {
+                self.settings["camera_mirror"] = json!(!mirror);
+                if !self.call.sample && self.shot.is_none() { system::save_settings(&self.cfg, &self.settings); }
+            }
+            _ => if let Some(name) = id.strip_prefix("cam:") { if name != cur { self.switch_camera(name); } },
+        }
+    }
+
+    /// The balloon menu behind the device button:"Mikrofon" and "Lautsprecher" lists (checked = in use) and a test tone.
     pub(crate) fn device_menu(&mut self, ctx: &egui::Context, t: &Th, now: f64, anchor: Rect) {
         // Two levels so nothing outgrows the window: the short menu, then the device list of the chosen kind.
         let any = ["call-devices", "call-mic", "call-spk"].iter().any(|k| menu_is_open(ctx, k));

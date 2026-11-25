@@ -56,6 +56,8 @@ pub(crate) struct CallUi {
     pub(crate) mc: super::meetcall::McState,
     /// Settings > Video: camera list and the live preview (released when the page is left).
     pub(crate) cam: super::settings::video_page::CamUi,
+    /// The call window's side of video: the self view, the textures, the camera list (`video.rs`).
+    pub(crate) video_ui: video::VideoUi,
     /// The ringing call was ignored ("Anruf ignorieren"): toast gone, no local ring, the call is not declined (my other
     /// devices keep ringing until the caller gives up). Per call, like `ring_muted` and `reply_open`.
     pub(crate) ignored: bool,
@@ -134,12 +136,17 @@ impl App {
         self.toast("Nachricht gesendet", now);
     }
 
-    /// Places a call to `email` (checked again, and before any request, in the cloud thread).
-    pub(crate) fn start_call(&mut self, email: &str, name: &str, now: f64) {
+    /// Places an audio call to `email` (checked again, and before any request, in the cloud thread).
+    pub(crate) fn start_call(&mut self, email: &str, name: &str, now: f64) { self.start_call_with(email, name, now, false) }
+
+    /// Places a call to `email`, with our camera on when `video` ("Videoanruf").
+    pub(crate) fn start_call_with(&mut self, email: &str, name: &str, now: f64, video: bool) {
         if self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none()) { self.toast("Es läuft bereits ein Anruf.", now); return; }
         if let Err(e) = cloud::locus::call_allowed(email, std::env::var(cloud::locus::GUARD_ENV).ok().as_deref()) { self.toast(e, now); return; }
         let choice = self.choice();
-        let Some(c) = &self.client else { self.toast("Nicht verbunden", now); return };
+        if self.client.is_none() { self.toast("Nicht verbunden", now); return; }
+        self.prime_video(video);
+        let Some(c) = &self.client else { return };
         c.req(Req::Call(CallReq::Dial(email.trim().to_string(), choice)));
         self.call.muted = false;
         self.call.cur = Some(Shown { state: CallState::Dialing, name: name.to_string(), email: email.trim().to_string(), since: now, confirmed: false, ended_at: None });
@@ -150,8 +157,11 @@ impl App {
         // (or the dial's error arrives, see `call_failed`).
         if let Some(c) = &self.client { c.req(Req::Call(CallReq::HangUp)); }
     }
+    /// Answers with the camera on when "Anrufe mit eingeschalteter Videokamera annehmen" is set.
     fn answer_call(&mut self) {
         let choice = self.choice();
+        let video = self.answer_with_video();
+        self.prime_video(video);
         if let Some(c) = &self.client { c.req(Req::Call(CallReq::Answer(choice))); }
     }
 
@@ -259,6 +269,7 @@ impl App {
             self.call.sharing = false; self.call.share_pending = false;
             self.on_remote_share(None);
             self.call.mute = Default::default();
+            self.end_video();
             super::share_picker::close();
             self.call.mc.keypad = false; self.call.mc.keypad_text.clear();
             if let Some(c) = &self.client { c.req(Req::CallHistory); } // the session is in janus now
@@ -411,6 +422,7 @@ impl App {
         let live = self.call.cur.as_ref().filter(|c| c.ended_at.is_none()).map(|c| c.state.clone());
         self.ring_sound(live.as_ref());
         self.take_share_choice(now);
+        self.video_frame(now);
         let c = self.call.cur.as_ref()?;
         let (state, name, email, since, ended) = (c.state.clone(), c.name.clone(), c.email.clone(), c.since, c.ended_at.is_some());
         let secs = if state == CallState::Connected { (now - since).max(0.0) as u64 } else { 0 };
@@ -434,7 +446,8 @@ impl App {
             ui.add_space(12.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 12.0;
-                if round_fill(ui, &mut self.icons, "handset-regular", t.green, 40.0).on_hover_text("Annehmen").clicked() { a.answer = true }
+                let (icon, tip) = super::call_toast::answer_look(self.answer_with_video());
+                if round_fill(ui, &mut self.icons, icon, t.green, 40.0).on_hover_text(tip).clicked() { a.answer = true }
                 if round_fill(ui, &mut self.icons, "handset-down-slash-regular", t.badge, 40.0).on_hover_text("Ablehnen").clicked() { a.hang = true }
             });
         });
@@ -506,6 +519,7 @@ impl App {
             self.call.muted = !self.call.muted;
             if let Some(c) = &self.client { c.req(Req::Call(CallReq::Mute(self.call.muted))); }
         }
+        if a.video { self.toggle_video(); }
         if a.answer { self.answer_call(); }
         if a.hang { self.hang_up(); }
     }
@@ -540,10 +554,13 @@ pub(crate) struct CallView { pub state: CallState, pub name: String, pub email: 
 /// What the user pressed.
 #[derive(Default)]
 pub(crate) struct CallActions { pub hang: bool, pub answer: bool, pub mute: bool, pub message: bool, pub contact: bool, pub toggle_ring: bool, pub dismiss: bool,
+    /// The video button: our camera on / off.
+    pub video: bool,
     /// A quick reply was picked: decline, then send this text to the caller's 1:1 space.
     pub reply: Option<String> }
 
 mod devices;
+pub(crate) mod video;
 
 #[cfg(test)]
 mod tests {

@@ -96,7 +96,7 @@ impl App {
         match row {
             Row::Person(p) => {
                 if how == 2 || how == 3 {
-                    if p.email.is_empty() { self.toast("Calls work in direct spaces", now) } else { self.start_call(&p.email, &p.name, now) }
+                    if p.email.is_empty() { self.toast("Calls work in direct spaces", now) } else { self.start_call_with(&p.email, &p.name, now, how == 3) }
                 } else if !self.nav_open_chat(p) { Self::contact_card_open(ctx, p); }
             }
             Row::Space(s) => self.open_space(s.id.clone()),
