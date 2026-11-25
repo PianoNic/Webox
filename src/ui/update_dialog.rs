@@ -1,6 +1,6 @@
 //! App updates in the UI (platform/updater): the daily background check, the green update button in the rail above the
-//! settings gear while a newer version is known, and the "Auf Updates prüfen" dialog (from the rail button, the profile menu's
-//! "Hilfe", the tray and Settings). Nothing happens during a call: no check, no install, no restart, no rail button.
+//! settings gear while a newer version is known, and the "Check for updates" dialog (from the rail button, the profile menu's
+//! "Help", the tray and Settings). Nothing happens during a call: no check, no install, no restart, no rail button.
 use crate::platform::updater::{self, Phase};
 use crate::*;
 use super::menu::{self, Button};
@@ -46,7 +46,7 @@ impl App {
         let s = updater::status();
         if !s.offered() || self.in_call() { return; }
         let version = s.release.map(|r| r.version.to_string()).unwrap_or_default();
-        let tip = if updater::self_update() { "Zum Upgrade klicken, was einen Neustart erfordert".to_string() } else { format!("Version {version} ist verfügbar") };
+        let tip = if updater::self_update() { tr("Click to upgrade, which will require a restart").to_string() } else { crate::trq!("Version %1 is available", version) };
         if self.rail_item_tinted(ui, t, "update_24", &tip, Some(GREEN), h).clicked() { menu::menu_open(ui.ctx(), KEY); }
     }
 
@@ -67,31 +67,31 @@ impl App {
             updater::release::platform_asset(&r.assets, std::env::consts::OS, std::env::consts::ARCH).is_some());
         #[cfg(target_os = "macos")]
         let can_install = can_install && std::env::current_exe().ok().and_then(|e| updater::macos::bundle_of(&e)).is_some();
-        let news = "Gute Neuigkeiten! Es ist ein Update verfügbar.";
+        let news = tr("Great news! There's an update available.");
         let with_notes = |head: &str| if notes.is_empty() { head.to_string() } else { format!("{head}\n\n{notes}") };
-        let close = Button::primary("close", "Schließen");
+        let close = Button::primary("close", tr("Close"));
         let (head, info, buttons): (String, String, Vec<Button>) = match &s.phase {
-            _ if in_call && s.phase != Phase::Ready => ("Auf Updates prüfen".into(),
-                "„Auf Updates prüfen“ ist nicht verfügbar, während Sie sich in einem Anruf befinden".into(), vec![close]),
-            Phase::Idle | Phase::Checking => ("Auf Updates prüfen".into(), "Es wird nach Updates gesucht …".into(), vec![close]),
-            Phase::UpToDate => ("Sie sind auf dem neuesten Stand".into(),
-                "Sie haben die aktuelle Version ({{0}}).".replace("{{0}}", updater::VERSION), vec![close]),
-            Phase::Available if can_install => (format!("Version {version} ist verfügbar"), with_notes(news),
-                vec![Button::secondary("later", "Später"), Button::primary("install", "Jetzt aktualisieren")]),
+            _ if in_call && s.phase != Phase::Ready => (tr("Check for updates").into(),
+                tr("Check for updates is unavailable while you're on a call").into(), vec![close]),
+            Phase::Idle | Phase::Checking => (tr("Check for updates").into(), tr("Checking for updates...").into(), vec![close]),
+            Phase::UpToDate => (tr("You're up to date").into(),
+                crate::trq!("You're on the latest version ({{0}}).", updater::VERSION), vec![close]),
+            Phase::Available if can_install => (crate::trq!("Version %1 is available", version), with_notes(news),
+                vec![Button::secondary("later", tr("Later")), Button::primary("install", tr("Update now"))]),
             // macOS outside Webox.app (`cargo run`): nothing to replace, the download page instead.
-            Phase::Available if cfg!(target_os = "macos") => (format!("Version {version} ist verfügbar"),
-                format!("{}\n\nLaden Sie Webox.app von der Release-Seite auf GitHub herunter und ersetzen Sie die bisherige App.", with_notes(news)),
-                vec![Button::secondary("page", "Herunterladen"), close]),
-            Phase::Available => (format!("Version {version} ist verfügbar"),
-                format!("{}\n\nPakete von Nix oder Ihrer Distribution werden über die Systemaktualisierung auf den neuen Stand gebracht.", with_notes(news)),
-                vec![Button::secondary("page", "Versionshinweise"), close]),
-            Phase::Downloading | Phase::Installing => (format!("Version {version} wird installiert"), String::new(), vec![Button::secondary("later", "Ausblenden")]),
-            Phase::Ready => (format!("Version {version} ist installiert"),
-                format!("{} wird nach dem Anruf neu gestartet.", crate::i18n::APP_NAME), vec![close]),
-            Phase::Failed(e) if s.release.is_none() => ("Kann nicht auf Updates prüfen".into(), e.clone(),
-                vec![Button::secondary("retry", "Erneut versuchen"), close]),
-            Phase::Failed(e) => ("Update fehlgeschlagen".into(), format!("{e}\nIhre bisherige Version bleibt unverändert."),
-                vec![Button::secondary("retry", "Erneut versuchen"), close]),
+            Phase::Available if cfg!(target_os = "macos") => (crate::trq!("Version %1 is available", version),
+                format!("{}\n\n{}", with_notes(news), tr("Download Webox.app from the release page on GitHub and replace the old app.")),
+                vec![Button::secondary("page", tr("Download")), close]),
+            Phase::Available => (crate::trq!("Version %1 is available", version),
+                format!("{}\n\n{}", with_notes(news), tr("Packages from Nix or your distribution are updated by the system update.")),
+                vec![Button::secondary("page", tr("Release notes")), close]),
+            Phase::Downloading | Phase::Installing => (crate::trq!("Installing version %1", version), String::new(), vec![Button::secondary("later", tr("Hide"))]),
+            Phase::Ready => (crate::trq!("Version %1 is installed", version),
+                crate::trq!("%1 restarts after the call.", crate::i18n::APP_NAME), vec![close]),
+            Phase::Failed(e) if s.release.is_none() => (tr("Unable to check for updates").into(), e.clone(),
+                vec![Button::secondary("retry", tr("Try again")), close]),
+            Phase::Failed(e) => (tr("Update failed").into(), format!("{e}\n{}", tr("Your current version stays as it is.")),
+                vec![Button::secondary("retry", tr("Try again")), close]),
         };
         let busy = matches!(s.phase, Phase::Downloading | Phase::Installing);
         let installing = s.phase == Phase::Installing;
@@ -103,8 +103,8 @@ impl App {
             ui.painter().rect_filled(r, 2.0, t.ink_a(0.2));
             ui.painter().rect_filled(Rect::from_min_size(r.min, Vec2::new(r.width() * f, r.height())), 2.0, t.link);
             ui.add_space(8.0);
-            let text = if installing { "Neue Version wird geprüft und eingesetzt …".to_string() }
-                else { format!("{:.1} von {:.1} MB", done as f64 / 1e6, total as f64 / 1e6) };
+            let text = if installing { tr("Checking and installing the new version …").to_string() }
+                else { crate::trq!("%1 of %2 MB", format!("{:.1}", done as f64 / 1e6), format!("{:.1}", total as f64 / 1e6)) };
             ui.label(RichText::new(text).size(13.0).color(t.text2));
             if self.shot.is_none() { ui.ctx().request_repaint_after(std::time::Duration::from_millis(250)); }
         };
@@ -114,7 +114,7 @@ impl App {
             Some("install") => {}
             Some("page") => system::open(&page),
             Some("retry") => updater::check(false),
-            // "Später" closes the dialog; the rail button stays.
+            // "Later" closes the dialog; the rail button stays.
             Some(_) => menu::menu_close(ctx, KEY),
             None => {}
         }

@@ -150,7 +150,7 @@ mod tests {
         assert!(!send_due("Ha", false, 1_000, 5_999));
         assert!(send_due("Hal", false, 1_000, 6_000));
         assert!(!send_due("   ", false, 0, 9_000), "no text, nothing");
-        assert!(!send_due("Neu", true, 0, 9_000), "not while editing a message");
+        assert!(!send_due("New", true, 0, 9_000), "not while editing a message");
     }
 
     #[test]

@@ -1,11 +1,11 @@
 //! "Meetings": header buttons (round buttons camera-regular / enter-room-regular / calendar-add-regular with bold labels,
-//! "Meeting starten" / "Beitreten" / "Meeting ansetzen", collapsible to pills), calendar integration prompt, day list, meeting
+//! "Start meeting" / "Join" / "Schedule a meeting", collapsible to pills), calendar integration prompt, day list, meeting
 //! details.
 //!
-//! Strings from the German pack ("Connect your calendar...", "No meetings found", "Keine Meetings angesetzt", "Heute",
-//! "Kalender auswählen", "Meeting-Link kopieren", "Organisator", "Wiederkehrendes Meeting", ...). Illustration: `meetings-320`.
-//! Data: the calendar service's events (cloud/meetcall.rs) plus the locus "starting soon" list; "Meeting starten" = personal
-//! room (ui/meetcall.rs), "Meeting ansetzen" = the in-app scheduler dialog.
+//! Pack strings ("Connect your calendar...", "No meetings found", "Today", "Choose a calendar", "Copy meeting link",
+//! "Organizer", "Recurring meeting", ...). Illustration: `meetings-320`.
+//! Data: the calendar service's events (cloud/meetcall.rs) plus the locus "starting soon" list; "Start meeting" = personal
+//! room (ui/meetcall.rs), "Schedule a meeting" = the in-app scheduler dialog.
 #![allow(clippy::too_many_arguments)]
 use crate::*;
 use crate::cloud::meetcall::CalEvent;
@@ -18,7 +18,7 @@ const CONNECT_CALENDAR_URL: &str = "https://settings.webex.com/";
 
 impl App {
     pub(crate) fn join_meeting_link(&mut self, link: &str, now: f64) {
-        if link.is_empty() { self.toast("Für dieses Meeting gibt es keinen Link", now); return; } // Webox's own wording
+        if link.is_empty() { self.toast(tr("This meeting has no link"), now); return; } // Webox's own wording
         platform::nmhost::record(&self.cfg, link);
         system::open(link);
     }
@@ -38,9 +38,9 @@ impl App {
         if collapsed {
             ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), 34.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                start = self.pill(ui, t, "Meeting starten", Pill::Join, None).clicked();
-                join = self.pill(ui, t, "Beitreten", Pill::Join, None).clicked();
-                sched = self.pill(ui, t, "Meeting ansetzen", Pill::Secondary, None).clicked();
+                start = self.pill(ui, t, tr("Start meeting"), Pill::Join, None).clicked();
+                join = self.pill(ui, t, tr("Join"), Pill::Join, None).clicked();
+                sched = self.pill(ui, t, tr("Schedule a meeting"), Pill::Secondary, None).clicked();
             });
         } else {
             // Three round buttons with bold labels, centred, 3 x (list width / 3) up to 480 wide.
@@ -49,15 +49,15 @@ impl App {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 ui.add_space(((total - w * 3.0) / 2.0).max(0.0));
-                start = self.round_labeled(ui, t, "camera-regular", "Meeting starten", t.green, hex(0x121212), w).on_hover_text("Starten eines Meetings in einem persönlichen Raum").clicked();
-                join = self.round_labeled(ui, t, "enter-room-regular", "Beitreten", t.green, hex(0x121212), w).on_hover_text("Einem Meeting beitreten").clicked();
-                sched = self.round_labeled(ui, t, "calendar-add-regular", "Meeting ansetzen", t.white_btn, t.white_btn_text, w).clicked();
+                start = self.round_labeled(ui, t, "camera-regular", tr("Start meeting"), t.green, hex(0x121212), w).on_hover_text(tr("Start a Personal Room meeting")).clicked();
+                join = self.round_labeled(ui, t, "enter-room-regular", tr("Join"), t.green, hex(0x121212), w).on_hover_text(tr("Join a meeting")).clicked();
+                sched = self.round_labeled(ui, t, "calendar-add-regular", tr("Schedule a meeting"), t.white_btn, t.white_btn_text, w).clicked();
             });
         }
         // Expand / collapse (arrow-up-bold / arrow-down-bold).
         {
             let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width() - 6.0, 22.0), Sense::click());
-            let label = if collapsed { "Erweitern" } else { "Reduzieren" };
+            let label = if collapsed { crate::tr!("MeetingsHeadView", "Expand") } else { crate::tr!("MeetingsHeadView", "Collapse") };
             let c = r.center();
             let tw = ui.fonts(|f| f.layout_no_wrap(label.to_string(), FontId::proportional(12.5), t.text2).size().x);
             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -80,28 +80,28 @@ impl App {
             // Calendar integration prompt ("Connect your calendar to see all your meetings right here.").
             if !st.cal_prompt_closed && !calendar_connected {
                 let w = ui.available_width() - 10.0;
-                let g = ui.fonts(|f| f.layout("Verbinden Sie Ihren Kalender, um alle Ihre Meetings hier anzuzeigen.".into(), FontId::proportional(13.5), t.text2, w - 32.0));
+                let g = ui.fonts(|f| f.layout(tr("Connect your calendar to see all your meetings right here.").into(), FontId::proportional(13.5), t.text2, w - 32.0));
                 let h = 16.0 + 22.0 + 4.0 + g.size().y + 12.0 + 32.0 + 16.0;
                 let (r, _) = ui.allocate_exact_size(Vec2::new(w, h), Sense::hover());
                 let r = r.translate(Vec2::new(8.0, 0.0));
                 ui.painter().rect_filled(r, 12.0, t.ink_a(0.07));
-                ui.painter().text(pos2(r.left() + 16.0, r.top() + 27.0), egui::Align2::LEFT_CENTER, "Kalender verbinden", semibold(15.0), t.text1);
+                ui.painter().text(pos2(r.left() + 16.0, r.top() + 27.0), egui::Align2::LEFT_CENTER, tr("Connect a calendar"), semibold(15.0), t.text1);
                 let xr = Rect::from_center_size(pos2(r.right() - 20.0, r.top() + 27.0), Vec2::splat(24.0));
                 let xresp = ui.interact(xr, ui.id().with("cal-x"), Sense::click());
                 if xresp.hovered() { ui.painter().circle_filled(xr.center(), 12.0, t.ink_a(0.12)); ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 let (c, d) = (xr.center(), 4.5);
                 ui.painter().line_segment([c - Vec2::splat(d), c + Vec2::splat(d)], Stroke::new(1.3_f32, t.text1));
                 ui.painter().line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.3_f32, t.text1));
-                if xresp.on_hover_text("Schließen").clicked() { st.cal_prompt_closed = true; }
+                if xresp.on_hover_text(tr("Close")).clicked() { st.cal_prompt_closed = true; }
                 ui.painter().galley(pos2(r.left() + 16.0, r.top() + 42.0), g.clone(), t.text2);
                 let br = Rect::from_min_size(pos2(r.left() + 16.0, r.top() + 42.0 + g.size().y + 12.0), Vec2::new(150.0, 32.0));
                 let mut b = ui.new_child(egui::UiBuilder::new().max_rect(br));
-                if self.pill(&mut b, t, "Kalender verbinden", Pill::Primary, Some("calendar-month-regular")).clicked() { cal_dialog = true; }
+                if self.pill(&mut b, t, tr("Connect a calendar"), Pill::Primary, Some("calendar-month-regular")).clicked() { cal_dialog = true; }
                 ui.add_space(10.0);
             }
             if rows.is_empty() {
                 ui.add_space(24.0);
-                ui.vertical_centered(|ui| { ui.label(RichText::new("Keine Meetings gefunden").font(semibold(15.0)).color(t.text1)); });
+                ui.vertical_centered(|ui| { ui.label(RichText::new(tr("No meetings found")).font(semibold(15.0)).color(t.text1)); });
             } else {
                 let mut last_day = String::new();
                 for (i, m) in rows.iter().enumerate() {
@@ -116,7 +116,7 @@ impl App {
                     let mut spec = RowSpec::new(format!("meet-{}", m.id), &m.title);
                     spec.sub = &sub; spec.sub_icon = Some(if m.recurring { "recurring-regular" } else { "calendar-today-regular" }); spec.selected = st.meet_sel == Some(i);
                     spec.icon = Some("meetings-filled"); spec.bold = live;
-                    if !m.link.is_empty() { spec.action = Some(("enter-room-regular", "Beitreten")); }
+                    if !m.link.is_empty() { spec.action = Some(("enter-room-regular", tr("Join"))); }
                     let out = self.page_row(ui, t, &spec);
                     if out.clicked { st.meet_sel = Some(i); }
                     if out.double || out.action { join_link = Some(m.link.clone()); }
@@ -127,10 +127,10 @@ impl App {
             if !hist.is_empty() {
                 ui.add_space(10.0);
                 let (hr, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.0), Sense::hover());
-                ui.painter().text(hr.left_center() + Vec2::new(24.0, 0.0), egui::Align2::LEFT_CENTER, "Zuletzt beigetreten", FontId::proportional(14.0), t.text2); // Webox's own wording
+                ui.painter().text(hr.left_center() + Vec2::new(24.0, 0.0), egui::Align2::LEFT_CENTER, tr("Recently joined"), FontId::proportional(14.0), t.text2); // Webox's own wording
                 for (site, url) in hist.iter().take(8) {
                     let mut spec = RowSpec::new(format!("hist-{url}"), site);
-                    spec.sub = url; spec.icon = Some("history-regular"); spec.action = Some(("enter-room-regular", "Beitreten"));
+                    spec.sub = url; spec.icon = Some("history-regular"); spec.action = Some(("enter-room-regular", tr("Join")));
                     let out = self.page_row(ui, t, &spec);
                     if out.clicked || out.action { join_link = Some(url.clone()); }
                 }
@@ -150,8 +150,8 @@ impl App {
         let ctx = ui.ctx().clone();
         let Some(m) = self.selected_meeting(&ctx) else {
             let empty = self.meeting_rows().is_empty();
-            let (title, body) = if empty { ("Keine Meetings angesetzt", "Verbinden Sie Ihren Kalender, um alle Ihre Meetings hier anzuzeigen.") }
-                else { ("Wählen Sie ein Meeting aus", "") }; // second title: Webox's own wording
+            let (title, body) = if empty { (tr("No meetings scheduled"), tr("Connect your calendar to see all your meetings right here.")) }
+                else { (tr("Select a meeting"), "") }; // second title: Webox's own wording
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(ui.max_rect()));
             // meetings-320-cobalt-lime is the colour art for every theme (the black line variant disappears on dark themes).
             self.empty_state(&mut c, t, "meetings-320-cobalt-lime", 200.0, title, body, None);
@@ -172,41 +172,41 @@ impl App {
         let col = t.text2;
         let line = |ui: &mut egui::Ui, icons: &mut icons::Icons, icon: &'static str, text: String| line(ui, icons, icon, text, col);
         if m.start_ms > 0 { line(&mut c, &mut self.icons, "calendar-today-regular", format!("{}, {}", day_title(m.start_ms, nowms), time_range(m.start_ms, m.end_ms))); }
-        if m.recurring { line(&mut c, &mut self.icons, "recurring-regular", "Wiederkehrendes Meeting".into()); }
-        if !m.organizer.is_empty() { line(&mut c, &mut self.icons, "user-regular", format!("Organisator: {}", m.organizer)); }
+        if m.recurring { line(&mut c, &mut self.icons, "recurring-regular", crate::tr!("MeetingDetailHeaderView", "Recurring meeting").into_owned()); }
+        if !m.organizer.is_empty() { line(&mut c, &mut self.icons, "user-regular", format!("{}: {}", tr("Organizer"), m.organizer)); }
         if !m.location.is_empty() { line(&mut c, &mut self.icons, "location-regular", m.location.clone()); }
-        if m.attendees > 0 { line(&mut c, &mut self.icons, "participant-list-regular", format!("Eingeladene Teilnehmer ({})", m.attendees)); }
+        if m.attendees > 0 { line(&mut c, &mut self.icons, "participant-list-regular", crate::trq!("Invitees ({{0}})", m.attendees)); }
         c.add_space(16.0);
         c.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 10.0;
             if !m.link.is_empty() {
-                if self.pill(ui, t, "Beitreten", Pill::Join, Some("enter-room-filled")).clicked() { self.join_meeting_link(&m.link, now); }
-                if self.pill(ui, t, "Meeting-Link kopieren", Pill::Secondary, Some("copy-regular")).clicked() { ui.ctx().copy_text(m.link.clone()); self.toast("Kopiert", now); }
+                if self.pill(ui, t, tr("Join"), Pill::Join, Some("enter-room-filled")).clicked() { self.join_meeting_link(&m.link, now); }
+                if self.pill(ui, t, tr("Copy meeting link"), Pill::Secondary, Some("copy-regular")).clicked() { ui.ctx().copy_text(m.link.clone()); self.toast(tr("Copied"), now); }
             }
         });
         if !m.link.is_empty() {
             c.add_space(18.0);
-            c.label(RichText::new("Meeting-Link").font(semibold(14.0)).color(t.text1));
+            c.label(RichText::new(tr("Meeting link")).font(semibold(14.0)).color(t.text1));
             if c.add(egui::Label::new(RichText::new(&m.link).size(14.0).color(t.link)).sense(Sense::click())).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() { self.join_meeting_link(&m.link, now); }
         }
     }
 
     pub(crate) fn meetings_menu(&mut self, ctx: &egui::Context, t: &Th, now: f64) {
-        let items = vec![Item::new("join", "Beitreten").icon("enter-room-regular").entry(), Item::new("copy", "Meeting-Link kopieren").icon("copy-regular").entry()];
+        let items = vec![Item::new("join", tr("Join")).icon("enter-room-regular").entry(), Item::new("copy", tr("Copy meeting link")).icon("copy-regular").entry()];
         if let Some((key, pick)) = self.page_menu(ctx, t, "meeting-row", &items) {
             let Some(m) = key.parse::<usize>().ok().and_then(|i| self.meeting_rows().get(i).cloned()) else { return };
             match pick.as_str() {
                 "join" => self.join_meeting_link(&m.link, now),
                 _ if m.link.is_empty() => self.join_meeting_link("", now),
-                _ => { ctx.copy_text(m.link); self.toast("Kopiert", now); }
+                _ => { ctx.copy_text(m.link); self.toast(tr("Copied"), now); }
             }
         }
         let mut st = self.pst(ctx);
-        // "Einem Meeting beitreten".
+        // "Join a meeting".
         if let Some(mut input) = st.join_dialog.clone() {
-            let mut body = |ui: &mut egui::Ui| { ui.add(egui::TextEdit::singleline(&mut input).hint_text("Meeting-Link, Nummer oder Videoadresse").desired_width(f32::INFINITY)); };
-            let r = menu::webex_dialog(ctx, t, "join-meeting", "Einem Meeting beitreten", "Geben Sie eine Meeting-Kennnummer, eine Videoadresse oder einen Meeting-Link ein oder suchen Sie nach einem Namen, um dem persönlichen Raum dieser Person beizutreten.",
-                Some(&mut body), &[menu::Button::secondary("cancel", "Abbrechen"), menu::Button::primary("join", "Beitreten")]);
+            let mut body = |ui: &mut egui::Ui| { ui.add(egui::TextEdit::singleline(&mut input).hint_text(tr("Meeting link, number, or video address")).desired_width(f32::INFINITY)); };
+            let r = menu::webex_dialog(ctx, t, "join-meeting", tr("Join a meeting"), tr("Enter a meeting link, meeting number, or video address - or search for a name to join someone's Personal Room."),
+                Some(&mut body), &[menu::Button::secondary("cancel", tr("Cancel")), menu::Button::primary("join", tr("Join"))]);
             match r.as_deref() {
                 Some("join") => {
                     st.join_dialog = None; self.set_pst(ctx, st);
@@ -214,7 +214,7 @@ impl App {
                     match join_target(&l) {
                         Some(url) => self.join_meeting_link(&url, now),
                         None if l.is_empty() => {}
-                        None => self.toast("Bitte geben Sie einen Meeting-Link ein", now), // Webox's own wording
+                        None => self.toast(tr("Please enter a meeting link"), now), // Webox's own wording
                     }
                     return;
                 }
@@ -223,7 +223,7 @@ impl App {
             }
             self.set_pst(ctx, st.clone());
         }
-        // "Kalender auswählen": Google / Microsoft; here the Webex settings page opens to connect a calendar.
+        // "Choose a calendar": Google / Microsoft; here the Webex settings page opens to connect a calendar.
         if st.cal_dialog {
             let mut body = |ui: &mut egui::Ui| {
                 // Microsoft 365 first, then Google.
@@ -235,7 +235,7 @@ impl App {
                     if resp.clicked() { ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("cal-pick"), true)); }
                 }
             };
-            let r = menu::webex_dialog(ctx, t, "choose-cal", "Kalender auswählen", "Wählen Sie einen Kalender, der mit Webex verwendet werden soll.", Some(&mut body), &[menu::Button::secondary("cancel", "Abbrechen")]);
+            let r = menu::webex_dialog(ctx, t, "choose-cal", tr("Choose a calendar"), &crate::trq!("Choose a calendar to use with {{0}}.", "Webex"), Some(&mut body), &[menu::Button::secondary("cancel", tr("Cancel"))]);
             let picked = ctx.data_mut(|d| d.remove_temp::<bool>(egui::Id::new("cal-pick"))).unwrap_or(false);
             if picked { system::open(CONNECT_CALENDAR_URL); }
             if r.is_some() || picked { let mut s = self.pst(ctx); s.cal_dialog = false; self.set_pst(ctx, s); }
@@ -243,7 +243,7 @@ impl App {
     }
 }
 
-/// What "Beitreten" opens for the typed text: a link as is, a Webex video address / personal room `name@site.webex.com` as
+/// What "Join" opens for the typed text: a link as is, a Webex video address / personal room `name@site.webex.com` as
 /// `https://site.webex.com/meet/name` (the personal room link form). Meeting numbers need the user's site: not resolvable (None).
 pub(crate) fn join_target(s: &str) -> Option<String> {
     let s = s.trim();

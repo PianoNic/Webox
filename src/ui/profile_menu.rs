@@ -1,26 +1,26 @@
 //! The profile menu that opens from the header's avatar, and the custom-status dialog (opened by the header's
-//! "Status festlegen" button and by the menu's "Status" item).
-//! Wording from the German pack: "Status festlegen", presence names, Verfügbarkeit, Status, „Bitte nicht stören“ einrichten
-//! für, Profil bearbeiten, Einstellungen, Hilfe, Abmelden, %1 beenden, durations (30 Minuten, 1 Stunde, 2 Stunden, 4 Stunden,
-//! Heute, Bis zur Deaktivierung, Anpassen...), the dialog ("Status", "Wie ist Ihr Status?", "Status löschen nach",
-//! "Status löschen", n/75).
+//! "Set a Status" button and by the menu's "Status" item).
+//! Wording from the language packs: "Set a Status", presence names, Availability, Status, Set Do not disturb for,
+//! Edit profile, Settings, Help, Sign out, Exit %1, durations (30 minutes, 1 hour, 2 hours, 4 hours,
+//! Today, Until turned off, Custom…), the dialog ("Status", "What's your status?", "Clear status after",
+//! "Clear status", n/75).
 //!
 //! What the items do:
-//! * Verfügbarkeit submenu: Verfügbar / Abwesend / Bitte nicht stören (+ duration) / „Bitte nicht stören“ löschen:
+//! * Availability submenu: Available / Away / Do not disturb (+ duration) / Clear Do not disturb:
 //!   `Req::SetPresence` = apheleia `POST /events` (cloud/presence_set.rs). Sample mode: local only.
 //! * Custom status: kept in the settings (`custom_status` = {text, until}) and shown in the header until it expires. Not sent
 //!   to the service, so colleagues do not see it.
-//! * Profil bearbeiten → the "Profil bearbeiten" dialog (ui/app_dialogs.rs),
-//!   Hilfe → submenu (Hilfecenter, Neuerungen, Tastenkombinationen, Zustandsüberprüfung, Feedback senden, Auf Updates prüfen, Über),
-//!   Abmelden → the sign-out confirmation, beenden → quit.
+//! * Edit profile → the "Edit profile" dialog (ui/app_dialogs.rs),
+//!   Help → submenu (Help Center, What's New, Keyboard shortcuts, Health Checker, Send Feedback, Check for updates, About),
+//!   Sign out → the sign-out confirmation, Exit → quit.
 use crate::*;
 use super::menu::{self, Button, Entry, Item, Side, Align};
 use super::status_time::{self, Dur, CLEAR_AFTER, CLEAR_DEFAULT, DND};
 
 const MAX_CHARS: usize = 75; // maximum length of the custom status
-/// Hilfecenter.
+/// Help Center.
 pub(crate) const HELP_CENTER_URL: &str = "https://help.webex.com/";
-/// The preset list ("Status auswählen"), pack sources.
+/// The preset list ("Choose a status"), pack sources.
 const PRESETS: [&str; 4] = ["Working from home \u{1f3e0}", "Traveling for business \u{1f680}", "Out for lunch \u{1f37d}\u{fe0f}", "Be right back \u{23f3}\u{fe0f}"];
 /// The shared emoji picker is open for the status dialog's emoji button (the composer must not draw / consume it).
 const STATUS_EMOJI: &str = "status-emoji-picker";
@@ -53,10 +53,10 @@ impl App {
         if self.shot.is_none() { system::save_settings(&self.cfg, &self.settings); }
     }
 
-    /// The text of the header button: "Status festlegen", or "<presence> • <custom status>" once one is set.
+    /// The text of the header button: "Set a Status", or "<presence> • <custom status>" once one is set.
     pub(crate) fn status_label(&self, ctx: &egui::Context) -> String {
         let cs = self.custom_status(ctx);
-        if cs.is_empty() { return "Status festlegen".to_string(); }
+        if cs.is_empty() { return tr("Set a Status").to_string(); }
         let p = presence_text(&self.me.status);
         if p.is_empty() { cs } else { format!("{p} • {cs}") }
     }
@@ -93,9 +93,9 @@ impl App {
         let dnd_on = self.me.status == "DoNotDisturb";
         let cs = self.custom_status(ctx);
         let photo = [self.me.email.clone(), self.me.id.clone()].iter().find_map(|k| self.photo(ctx, k));
-        // The avatar menu: header card (cover, big avatar, name, e-mail), "Verfügbarkeit" / <presence> with chevron, "Status"
-        // (opens the status dialog), "Profil bearbeiten", separator, "Einstellungen", "Hilfe" with chevron, separator, "Abmelden",
-        // "%1 beenden" (%1 = this app's name). No icons. Menu width 318. Verfügbarkeit holds the presence entries, Hilfe the
+        // The avatar menu: header card (cover, big avatar, name, e-mail), "Availability" / <presence> with chevron, "Status"
+        // (opens the status dialog), "Edit profile", separator, "Settings", "Help" with chevron, separator, "Sign out",
+        // "Exit %1" (%1 = this app's name). No icons. Menu width 318. Availability holds the presence entries, Help the
         // app-wide help entries.
         if self.cover.is_none() {
             if let Some(img) = self.cover_bytes.take().and_then(|b| image::load_from_memory(&b).ok()) {
@@ -113,11 +113,11 @@ impl App {
             Item::new("custom", crate::tr!("ApplicationMenuController", "Status").into_owned()).entry(),
             Item::new("edit", crate::tr!("ApplicationMenuController", "Edit profile").into_owned()).entry(),
             Entry::Sep,
-            Item::new("settings", "Einstellungen").entry(),
-            Item::new("help", "Hilfe").submenu().entry(),
+            Item::new("settings", tr("Settings")).entry(),
+            Item::new("help", tr("Help")).submenu().entry(),
             Entry::Sep,
-            // Signed in: "Abmelden". In the sample data there is no account: "Anmelden" like on the settings page.
-            if self.client.is_some() { Item::new("signout", "Abmelden").entry() } else { Item::new("signin", "Anmelden").entry() },
+            // Signed in: "Sign out". In the sample data there is no account: "Sign in" like on the settings page.
+            if self.client.is_some() { Item::new("signout", tr("Sign out")).entry() } else { Item::new("signin", tr("Sign in")).entry() },
             Item::new("exit", crate::tr!("ApplicationMenuController", "Exit %1").replace("%1", crate::i18n::APP_NAME)).entry(), // %1 = the app
         ];
         if let Some(a) = menu::menu_impl(ctx, &mut self.icons, t, "status", avatar, Side::Below, Align::Left, true, &items, Some(318.0)) {
@@ -136,49 +136,48 @@ impl App {
                 _ => {}
             }
         }
-        // "Verfügbarkeit" submenu, to the right of its item.
+        // "Availability" submenu, to the right of its item.
         if menu::menu_is_open(ctx, "status-avail") {
             let anchor = menu::menu_item_rect(ctx, "status", "avail").unwrap_or(avatar);
             let mut sub: Vec<Entry> = vec![
-                Item::new("active", "Verfügbar").dot(hex(0x27A17A)).checked(self.me.status == "active").entry(),
-                Item::new("inactive", "Abwesend").dot(hex(0x949494)).checked(self.me.status == "inactive").entry(),
-                Item::new("dnd", "Bitte nicht stören").dot(hex(0xF55868)).checked(dnd_on).submenu().entry(),
+                Item::new("active", tr("Available")).dot(hex(0x27A17A)).checked(self.me.status == "active").entry(),
+                Item::new("inactive", tr("Away")).dot(hex(0x949494)).checked(self.me.status == "inactive").entry(),
+                Item::new("dnd", tr("Do not disturb")).dot(hex(0xF55868)).checked(dnd_on).submenu().entry(),
             ];
-            if dnd_on { sub.push(Item::new("dnd-clear", "„Bitte nicht stören“ löschen").icon("cancel-regular").entry()); }
+            if dnd_on { sub.push(Item::new("dnd-clear", tr("Clear Do not disturb")).icon("cancel-regular").entry()); }
             if let Some(a) = menu::webex_menu(ctx, &mut self.icons, t, "status-avail", anchor, Side::Right, Align::Left, false, &sub) {
                 if a != "dnd" { menu::menu_close(ctx, "status-dnd"); }
                 match a.as_str() {
                     "dnd" => { menu::menu_open(ctx, "status"); menu::menu_open(ctx, "status-avail"); menu::menu_open(ctx, "status-dnd"); }
                     "active" => { self.set_my_presence("active", cloud::ACTIVE_TTL); menu::menu_close(ctx, "status"); }
                     "inactive" => { self.set_my_presence("inactive", cloud::NO_END_TTL); menu::menu_close(ctx, "status"); }
-                    // "Do not disturb status has been cleared".
-                    "dnd-clear" => { self.set_my_presence("active", cloud::ACTIVE_TTL); self.toast("Der Status „Bitte nicht stören“ wurde aufgehoben.", now); menu::menu_close(ctx, "status"); }
+                                        "dnd-clear" => { self.set_my_presence("active", cloud::ACTIVE_TTL); self.toast(tr("Do not disturb status has been cleared."), now); menu::menu_close(ctx, "status"); }
                     _ => {}
                 }
             }
         }
-        // "„Bitte nicht stören“ einrichten für" submenu, to the right of its item.
+        // "Set Do not disturb for" submenu, to the right of its item.
         if menu::menu_is_open(ctx, "status-dnd") {
             let anchor = menu::menu_item_rect(ctx, "status-avail", "dnd").unwrap_or(avatar);
-            let mut sub: Vec<Entry> = vec![Entry::Title("„Bitte nicht stören“ einrichten für".into())];
-            sub.extend(DND.iter().map(|(id, label, _)| Item::new(id, *label).entry()));
+            let mut sub: Vec<Entry> = vec![Entry::Title(tr("Set Do not disturb for").into())];
+            sub.extend(DND.iter().map(|(id, label, _)| Item::new(id, tr(label)).entry()));
             if let Some(a) = menu::webex_menu(ctx, &mut self.icons, t, "status-dnd", anchor, Side::Right, Align::Left, false, &sub) {
                 if let Some((_, _, d)) = DND.iter().find(|x| x.0 == a) { self.set_dnd(*d, ctx); }
                 menu::menu_close(ctx, "status");
             }
         }
-        // "Hilfe" submenu.
+        // "Help" submenu.
         if menu::menu_is_open(ctx, "status-help") {
             let anchor = menu::menu_item_rect(ctx, "status", "help").unwrap_or(avatar);
             let sub: Vec<Entry> = vec![
-                Item::new("center", "Hilfecenter").entry(), // "Help Center"
-                Item::new("whatsnew", "Neuerungen").entry(), // "What's New"
-                Item::new("shortcuts", "Tastenkombinationen").entry(), // "Keyboard shortcuts"
-                Item::new("health", "Zustandsüberprüfung").entry(), // "Health Checker"
-                Item::new("feedback", "Feedback senden").entry(), // "Send feedback"
+                Item::new("center", tr("Help Center")).entry(),
+                Item::new("whatsnew", tr("What's New")).entry(),
+                Item::new("shortcuts", tr("Keyboard shortcuts")).entry(),
+                Item::new("health", tr("Health Checker")).entry(),
+                Item::new("feedback", tr("Send Feedback")).entry(),
                 Entry::Sep,
-                Item::new("updates", "Auf Updates prüfen").entry(), // "Check for updates"
-                Item::new("about", "Über").entry(), // "About"
+                Item::new("updates", tr("Check for updates")).entry(),
+                Item::new("about", tr("About")).entry(),
             ];
             if let Some(a) = menu::webex_menu(ctx, &mut self.icons, t, "status-help", anchor, Side::Right, Align::Left, false, &sub) {
                 menu::menu_close(ctx, "status");
@@ -191,10 +190,10 @@ impl App {
             let mut text: String = ctx.data(|d| d.get_temp(tid)).unwrap_or_default();
             let had = !cs.is_empty();
             let mut clear_idx: usize = ctx.data(|d| d.get_temp(egui::Id::new("status-clear-after"))).unwrap_or(CLEAR_DEFAULT);
-            // Layout: "Status" label, the field (placeholder "Wie ist Ihr Status?", emoji button bottom-left, counter "n/75"
-            // bottom-right), "Status löschen nach" + combo (150 wide; disabled while the text is empty, the tooltip "Geben Sie
-            // zunächst ..." on hover), "Status auswählen" + separator + the preset list (46 high rows, click = put the text in the field,
-            // hovered row shows an x that removes the preset), buttons Speichern / Abbrechen ("Status löschen" replaces Speichern while
+            // Layout: "Status" label, the field (placeholder "What's your status?", emoji button bottom-left, counter "n/75"
+            // bottom-right), "Clear status after" + combo (150 wide; disabled while the text is empty, the tooltip "First, write
+            // your status ..." on hover), "Choose a status" + separator + the preset list (46 high rows, click = put the text in the field,
+            // hovered row shows an x that removes the preset), buttons Save / Cancel ("Clear status" replaces Save while
             // the field still holds the current status).
             let presets_id = egui::Id::new("status-presets");
             let mut presets: Vec<String> = ctx.data(|d| d.get_temp(presets_id)).unwrap_or_else(|| PRESETS.iter().map(|s| crate::trq!(*s).into_owned()).collect());
@@ -231,7 +230,7 @@ impl App {
                 ui.add_space(12.0);
                 ui.label(RichText::new(crate::trq!("Clear status after").into_owned()).size(16.0).color(t.text1));
                 ui.add_space(4.0);
-                let opts: Vec<String> = CLEAR_AFTER.iter().map(|x| x.0.to_string()).collect();
+                let opts: Vec<String> = CLEAR_AFTER.iter().map(|x| tr(x.0).to_string()).collect();
                 // The duration combo is enabled only while there is text; while disabled, hovering shows its tooltip.
                 let combo = ui.add_enabled_ui(!text.is_empty(), |ui| menu::dropdown(ui, icons, t, "status-clear-after", &mut clear_idx, &opts, 150.0)).inner;
                 if text.is_empty() { combo.on_hover_text(crate::trq!("First, write your status or choose one").into_owned()); }
@@ -256,8 +255,8 @@ impl App {
                 if let Some(i) = remove { presets.remove(i); }
             };
             let mut buttons = vec![];
-            if show_clear { buttons.push(Button::secondary("clear", "Status löschen")); } else { buttons.push(Button::primary("save", "Speichern")); }
-            buttons.push(Button::secondary("cancel", "Abbrechen"));
+            if show_clear { buttons.push(Button::secondary("clear", tr("Clear status"))); } else { buttons.push(Button::primary("save", tr("Save"))); }
+            buttons.push(Button::secondary("cancel", tr("Cancel")));
             // The status dialog uses background-primary, not modal-primary (see menu::background_primary).
             menu::set_dialog_width(ctx, "status-dlg", 568.0); // 568 wide
             let picker_open = status_emoji_active(ctx) && ctx.data(|d| d.get_temp::<bool>(egui::Id::new("emoji-open"))).unwrap_or(false);
@@ -298,7 +297,7 @@ impl App {
                     match CLEAR_AFTER.get(clear_idx).and_then(|o| o.1) {
                         _ if txt.is_empty() => self.set_custom_status("", 0),
                         Some(mins) => self.set_custom_status(&txt, n + mins * 60_000),
-                        // "Benutzerdefiniert": pick the end first; the text waits in the picker's state.
+                        // "Custom": pick the end first; the text waits in the picker's state.
                         None => { ctx.data_mut(|d| d.insert_temp(egui::Id::new("status-pending-text"), txt)); super::app_dialogs::open_time_picker(ctx, "status"); }
                     }
                     menu::menu_close(ctx, "status-dialog");
@@ -322,13 +321,13 @@ impl App {
         }
     }
 
-    /// One entry of the "Hilfe" submenu (also used by the shortcut commands and the tray).
+    /// One entry of the "Help" submenu (also used by the shortcut commands and the tray).
     pub(crate) fn help_action(&mut self, id: &str, ctx: &egui::Context, now: f64) {
         use super::app_dialogs as d;
         match id {
             "center" => system::open(HELP_CENTER_URL),
-            // "What's new is currently not available." - Webox has no release notes service.
-            "whatsnew" => self.toast("Neuerungen sind momentan nicht verfügbar.", now),
+            // Webox has no release notes service.
+            "whatsnew" => self.toast(tr("What's new is currently not available."), now),
             "shortcuts" => self.show_shortcuts = true,
             "health" => menu::menu_open(ctx, d::HEALTH),
             "feedback" => menu::menu_open(ctx, d::FEEDBACK),

@@ -1,11 +1,11 @@
-//! "Später senden" (the clock next to the send button): schedule the composer's message, the list of scheduled
+//! "Send later" (the clock next to the send button): schedule the composer's message, the list of scheduled
 //! messages above the composer, send now / reschedule / discard.
 //!
-//! Strings (German pack): "Später senden", "Morgen um 9:00 Uhr", "Benutzerdefiniert", "Datum", "Zeit", "Ansetzen",
-//! "Abbrechen", "Versuchen Sie es frühestens in 5 Minuten noch einmal.", "Sie haben den Versand einer Nachricht heute|morgen
-//! um {{0}} geplant.", "Sie haben den Versand einer Nachricht {{0}} um {{1}} geplant.", "Sie haben geplant, dass {{0}}
-//! Nachrichten gesendet werden.", "Geplant für morgen um {{0}}", "Alle geplanten Nachrichten anzeigen", "Geplante Nachrichten
-//! erweitern|reduzieren", "Jetzt senden", "Nachricht neu ansetzen", "Geplante Nachricht verwerfen?", "Verwerfen".
+//! Strings (pack sources): "Send later", "Tomorrow at 9:00 AM", "Custom", "Date", "Time", "Schedule",
+//! "Cancel", "Choose a time more than 5 minutes in the future and try again.", "You scheduled a message to be sent
+//! today|tomorrow at {{0}}.", "You scheduled a message to be sent {{0}} at {{1}}.", "You scheduled {{0}} messages to be sent.",
+//! "Scheduled for tomorrow at {{0}}", "Show all scheduled messages", "Expand|Collapse scheduled messages", "Send now",
+//! "Reschedule message", "Discard scheduled message?", "Discard".
 //! Layout: radius 8, icon schedule-send-bold 16 at 8, spacer 12, primary title, accent link; message rows inset 40 / 12,
 //! radius 8, secondary header "<sender>  <time>"; colours message-scheduled-*.
 //!
@@ -75,30 +75,30 @@ pub(crate) fn local_to_ms(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> i64 {
     (days_from_civil(y, mo, d) * 86_400 + h as i64 * 3600 + mi as i64 * 60) * 1000
 }
 
-/// "Morgen um 9:00 Uhr": tomorrow 09:00 local time.
+/// "Tomorrow at 9:00 AM": tomorrow 09:00 local time.
 pub(crate) fn tomorrow_nine(now: i64) -> i64 {
     let (y, m, d, _, _) = local_parts(now);
     let (y2, m2, d2) = civil_from_days(days_from_civil(y, m, d) + 1);
     local_to_ms(y2, m2, d2, 9, 0)
 }
 
-/// The confirmation after scheduling (pack strings with "heute" / "morgen" / a date).
+/// The confirmation after scheduling (pack strings with "today" / "tomorrow" / a date).
 pub(crate) fn scheduled_text(now: i64, due: i64) -> String {
     let (y, m, d, _, _) = local_parts(now);
     let (yy, mm, dd, h, mi) = local_parts(due);
     let diff = days_from_civil(yy, mm, dd) - days_from_civil(y, m, d);
     let t = format!("{h:02}:{mi:02}");
     match diff {
-        0 => format!("Sie haben den Versand einer Nachricht heute um {t} geplant."),
-        1 => format!("Sie haben den Versand einer Nachricht morgen um {t} geplant."),
-        _ => format!("Sie haben den Versand einer Nachricht {dd:02}.{mm:02}.{yy} um {t} geplant."),
+        0 => crate::trq!("You scheduled a message to be sent today at {{0}}.", t),
+        1 => crate::trq!("You scheduled a message to be sent tomorrow at {{0}}.", t),
+        _ => crate::trq!("You scheduled a message to be sent {{0}} at {{1}}.", format!("{dd:02}.{mm:02}.{yy}"), t),
     }
 }
 /// The time label of a scheduled message row.
 fn row_time(now: i64, due: i64) -> String {
     let (y, m, d, _, _) = local_parts(now);
     let (yy, mm, dd, h, mi) = local_parts(due);
-    if days_from_civil(yy, mm, dd) - days_from_civil(y, m, d) == 1 { format!("Geplant für morgen um {h:02}:{mi:02}") } else { format!("{dd:02}.{mm:02}.{yy}, {h:02}:{mi:02}") }
+    if days_from_civil(yy, mm, dd) - days_from_civil(y, m, d) == 1 { crate::trq!("Scheduled for tomorrow at {{0}}", format!("{h:02}:{mi:02}")) } else { format!("{dd:02}.{mm:02}.{yy}, {h:02}:{mi:02}") }
 }
 
 fn to_json(s: &Scheduled) -> serde_json::Value {
@@ -159,12 +159,12 @@ impl App {
         if let Some(next) = self.msgx.sched.first() { ctx.request_repaint_after(std::time::Duration::from_millis((next.due_ms - now).clamp(500, 60_000) as u64)); }
     }
 
-    /// The clock's menu ("Später senden") and the custom-time dialog. Returns the chosen time for the composer's message.
+    /// The clock's menu ("Send later") and the custom-time dialog. Returns the chosen time for the composer's message.
     pub(crate) fn sched_menu(&mut self, ctx: &egui::Context, t: &Th, anchor: Rect, clicked: bool) -> Option<i64> {
         if clicked { menu::menu_toggle(ctx, "sched-menu"); }
         let mut out = None;
         if menu::menu_is_open(ctx, "sched-menu") {
-            let items = vec![menu::Entry::Title("Später senden".into()), menu::Item::new("tomorrow", "Morgen um 9:00 Uhr").entry(), menu::Item::new("custom", "Benutzerdefiniert").entry()];
+            let items = vec![menu::Entry::Title(tr("Send later").into()), menu::Item::new("tomorrow", tr("Tomorrow at 9:00 AM")).entry(), menu::Item::new("custom", tr("Custom")).entry()];
             match menu::webex_menu(ctx, &mut self.icons, t, "sched-menu", anchor, menu::Side::Above, menu::Align::Right, true, &items).as_deref() {
                 Some("tomorrow") => out = Some(tomorrow_nine(now_ms())),
                 Some("custom") => self.sched_custom_open(ctx, None, now_ms() + 60 * 60 * 1000),
@@ -201,33 +201,33 @@ impl App {
         ctx.data_mut(|dd| dd.insert_temp(custom_id(), Custom { target, y, m, d, h, mi }));
     }
 
-    /// "Benutzerdefiniert": date (day back / forward) and time; "Ansetzen" checks the 5-minute rule. Returns (target, time).
+    /// "Custom": date (day back / forward) and time; "Schedule" checks the 5-minute rule. Returns (target, time).
     fn sched_custom_dialog(&mut self, ctx: &egui::Context, t: &Th) -> Option<(Option<String>, i64)> {
         let mut c: Custom = ctx.data(|d| d.get_temp(custom_id()))?;
         let fg = t.text1;
         let mut content = |ui: &mut egui::Ui| {
             ui.spacing_mut().item_spacing = Vec2::new(8.0, 10.0);
             ui.horizontal(|ui| {
-                ui.add_sized([60.0, 24.0], egui::Label::new(RichText::new("Datum").color(fg).size(14.0)));
-                if ui.button("◀").on_hover_text("Vorheriger").clicked() { let (y, m, d) = civil_from_days(days_from_civil(c.y, c.m, c.d) - 1); (c.y, c.m, c.d) = (y, m, d); }
+                ui.add_sized([60.0, 24.0], egui::Label::new(RichText::new(tr("Date")).color(fg).size(14.0)));
+                if ui.button("◀").on_hover_text(tr("Previous")).clicked() { let (y, m, d) = civil_from_days(days_from_civil(c.y, c.m, c.d) - 1); (c.y, c.m, c.d) = (y, m, d); }
                 ui.label(RichText::new(format!("{:02}.{:02}.{}", c.d, c.m, c.y)).color(fg).size(14.0));
-                if ui.button("▶").on_hover_text("Weiter").clicked() { let (y, m, d) = civil_from_days(days_from_civil(c.y, c.m, c.d) + 1); (c.y, c.m, c.d) = (y, m, d); }
+                if ui.button("▶").on_hover_text(tr("Next")).clicked() { let (y, m, d) = civil_from_days(days_from_civil(c.y, c.m, c.d) + 1); (c.y, c.m, c.d) = (y, m, d); }
             });
             ui.horizontal(|ui| {
-                ui.add_sized([60.0, 24.0], egui::Label::new(RichText::new("Zeit").color(fg).size(14.0)));
+                ui.add_sized([60.0, 24.0], egui::Label::new(RichText::new(tr("Time")).color(fg).size(14.0)));
                 ui.add(egui::DragValue::new(&mut c.h).range(0..=23).custom_formatter(|v, _| format!("{:02}", v as u32)));
                 ui.label(RichText::new(":").color(fg));
                 ui.add(egui::DragValue::new(&mut c.mi).range(0..=55).speed(0.3).custom_formatter(|v, _| format!("{:02}", v as u32)));
             });
         };
-        let res = menu::webex_dialog(ctx, t, "sched-custom", "Später senden", "", Some(&mut content), &[menu::Button::secondary("cancel", "Abbrechen"), menu::Button::primary("set", "Ansetzen")]);
+        let res = menu::webex_dialog(ctx, t, "sched-custom", tr("Send later"), "", Some(&mut content), &[menu::Button::secondary("cancel", tr("Cancel")), menu::Button::primary("set", tr("Schedule"))]);
         ctx.data_mut(|d| d.insert_temp(custom_id(), c.clone()));
         match res.as_deref() {
             Some("set") => {
                 let due = local_to_ms(c.y, c.m, c.d, c.h, c.mi);
                 if due < now_ms() + MIN_AHEAD_MS {
                     let now = ctx.input(|i| i.time);
-                    self.toast("Versuchen Sie es frühestens in 5 Minuten noch einmal.", now);
+                    self.toast(tr("Choose a time more than 5 minutes in the future and try again."), now);
                     None
                 } else { ctx.data_mut(|d| d.remove::<Custom>(custom_id())); Some((c.target, due)) }
             }
@@ -247,8 +247,8 @@ impl App {
         let now = now_ms();
         let w = ui.available_width();
         ui.add_space(6.0);
-        let title = if mine.len() == 1 { scheduled_text(now, mine[0].due_ms) } else { format!("Sie haben geplant, dass {} Nachrichten gesendet werden.", mine.len()) };
-        let link_t = if self.msgx.sched_expanded { "" } else { "Alle geplanten Nachrichten anzeigen" };
+        let title = if mine.len() == 1 { scheduled_text(now, mine[0].due_ms) } else { crate::trq!("You scheduled {{0}} messages to be sent.", mine.len()) };
+        let link_t = if self.msgx.sched_expanded { "" } else { tr("Show all scheduled messages") };
         let head_h = 30.0;
         let rows_h: f32 = if self.msgx.sched_expanded { mine.len() as f32 * 64.0 + 8.0 } else { 0.0 };
         let (outer, _) = ui.allocate_exact_size(Vec2::new(w, head_h + rows_h), Sense::hover());
@@ -274,7 +274,7 @@ impl App {
         let aresp = ui.interact(ar, Id::new(("sched-arrow", space)), Sense::click());
         if aresp.hovered() { ui.painter().circle_filled(ar.center(), 12.0, t.hover); }
         self.icons.paint(ui, if self.msgx.sched_expanded { "arrow-up-regular" } else { "arrow-down-regular" }, Rect::from_center_size(ar.center(), Vec2::splat(14.0)), text);
-        if aresp.on_hover_text(if self.msgx.sched_expanded { "Geplante Nachrichten reduzieren" } else { "Geplante Nachrichten erweitern" }).clicked() { toggle = true; }
+        if aresp.on_hover_text(if self.msgx.sched_expanded { tr("Collapse scheduled messages") } else { tr("Expand scheduled messages") }).clicked() { toggle = true; }
         if toggle { self.msgx.sched_expanded = !self.msgx.sched_expanded; }
         if !self.msgx.sched_expanded { return; }
         let mut act: Option<(&'static str, String)> = None;
@@ -291,7 +291,7 @@ impl App {
                 ui.painter().rect_filled(bar, 12.0, if light { Color32::WHITE } else { hex(0x121212) });
                 ui.painter().rect_stroke(bar, 12.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
                 let mut any = false;
-                for (k, (icon, tip, a)) in [("send-regular", "Jetzt senden", "now"), ("schedule-send-regular", "Nachricht neu ansetzen", "re"), ("delete-regular", "Verwerfen", "del")].into_iter().enumerate() {
+                for (k, (icon, tip, a)) in [("send-regular", tr("Send now"), "now"), ("schedule-send-regular", tr("Reschedule message"), "re"), ("delete-regular", tr("Discard"), "del")].into_iter().enumerate() {
                     let br = Rect::from_min_size(pos2(bar.left() + k as f32 * 32.0, bar.top()), Vec2::new(32.0, 24.0));
                     let b = ui.interact(br, Id::new(("sched-btn", &s.id, k)), Sense::click());
                     if b.hovered() { any = true; ui.painter().rect_filled(br.shrink(1.0), 10.0, t.hover); ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -312,10 +312,10 @@ impl App {
         }
     }
 
-    /// "Geplante Nachricht verwerfen?"
+    /// "Discard scheduled message?"
     fn sched_discard_dialog(&mut self, ctx: &egui::Context, t: &Th) {
         let Some(id) = ctx.data(|d| d.get_temp::<String>(Id::new("sched-discard"))) else { return };
-        let res = menu::webex_dialog(ctx, t, "sched-discard", "Geplante Nachricht verwerfen?", "", None, &[menu::Button::secondary("cancel", "Abbrechen"), menu::Button::danger("discard", "Verwerfen")]);
+        let res = menu::webex_dialog(ctx, t, "sched-discard", tr("Discard scheduled message?"), "", None, &[menu::Button::secondary("cancel", tr("Cancel")), menu::Button::danger("discard", tr("Discard"))]);
         if let Some(r) = res {
             if r == "discard" { self.msgx.sched.retain(|s| s.id != id); self.sched_save(); }
             ctx.data_mut(|d| d.remove::<String>(Id::new("sched-discard")));
@@ -343,12 +343,12 @@ mod tests {
         let (yy, mm, dd, h, mi) = local_parts(t);
         assert_eq!(days_from_civil(yy, mm, dd) - days_from_civil(y, m, d), 1);
         assert_eq!((h, mi), (9, 0));
-        assert!(scheduled_text(now, t).starts_with("Sie haben den Versand einer Nachricht morgen um 09:00"));
+        assert_eq!(scheduled_text(now, t), crate::trq!("You scheduled a message to be sent tomorrow at {{0}}.", "09:00"));
     }
 
     #[test]
     fn scheduled_messages_persist() {
-        let s = Scheduled { id: "x".into(), space: "s1".into(), text: "Hallo @Theo".into(), markdown: true, due_ms: 1_800_000_000_000,
+        let s = Scheduled { id: "x".into(), space: "s1".into(), text: "Hello @Theo".into(), markdown: true, due_ms: 1_800_000_000_000,
             mentions: vec![crate::richtext::MentionRef { id: "t@example.com".into(), name: "Theo".into(), all: false }] };
         assert_eq!(from_json(&to_json(&s)), Some(s));
     }

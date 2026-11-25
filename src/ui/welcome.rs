@@ -137,7 +137,7 @@ impl App {
             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             if resp.clicked() {
                 match act {
-                    0 => if let Some(id) = self.selected.clone() { self.attach_pick(&id, now) }, // the composer's "Datei anhängen"
+                    0 => if let Some(id) = self.selected.clone() { self.attach_pick(&id, now) }, // the composer's "Attach file"
                     1 => self.gif_picker_toggle(ui.ctx()),
                     _ => { // the in-app scheduler, the open chat's person invited
                         let sp = self.selected.as_ref().and_then(|id| self.spaces.iter().find(|s| &s.id == id)).cloned();
@@ -164,7 +164,7 @@ mod tests {
     }
     #[test]
     fn emoji_become_placeholders() {
-        let (job, marks) = emoji_job("Hallo 👋", FontId::proportional(16.0), Color32::WHITE, false, 100.0);
+        let (job, marks) = emoji_job("Hello 👋", FontId::proportional(16.0), Color32::WHITE, false, 100.0);
         assert_eq!(marks.len(), 1);
         assert_eq!(marks[0].0, 6);
         assert!(job.text.ends_with(super::super::emoji_text::PLACEHOLDER));

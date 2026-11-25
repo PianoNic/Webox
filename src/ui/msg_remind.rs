@@ -1,5 +1,5 @@
-//! "Mich erinnern in": a reminder on a message (the message menu's submenu). When it is due, a toast
-//! "Erinnerungsbenachrichtigung" with the author and the text comes up; a click opens the space. The reminders are kept on this
+//! "Remind me in": a reminder on a message (the message menu's submenu). When it is due, a toast
+//! "Reminder notification" with the author and the text comes up; a click opens the space. The reminders are kept on this
 //! computer (settings `message_reminders`), so they survive a restart; the service's reminders are not used.
 use super::menu;
 use super::schedule_send::{now_ms, tomorrow_nine};
@@ -9,13 +9,13 @@ use crate::*;
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Reminder { pub space: String, pub msg: String, pub author: String, pub text: String, pub due_ms: i64 }
 
-/// The submenu's entries: (id, label, minutes from now; 0 = tomorrow at 9:00).
-pub(crate) const CHOICES: [(&str, &str, i64); 4] = [("remind-20", "20 Minuten", 20), ("remind-60", "1 Stunde", 60), ("remind-180", "3 Stunden", 180), ("remind-tomorrow", "Morgen um 9:00 Uhr", 0)];
+/// The submenu's entries: (id, English label, minutes from now; 0 = tomorrow at 9:00).
+pub(crate) const CHOICES: [(&str, &str, i64); 4] = [("remind-20", "20 minutes", 20), ("remind-60", "1 hour", 60), ("remind-180", "3 hours", 180), ("remind-tomorrow", "Tomorrow at 9:00 AM", 0)];
 
-/// The submenu ("Mich erinnern in" as its title, then the choices).
+/// The submenu ("Remind me in" as its title, then the choices).
 pub(crate) fn entries() -> Vec<menu::Entry> {
-    let mut v = vec![menu::Entry::Title("Mich erinnern in".into())];
-    v.extend(CHOICES.iter().map(|(id, label, _)| menu::Item::new(id, *label).entry()));
+    let mut v = vec![menu::Entry::Title(tr("Remind me in").into())];
+    v.extend(CHOICES.iter().map(|(id, label, _)| menu::Item::new(id, tr(label)).entry()));
     v
 }
 
@@ -47,7 +47,7 @@ impl App {
         system::save_settings(&self.cfg, &self.settings);
     }
 
-    /// A pick of the "Mich erinnern in" submenu on message `m` of `space` (one reminder per message: a new one replaces it).
+    /// A pick of the "Remind me in" submenu on message `m` of `space` (one reminder per message: a new one replaces it).
     pub(crate) fn remind_pick(&mut self, space: &str, m: &Message, choice: &str, now: f64) {
         let Some(due) = due_of(choice, now_ms()) else { return };
         self.msgx.reminders.retain(|r| r.msg != m.id);
@@ -56,10 +56,10 @@ impl App {
         self.msgx.reminders.sort_by_key(|r| r.due_ms);
         self.reminders_save();
         let (_, _, _, h, mi) = super::schedule_send::local_parts(due);
-        self.toast(format!("Erinnerung um {h:02}:{mi:02} Uhr"), now);
+        self.toast(crate::trq!("Reminder at %1", format!("{h:02}:{mi:02}")), now);
     }
 
-    /// "Erinnerung entfernen".
+    /// "Remove reminder".
     pub(crate) fn remind_remove(&mut self, msg: &str) {
         self.msgx.reminders.retain(|r| r.msg != msg);
         self.reminders_save();
@@ -89,7 +89,7 @@ mod tests {
         assert_eq!(due_of("remind-tomorrow", 5_000), Some(tomorrow_nine(5_000)));
         assert_eq!(due_of("nope", 0), None);
         let ids: Vec<String> = entries().iter().filter_map(|e| match e { menu::Entry::Item(i) => Some(i.label.clone()), _ => None }).collect();
-        assert_eq!(ids, ["20 Minuten", "1 Stunde", "3 Stunden", "Morgen um 9:00 Uhr"]);
+        assert_eq!(ids, [tr("20 minutes"), tr("1 hour"), tr("3 hours"), tr("Tomorrow at 9:00 AM")]);
         let r = |m: &str, due| Reminder { space: "s".into(), msg: m.into(), author: "A".into(), text: "t".into(), due_ms: due };
         let mut l = vec![r("a", 10), r("b", 20), r("c", 30)];
         assert_eq!(take_due(&mut l, 20), [r("a", 10), r("b", 20)]);

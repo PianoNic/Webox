@@ -1,7 +1,7 @@
-//! The + right of the search pill and its menu ("Nachricht senden", "Bereich erstellen", "Zu Webex einladen").
+//! The + right of the search pill and its menu ("Send a message", "Create a space", "Invite to Webex").
 //!
-//! - A click opens the global menu; tooltip "Eine Unterhaltung starten".
-//! - The three entries open the "Neue Nachricht" pane (ui/new_message/), the create-space pane (`create_space.rs`) and the
+//! - A click opens the global menu; tooltip "Start a conversation".
+//! - The three entries open the "New message" pane (ui/new_message/), the create-space pane (`create_space.rs`) and the
 //!   invite pane (ui/invite.rs).
 //! - Texts: 'Send a message' / 'Create a space' / 'Invite to {{APP_NAME}}' (language pack, QObject context).
 //! - Icons: chat-regular, chat-group-regular (two bubbles, no plus), participant-add-regular.
@@ -111,7 +111,7 @@ impl App {
         match picked {
             // The create-space pane.
             Some("space") => self.act(Act::CreateSpace, ctx),
-            // The "Neue Nachricht" pane (ui/new_message/).
+            // The "New message" pane (ui/new_message/).
             Some("send") => self.new_message_open(ctx),
             // The invite pane (ui/invite.rs).
             Some("invite") => self.invite_open(ctx),

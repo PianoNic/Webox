@@ -1,10 +1,10 @@
-//! "Teams" (list of teams, team detail with Bereiche / Mitglieder tabs, "Ein Team erstellen") and "Whiteboards" (header with
-//! "Neues Whiteboard", search "Whiteboards durchsuchen", "Sortieren nach:", grid / list; empty state
-//! `whiteboards-192-cobalt-lime`). German strings from the pack.
+//! "Teams" (list of teams, team detail with Spaces / Members tabs, "Create a team") and "Whiteboards" (header with
+//! "New Whiteboard", search "Search whiteboards", "Sort by:", grid / list; empty state
+//! `whiteboards-192-cobalt-lime`). Pack strings where the pack has them.
 //! Teams (requests in cloud/spaces_ext/): create (480 wide centred column, title, name, description, people search with 32 pt
-//! avatar chips, Erstellen enabled once a name is typed / Abbrechen), the team's spaces incl. the ones I have not joined
-//! ("Beitreten"), "Bereich für dieses Team erstellen", members of the general space, "Teammitglieder hinzufügen ...",
-//! "Team archivieren" (with its confirmation), "Team verlassen" ("Team verlassen?"), and the "Archivierte Teams" section.
+//! avatar chips, Create enabled once a name is typed / Cancel), the team's spaces incl. the ones I have not joined
+//! ("Join"), "Create a space for this team", members of the general space, "Add team members...",
+//! "Archive team" (with its confirmation), "Leave team" ("Leave the team?"), and the "Archived Teams" section.
 //! Not implemented yet: the whiteboard list and whiteboard creation (Whiteboards only show a notice).
 #![allow(clippy::too_many_arguments)]
 use crate::*;
@@ -19,7 +19,7 @@ impl App {
     pub(crate) fn teams_list(&mut self, ui: &mut egui::Ui, t: &Th, _now: f64) {
         let ctx = ui.ctx().clone();
         let mut st = self.pst(&ctx);
-        let (plus, _) = self.list_header(ui, t, tr("Teams"), Some("Team erstellen"), None);
+        let (plus, _) = self.list_header(ui, t, tr("Teams"), Some(tr("Create team")), None);
         if plus { st.new_team = Some((String::new(), String::new())); st.team_open = None; ctx.data_mut(|d| d.remove::<(Vec<Person>, String)>(new_team_people())); }
         ui.add_space(8.0);
         ui.spacing_mut().scroll = egui::style::ScrollStyle { bar_width: 10.0, bar_inner_margin: 2.0, bar_outer_margin: 0.0, ..egui::style::ScrollStyle::solid() };
@@ -27,12 +27,12 @@ impl App {
         let (archived, active): (Vec<Team>, Vec<Team>) = self.teams.clone().into_iter().partition(|tm| self.team_archived(&tm.id));
         crate::ui::widgets::vscroll().auto_shrink([false; 2]).show(ui, |ui| {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
-            for (head, list) in [(None, &active), (Some("Archivierte Teams"), &archived)] { // "Archived Teams"
+            for (head, list) in [(None, &active), (Some(tr("Archived Teams")), &archived)] {
                 if list.is_empty() { continue; }
                 if let Some(h) = head { ui.add_space(10.0); ui.horizontal(|ui| { ui.add_space(16.0); ui.label(RichText::new(h).size(13.0).color(t.text2)); }); ui.add_space(4.0); }
                 for tm in list.iter() {
                     let n = self.spaces.iter().filter(|s| s.team == tm.id).count();
-                    let sub = format!("{n} Bereiche");
+                    let sub = crate::trq!("%1 spaces", n);
                     let mut spec = RowSpec::new(format!("team-{}", tm.id), &tm.name);
                     spec.sub = &sub; spec.space = true; spec.av_bg = Some(team_tones(t, tm.color, &tm.id).0); spec.selected = st.team_open.as_deref() == Some(tm.id.as_str());
                     let out = self.page_row(ui, t, &spec);
@@ -42,14 +42,14 @@ impl App {
             }
             if active.is_empty() && archived.is_empty() {
                 ui.add_space(30.0);
-                ui.vertical_centered(|ui| { ui.label(RichText::new("Keine Teams").font(semibold(15.0)).color(t.text1)); }); // Webox's own wording
+                ui.vertical_centered(|ui| { ui.label(RichText::new(tr("No teams")).font(semibold(15.0)).color(t.text1)); }); // Webox's own wording
             }
         });
         self.set_pst(&ctx, st);
         if let Some((k, r)) = menu_req { self.open_page_menu(&ctx, "team-row", &k, r); }
     }
 
-    /// "Ein Team erstellen". Returns true while the form is shown.
+    /// "Create a team". Returns true while the form is shown.
     fn create_team_view(&mut self, ui: &mut egui::Ui, t: &Th, st: &mut PageState) -> bool {
         let Some((mut name, mut desc)) = st.new_team.clone() else { return false };
         let ctx = ui.ctx().clone();
@@ -58,16 +58,16 @@ impl App {
         let area = Rect::from_min_size(pos2(ui.max_rect().center().x - w / 2.0, ui.max_rect().top() + 48.0), Vec2::new(w, ui.max_rect().height() - 72.0));
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::top_down(egui::Align::Min)));
         c.spacing_mut().item_spacing.y = 8.0;
-        c.vertical_centered(|ui| ui.label(RichText::new("Ein Team erstellen").font(semibold(22.0)).color(t.text1))); // "Create a team"
+        c.vertical_centered(|ui| ui.label(RichText::new(tr("Create a team")).font(semibold(22.0)).color(t.text1)));
         c.add_space(20.0);
-        c.label(RichText::new("Teamname").size(14.0).color(t.text1)); // "Team Name"
-        c.add(egui::TextEdit::singleline(&mut name).hint_text("Team benennen (erforderlich)").desired_width(f32::INFINITY).margin(egui::Margin::symmetric(10, 8)));
+        c.label(RichText::new(tr("Team name")).size(14.0).color(t.text1));
+        c.add(egui::TextEdit::singleline(&mut name).hint_text(tr("Name the team (required)")).desired_width(f32::INFINITY).margin(egui::Margin::symmetric(10, 8)));
         c.add_space(8.0);
-        c.label(RichText::new("Teambeschreibung").size(14.0).color(t.text1)); // "Team Description"
-        c.add(egui::TextEdit::singleline(&mut desc).hint_text("Team beschreiben").desired_width(f32::INFINITY).margin(egui::Margin::symmetric(10, 8)));
+        c.label(RichText::new(tr("Team description")).size(14.0).color(t.text1));
+        c.add(egui::TextEdit::singleline(&mut desc).hint_text(tr("Describe the team")).desired_width(f32::INFINITY).margin(egui::Margin::symmetric(10, 8)));
         c.add_space(8.0);
-        c.label(RichText::new("Mitglieder zu diesem Team hinzufügen").size(14.0).color(t.text1)); // "Add members to this team"
-        c.add(egui::TextEdit::singleline(&mut q).hint_text("Nach einem Namen suchen").desired_width(f32::INFINITY).margin(egui::Margin::symmetric(10, 8)));
+        c.label(RichText::new(tr("Add members to this team")).size(14.0).color(t.text1));
+        c.add(egui::TextEdit::singleline(&mut q).hint_text(tr("Search for a name")).desired_width(f32::INFINITY).margin(egui::Margin::symmetric(10, 8)));
         let ql = q.trim().to_lowercase();
         if !ql.is_empty() {
             let hits: Vec<Person> = self.people.iter().filter(|p| !people.iter().any(|x| x.id == p.id) && (p.name.to_lowercase().contains(&ql) || p.email.to_lowercase().contains(&ql))).take(5).cloned().collect();
@@ -105,8 +105,8 @@ impl App {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 let bw = 92.0 * 2.0 + 8.0;
                 ui.add_space(((w - bw) / 2.0).max(0.0));
-                create = ui.add_enabled_ui(ready, |ui| self.pill(ui, t, "Erstellen", Pill::Primary, None)).inner.clicked() && ready;
-                cancel = self.pill(ui, t, "Abbrechen", Pill::Secondary, None).clicked();
+                create = ui.add_enabled_ui(ready, |ui| self.pill(ui, t, tr("Create"), Pill::Primary, None)).inner.clicked() && ready;
+                cancel = self.pill(ui, t, tr("Cancel"), Pill::Secondary, None).clicked();
             });
         });
         if create {
@@ -128,7 +128,7 @@ impl App {
         if self.create_team_view(ui, t, &mut st) { self.set_pst(&ctx, st); return; }
         let Some(tm) = st.team_open.as_ref().and_then(|id| self.teams.iter().find(|x| &x.id == id).cloned()) else {
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(ui.max_rect()));
-            let clicked = self.empty_state(&mut c, t, "people-chat-320-cobalt-lime", 200.0, "Teams", "Wählen Sie ein Team aus der Liste aus oder erstellen Sie ein neues.", Some("Team erstellen")); // Webox's own wording
+            let clicked = self.empty_state(&mut c, t, "people-chat-320-cobalt-lime", 200.0, tr("Teams"), tr("Select a team from the list or create a new one."), Some(tr("Create team"))); // Webox's own wording
             if clicked { st.new_team = Some((String::new(), String::new())); self.set_pst(&ctx, st); }
             return;
         };
@@ -144,22 +144,22 @@ impl App {
             ui.vertical(|ui| {
                 ui.add_space(6.0);
                 ui.label(RichText::new(&tm.name).font(semibold(22.0)).color(t.text1));
-                let sub = if archived { "Archiviert".to_string() } else { format!("{} Bereiche", spaces.iter().filter(|s| s.joined).count()) };
+                let sub = if archived { tr("Archived").to_string() } else { crate::trq!("%1 spaces", spaces.iter().filter(|s| s.joined).count()) };
                 ui.label(RichText::new(sub).size(14.0).color(t.text2));
             });
             if !archived {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
-                    if st.team_tab == 0 { new_space = self.pill(ui, t, "Bereich für dieses Team erstellen", Pill::Primary, Some("plus-regular")).clicked(); } // "Create a space for this team"
-                    else { add_members = self.pill(ui, t, "Teammitglieder hinzufügen", Pill::Primary, Some("people-add-regular")).clicked(); } // "Add team members"
+                    if st.team_tab == 0 { new_space = self.pill(ui, t, tr("Create a space for this team"), Pill::Primary, Some("plus-regular")).clicked(); }
+                    else { add_members = self.pill(ui, t, tr("Add team members"), Pill::Primary, Some("people-add-regular")).clicked(); }
                 });
             }
         });
         c.add_space(14.0);
         c.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
-            for (i, n) in ["Bereiche", "Mitglieder"].iter().enumerate() {
-                if text_tab(ui, n, st.team_tab as usize == i, t, t.tab_on).clicked() { st.team_tab = i as u8; }
+            for (i, n) in ["Spaces", "Members"].iter().enumerate() {
+                if text_tab(ui, tr(n), st.team_tab as usize == i, t, t.tab_on).clicked() { st.team_tab = i as u8; }
             }
         });
         c.add_space(8.0);
@@ -174,12 +174,12 @@ impl App {
                     let mut spec = RowSpec::new(format!("tsp-{}", ts.id), &ts.title);
                     spec.space = true;
                     if let Some(s) = &sp { spec.bold = s.unread; spec.dot = s.unread; spec.right = &s.last; }
-                    else { spec.sub = "Diesem Bereich beitreten"; spec.action = Some(("enter-room-regular", "Beitreten")); } // "Join this space" / "Join"
+                    else { spec.sub = tr("Join this space"); spec.action = Some(("enter-room-regular", tr("Join"))); }
                     let out = self.page_row(ui, t, &spec);
                     if ts.joined || sp.is_some() { if out.clicked || out.double { open = Some(ts.id.clone()); } }
                     else if out.action || out.double { join = Some(ts.clone()); }
                 }
-                if spaces.is_empty() { ui.add_space(24.0); ui.vertical_centered(|ui| ui.label(RichText::new("In diesem Team gibt es noch keine Bereiche.").color(t.text2))); } // Webox's own wording
+                if spaces.is_empty() { ui.add_space(24.0); ui.vertical_centered(|ui| ui.label(RichText::new(tr("This team has no spaces yet.")).color(t.text2))); } // Webox's own wording
             } else {
                 // Members: the participants of the team's general space (members live there); else everyone seen in its spaces.
                 let general = self.team_info(&tm.id).map(|i| i.general).unwrap_or_default();
@@ -198,7 +198,7 @@ impl App {
                     let out = self.page_row(ui, t, &spec);
                     if out.clicked || out.double { card = Some(pp.clone()); }
                 }
-                if members.is_empty() { ui.add_space(24.0); ui.vertical_centered(|ui| ui.label(RichText::new("Keine Mitglieder bekannt.").color(t.text2))); } // Webox's own wording
+                if members.is_empty() { ui.add_space(24.0); ui.vertical_centered(|ui| ui.label(RichText::new(tr("No members known.")).color(t.text2))); } // Webox's own wording
             }
         });
         self.set_pst(&ctx, st);
@@ -214,8 +214,8 @@ impl App {
         let target = self.pst(ctx).menu_target.map(|m| m.0).unwrap_or_default();
         let archived = self.team_archived(&target);
         let items = vec![
-            Item::new("add", "Teammitglieder hinzufügen ...").icon("people-add-regular").enabled(!archived).entry(), Entry::Sep,
-            Item::new("archive", "Team archivieren").icon("webex-teams-remove-regular").enabled(!archived).entry(), Item::new("leave", "Team verlassen").icon("exit-room-regular").danger().entry(),
+            Item::new("add", tr("Add team members...")).icon("people-add-regular").enabled(!archived).entry(), Entry::Sep,
+            Item::new("archive", tr("Archive team")).icon("webex-teams-remove-regular").enabled(!archived).entry(), Item::new("leave", tr("Leave team")).icon("exit-room-regular").danger().entry(),
         ];
         if let Some((team, pick)) = self.page_menu(ctx, t, "team-row", &items) {
             match pick.as_str() {
@@ -230,7 +230,7 @@ impl App {
     }
 
     // Whiteboards.
-    /// Drawn in a single card (see `pages_frame`): header row, then a grid with the "Neues Whiteboard" tile.
+    /// Drawn in a single card (see `pages_frame`): header row, then a grid with the "New Whiteboard" tile.
     pub(crate) fn whiteboards_page(&mut self, ui: &mut egui::Ui, t: &Th, now: f64) {
         let ctx = ui.ctx().clone();
         let mut st = self.pst(&ctx);
@@ -240,7 +240,7 @@ impl App {
             ui.label(RichText::new(tr("Whiteboards")).font(semibold(21.0)).color(t.text1));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(6.0);
-                new_wb = self.pill(ui, t, "Neues Whiteboard", Pill::Primary, Some("plus-regular")).on_hover_text("Neues Whiteboard erstellen").clicked();
+                new_wb = self.pill(ui, t, tr("New Whiteboard"), Pill::Primary, Some("plus-regular")).on_hover_text(tr("Create a new whiteboard")).clicked();
             });
         });
         ui.add_space(12.0);
@@ -250,12 +250,12 @@ impl App {
             ui.painter().rect_filled(r, 16.0, t.ink_a(0.07));
             self.icons.paint(ui, "search-regular", Rect::from_center_size(r.left_center() + Vec2::new(18.0, 0.0), Vec2::splat(16.0)), t.text2);
             let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(r.min + Vec2::new(34.0, 0.0), r.max - Vec2::new(10.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-            inner.add(egui::TextEdit::singleline(&mut st.wb_q).hint_text(RichText::new("Whiteboards durchsuchen").color(t.text2).size(14.5)).font(FontId::proportional(14.5)).frame(false).desired_width(r.width() - 48.0));
-            ui.label(RichText::new("Sortieren nach:").size(13.5).color(t.text2));
-            if text_tab(ui, if st.wb_sort == 0 { "Name" } else { "Zuletzt geändert" }, false, t, t.tab_on).clicked() { st.wb_sort = 1 - st.wb_sort; } // "Zuletzt geändert": Webox's own wording
+            inner.add(egui::TextEdit::singleline(&mut st.wb_q).hint_text(RichText::new(tr("Search whiteboards")).color(t.text2).size(14.5)).font(FontId::proportional(14.5)).frame(false).desired_width(r.width() - 48.0));
+            ui.label(RichText::new(tr("Sort by:")).size(13.5).color(t.text2));
+            if text_tab(ui, if st.wb_sort == 0 { tr("Name") } else { tr("Last modified") }, false, t, t.tab_on).clicked() { st.wb_sort = 1 - st.wb_sort; } // "Last modified": Webox's own wording
         });
         ui.add_space(16.0);
-        // Grid: the first tile is always "Neues Whiteboard". No whiteboards come from the data layer yet.
+        // Grid: the first tile is always "New Whiteboard". No whiteboards come from the data layer yet.
         let tile = Vec2::new(200.0, 140.0);
         let (r, _) = ui.allocate_exact_size(tile, Sense::hover());
         let resp = ui.interact(r, ui.id().with("wb-new"), Sense::click());
@@ -263,13 +263,13 @@ impl App {
         ui.painter().rect_stroke(r, 12.0, Stroke::new(1.0_f32, t.ink_a(0.2)), egui::StrokeKind::Inside);
         if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
         self.icons.paint(ui, "plus-circle-regular", Rect::from_center_size(r.center() - Vec2::new(0.0, 12.0), Vec2::splat(32.0)), t.text1);
-        ui.painter().text(r.center() + Vec2::new(0.0, 28.0), egui::Align2::CENTER_CENTER, "Neues Whiteboard", semibold(14.0), t.text1);
+        ui.painter().text(r.center() + Vec2::new(0.0, 28.0), egui::Align2::CENTER_CENTER, tr("New Whiteboard"), semibold(14.0), t.text1);
         if resp.clicked() { new_wb = true; }
         let rest = Rect::from_min_max(pos2(r.right() + 20.0, r.top()), pos2(ui.max_rect().right(), ui.max_rect().bottom()));
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(rest));
-        self.empty_state(&mut c, t, "whiteboards-192-cobalt-lime", 150.0, "Noch keine Whiteboards",
-            "Hier finden Sie Ihre gespeicherten Whiteboards. Über ein Whiteboard können Sie mit anderen Ideen entwerfen und skizzieren.", None); // title: Webox's own wording
-        if new_wb { self.toast("Whiteboards sind in dieser Version nicht verfügbar", now); } // Webox's own wording
+        self.empty_state(&mut c, t, "whiteboards-192-cobalt-lime", 150.0, tr("No whiteboards yet"),
+            tr("Find your own saved whiteboards here. Use a whiteboard to write out and sketch ideas with others."), None); // title: Webox's own wording
+        if new_wb { self.toast(tr("Whiteboards aren't available in this version"), now); } // Webox's own wording
         self.set_pst(&ctx, st);
     }
 }
