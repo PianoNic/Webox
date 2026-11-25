@@ -10,7 +10,12 @@
 use super::*;
 use std::ops::Range;
 
-pub(super) struct Parsed { pub job: egui::text::LayoutJob, pub links: Vec<(Range<usize>, String)>, pub runs: Vec<EmojiRun>, pub quotes: Vec<(usize, usize)>, pub reply_quote: Option<String> }
+/// `reply_quote`: what a reply's quote says about the quoted message (to find it); `thumb_at`: the char index of the place
+/// kept for the quoted picture's thumbnail (see `html_job_thumb`).
+pub(super) struct Parsed { pub job: egui::text::LayoutJob, pub links: Vec<(Range<usize>, String)>, pub runs: Vec<EmojiRun>, pub quotes: Vec<(usize, usize)>, pub reply_quote: Option<QuoteRef>, pub thumb_at: Option<usize> }
+
+/// Font size of the placeholder that keeps a line free for a quoted picture's thumbnail (its row is about 64 pt high).
+const THUMB_FONT: f32 = 54.0;
 
 /// Link target of "Zur Originalnachricht springen" (handled by the message list, never opened).
 pub(super) const JUMP: &str = "webox-jump:";
@@ -125,8 +130,10 @@ fn tokenize(h: &str) -> Vec<Ev> {
     ev
 }
 
-/// Whether the quote that starts right before `rest` has an author line: at least two separate text pieces before its end.
-fn has_author_line(rest: &[Ev]) -> bool {
+/// Whether the quote that starts right before `rest` has an author line: at least two separate text pieces before its end
+/// (`min` = 2), or one for a `messageQuote` (a quoted picture: the author line, then only the summary, or nothing from an
+/// older Webox).
+fn has_author_line(rest: &[Ev], min: usize) -> bool {
     let (mut depth, mut texts) = (0usize, 0usize);
     for e in rest {
         match e {
@@ -136,8 +143,37 @@ fn has_author_line(rest: &[Ev]) -> bool {
             _ => {}
         }
     }
-    texts >= 2
+    texts >= min
 }
+
+/// What the reply quote at the start of `html` says (author, summary of shared files, text), without laying anything out: the
+/// same rules as `html_job`, for finding the quoted message before the row is measured.
+pub(super) fn reply_ref(html: &str) -> Option<QuoteRef> {
+    let ev = tokenize(html);
+    let i = ev.iter().position(|e| match e { Ev::Open(n, _) => n == "blockquote", Ev::Text(t) => !t.trim().is_empty(), _ => false })?;
+    let Ev::Open(_, a) = &ev[i] else { return None };
+    if !has_author_line(&ev[i + 1..], if is_message_quote(a) { 1 } else { 2 }) { return None; }
+    let (mut depth, mut texts, mut q) = (0usize, Vec::new(), QuoteRef::default());
+    for e in &ev[i + 1..] {
+        match e {
+            Ev::Open(n, _) if n == "blockquote" => depth += 1,
+            Ev::Close(n) if n == "blockquote" => { if depth == 0 { break; } depth -= 1; }
+            Ev::Text(t) if !t.trim().is_empty() => texts.push(t.as_str()),
+            Ev::Text(t) => if !texts.is_empty() { texts.push(t.as_str()) },
+            _ => {}
+        }
+    }
+    let mut it = texts.into_iter();
+    q.author = collapse(it.next()?).trim().to_string();
+    let rest: Vec<&str> = it.collect();
+    let first = rest.iter().position(|t| !t.trim().is_empty());
+    q.shared = first.and_then(|f| cloud::Shared::parse(&collapse(rest[f])));
+    let skip = if q.shared.is_some() { first.map_or(0, |f| f + 1) } else { 0 };
+    q.text = collapse(&rest[skip..].concat()).trim().to_string();
+    Some(q)
+}
+
+fn is_message_quote(attrs: &[(String, String)]) -> bool { attrs.iter().any(|(k, v)| k == "class" && v.split_whitespace().any(|c| c == "messageQuote")) }
 
 /// Body-size factor of a heading (Qt rich-text rules, see `open`): h1 2.0, h2 1.5, h3 1.2, h4 1.0, h5 0.8, h6 unchanged.
 fn heading_scale(tag: &str) -> f32 {
@@ -166,6 +202,9 @@ struct Doc<'a> {
     /// A reply's quote (the first <blockquote>, "Author" line + quoted text): `author_pending` until the author line is written,
     /// `reply_depth` = quote depth of that block, `reply_text` = the quoted text (to find the quoted message).
     author_pending: bool, reply_depth: usize, reply_text: String, reply_seen: bool,
+    /// The reply quote's author; `summary_next` while the line after it may be the summary of shared files ("Shared a file: …"),
+    /// which is shown in the UI's words (`cloud::Shared::label`) or, with `thumb`, as a thumbnail kept free at `thumb_at`.
+    reply_author: String, summary_next: bool, reply_shared: Option<cloud::Shared>, thumb: bool, thumb_at: Option<usize>,
     /// The <br> right after the author line only ends that line (the header already did).
     absorb_br: bool,
 }
@@ -221,7 +260,15 @@ impl Doc<'_> {
             if a.trim().is_empty() { return; }
             self.author_pending = false;
             self.reply_header(&a);
+            self.reply_author = a.trim().to_string();
+            self.summary_next = true;
             return;
+        }
+        if self.summary_next && !raw.trim().is_empty() {
+            self.summary_next = false;
+            if self.reply_depth > 0 && self.quote_depth >= self.reply_depth {
+                if let Some(s) = cloud::Shared::parse(&collapse(raw)) { self.summary(s); return; }
+            }
         }
         self.absorb_br = false;
         if self.reply_depth > 0 && self.quote_depth >= self.reply_depth { self.reply_text.push_str(raw); }
@@ -245,6 +292,29 @@ impl Doc<'_> {
         }
         self.put(&t[at..], col, false);
     }
+
+    /// The summary line of a quote of shared files: the picture's thumbnail (a line kept free, a click jumps to the original
+    /// like the header's link) or the summary in the UI's words.
+    fn summary(&mut self, s: cloud::Shared) {
+        self.absorb_br = false;
+        self.flush();
+        if self.thumb && s.name().is_some() {
+            let was = self.b.st.size;
+            self.b.st.size = Some(THUMB_FONT);
+            self.thumb_at = Some(self.b.nchars);
+            let from = self.b.job.text.len();
+            self.raw_plain_sized("\u{2003}");
+            self.links.push((from..self.b.job.text.len(), JUMP.to_string()));
+            self.b.st.size = was;
+        } else {
+            let label = s.label();
+            self.b.plain(&label, self.c.head);
+        }
+        self.reply_shared = Some(s);
+    }
+
+    /// Like `raw_plain`, at the current font size.
+    fn raw_plain_sized(&mut self, s: &str) { let size = self.b.st.size; let st = std::mem::take(&mut self.b.st); self.b.st.size = size; self.b.raw(s, self.c.body, false); self.b.st = st; }
 
     fn open(&mut self, name: &str, attrs: &[(String, String)]) {
         let attr = |k: &str| attrs.iter().find(|a| a.0 == k).map(|a| a.1.as_str()).unwrap_or("");
@@ -338,18 +408,22 @@ impl Doc<'_> {
 
 /// Lays out `html`; `me` is my person id (to tell my mentions from others'). `None` when there's nothing visible to show,
 /// so the caller falls back to the plain text.
-pub(super) fn html_job(html: &str, c: &Mc, me: &str, wrap: f32, sys: bool) -> Option<Parsed> {
+pub(super) fn html_job(html: &str, c: &Mc, me: &str, wrap: f32, sys: bool) -> Option<Parsed> { html_job_thumb(html, c, me, wrap, sys, false) }
+
+/// `html_job`; `thumb`: the quoted picture's thumbnail is drawn (the quote's summary line becomes a free line, `Parsed::thumb_at`).
+pub(super) fn html_job_thumb(html: &str, c: &Mc, me: &str, wrap: f32, sys: bool, thumb: bool) -> Option<Parsed> {
     let mut b = JobBuilder { job: egui::text::LayoutJob::default(), nchars: 0, runs: Vec::new(), sys,
         sysfont: FontId::new(BODY, egui::FontFamily::Name(emoji_text::FAMILY.into())), st: Style::default() };
     b.job.wrap.max_width = wrap;
-    let mut d = Doc { b, c, me, stack: Vec::new(), color: None, ignored: Default::default(), nls: 0, lists: Vec::new(), bullet: None, quote_depth: 0, quote_start: Vec::new(), quotes: Vec::new(), pre: 0, link: None, links: Vec::new(), author_pending: false, reply_depth: 0, reply_text: String::new(), reply_seen: false, absorb_br: false };
+    let mut d = Doc { b, c, me, stack: Vec::new(), color: None, ignored: Default::default(), nls: 0, lists: Vec::new(), bullet: None, quote_depth: 0, quote_start: Vec::new(), quotes: Vec::new(), pre: 0, link: None, links: Vec::new(), author_pending: false, reply_depth: 0, reply_text: String::new(), reply_seen: false, absorb_br: false,
+        reply_author: String::new(), summary_next: false, reply_shared: None, thumb, thumb_at: None };
     let events = tokenize(html);
     let mut author_checked = false; // the rest is scanned for an author line once, for the first candidate only
     for (i, ev) in events.iter().enumerate() {
         match ev {
             Ev::Open(n, a) => {
                 // The first <blockquote>, at the very start and with an author line before the quoted text, is a reply's quote.
-                if n == "blockquote" && !d.reply_seen && d.b.job.text.is_empty() && d.quote_depth == 0 && d.stack.len() < MAX_DEPTH && !std::mem::replace(&mut author_checked, true) && has_author_line(&events[i + 1..]) {
+                if n == "blockquote" && !d.reply_seen && d.b.job.text.is_empty() && d.quote_depth == 0 && d.stack.len() < MAX_DEPTH && !std::mem::replace(&mut author_checked, true) && has_author_line(&events[i + 1..], if is_message_quote(a) { 1 } else { 2 }) {
                     d.reply_seen = true;
                     d.author_pending = true;
                     d.open(n, a);
@@ -362,8 +436,9 @@ pub(super) fn html_job(html: &str, c: &Mc, me: &str, wrap: f32, sys: bool) -> Op
     }
     while let Some(top) = d.stack.last().map(|e| e.0.clone()) { d.close(&top); }
     if (d.b.job.text.trim().is_empty() && d.b.runs.is_empty()) || d.b.job.sections.is_empty() { return None; } // emoji are whitespace placeholders in the text
-    let reply_quote = d.reply_seen.then(|| collapse(&d.reply_text).trim().to_string()).filter(|t| !t.is_empty());
-    Some(Parsed { job: d.b.job, links: d.links, runs: d.b.runs, quotes: d.quotes, reply_quote })
+    let reply_quote = d.reply_seen.then(|| QuoteRef { author: d.reply_author, shared: d.reply_shared, text: collapse(&d.reply_text).trim().to_string() })
+        .filter(|q| !q.author.is_empty());
+    Some(Parsed { job: d.b.job, links: d.links, runs: d.b.runs, quotes: d.quotes, reply_quote, thumb_at: d.thumb_at })
 }
 
 #[cfg(test)]

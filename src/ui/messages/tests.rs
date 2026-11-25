@@ -151,10 +151,36 @@ fn reaction_chips_never_show_raw_names() {
 fn jump_finds_the_quoted_message_above_the_reply() {
     let m = |id: &str, t: &str| Message { id: id.into(), text: t.into(), ..Default::default() };
     let list = [m("a", "Build ist durch"), m("b", "ich schaff 50%"), m("c", "Build  ist durch"), m("r", "Immerhin etwas"), m("d", "Build ist durch")];
-    assert_eq!(jump_target(&list, "r", "Build ist durch").as_deref(), Some("c")); // the newest one above the reply, spaces ignored
-    assert_eq!(jump_target(&list, "r", "schaff").as_deref(), Some("b")); // partial match as the fallback
-    assert_eq!(jump_target(&list, "r", "gibt es nicht"), None);
-    assert_eq!(jump_target(&list, "r", ""), None);
+    let t = |s: &str| QuoteRef { author: "Mara".into(), shared: None, text: s.into() };
+    assert_eq!(jump_target(&list, "r", &t("Build ist durch")).as_deref(), Some("c")); // the newest one above the reply, spaces ignored
+    assert_eq!(jump_target(&list, "r", &t("schaff")).as_deref(), Some("b")); // partial match as the fallback
+    assert_eq!(jump_target(&list, "r", &t("gibt es nicht")), None);
+    assert_eq!(jump_target(&list, "r", &t("")), None);
+}
+
+/// Messages for the shared-file jumps: (id, author, text with "📎" lines, picture names).
+fn shares() -> Vec<Message> {
+    let m = |id: &str, who: &str, t: &str, imgs: &[&str]| Message { id: id.into(), author: who.into(), text: t.into(),
+        images: imgs.iter().map(|n| Attachment { name: n.to_string(), ..Default::default() }).collect(), ..Default::default() };
+    vec![m("a", "Lina", "", &["IMG.png"]), m("b", "Mara", "", &["IMG.png"]), m("c", "Lina", "📎 plan.pdf", &[]),
+        m("d", "Lina", "📎 a.pdf\n📎 b.pdf", &["c.png"]), m("e", "Mara", "Schau mal", &["x.png"]), m("r", "Alex", "ok", &[]), m("f", "Lina", "", &["IMG.png"])]
+}
+
+#[test]
+fn jump_to_a_quoted_picture_matches_author_and_file_name() {
+    let list = shares();
+    let q = |who: &str, s: cloud::Shared, t: &str| QuoteRef { author: who.into(), shared: Some(s), text: t.into() };
+    let file = |n: &str| cloud::Shared::File(n.into());
+    assert_eq!(jump_target(&list, "r", &q("Lina", file("IMG.png"), "")).as_deref(), Some("a"), "author + name, above the reply only");
+    assert_eq!(jump_target(&list, "r", &q("Mara", file("IMG.png"), "")).as_deref(), Some("b"));
+    assert_eq!(jump_target(&list, "r", &q("Niemand", file("IMG.png"), "")).as_deref(), Some("b"), "any author when nobody else fits");
+    assert_eq!(jump_target(&list, "r", &q("Lina", file("plan.pdf"), "")).as_deref(), Some("c"), "a file (its 📎 line)");
+    assert_eq!(jump_target(&list, "r", &q("Lina", cloud::Shared::Files(3), "")).as_deref(), Some("d"), "several files by count");
+    assert_eq!(jump_target(&list, "r", &q("Mara", file("x.png"), "Schau mal")).as_deref(), Some("e"), "summary + text");
+    assert_eq!(jump_target(&list, "r", &q("Lina", file("weg.png"), "")), None);
+    assert_eq!(jump_target(&list, "r", &q("Lina", file("weg.png"), "Schau mal")).as_deref(), Some("e"), "the text when no file fits");
+    // An older Webox quote of a picture: only the author line.
+    assert_eq!(jump_target(&list, "r", &QuoteRef { author: "Lina".into(), ..Default::default() }).as_deref(), Some("d"));
 }
 
 #[test]

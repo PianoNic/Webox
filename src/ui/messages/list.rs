@@ -186,7 +186,7 @@ impl App {
         // A press that landed on no message text clears the text selection.
         if ctx.data_mut(|d| d.remove_temp::<bool>(Id::new("msg-sel-consumed"))).is_none() && ctx.input(|i| i.pointer.primary_pressed()) { ctx.data_mut(|d| d.remove::<(String, usize, usize)>(Id::new("msg-sel"))); }
         // A click on "Zur Originalnachricht springen": find the quoted message above the reply, scroll to it and let it flash.
-        if let Some((from, quote)) = ctx.data_mut(|d| d.remove_temp::<(String, String)>(Id::new("msg-jump"))) {
+        if let Some((from, quote)) = ctx.data_mut(|d| d.remove_temp::<(String, QuoteRef)>(Id::new("msg-jump"))) {
             if let Some(tg) = jump_target(msgs, &from, &quote) {
                 let y = ctx.data(|d| d.get_temp::<std::collections::HashMap<String, f32>>(Id::new("msg-rowpos")).and_then(|h| h.get(&tg).copied()));
                 if let Some(y) = y { let now = ctx.input(|i| i.time); ctx.data_mut(|d| { d.insert_temp(k_set, (y - 70.0).max(0.0)); d.insert_temp(Id::new("msg-flash"), (tg.clone(), now)); }); ctx.request_repaint(); }

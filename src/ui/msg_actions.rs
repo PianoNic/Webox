@@ -16,7 +16,9 @@ use egui::Id;
 
 /// The message being quoted in the composer of `space` (the quote banner above the input).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub(crate) struct Quote { pub space: String, pub msg: String, pub author: String, pub email: String, pub html: String, pub text: String }
+pub(crate) struct Quote { pub space: String, pub msg: String, pub author: String, pub email: String, pub html: String, pub text: String,
+    /// The file names the quoted message shared (the quote names them: "Shared a file: …").
+    pub files: Vec<String> }
 
 /// State of the message actions (one App field).
 #[derive(Default)]
@@ -142,7 +144,7 @@ impl App {
 
     /// "Nachricht zitieren": the message goes into the composer's quote banner (asks first when another quote is waiting).
     pub(crate) fn quote_message(&mut self, ctx: &egui::Context, space: &str, m: &Message) {
-        let q = Quote { space: space.into(), msg: m.id.clone(), author: if m.mine { self.me.name.clone() } else { m.author.clone() }, email: m.email.clone(), html: m.html.clone(), text: m.text.clone() };
+        let q = Quote { space: space.into(), msg: m.id.clone(), author: if m.mine { self.me.name.clone() } else { m.author.clone() }, email: m.email.clone(), html: m.html.clone(), text: m.text.clone(), files: crate::cloud::shared_names(m) };
         match &self.msgx.quote {
             Some(old) if old.space == space && old.msg != m.id => self.msgx.replace = Some(q),
             _ => self.msgx.quote = Some(q),
@@ -162,11 +164,11 @@ impl App {
         let markdown = self.composer_is_markdown();
         let parent = match std::mem::take(&mut self.compose) { Compose::Reply { root, .. } => Some(root), _ => None };
         match &self.client {
-            Some(c) => c.req(Req::PostQuote { space: space.into(), text, markdown, mentions, quoted_html: q.html, quoted_text: q.text, author: q.author, author_email: q.email, parent }),
+            Some(c) => c.req(Req::PostQuote { space: space.into(), text, markdown, mentions, quoted_html: q.html, quoted_text: q.text, quoted_files: q.files, author: q.author, author_email: q.email, parent }),
             None => {
                 // Offline: the message as the reader shows quotes (author line + quoted text in a blockquote).
                 let r = crate::richtext::render(&text, markdown, &[]);
-                let html = crate::cloud::quote_preview_html(&q.author, &q.html, &q.text, &r, &text);
+                let html = crate::cloud::quote_preview_html(&q.author, &q.html, &q.text, &q.files, &r, &text);
                 let list = self.messages.entry(space.to_string()).or_default();
                 let mid = format!("{space}-local{}", list.len());
                 let parent = parent.unwrap_or_default();
@@ -198,7 +200,7 @@ impl App {
             let tx = card.left() + 22.0;
             let maxw = card.width() - 22.0 - 40.0;
             super::chrome::fit_text(&p, tx, card.top() + 15.0, &q.author, semibold(13.0), t.text1, maxw);
-            super::chrome::fit_text(&p, tx, card.top() + 34.0, &quote_preview(&q.text), FontId::proportional(14.0), t.text2, maxw);
+            super::chrome::fit_text(&p, tx, card.top() + 34.0, &Some(quote_preview(&q.text)).filter(|l| !l.is_empty() && !l.starts_with('📎')).or_else(|| crate::cloud::Shared::of(&q.files).map(|s| s.label())).unwrap_or_default(), FontId::proportional(14.0), t.text2, maxw);
             let xr = Rect::from_center_size(pos2(card.right() - 20.0, card.center().y), Vec2::splat(24.0));
             let xresp = ui.interact(xr, Id::new("quote-banner-x"), Sense::click());
             if xresp.hovered() { p.circle_filled(xr.center(), 12.0, t.hover); ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }

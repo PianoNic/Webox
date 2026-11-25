@@ -107,8 +107,8 @@ pub fn start(token: String, device: Option<String>, kms_src: Option<(String, Str
                 Job::Ui(Req::Flag { space, msg, on, flag_url }) => s.flag(&space, &msg, on, &flag_url),
                 Job::Ui(Req::Flags) => s.flags_load(),
                 Job::Ui(Req::MarkUnread { space, msg }) => s.mark_unread(&space, &msg),
-                Job::Ui(Req::PostQuote { space, text, markdown, mentions, quoted_html, quoted_text, author, author_email, parent }) =>
-                    s.post_quote(&space, &text, markdown, &mentions, &quoted_html, &quoted_text, &author, &author_email, parent.as_deref()).and_then(|_| s.after_write(&space)),
+                Job::Ui(Req::PostQuote { space, text, markdown, mentions, quoted_html, quoted_text, quoted_files, author, author_email, parent }) =>
+                    s.post_quote(&space, &text, markdown, &mentions, &quoted_html, &quoted_text, &quoted_files, &author, &author_email, parent.as_deref()).and_then(|_| s.after_write(&space)),
                 Job::Ui(Req::CallHistory) => s.call_history(),
                 Job::Ui(Req::DeleteCalls(ids)) => s.delete_calls(&ids),
                 Job::Ui(Req::Calendar) => s.calendar(),

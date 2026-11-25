@@ -148,7 +148,8 @@ impl App {
     }
 
     /// Measures the body of a message: text (links / mentions), file chips and image heights.
-    pub(super) fn measure(&mut self, ui: &egui::Ui, c: &Mc, m: &Message, shown: &str, wrap: f32) -> Content {
+    /// `thumb`: the picture a reply quotes (`quote_thumb`), drawn small in the quote instead of its summary line.
+    pub(super) fn measure(&mut self, ui: &egui::Ui, c: &Mc, m: &Message, shown: &str, wrap: f32, thumb: Option<&Attachment>) -> Content {
         let mut files = Vec::new();
         let mut text = Vec::new();
         let same = shown == m.text; // a plugin that rewrote the text also disables the rich text
@@ -160,14 +161,16 @@ impl App {
         let body = body.trim_matches('\n');
         let sys = emoji_text::ensure_font(ui.ctx());
         // The message's rich text (object.content) is drawn; fall back to the plain text when there is none / it fails.
-        let rich = if same && !m.html.trim().is_empty() { html::html_job(&m.html, c, &self.me.id, wrap, sys) } else { None };
+        let rich = if same && !m.html.trim().is_empty() { html::html_job_thumb(&m.html, c, &self.me.id, wrap, sys, thumb.is_some()) } else { None };
         // WEBOX_DUMP_MSG=<text>: the raw HTML of each message containing <text>, once, on stderr (rendering bug reports).
         static DUMP: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
         if let Some(q) = DUMP.get_or_init(|| std::env::var("WEBOX_DUMP_MSG").ok()) {
             static SEEN: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
             if m.html.contains(q.as_str()) && !SEEN.lock().unwrap().contains(&m.id) { SEEN.lock().unwrap().push(m.id.clone()); eprintln!("DUMP {} {:?}", m.id, m.html); }
         }
+        let mut thumb_at = None;
         let (galley, links, emojis, quotes, jump) = if let Some(p) = rich {
+            thumb_at = p.thumb_at;
             // Quoted rows (wrapped ones too) are shifted right by their nesting depth after layout, so lay out that much narrower.
             let mut job = p.job;
             text::mark_spans(&mut job, &m.current, c);
@@ -196,14 +199,26 @@ impl App {
         if attach { h += ATTACH_BOTTOM; } // bottom padding of the attachments column
         if let Some(g) = &galley { if attach { h += CAPTION_GAP; } h += g.size().y; }
         if !m.reactions.is_empty() { h += 2.0 + REACT_H; } // 2 pt spacer + reactions row
-        Content { text: galley, links, emojis, quotes, jump, files, file_atts, videos, history, tag, h }
+        let thumb = thumb.zip(thumb_at).map(|(a, i)| (a.clone(), i));
+        Content { text: galley, links, emojis, quotes, jump, thumb, files, file_atts, videos, history, tag, h }
+    }
+
+    /// The picture a reply quotes, when its quote names a shared file ("Shared a file: <name>") and the quoted message (found like
+    /// "Zur Originalnachricht springen" does) is loaded in this space with a picture of that name.
+    pub(super) fn quote_thumb(&self, space: &str, m: &Message) -> Option<Attachment> {
+        if !m.html.contains("<blockquote") || !m.html.contains("Shared ") { return None; }
+        let q = html::reply_ref(&m.html)?;
+        let name = q.shared.as_ref()?.name()?.to_string();
+        let msgs = self.messages.get(space)?;
+        let tg = jump_target(msgs, &m.id, &q)?;
+        msgs.iter().find(|x| x.id == tg)?.images.iter().find(|a| a.name.trim() == name).cloned()
     }
 
     /// `measure`, reused across frames: the key covers everything `measure` reads (message id, text, rich text, the plugin's
     /// rewrite, wrap width, theme, message font scale, pixels per point, emoji font, my id / name for mentions, image sizes as
     /// decoded, link-card texts, whether there are reactions), so a reused row is exactly what a fresh `measure` returns.
     /// Without it, re-parsing every message's HTML and laying out every row each frame would grow with the list's length.
-    pub(super) fn measure_cached(&mut self, ui: &egui::Ui, c: &Mc, m: &Message, shown: &str, wrap: f32) -> Rc<Content> {
+    pub(super) fn measure_cached(&mut self, ui: &egui::Ui, c: &Mc, m: &Message, shown: &str, wrap: f32, thumb: Option<&Attachment>) -> Rc<Content> {
         let ctx = ui.ctx().clone();
         let mut h = std::collections::hash_map::DefaultHasher::new();
         // A message stamped on arrival (`Message.rev`, a hash of its content) and shown as it is (no plugin rewrite): its
@@ -215,6 +230,7 @@ impl App {
             for p in &m.previews { (&p.title, &p.description, &p.site).hash(&mut h); }
             m.reactions.is_empty().hash(&mut h);
         }
+        thumb.map(|a| &a.key).hash(&mut h);
         (wrap.to_bits(), c.body, c.white, c.accent, c.head, c.danger, crate::ui::theme::density::get()).hash(&mut h); // density: the attachment gap
         (&self.me.id, &self.me.name, emoji_text::ensure_font(&ctx), super::super::widgets::msg_scale().to_bits(), ctx.pixels_per_point().to_bits()).hash(&mut h);
         for a in &m.images { (&a.key, a.width, a.height, self.photos.image_size(&ctx, &a.key)).hash(&mut h); }
@@ -224,7 +240,7 @@ impl App {
         let pass = ctx.cumulative_pass_nr();
         let hit = ROWS.with(|r| r.borrow_mut().get_mut(&key).map(|e| { e.used = pass; e.content.clone() }));
         if let Some(c) = hit { return c; }
-        let content = Rc::new(self.measure(ui, c, m, shown, wrap));
+        let content = Rc::new(self.measure(ui, c, m, shown, wrap, thumb));
         ROWS.with(|r| {
             let mut r = r.borrow_mut();
             if r.len() >= ROW_CACHE_SWEEP { r.retain(|_, e| pass.saturating_sub(e.used) < ROW_CACHE_IDLE_PASSES); }
@@ -245,7 +261,8 @@ impl App {
         let box_left = indent + BOX_LEFT;
         let box_w = (width - RIGHT_MARGIN - box_left + GRID_X).max(120.0);
         let wrap = box_w - 2.0 * RADIUS;
-        let ct = self.measure_cached(ui, c, m, shown, wrap);
+        let thumb = self.quote_thumb(id, m);
+        let ct = self.measure_cached(ui, c, m, shown, wrap, thumb.as_ref());
         let who = if m.mine { tr("You").to_string() } else { m.author.clone() };
         // The header line's height is that of the name's galley; the galleys themselves are laid out only for rows on screen.
         let hdr_h = if head { header_height(ui, &who) } else { 0.0 };
@@ -394,6 +411,24 @@ impl App {
                     if !run.picture.as_ref().is_some_and(|name| self.icons.emoji(ui, name, rect)) {
                         p.rect_stroke(rect.shrink(2.5), 3.0, Stroke::new(1.0_f32, c.head), StrokeKind::Inside); // never somebody else's glyph
                         if let Some(k) = run.keycap { p.text(rect.center(), Align2::CENTER_CENTER, k, FontId::proportional(BODY - 4.0), c.body); }
+                    }
+                }
+                // The quoted picture: a small thumbnail on the line the layout kept free; a click jumps to the original.
+                if let Some((a, idx)) = &ct.thumb {
+                    if let Some(Some(r)) = emoji_text::placeholder_rects(g, &[*idx]).first() {
+                        let now = ui.input(|i| i.time);
+                        let tex = self.image_frame(&ctx, &a.key, now);
+                        let [sw, sh] = tex.map(|t| t.1).or_else(|| self.photos.image_size(&ctx, &a.key)).unwrap_or([a.width as usize, a.height as usize]);
+                        let th = (r.height() - 8.0).max(16.0);
+                        let tw = if sw > 0 && sh > 0 { (th * sw as f32 / sh as f32).clamp(th * 0.5, th * 3.0) } else { th };
+                        let tr_ = Rect::from_min_size(origin + Vec2::new(r.left(), r.top() + 4.0), Vec2::new(tw, th));
+                        match tex {
+                            Some((tid, _)) => round_image(&p, tr_, 6.0, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), tid, Color32::WHITE),
+                            None => { p.rect_filled(tr_, 6.0, c.tile); }
+                        }
+                        let tresp = ui.interact(tr_, Id::new(("quote-thumb", &m.id, seq)), Sense::click());
+                        if tresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
+                        if tresp.clicked() { if let Some(q) = &ct.jump { ctx.data_mut(|d| d.insert_temp(Id::new("msg-jump"), (m.id.clone(), q.clone()))); } }
                     }
                 }
                 let selected = my_sel.filter(|(a, b)| a != b).map(|(a, b)| selected_text(&g.job.text, &ct.emojis, &ct.links, a, b));

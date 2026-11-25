@@ -26,15 +26,32 @@ pub(super) fn next_seq(ctx: &egui::Context) -> u32 {
 }
 pub(crate) fn cur_seq(ctx: &egui::Context) -> u32 { ctx.data(|d| d.get_temp::<u32>(Id::new("msg-seq-cur"))).unwrap_or(0) }
 
-/// The message a reply quotes: the newest message above `from` whose text equals the quoted text (whitespace-insensitive), else one
-/// that contains it.
-pub(super) fn jump_target(msgs: &[Message], from: &str, quote: &str) -> Option<String> {
+/// What a reply's quote says about the quoted message: the author line, the summary of what it shared ("Shared a file: …", see
+/// `cloud::Shared`) and its text (whitespace collapsed).
+#[derive(Clone, Debug, Default, PartialEq, Hash)]
+pub(crate) struct QuoteRef { pub author: String, pub shared: Option<cloud::Shared>, pub text: String }
+
+/// The message a reply quotes, newest first among the messages above `from`:
+///   * a quote of shared files (`shared`): a message of the quote's author that shared that file (by name) / that many files,
+///     else anybody's;
+///   * a quote with text: one whose text equals the quoted text (whitespace-insensitive), else one that contains it;
+///   * only the author (a picture quoted by an older Webox): the author's last message that shared something.
+pub(super) fn jump_target(msgs: &[Message], from: &str, q: &QuoteRef) -> Option<String> {
     let norm = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
-    let q = norm(quote);
-    if q.is_empty() { return None; }
     let upto = msgs.iter().position(|m| m.id == from).unwrap_or(msgs.len());
-    let above = &msgs[..upto];
-    above.iter().rev().find(|m| m.notice.is_empty() && norm(&m.text) == q).or_else(|| above.iter().rev().find(|m| m.notice.is_empty() && norm(&m.text).contains(&q))).map(|m| m.id.clone())
+    let above = || msgs[..upto].iter().rev().filter(|m| m.notice.is_empty());
+    let author = q.author.trim();
+    let by = |m: &Message| !author.is_empty() && m.author.trim().eq_ignore_ascii_case(author);
+    let pick = |hit: &dyn Fn(&Message) -> bool| above().find(|m| by(m) && hit(m)).or_else(|| above().find(|m| hit(m))).map(|m| m.id.clone());
+    let text = norm(&q.text);
+    if let Some(s) = &q.shared {
+        let has = |m: &Message| { let names = cloud::shared_names(m); match (s, s.name()) { (_, Some(n)) => names.iter().any(|x| x == n), (cloud::Shared::Files(k), None) => names.len() == *k as usize, _ => false } };
+        if let Some(id) = pick(&has) { return Some(id); }
+    }
+    if text.is_empty() {
+        return if q.shared.is_none() { above().find(|m| by(m) && !cloud::shared_names(m).is_empty()).map(|m| m.id.clone()) } else { None };
+    }
+    above().find(|m| norm(&m.text) == text).or_else(|| above().find(|m| norm(&m.text).contains(&text))).map(|m| m.id.clone())
 }
 
 /// Records a laid-out list row (message, notice, join/leave row) for the scroll anchor: `(id, top, bottom)` in content space
