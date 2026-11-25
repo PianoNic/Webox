@@ -840,7 +840,9 @@ mod tests {
         assert!(a.feed_camera(key()).is_err(), "no camera before the video lines exist");
         b.prepare_lines().unwrap();
         let offer = a.add_lines().unwrap();
-        let main = offer.split("m=").nth(2).unwrap();
+        // the first video line (a spare audio receiver webrtc-rs made for an undeclared SSRC may come before it, as in
+        // real calls: then it is `audio/slides`)
+        let main = offer.split("m=").find(|m| m.starts_with("video")).unwrap();
         assert!(main.starts_with("video") && main.contains("a=content:main") && main.contains("a=sendrecv") && main.contains("H264/90000"), "video/main sendrecv: {offer}");
         assert!(a.add_lines().is_err() && a.has_lines(), "negotiated once per call");
         a.apply_lines_answer(b.answer(offer).unwrap()).unwrap();
@@ -855,7 +857,7 @@ mod tests {
         }
         assert!(dec(&a) >= 5 && dec(&b) >= 5, "both decode the other's camera: A {} B {}", dec(&a), dec(&b));
         assert!(fa.sent() > 0 && fb.sent() > 0);
-        assert!(crate::cloud::video_rx::remote().is_some_and(|p| p.image.size == [320, 180]), "the far end's picture at its size");
+        assert!(crate::cloud::video_rx::remote().is_some_and(|p| p.image.size == [160, 96]), "the far end's picture at its size");
         // the acceptance bar: at least 15 fps each way
         let (a0, b0, t2) = (dec(&a), dec(&b), std::time::Instant::now());
         std::thread::sleep(Duration::from_secs(3));

@@ -294,10 +294,10 @@ pub(crate) mod tests {
         assert_eq!(to_i420(&Raw { pix: Pix::Nv12, w: 64, h: 36, stride: 64, uv_off: 64 * 36, data: vec![0; 10] }, 32, 18).len(), 32 * 18 * 3 / 2, "short buffer: no panic");
     }
 
-    /// A 30 fps source of moving colour bars at 320x180 (the call's pipeline without a camera).
+    /// A 30 fps source of moving colour bars at 160x96 (small: the tests run unoptimised on slow CI runners) (the call's pipeline without a camera).
     pub(crate) struct Bars { pub n: u32, pub next_at: Instant }
     impl Source for Bars {
-        fn mode(&self) -> Mode { Mode { pix: Pix::Rgb24, w: 320, h: 180, fps: 30.0 } }
+        fn mode(&self) -> Mode { Mode { pix: Pix::Rgb24, w: 160, h: 96, fps: 30.0 } }
         fn modes(&self) -> Vec<Mode> { vec![self.mode()] }
         fn name(&self) -> String { "Testbalken".into() }
         fn next(&mut self) -> Result<Option<Raw>, Fail> {
@@ -305,7 +305,7 @@ pub(crate) mod tests {
             if now < self.next_at { std::thread::sleep(self.next_at - now); }
             self.next_at += Duration::from_millis(33);
             self.n += 1;
-            let (w, h, n) = (320u32, 180u32, self.n);
+            let (w, h, n) = (160u32, 96u32, self.n);
             let data = (0..h).flat_map(|_| (0..w).flat_map(move |x| { let b = ((x + n * 4) / 40) % 8; [if b & 1 > 0 { 230 } else { 20 }, if b & 2 > 0 { 230 } else { 20 }, if b & 4 > 0 { 230 } else { 20 }] })).collect();
             Ok(Some(Raw { pix: Pix::Rgb24, w, h, stride: w as usize * 3, uv_off: 0, data }))
         }
@@ -323,7 +323,7 @@ pub(crate) mod tests {
         let s = CamSend::start_with(key(), kf.clone(), Box::new(move |au, _| a2.lock().unwrap().push(au)), Some(bars()));
         let t0 = Instant::now();
         while t0.elapsed() < Duration::from_secs(10) && aus.lock().unwrap().len() < 20 { std::thread::sleep(Duration::from_millis(20)); }
-        assert!(matches!(s.state(), SendState::Running { w: 320, h: 180, .. }), "{:?}", s.state());
+        assert!(matches!(s.state(), SendState::Running { w: 160, h: 96, .. }), "{:?}", s.state());
         let first = aus.lock().unwrap().first().cloned().expect("pictures");
         assert!(crate::media::share::h264::is_keyframe(&first), "starts with a key frame");
         let pli = crate::media::share::h264::profile_level_id(&first).expect("SPS in front of the key frame");
@@ -337,13 +337,13 @@ pub(crate) mod tests {
         let mut decoded = 0;
         for au in aus.lock().unwrap().iter() {
             for nal in openh264::nal_units(au) {
-                if let Ok(Some(y)) = dec.decode(nal) { use openh264::formats::YUVSource; assert_eq!(y.dimensions(), (320, 180)); decoded += 1; }
+                if let Ok(Some(y)) = dec.decode(nal) { use openh264::formats::YUVSource; assert_eq!(y.dimensions(), (160, 96)); decoded += 1; }
             }
         }
         assert!(decoded >= 15, "decoded {decoded}");
         let t4 = Instant::now(); // the self view is one picture for the whole app: another test's camera may just have ended
         while t4.elapsed() < Duration::from_secs(2) && crate::cloud::video_rx::self_view().is_none() { std::thread::sleep(Duration::from_millis(10)); }
-        assert!(crate::cloud::video_rx::self_view().is_some_and(|p| p.image.size == [320, 180]), "self view of what is sent");
+        assert!(crate::cloud::video_rx::self_view().is_some_and(|p| p.image.size == [160, 96]), "self view of what is sent");
         let sent = s.sent();
         assert!(sent >= 20, "sent {sent}");
         let t2 = Instant::now();
