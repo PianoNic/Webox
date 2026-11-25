@@ -31,7 +31,8 @@ impl eframe::App for App {
                 for k in l.2.drain(..) { *m.entry(k).or_default() += 1; }
                 let mut v: Vec<_> = m.into_iter().collect(); v.sort_by(|a, b| b.1.cmp(&a.1));
                 let (n, bytes) = ctx.tex_manager().read().allocated().fold((0usize, 0usize), |(n, b), (_, m)| (n + 1, b + m.size[0] * m.size[1] * m.bytes_per_pixel));
-                eprintln!("PROBE {:.0}s frames={} textures={} tex_mb={} causes={:?}", t - l.0, l.1, n, bytes >> 20, &v[..v.len().min(12)]);
+                let heap = crate::platform::memprobe::heap().map(|(live, _)| format!(" heap_mb={:.1}", live as f64 / 1048576.0)).unwrap_or_default();
+                eprintln!("PROBE {:.0}s frames={} textures={} tex_mb={}{heap} causes={:?}", t - l.0, l.1, n, bytes >> 20, &v[..v.len().min(12)]);
                 l.0 = t; l.1 = 0;
             }
         }
@@ -72,6 +73,7 @@ impl eframe::App for App {
         let can_restore = true;
         if self.minimize { self.minimize = false; if can_restore { ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)); } }
         self.poll(now);
+        super::sample_scale::tour(self, ctx); // WEBOX_SAMPLE_TOUR (sample runs only)
         self.typing_frame(ctx); // my typing → the service (throttled), typers' overlay animation (ui/typing.rs)
         self.poll_webview();
         if self.webview.is_some() { ctx.request_repaint(); }

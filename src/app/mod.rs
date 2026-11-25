@@ -26,7 +26,7 @@ impl App {
             login_page: LoginPage::Start, config_open: false, meeting_input: String::new(), login_sized: false,
             webview: None, hwnd: None, autosignin: a.signin,
             cover: None, cover_bytes: None, photos: Default::default(),
-            compose: Compose::New, rename_input: None, add_people: false, people_filter: String::new(), open_threads: HashSet::new(), confirm_leave: None, forward_text: None, rail_wide: false, fonts_set: false, row_salt: String::new(), row_draft: false, call: Default::default(),
+            compose: Compose::New, rename_input: None, add_people: false, people_filter: String::new(), open_threads: HashSet::new(), confirm_leave: None, forward_text: None, rail_wide: false, tour: (0, 0.0), fonts_set: false, row_salt: String::new(), row_draft: false, call: Default::default(),
             sc: Default::default(),
             notify: Default::default(),
             msgx: Default::default(),
@@ -48,6 +48,7 @@ impl App {
             if let Some(s) = app.spaces.iter_mut().find(|s| s.id == "s1") { s.participants = std::iter::once(me).chain(app.people.iter().filter(|p| p.name != "Jonas Weber").cloned()).collect(); }
             app.meetings.push(Meeting { title: "Alex's Webex space: Sync".into(), start: "16:00".into(), link: "https://example.com/meet/s1".into() });
         }
+        if a.sample { ui::sample_scale::scale(&mut app); } // WEBOX_SAMPLE_SCALE: an account-sized sample for memory checks
         if a.sample { app.photos.add(ui::sample_photos::sample_photos()); if std::env::var("WEBOX_SHOT_LATE").is_err() { app.photos.add_images(ui::sample_photos::sample_images()); } app.cover_bytes = Some(ui::sample_photos::sample_banner(0)); app.photos.add_images(vec![("cover:@default".into(), ui::sample_photos::sample_banner(1)), ("cover:jonas@example.com".into(), ui::sample_photos::sample_banner(2)), ("spacecover:s6".into(), ui::sample_photos::sample_banner(0)), ("spaceavatar:s8".into(), ui::sample_photos::sample_banner(1))]); for (k, v) in ui::sample_photos::sample_last_active(ui::chrome::now_ms()) { app.photos.last_active.insert(k, v); } }
         // Startup state: nothing selected in the list, the content area shows the "Create a space" pane; no space is
         // opened, so none is marked read. Screenshot mode opens the first sample space so --sample checks stay comparable.

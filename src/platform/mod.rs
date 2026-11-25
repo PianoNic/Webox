@@ -6,6 +6,7 @@ pub mod notify; // toast windows + tray
 pub mod webview;
 pub mod nmhost;
 pub mod updater; // app updates from the GitHub releases
+pub mod memprobe; // heap accounting for memory work (feature profile-mem)
 #[cfg(target_os = "linux")]
 pub mod linux; // tray (SNI), notifications, launcher badge, X11 helpers
 #[cfg(target_os = "macos")]

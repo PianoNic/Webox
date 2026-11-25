@@ -135,6 +135,8 @@ struct App {
     photos: assets::photos::Photos,
     /// Reply / edit mode of the message box, and the space-settings dialogs.
     compose: Compose, rename_input: Option<String>, add_people: bool, people_filter: String, open_threads: HashSet<String>, confirm_leave: Option<String>, forward_text: Option<String>, rail_wide: bool,
+    /// WEBOX_SAMPLE_TOUR (ui/sample_scale.rs): the next space to open and when.
+    tour: (usize, f64),
     fonts_set: bool, row_salt: String, row_draft: bool,
     /// Keyboard shortcuts: user overrides, resolved bindings, popup / settings-page state (src/shortcuts/).
     sc: shortcuts::State,
@@ -365,10 +367,14 @@ fn main() -> eframe::Result<()> {
     #[cfg(target_os = "macos")]
     platform::macos::links::install();
     eframe::run_native("Webox", opts, Box::new(move |cc| {
+        platform::memprobe::mark("window created");
         set_fonts(&cc.egui_ctx);
+        platform::memprobe::mark("fonts set");
         // Mouse wheel: 60 pt per notch instead of egui's 40.
         cc.egui_ctx.options_mut(|o| o.line_scroll_speed = WHEEL_PT_PER_NOTCH);
         round_corners(cc);
-        Ok(Box::new(App::new(args)))
+        let app = App::new(args);
+        platform::memprobe::mark("app created");
+        Ok(Box::new(app))
     }))
 }

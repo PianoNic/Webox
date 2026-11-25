@@ -12,6 +12,10 @@ edition = "2021"
 name = "webox"
 path = "src/main.rs"
 
+[features]
+# Counting global allocator for memory work: the WEBOX_PROBE=1 report then shows the live heap (src/platform/memprobe.rs).
+profile-mem = []
+
 [dependencies]
 collabhost-plugin-api = { path = "plugin-api" }
 eframe = "0.31"
