@@ -1,14 +1,14 @@
-//! Call video in the UI: our camera on / off ("Video starten" / "Video beenden"), calls started or answered with the camera
-//! on (the Video button, "Anrufe mit eingeschalteter Videokamera annehmen"), the camera menu behind the video button
+//! Call video in the UI: our camera on / off ("Start video" / "Stop video"), calls started or answered with the camera
+//! on (the Video button, "Answer calls with my video on"), the camera menu behind the video button
 //! (`devices.rs`), the self view and the other side's video as the call window's picture. The media is the cloud thread's
 //! (`cloud/locus/video.rs`): `CallReq::Video(Some(camera))` / `CallReq::Video(None)` here, `Resp::CallVideo` back into
 //! `CallUi::video`, the pictures from `cloud::video_rx`.
 //!
 //! Self view like the official `InnerFloatLocalContainer` / `MeetingView`: a 182 x 102 tile with a drop shadow, 8 from the
 //! edges (full screen: 45 on the right and 3 on top), in a corner of the stage (bottom right at first). It can be dragged
-//! and snaps to the nearest corner when let go; with the keyboard the arrow keys move it ("Die Pfeiltasten verwenden, um
-//! dieses Selbstansichtsfenster zu verschieben"). It shows only while our video is on ("Sie können Ihr Selbstansichtsvideo
-//! nur einblenden, wenn Ihr Video aktiviert ist.") and is mirrored like Settings > Video ("camera_mirror", default on).
+//! and snaps to the nearest corner when let go; with the keyboard the arrow keys move it ("Use the arrow keys to move the
+//! self view window"). It shows only while our video is on ("You can only show your self-view video when your video is
+//! on.") and is mirrored like Settings > Video ("camera_mirror", default on).
 use super::*;
 use crate::cloud::video_rx;
 use crate::media::camera::{self, CamDev, PreviewKey};
@@ -21,7 +21,7 @@ const PIP_MARGIN: f32 = 8.0;
 pub(crate) struct VideoUi {
     /// The camera is wanted on but the camera list isn't there yet to name it (sent from `video_frame` once it is).
     pending: bool,
-    /// "Selbstansicht ausblenden" (this call), the corner the self view sits in, where a drag of it started.
+    /// "Hide self view" (this call), the corner the self view sits in, where a drag of it started.
     pub(crate) hidden: bool, pub(crate) left: bool, pub(crate) top: bool, drag: Option<Vec2>,
     /// Textures of our camera and of the other side's video, and the picture each holds (uploaded once per picture).
     self_tex: Option<egui::TextureHandle>, self_seq: u64, remote_tex: Option<egui::TextureHandle>, remote_seq: u64,
@@ -48,7 +48,7 @@ pub(crate) fn corner_after_key(key: Key, (left, top): (bool, bool)) -> (bool, bo
 }
 
 /// The video button's tooltip (`DeviceControlBar`: "Start video" / "Stop video").
-pub(crate) fn video_tip(on: bool) -> &'static str { if on { "Video beenden" } else { "Video starten" } }
+pub(crate) fn video_tip(on: bool) -> &'static str { if on { tr("Stop video") } else { tr("Start video") } }
 
 /// The camera to use: the saved one if it is plugged in, else the first (as Settings > Video picks it).
 pub(crate) fn pick_camera<'a>(devs: &'a [CamDev], want: &str) -> Option<&'a CamDev> { devs.iter().find(|d| d.name == want).or(devs.first()) }
@@ -70,11 +70,11 @@ fn upload(ctx: &egui::Context, name: &str, pic: Option<std::sync::Arc<cloud::sha
 }
 
 impl App {
-    /// "Anrufe mit eingeschalteter Videokamera annehmen" (Einstellungen > Anrufe).
+    /// "Answer calls with my video on" (Settings > Calling).
     pub(crate) fn answer_with_video(&self) -> bool {
         self.settings["answer_with_video"].as_bool().unwrap_or(false) || (self.call.sample && self.call.video_ui.sample_answer_video)
     }
-    /// The mirror setting the self view follows (Settings > Video "Meine Videovorschau spiegeln").
+    /// The mirror setting the self view follows (Settings > Video "Mirror my video preview").
     pub(crate) fn self_view_mirrored(&self) -> bool { self.settings["camera_mirror"].as_bool().unwrap_or(true) }
 
     /// Before a dial / answer / join: the camera the call starts with, and whether it is on (the cloud thread handles the
@@ -112,7 +112,7 @@ impl App {
         self.call.video_ui.pending = false;
         if self.call.video_ui.cams.is_empty() {
             self.call.video.wanted = false;
-            self.toast("Video nicht möglich: Keine Kamera gefunden.", now);
+            self.toast(tr("Video not possible: no camera found."), now);
         } else { self.set_video(true); }
     }
 
@@ -147,8 +147,8 @@ impl App {
     }
 
     /// The control bar's video button in `r` (64 x 40, like the official dual-arrow `UTCallControlButton`): the camera toggle on
-    /// the left ("Video starten" / "Video beenden"; red while the video is off, like the muted microphone), the arrow to the
-    /// video menu on the right ("Video-Optionen"). Returns (toggle, arrow).
+    /// the left ("Start video" / "Stop video"; red while the video is off, like the muted microphone), the arrow to the
+    /// video menu on the right ("Video options"). Returns (toggle, arrow).
     pub(crate) fn video_button(&mut self, ui: &mut egui::Ui, t: &Th, r: Rect, open: bool) -> (egui::Response, egui::Response) {
         let on = self.call.video.wanted;
         let split = r.left() + 40.0;
@@ -167,7 +167,7 @@ impl App {
             if resp.has_focus() { ui.painter().rect_stroke(resp.rect.expand(1.5), 4.0, Stroke::new(2.0_f32, t.focus), egui::StrokeKind::Inside); }
             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
         }
-        (left.on_hover_text(video_tip(on)), right.on_hover_text("Video-Optionen"))
+        (left.on_hover_text(video_tip(on)), right.on_hover_text(tr("Video options")))
     }
 
     /// The self view in `area` (the stage), while our video is on and it isn't hidden: draggable, snaps to the nearest
@@ -218,7 +218,7 @@ impl App {
         ui.painter().rect_stroke(r, 6.0, Stroke::new(1.0_f32, t.sep), egui::StrokeKind::Inside);
         if resp.has_focus() { ui.painter().rect_stroke(r.expand(2.0), 8.0, Stroke::new(2.0_f32, t.focus), egui::StrokeKind::Inside); }
         if resp.hovered() { ui.ctx().set_cursor_icon(if self.call.video_ui.drag.is_some() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab }); }
-        resp.on_hover_text("Die Pfeiltasten verwenden, um dieses Selbstansichtsfenster zu verschieben");
+        resp.on_hover_text(tr("Use the arrow keys to move the self view window"));
     }
 }
 
@@ -267,7 +267,7 @@ mod tests {
         assert_eq!(mirror_uv(full, false), full);
         let crop = Rect::from_min_max(pos2(0.1, 0.0), pos2(0.9, 1.0));
         assert_eq!(mirror_uv(crop, true), Rect::from_min_max(pos2(0.9, 0.0), pos2(0.1, 1.0)), "the crop stays centred");
-        assert_eq!((video_tip(true), video_tip(false)), ("Video beenden", "Video starten"));
+        assert_eq!((video_tip(true), video_tip(false)), (tr("Stop video"), tr("Start video")));
     }
 
     #[test]

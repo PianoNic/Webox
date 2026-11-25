@@ -1,9 +1,9 @@
 //! The incoming-call toast as its own frameless, always-on-top, non-activating OS window at the bottom-right of the work
 //! area: content width 320, fade-out 400 ms, Esc closes, tab cycle answer -> answer on computer -> decline -> message ->
 //! avatar -> mute -> close. The window margin (`toast_pos::EDGE_GAP`), button diameters and content height are Webox's own.
-//! Like the official `CallDelegate`: the bell is "Anruf stummschalten" (Benachrichtigungston an / aus), the close button is
-//! "Anruf ignorieren" (toast and local ring go, the call is not declined). The message button opens the quick replies
-//! ("Anruf ablehnen und mit Textnachricht antworten"). Under "Bitte nicht stören" / Ruhezeiten the toast shows without ringing.
+//! Like the official `CallDelegate`: the bell is "Mute call" (Notification sound on / off), the close button is
+//! "Ignore call" (toast and local ring go, the call is not declined). The message button opens the quick replies
+//! ("Decline call and reply with a text"). Under "Do not disturb" / quiet hours the toast shows without ringing.
 use super::call::{state_text, CallActions, CallView, QUICK_REPLIES};
 use super::toast_pos::toast_anchor;
 use crate::cloud::locus::CallState;
@@ -17,7 +17,7 @@ pub(crate) const CONTENT_H: f32 = 220.0;
 const REPLY_ROW_H: f32 = 32.0;
 /// Fade-out duration (s).
 const FADE_SECS: f64 = 0.4;
-pub(crate) const TOAST_TITLE: &str = "Webox - Eingehender Anruf";
+pub(crate) const TOAST_TITLE: &str = "Webox - Incoming call"; // shown through tr()
 
 /// Round toolkit-style button drawn into an explicit rect (so the tab order can differ from the paint order); registered with
 /// `Sense::click()` so egui's Tab navigation, Enter / Space and the focus ring work.
@@ -45,15 +45,15 @@ pub(crate) fn ghost_at(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th, id: &st
 
 /// The answer button's icon and tooltip: answered with the camera on, or audio only.
 pub(crate) fn answer_look(video: bool) -> (&'static str, &'static str) {
-    if video { ("video-regular", "Antworten (Video an)") } else { ("handset-regular", "Antworten") }
+    if video { ("video-regular", tr("Answer (video on)")) } else { ("handset-regular", tr("Answer")) }
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
     fn the_answer_button_shows_how_the_call_is_answered() {
-        assert_eq!(super::answer_look(true).0, "video-regular", "Anrufe mit eingeschalteter Videokamera annehmen");
-        assert_eq!(super::answer_look(false), ("handset-regular", "Antworten"));
+        assert_eq!(super::answer_look(true).0, "video-regular", "Answer calls with my video on");
+        assert_eq!(super::answer_look(false), ("handset-regular", crate::ui::widgets::tr("Answer")));
     }
 }
 
@@ -69,7 +69,7 @@ impl App {
         // Exactly the card: no shadow, so no shadow padding.
         let size = Vec2::new(CONTENT_W, CONTENT_H);
         let pos = *w.toast_pos.get_or_insert_with(|| toast_anchor(ctx, size, 0));
-        let b = egui::ViewportBuilder::default().with_title(TOAST_TITLE).with_decorations(false).with_always_on_top().with_resizable(false)
+        let b = egui::ViewportBuilder::default().with_title(tr(TOAST_TITLE)).with_decorations(false).with_always_on_top().with_resizable(false)
             .with_inner_size(size).with_position(pos).with_taskbar(false).with_transparent(true).with_active(false);
         // No fade without a compositor: it would darken towards black instead of showing what's behind.
         let opacity = if crate::platform::tray::composited() { fade.unwrap_or(1.0).clamp(0.0, 1.0) } else { 1.0 };
@@ -81,13 +81,13 @@ impl App {
         // Per-pixel alpha around the card (see tray::see_through).
         if self.call.win.toast_hwnd.is_none() {
             use crate::platform::tray;
-            self.call.win.toast_hwnd = tray::find_window(TOAST_TITLE);
+            self.call.win.toast_hwnd = tray::find_window(tr(TOAST_TITLE));
             if let Some(h) = self.call.win.toast_hwnd {
                 tray::see_through(h);
             }
         }
         if fade.is_some() { ctx.request_repaint(); }
-        // "Anruf ignorieren": the toast fades out and the local ring stops; the call is not declined.
+        // "Ignore call": the toast fades out and the local ring stops; the call is not declined.
         if actions.dismiss { self.call.win.toast_closed = Some(now); self.call.ignored = true; self.call.reply_open = false; }
         if let Some(text) = actions.reply.take() { self.decline_with_reply(&v.email, &text, now); }
         actions.answer |= note.answer; actions.hang |= note.hang;
@@ -105,8 +105,8 @@ impl App {
                 let mut g = CALL_NOTE.lock().unwrap();
                 let n = g.get_or_insert_with(|| {
                     let body = [state_text(&CallState::Incoming, 0), v.email.clone()].iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join("\n");
-                    let acts = [("default", "Öffnen"), ("answer", "Annehmen"), ("decline", "Ablehnen")];
-                    // Critical rings through the desktop's own do-not-disturb; under Bitte nicht stören / Ruhezeiten it is a normal one.
+                    let acts = [("default", tr("Open")), ("answer", tr("Accept")), ("decline", tr("Decline"))];
+                    // Critical rings through the desktop's own do-not-disturb; under Do not disturb / quiet hours it is a normal one.
                     CallNote { sent: crate::platform::linux::notifications::send(ctx, &v.name, &body, &acts, urgency), seen: pass, action: None }
                 });
                 n.seen = pass;
@@ -147,9 +147,9 @@ impl App {
             let row_y = 8.0 + 32.0 + 16.0 + 40.0 + 16.0 + 20.0; // centre of the round buttons
             let pill = Rect::from_min_size(at(16.0, row_y + 20.0 + 12.0), Vec2::new(CONTENT_W - 32.0, 40.0));
             if replies {
-                // Quick replies, then the custom message (declines and opens the chat) and Abbrechen (back to the buttons).
+                // Quick replies, then the custom message (declines and opens the chat) and Cancel (back to the buttons).
                 let mut y = 8.0 + 32.0 + 8.0;
-                let rows = QUICK_REPLIES.iter().map(|r| (*r, 0u8)).chain([("Schreiben Sie eine benutzerdefinierte Nachricht.", 1), ("Abbrechen", 2)]);
+                let rows = QUICK_REPLIES.iter().map(|r| (tr(*r), 0u8)).chain([(tr("Write a custom message."), 1), (tr("Cancel"), 2)]);
                 for (i, (text, kind)) in rows.enumerate() {
                     let r = Rect::from_min_size(at(8.0, y), Vec2::new(CONTENT_W - 16.0, REPLY_ROW_H));
                     let resp = ui.interact(r, ui.id().with(("reply", i)), Sense::click());
@@ -162,7 +162,7 @@ impl App {
                 }
             } else {
             // 1. Answer (round). Its icon says how the call is answered (the toast model's `answerIcon`): the camera while
-            // "Anrufe mit eingeschalteter Videokamera annehmen" is on, else the handset.
+            // "Answer calls with my video on" is on, else the handset.
             let video = self.answer_with_video();
             let (icon, tip) = answer_look(video);
             if round_at(ui, &mut self.icons, "answer", at(CONTENT_W / 2.0 + 52.0, row_y), 40.0, icon, t.green, Color32::WHITE, ring).on_hover_text(tip).clicked() { a.answer = true; }
@@ -171,15 +171,15 @@ impl App {
                 let resp = ui.interact(pill, ui.id().with("answer-pc"), Sense::click());
                 let fill = if resp.hovered() { t.pill } else { t.selected };
                 ui.painter().rect_filled(pill, 20.0, fill);
-                ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, "Auf meinem Computer annehmen", semibold(14.0), t.text1);
+                ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, tr("Answer on my computer"), semibold(14.0), t.text1);
                 if resp.has_focus() { ui.painter().rect_stroke(pill.expand(1.5), 21.5, Stroke::new(2.0_f32, ring), egui::StrokeKind::Inside); }
                 if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 if resp.clicked() { a.answer = true; }
             }
             // 3. Decline (round).
-            if round_at(ui, &mut self.icons, "decline", at(CONTENT_W / 2.0, row_y), 40.0, "handset-down-slash-regular", t.badge, Color32::WHITE, ring).on_hover_text("Ablehnen").clicked() { a.hang = true; }
+            if round_at(ui, &mut self.icons, "decline", at(CONTENT_W / 2.0, row_y), 40.0, "handset-down-slash-regular", t.badge, Color32::WHITE, ring).on_hover_text(tr("Decline")).clicked() { a.hang = true; }
             // 4. Decline with a text (round, secondary): opens the quick replies.
-            if round_at(ui, &mut self.icons, "message", at(CONTENT_W / 2.0 - 52.0, row_y), 40.0, "chat-regular", t.selected, t.text1, ring).on_hover_text("Anruf ablehnen und mit Textnachricht antworten").clicked() { self.call.reply_open = true; }
+            if round_at(ui, &mut self.icons, "message", at(CONTENT_W / 2.0 - 52.0, row_y), 40.0, "chat-regular", t.selected, t.text1, ring).on_hover_text(tr("Decline call and reply with a text")).clicked() { self.call.reply_open = true; }
             // 5. Avatar (click -> contact card).
             {
                 let ar = Rect::from_center_size(at(32.0, mid_y - 4.0), Vec2::splat(32.0));
@@ -188,14 +188,14 @@ impl App {
                 avatar_photo(&mut c, &mut self.icons, t, &v.name, 32.0, false, None, None, v.photo);
                 if resp.has_focus() { ui.painter().circle_stroke(ar.center(), 17.5, Stroke::new(2.0_f32, ring)); }
                 if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                if resp.on_hover_text("Visitenkarte anzeigen").clicked() { a.contact = true; }
+                if resp.on_hover_text(tr("View contact card")).clicked() { a.contact = true; }
             }
             }
-            // 6. "Anruf stummschalten" (notification sound on / off; off while Bitte nicht stören / Ruhezeiten), 7. "Anruf ignorieren".
+            // 6. "Mute call" (notification sound on / off; off while Do not disturb / quiet hours), 7. "Ignore call".
             let mute_icon = if muted { "alert-muted-bold" } else { "alert-bold" };
-            let mute_tip = if silenced { "Bitte nicht stören" } else if muted { "Benachrichtigungston, aus" } else { "Benachrichtigungston, an" };
+            let mute_tip = if silenced { tr("Do not disturb") } else if muted { tr("Notification sound, Off") } else { tr("Notification sound, on") };
             if ghost_at(ui, &mut self.icons, t, "mute", at(CONTENT_W - 16.0 - 32.0 - 8.0 - 16.0, 8.0 + 16.0), 32.0, mute_icon, if muted { t.badge } else { t.text1 }).on_hover_text(mute_tip).clicked() && !silenced { a.toggle_ring = true; }
-            if ghost_at(ui, &mut self.icons, t, "close", at(CONTENT_W - 16.0 - 16.0, 8.0 + 16.0), 32.0, "cancel-regular", t.text1).on_hover_text("Anruf ignorieren").clicked() { a.dismiss = true; }
+            if ghost_at(ui, &mut self.icons, t, "close", at(CONTENT_W - 16.0 - 16.0, 8.0 + 16.0), 32.0, "cancel-regular", t.text1).on_hover_text(tr("Ignore call")).clicked() { a.dismiss = true; }
             // Static content.
             let p = ui.painter().clone();
             p.text(at(16.0, 8.0 + 16.0), egui::Align2::LEFT_CENTER, state_text(&CallState::Incoming, 0), semibold(14.0), t.text1);
@@ -209,7 +209,7 @@ impl App {
     }
 }
 
-/// Wayland: the incoming call also goes to the desktop's notification server (critical, "Annehmen" / "Ablehnen"), since the toast
+/// Wayland: the incoming call also goes to the desktop's notification server (critical, "Accept" / "Decline"), since the toast
 /// window can neither be placed nor kept on top there. One notification per ringing; it closes when the ringing stops.
 #[cfg(target_os = "linux")]
 /// `action`: the key of a pressed button and its activation token.
