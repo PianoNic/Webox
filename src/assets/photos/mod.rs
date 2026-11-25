@@ -7,7 +7,7 @@ mod round_measure;
 
 /// A decoded message image: one or more frames (texture, delay in seconds); animated GIFs have several.
 /// `bytes` = texture memory (RGBA), `used` = the last pass it was asked for (for the memory budget).
-pub struct Anim { frames: Vec<(egui::TextureHandle, f32)>, size: [usize; 2], total: f32, start: Option<f64>, bytes: usize, used: u64 }
+pub struct Anim { frames: Vec<(egui::TextureHandle, f32)>, size: [usize; 2], total: f32, start: Option<f64>, paused_at: Option<f64>, drawn: f64, bytes: usize, used: u64 }
 
 /// Decoded message images (all frames of all GIFs) kept in texture memory at most; beyond it the ones not drawn for the
 /// longest time are dropped and decoded again (on a worker) when they come back on screen.
@@ -40,7 +40,7 @@ impl Decoder {
 
 /// A sanity cap only; `MAX_ANIM_BYTES` is what normally limits a GIF.
 /// Setting "GIFs nur abspielen, wenn Webox das aktive Fenster ist" (`gifs_pause_unfocused`), mirrored once per frame (frame.rs).
-pub static GIFS_ONLY_FOCUSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static GIFS_ONLY_FOCUSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
 pub const MAX_FRAMES: usize = 600;
 pub const MAX_FRAME_SIDE: u32 = 512;
@@ -146,7 +146,7 @@ fn decode_anim(ctx: &egui::Context, key: &str, bytes: &[u8]) -> Option<Anim> {
         if out.is_empty() { crate::cloud::dbg_conn(&format!("image decode failed: gif without frames ({} bytes)", bytes.len())); return None }
         let total = out.iter().map(|f| f.1).sum();
         let bytes = out.len() * size[0] * size[1] * 4;
-        return Some(Anim { frames: out, size, total, start: None, bytes, used: 0 });
+        return Some(Anim { frames: out, size, total, start: None, paused_at: None, drawn: 0.0, bytes, used: 0 });
     }
     match image::load_from_memory(bytes) {
         Ok(img) => {
@@ -160,7 +160,7 @@ fn decode_anim(ctx: &egui::Context, key: &str, bytes: &[u8]) -> Option<Anim> {
             let tex = upload(ctx, format!("img:{key}"), &img, true);
             // A space's round picture: keep its pixels for the screen-resolution round textures (round.rs).
             if key.starts_with("spaceavatar:") { round::register(ctx, tex.id(), &img); }
-            Some(Anim { frames: vec![(tex, 1.0)], size, total: 1.0, start: None, bytes: size[0] * size[1] * 4, used: 0 }) }
+            Some(Anim { frames: vec![(tex, 1.0)], size, total: 1.0, start: None, paused_at: None, drawn: 0.0, bytes: size[0] * size[1] * 4, used: 0 }) }
         Err(e) => {
             let kind = if fmt.is_some() { "unsupported or damaged" } else { "unrecognised (not an image)" };
             crate::cloud::dbg_conn(&format!("image decode failed: {kind}, format {fmt:?}, {} bytes: {e}", bytes.len()));
@@ -315,15 +315,21 @@ impl Photos {
     pub fn image_frame(&mut self, ctx: &egui::Context, key: &str, now: f64) -> Option<(egui::TextureId, [usize; 2])> {
         let a = self.anim(ctx, key)?;
         if a.frames.len() < 2 || a.total <= 0.0 { return Some((a.frames[0].0.id(), a.size)); }
+        let (minimized, focused) = ctx.input(|i| (i.viewport().minimized == Some(true), i.viewport().focused != Some(false)));
+        let paused = !focused && GIFS_ONLY_FOCUSED.load(std::sync::atomic::Ordering::Relaxed);
+        // Paused, the GIF's clock stands still at its last focused draw (the frame on screen when focus was lost; repaints are
+        // capped at 30 fps, so "now" may already be a frame further), so a repaint for another reason (a mouse move) shows the
+        // same frame; back in focus, the start moves by the pause and the GIF goes on from that frame.
+        if paused { let at = if a.start.is_some() { a.drawn } else { now }; a.paused_at.get_or_insert(at); }
+        else { if let (Some(p), Some(s)) = (a.paused_at.take(), a.start.as_mut()) { *s += now - p; } a.drawn = now; }
+        let now = a.paused_at.unwrap_or(now);
         let start = *a.start.get_or_insert(now);
         let t = ((now - start) as f32).rem_euclid(a.total);
         let (mut acc, mut idx) = (0.0, 0);
         for (i, (_, d)) in a.frames.iter().enumerate() { if t < acc + d { idx = i; break } acc += d; idx = i; }
         let left = (acc + a.frames[idx].1 - t).max(0.005);
-        // Every animation frame redraws the whole window: none while it's hidden (tray, minimized), at most 30 fps in front,
-        // 20 fps behind another window.
-        let (minimized, focused) = ctx.input(|i| (i.viewport().minimized == Some(true), i.viewport().focused != Some(false)));
-        let paused = !focused && GIFS_ONLY_FOCUSED.load(std::sync::atomic::Ordering::Relaxed);
+        // Every animation frame redraws the whole window: none while it's hidden (tray, minimized) or paused, at most 30 fps
+        // in front, 20 fps behind another window.
         if !minimized && !paused && !crate::platform::tray::HIDDEN.load(std::sync::atomic::Ordering::Relaxed) {
             ctx.request_repaint_after(std::time::Duration::from_secs_f32(left.max(if focused { 1.0 / 30.0 } else { 0.05 })));
         }
