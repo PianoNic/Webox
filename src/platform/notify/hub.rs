@@ -354,6 +354,9 @@ impl App {
         let comp = tray::composited();
         let mut cards: Vec<Rect> = vec![];
         ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("webox-toasts"), builder, |ctx, _class| {
+            // Lay the text out again with this window's fonts: galleys from the main window carry glyph positions in ITS font atlas
+            // (its pixels-per-point), and drawn here at a different scale (another monitor, main window hidden) the text was invisible.
+            let lays: Vec<Lay> = hub.toasts.iter().map(|ts| layout(ctx, &t, ts)).collect();
             egui::CentralPanel::default().frame(egui::Frame::NONE).show(ctx, |ui| {
                 let screen = ui.max_rect();
                 let mut bottom = screen.bottom();
