@@ -2,7 +2,7 @@
 use super::*;
 
 impl App {
-    /// "Öffnen" / "Herunterladen" / "In Ordner anzeigen": downloads the file behind `key` into the download folder (unless it
+    /// "Open" / "Download" / "Show in folder": downloads the file behind `key` into the download folder (unless it
     /// already is there from this session), then opens it / shows it.
     pub(crate) fn file_fetch(&mut self, key: &str, name: &str, then: Then, now: f64) {
         if let Some(p) = local_path(key) {
@@ -14,7 +14,7 @@ impl App {
             return;
         }
         if let Some(d) = fs_::download(key).filter(|d| d.phase == Phase::Done && d.path.exists()) {
-            if then == Then::Nothing { self.toast(format!("{} – Download beendet", d.name), now); } else { cloud_finish(&d.path, then); }
+            if then == Then::Nothing { self.toast(format!("{} – {}", d.name, tr("Download complete")), now); } else { cloud_finish(&d.path, then); }
             return;
         }
         if fs_::download(key).is_some_and(|d| matches!(d.phase, Phase::Preparing | Phase::Uploading)) { return; } // already on its way
@@ -34,7 +34,7 @@ impl App {
             None => {
                 // Sample data: the picture we show, or a small stand-in text file.
                 let bytes = self.photos.image_bytes(&format!("full:{key}")).or_else(|| self.photos.image_bytes(key)).map(|b| b.to_vec())
-                    .unwrap_or_else(|| format!("{name}\r\n\r\nBeispieldatei der Offline-Beispieldaten (--sample).\r\n").into_bytes());
+                    .unwrap_or_else(|| format!("{name}\r\n\r\nSample file of the offline sample data (--sample).\r\n").into_bytes());
                 match std::fs::write(path, &bytes) {
                     Ok(()) => { fs_::download_progress(key, bytes.len() as u64, bytes.len() as u64); fs_::download_phase(key, Phase::Done); cloud_finish(path, then); }
                     Err(e) => fs_::download_phase(key, Phase::Failed(e.to_string())),
@@ -48,18 +48,18 @@ impl App {
         fs_::download_begin(key, name, dest, Then::Nothing);
         match std::fs::copy(src, dest) {
             Ok(n) => { fs_::download_progress(key, n, n); fs_::download_phase(key, Phase::Done); }
-            Err(e) => { fs_::download_phase(key, Phase::Failed(e.to_string())); self.toast("Download fehlgeschlagen", now); }
+            Err(e) => { fs_::download_phase(key, Phase::Failed(e.to_string())); self.toast(tr("Download failed"), now); }
         }
     }
 
-    /// "Speichern unter": the save dialog (pre-filled with the name, in the download folder); the download starts when a path is chosen.
+    /// "Save as": the save dialog (pre-filled with the name, in the download folder); the download starts when a path is chosen.
     pub(crate) fn file_save_as(&mut self, key: &str, name: &str) {
         if self.shot.is_some() { return; }
         fs_::save_as_async(key, name, &fs_::download_dir(&self.settings));
     }
 
     /// Once per frame (composer, content tab, viewer): start the downloads of finished save dialogs, collect the staged files of
-    /// finished open dialogs, announce finished downloads ("Download beendet" / "Download fehlgeschlagen").
+    /// finished open dialogs, announce finished downloads ("Download complete" / "Download failed").
     pub(crate) fn files_frame(&mut self, ctx: &egui::Context, now: f64) {
         fs_::set_ctx(ctx);
         for (key, path) in fs_::take_saves() {
@@ -73,11 +73,11 @@ impl App {
             for d in fs_::downloads() {
                 if said.contains(&d.key) { continue; }
                 match &d.phase {
-                    Phase::Done if d.then == Then::Nothing => { said.insert(d.key.clone()); toasts.push(format!("{} – Download beendet", d.name)); }
+                    Phase::Done if d.then == Then::Nothing => { said.insert(d.key.clone()); toasts.push(format!("{} – {}", d.name, tr("Download complete"))); }
                     Phase::Done => { said.insert(d.key.clone()); }
                     // the inline player shows its own message on the card
                     Phase::Failed(_) if d.then == Then::Play => { said.insert(d.key.clone()); }
-                    Phase::Failed(_) => { said.insert(d.key.clone()); toasts.push(format!("{} – Download fehlgeschlagen", d.name)); }
+                    Phase::Failed(_) => { said.insert(d.key.clone()); toasts.push(format!("{} – {}", d.name, tr("Download failed"))); }
                     _ => {}
                 }
             }
@@ -89,10 +89,10 @@ impl App {
     pub(crate) fn file_menu_entries(&self, key: &str, show_in_chat: bool) -> Vec<super::super::menu::Entry> {
         use super::super::menu::{Entry, Item};
         let done = fs_::download(key).is_some_and(|d| d.phase == Phase::Done && d.path.exists()) || local_path(key).is_some();
-        let mut v = vec![Item::new("file-open", "Öffnen").icon("open-pages-regular").entry(), Item::new("file-download", "Herunterladen").icon("download-regular").entry(),
-            Item::new("file-save", "Speichern unter").icon("save-regular").entry()];
-        if done { v.push(Item::new("file-folder", "In Ordner anzeigen").icon("open-in-folder-regular").entry()); }
-        if show_in_chat { v.push(Entry::Sep); v.push(Item::new("file-chat", "In Unterhaltung anzeigen").icon("chat-regular").entry()); }
+        let mut v = vec![Item::new("file-open", tr("Open")).icon("open-pages-regular").entry(), Item::new("file-download", tr("Download")).icon("download-regular").entry(),
+            Item::new("file-save", tr("Save as")).icon("save-regular").entry()];
+        if done { v.push(Item::new("file-folder", tr("Show in folder")).icon("open-in-folder-regular").entry()); }
+        if show_in_chat { v.push(Entry::Sep); v.push(Item::new("file-chat", tr("Show in conversation")).icon("chat-regular").entry()); }
         v
     }
 

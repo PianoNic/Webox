@@ -1,4 +1,4 @@
-//! "Neue Nachrichten" / "Neue Antworten" buttons over the message list: pill buttons (L, icon on the right). The "above"
+//! "New messages" / "New replies" buttons over the message list: pill buttons (L, icon on the right). The "above"
 //! ones (arrow-up_12) sit at the top of the list, 4 pt below it, the replies one 4 pt below the messages one when both show;
 //! the "below" ones (arrow-down_12) are stacked 4 pt above the scroll-to-latest button (jump_button.rs), the replies one
 //! above the messages one.
@@ -6,7 +6,7 @@
 //! once it is (partly) visible it is marked seen and both stay hidden until a new target comes. Reply targets work the same
 //! over a list (each seen on its own; above / below if any unseen one is). A click centres the target row; for replies the
 //! first unseen target in that direction.
-//! Here: the message target is the first unread message when the chat opens (the "Neue Nachrichten" line) and, while the
+//! Here: the message target is the first unread message when the chat opens (the "New messages" line) and, while the
 //! list is scrolled up, the first message from someone else that arrives; reply targets likewise. Pill metrics: height 32,
 //! 14 pt semibold, 16 pt side padding. Colours: button-message-fill (#1170CF / hover #0353A8 / pressed #063A75, text white
 //! @ 0.95).
@@ -15,7 +15,7 @@ use super::*;
 const GAP: f32 = 4.0;
 const PILL_H: f32 = 32.0;
 
-/// The targets of a space: (message id, seen) for "Neue Nachrichten", and the reply targets.
+/// The targets of a space: (message id, seen) for "New messages", and the reply targets.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct NewTargets { pub msg: Option<(String, bool)>, pub replies: Vec<(String, bool)> }
 

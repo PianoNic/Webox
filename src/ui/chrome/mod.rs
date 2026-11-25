@@ -117,9 +117,9 @@ mod control_tests {
     use super::*;
     #[test]
     fn draft_icon_rule() {
-        assert!(shows_draft_icon("Hallo", false, false));
-        assert!(!shows_draft_icon("Hallo", true, false)); // the open conversation never shows it
-        assert!(!shows_draft_icon("Hallo", false, true)); // unread wins
+        assert!(shows_draft_icon("Hello", false, false));
+        assert!(!shows_draft_icon("Hello", true, false)); // the open conversation never shows it
+        assert!(!shows_draft_icon("Hello", false, true)); // unread wins
         assert!(!shows_draft_icon("  \n", false, false));
         assert!(!shows_draft_icon("", false, false));
     }
@@ -171,7 +171,7 @@ fn header_chip_fill(ui: &egui::Ui, t: &Th, resp: &egui::Response, rect: Rect, fo
     }
 }
 
-/// Now in Unix milliseconds (for "Vor 3 Stunden aktiv").
+/// Now in Unix milliseconds (for "Active 3 hours ago").
 pub(crate) fn now_ms() -> i64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64) }
 
 impl App {
@@ -187,9 +187,9 @@ impl App {
             .or_else(|| s.participants.iter().find(|p| p.email != self.me.email && p.id != self.me.id).cloned())
     }
 
-    /// The line under a person's name: "Verfügbar", "Vor 3 Stunden aktiv", "Nicht stören", empty if unknown.
+    /// The line under a person's name: "Available", "Active 3 hours ago", "Do not disturb", empty if unknown.
     pub(crate) fn person_line(&self, p: &Person, now_ms: i64) -> String {
-        // The whole line (DND end, out of office, custom text, "Vor 3 Stunden aktiv") comes from presence.rs.
+        // The whole line (DND end, out of office, custom text, "Active 3 hours ago") comes from presence.rs.
         self.presence_line(p, now_ms)
     }
 
@@ -206,7 +206,7 @@ impl App {
                 let max = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
                 ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!max));
             }
-            // Own avatar (40) with presence badge, then "Status festlegen".
+            // Own avatar (40) with presence badge, then "Set a status".
             let (me, st) = (self.me.name.clone(), self.me.status.clone());
             let label = if self.client.is_some() || self.status.starts_with("Offline (sample") { self.status_label(ctx) } else { self.status.clone() };
             let lw = ui.fonts(|f| f.layout_no_wrap(label.clone(), semibold(14.0), t.text1).size().x);
@@ -221,7 +221,7 @@ impl App {
             let photo = [self.me.email.clone(), self.me.id.clone()].iter().find_map(|k| self.photo(ctx, k));
             // The badge's 1.2 pt ring is cut out of the photo (the header shows through), the dot drawn on the device-pixel grid.
             super::widgets::avatar_photo_with(&mut ac, &mut self.icons, t, &me, 32.0, false, None, Some(&st), photo, super::widgets::BadgeGeom::HEADER);
-            // "Status festlegen": a pill button (hover #1C1C1C / pressed #121212 = appHeader-buttonStatus, dark theme): 28 high,
+            // "Set a status": a pill button (hover #1C1C1C / pressed #121212 = appHeader-buttonStatus, dark theme): 28 high,
             // radius 14, text padding 14 / 14, 14 px / 600, 16 after the avatar, 1 px border; the text elides when narrow.
             if let Some(chip) = hl.status {
                 let cresp = ui.interact(chip, egui::Id::new("status-chip"), Sense::click());
@@ -230,9 +230,9 @@ impl App {
                 let cresp = if shown.width() + 0.5 < lw { cresp.on_hover_text(&label) } else { cresp };
                 if cresp.clicked() { let cs = self.custom_status(ctx); super::profile_menu::open_status_dialog(ctx, &cs); }
             }
-            // The two do different things: the avatar opens the profile menu ("Profil und Einstellungen"), the status button opens the
+            // The two do different things: the avatar opens the profile menu ("Profile and settings"), the status button opens the
             // custom-status dialog directly. Avatar tooltip from the pack (QObject).
-            let aresp = ui.interact(ar, egui::Id::new("avatar-btn"), Sense::click()).on_hover_text("Klicken Sie auf Ihren Avatar, um Ihren Status festzulegen, die Benachrichtigungseinstellungen zu ändern und die mobile App herunterzuladen.");
+            let aresp = ui.interact(ar, egui::Id::new("avatar-btn"), Sense::click()).on_hover_text(tr("Click your avatar to set your status, change notification settings and download the mobile app."));
             if aresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
             if aresp.clicked() { super::menu::menu_toggle(ctx, "status"); }
             self.profile_menu(ctx, t, ar, now);
@@ -252,7 +252,7 @@ impl App {
             if chev(self, ui, "nav-fwd", "arrow-right-optical_10", hl.fwd, can_fwd).on_hover_text(tr("Forward")).clicked() { self.act(Act::Forward, ctx) }
             // globalHeader-SearchEditField-background: #3B3B3B / #DEDEDE, hovered #545454 / #C9C9C9, pressed = checked; outline
             // appHeader-searchBar-outline-active #3B3B3B.
-            // Settings > Oberfläche anpassen can hide the search field, +, the device button and the AI mark (Strg+F still searches).
+            // Settings > Customize the interface can hide the search field, +, the device button and the AI mark (Ctrl+F still searches).
             use crate::ui::customize::HEADER as HG;
             if self.ui_shown(&HG, "search") {
                 let sfill = if ui.rect_contains_pointer(sr) { if ui.input(|i| i.pointer.primary_down()) { t.tk("globalHeader-SearchEditField-background:checked") } else { t.tk("globalHeader-SearchEditField-background:hovered") } } else { t.search };
@@ -261,7 +261,7 @@ impl App {
                 self.icons.paint(ui, "search-regular", Rect::from_center_size(sr.left_center() + Vec2::new(24.0, 0.0), Vec2::splat(16.0)), t.tk("globalHeader-textfield-searchIcon"));
                 // The shortcut hint only while the field has its full width (a zoomed UI below the minimum window shrinks it).
                 let hint = if sr.width() >= header_layout::SEARCH_W { ui.painter().text(sr.right_center() - Vec2::new(11.0, 0.0), egui::Align2::RIGHT_CENTER, crate::shortcuts::native_hint(&tr("Ctrl+F")), FontId::proportional(14.0), t.text2).width() + 19.0 } else { 12.0 };
-                // The pill is a button; a click / Strg+F opens the global search popup (ui/global_search.rs).
+                // The pill is a button; a click / Ctrl+F opens the global search popup (ui/global_search.rs).
                 fit_text(ui.painter(), sr.left() + 40.0, cy, tr("Search, meet, and call"), FontId::proportional(14.5), t.text2, sr.width() - 40.0 - hint);
                 let sresp = ui.interact(sr, egui::Id::new("search-pill"), Sense::click());
                 if sresp.clicked() { super::global_search::toggle(ctx); }
@@ -276,7 +276,7 @@ impl App {
                 if presp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); ui.painter().circle_filled(pr.center(), 13.0, if presp.is_pointer_button_down_on() { t.tk("globalHeader-buttonIcon-background:pressed") } else { t.tk("globalHeader-buttonIcon-background:hovered") }); }
                 ui.painter().circle_stroke(pr.center(), 12.4, Stroke::new(1.2_f32, if t.light { hex(0x454545) } else { hex(0xCFCFCF) }));
                 self.icons.paint(ui, "plus-regular", Rect::from_center_size(pr.center(), Vec2::splat(14.0)), t.tk("globalHeader-buttonIcon-icon"));
-                // The + opens the global menu (ui/header_plus.rs); tooltip "Eine Unterhaltung starten".
+                // The + opens the global menu (ui/header_plus.rs); tooltip "Start a conversation".
                 let plus_open = super::menu::menu_is_open(ctx, super::header_plus::KEY);
                 let presp = if plus_open { presp } else { presp.on_hover_text(crate::trq!("Start a conversation")) };
                 if presp.clicked() { super::menu::menu_toggle(ctx, super::header_plus::KEY) }
@@ -317,7 +317,7 @@ impl App {
                 p.line_segment([c - Vec2::new(5.6, 0.0), c + Vec2::new(5.6, 0.0)], Stroke::new(1.0_f32, mm_glyph));
             }) { ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)); }
 
-            // "Mit einem Gerät verbinden" with its device icon (label elided when narrow, icon only at the narrowest, the label
+            // "Connect to a device" with its device icon (label elided when narrow, icon only at the narrowest, the label
             // then as tooltip), then the AI assistant.
             let tr_rect = hl.device;
             if self.ui_shown(&HG, "device") {
@@ -338,7 +338,7 @@ impl App {
             let air = ui.interact(ai, egui::Id::new("ai-assistant"), Sense::click());
             header_chip_fill(ui, t, &air, ai, forced == "ai");
             self.icons.art(ui, "cisco-ai-assistant-color-gradient", Rect::from_center_size(ai.center(), Vec2::splat(18.0)));
-            if air.on_hover_text("KI-Assistent").clicked() { self.toast("Der KI-Assistent ist in dieser Version nicht verfügbar", now) }
+            if air.on_hover_text(tr("AI Assistant")).clicked() { self.toast(tr("The AI Assistant is not available in this version"), now) }
         });
     }
 

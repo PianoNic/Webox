@@ -15,23 +15,23 @@ impl App {
             if let Some(k) = &shot {
                 let d = self.drafts.entry(id.clone()).or_default();
                 match k.as_str() {
-                    "emoji" => { *d = "Prost :so".into(); }
-                    "emoji2" => { *d = "Prost :beer".into(); }
+                    "emoji" => { *d = "Cheers :so".into(); }
+                    "emoji2" => { *d = "Cheers :beer".into(); }
                     "sob" => { *d = "Oh :sob".into(); }
                     "onlyemoji" => { *d = "😆".into(); }
-                    "mention" => { *d = "Hallo @".into(); }
-                    "emojitext" => { *d = "Hallo 😀 Welt 👍🏽 🇨🇭 👨‍👩‍👧 x".into(); }
-                    "mention2" => { *d = "Hallo @to".into(); }
+                    "mention" => { *d = "Hello @".into(); }
+                    "emojitext" => { *d = "Hello 😀 world 👍🏽 🇨🇭 👨‍👩‍👧 x".into(); }
+                    "mention2" => { *d = "Hello @to".into(); }
                     "legend" => { st.legend = true; }
-                    "markdown" => { st.md = true; *d = "# Titel\n**fett** und _kursiv_\n1. Eins\n2. Zwei".into(); }
+                    "markdown" => { st.md = true; *d = "# Title\n**bold** and _italic_\n1. One\n2. Two".into(); }
                     "rich" => { st.rich = true; *d = "Text".into(); }
-                    "edit" => { *d = "Nachricht die ich bearbeite".into(); self.compose = Compose::Edit { msg: "x".into() }; }
+                    "edit" => { *d = "Message I am editing".into(); self.compose = Compose::Edit { msg: "x".into() }; }
                     "attach" | "upload" => {
                         st.chips = vec![Chip { name: "Quartalsbericht.pdf".into(), size: 1_200_000, path: "Quartalsbericht.pdf".into(), image: false }];
                         self.stage_bytes(&mut st.chips, "foto.png", &super::super::sample_photos::sample_banner(1), false, now);
-                        if k == "upload" { let chips = std::mem::take(&mut st.chips); self.send_staged(&id, chips, "Hier die Unterlagen".into(), vec![], now); }
+                        if k == "upload" { let chips = std::mem::take(&mut st.chips); self.send_staged(&id, chips, "Here are the documents".into(), vec![], now); }
                     }
-                    "mentionpill" => { st.mentions = vec![Mention { id: "mara@example.com".into(), name: "Mara Lind".into(), all: false }]; *d = "Hallo @Mara Lind bitte prüfen".into(); }
+                    "mentionpill" => { st.mentions = vec![Mention { id: "mara@example.com".into(), name: "Mara Lind".into(), all: false }]; *d = "Hello @Mara Lind please review".into(); }
                     _ => {}
                 }
                 ctx.memory_mut(|m| m.request_focus(cid));

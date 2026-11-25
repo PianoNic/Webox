@@ -1,7 +1,7 @@
 //! Link previews for links in received messages, unfurled by the client itself.
 //!
 //! Every message with links is unfurled on the receiving client, per URL (index 0, 1, ...), with a preview only when there is
-//! enough info. The setting: "Show Link Previews" ("Link-Vorschau anzeigen"), on by default (settings key `show_link_previews`).
+//! enough info. The setting: "Show Link Previews", on by default (settings key `show_link_previews`).
 //!
 //! The pipeline:
 //! - Only http(s) URLs to public host names are fetched (no IP literals, no localhost / intranet names), every redirect hop

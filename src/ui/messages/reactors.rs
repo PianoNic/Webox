@@ -208,16 +208,16 @@ mod tests {
     fn u(id: &str, at: &str) -> Reactor { Reactor { id: id.into(), published: at.into(), ..Default::default() } }
 
     /// The real case: reactors are uuids, the people lists use e-mail-style ids. The e-mail / name the session resolved for
-    /// the uuid is what finds them (this was "Unbekannt" for everyone).
+    /// the uuid is what finds them (this was "Unknown" for everyone).
     #[test]
     fn uuid_reactors_are_found_by_their_resolved_email_or_name() {
         let me = p("alex@example.com", "Alex Muster", "alex@example.com");
         let known = [p("erika@example.com", "Erika Beispiel", "erika@example.com")];
         let r = |id: &str, name: &str, email: &str| Reactor { id: id.into(), published: String::new(), name: name.into(), email: email.into() };
         let users = [r("u-erika", "Erika B.", "erika@example.com"), r("u-me", "", "alex@example.com"), r("u-gone", "Lea Weg", "lea@example.com"), r("u-none", "", "")];
-        let rows = reactor_rows(&users, &me, &known, "Sie", "Unbekannt");
+        let rows = reactor_rows(&users, &me, &known, "You", "Unknown");
         let got: Vec<(&str, &str, bool)> = rows.iter().map(|r| (r.name.as_str(), r.email.as_str(), r.me)).collect();
-        assert_eq!(got, [("Erika Beispiel", "erika@example.com", false), ("Sie", "alex@example.com", true), ("Lea Weg", "lea@example.com", false), ("Unbekannt", "", false)]);
+        assert_eq!(got, [("Erika Beispiel", "erika@example.com", false), ("You", "alex@example.com", true), ("Lea Weg", "lea@example.com", false), ("Unknown", "", false)]);
     }
 
     #[test]
@@ -225,9 +225,9 @@ mod tests {
         let me = p("me-uuid", "Alex Muster", "alex@example.com");
         let known = [p("u1", "Erika Beispiel", "erika@example.com"), p("max@example.com", "Max Probe", "max@example.com")];
         let users = [u("u1", "a"), u("me-uuid", "b"), u("max@example.com", "c"), u("u1", "d"), u("gone", "e")];
-        let rows = reactor_rows(&users, &me, &known, "Sie", "Unbekannt");
+        let rows = reactor_rows(&users, &me, &known, "You", "Unknown");
         let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
-        assert_eq!(names, ["Erika Beispiel", "Sie", "Max Probe", "Unbekannt"]); // each person once, unknown kept
+        assert_eq!(names, ["Erika Beispiel", "You", "Max Probe", "Unknown"]); // each person once, unknown kept
         assert!(rows[1].me && !rows[0].me);
         assert_eq!(rows[0].published, "a");
         // My e-mail as the id (offline / e-mail style participant ids) is me too.

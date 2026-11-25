@@ -3,16 +3,15 @@
 //!
 //!   * Actions: quote, copy link, copy text, flag / unflag, mark unread, forward, edit, delete; icons text-blockquote_12,
 //!     mark-as-unread_12, flag_12, copy_12, pin_12, edit_12, delete_12, forward-message_12, reply-bold.
-//!   * German labels from the pack: "Nachricht zitieren", "Nachrichten-Link kopieren", "Text kopieren",
-//!     "Nachricht markieren" / "Nachrichtenmarkierung aufheben", "Als ungelesen markieren", "Weiterleiten", "Bearbeiten",
-//!     "Löschen"; "Link kopiert"; "Vorhandenes Zitat ersetzen", "Ersetzen", "In Ihrem Nachrichtenentwurf ist bereits ein Zitat
-//!     enthalten.\nMöchten Sie es durch dieses ersetzen?"; "Zitat entfernen".
+//!   * Labels from the pack: "Quote message", "Flag message" / "Unflag message", "Mark as unread", "Forward message",
+//!     "Edit message", "Delete message"; "Link copied"; "Remove quote". The "Replace existing quote" question is Webox's own.
 //!   * Message link: "webexteams://im?space=" + id + "&message=" + id.
 //!   * The menu's order and labels follow the Webex desktop menu (`message_items`); reminders are local (ui/msg_remind.rs),
 //!     pinning and translation are shown disabled.
 use super::menu;
 use crate::*;
 use egui::Id;
+use crate::ui::widgets::tr;
 
 /// The message being quoted in the composer of `space` (the quote banner above the input).
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -28,16 +27,16 @@ pub(crate) struct MsgX {
     pub flags_requested: bool,
     /// The quote waiting in the composer.
     pub quote: Option<Quote>,
-    /// A second quote asked for while one is waiting: the "Vorhandenes Zitat ersetzen" question.
+    /// A second quote asked for while one is waiting: the "Replace existing quote" question.
     pub replace: Option<Quote>,
     /// A space I marked unread while it is open: no read receipt for it until it is opened again.
     pub unread_hold: Option<String>,
-    /// Messages scheduled with "Später senden" (ui/schedule_send.rs).
+    /// Messages scheduled with "Send later" (ui/schedule_send.rs).
     pub sched: Vec<super::schedule_send::Scheduled>,
     pub sched_expanded: bool,
     /// Link previews unfurled by this client (ui/unfurl.rs).
     pub unfurl: super::unfurl::Unfurl,
-    /// "Mich erinnern in" reminders, soonest first (ui/msg_remind.rs).
+    /// "Remind me in" reminders, soonest first (ui/msg_remind.rs).
     pub reminders: Vec<super::msg_remind::Reminder>,
 }
 
@@ -47,25 +46,25 @@ pub(crate) fn message_link(space: &str, msg: &str) -> String { format!("webextea
 /// The quote's preview line in the composer banner: the first non-empty line of the quoted text.
 pub(crate) fn quote_preview(text: &str) -> String { text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("").to_string() }
 
-/// The message's own entries, in the order of the Webex desktop menu: Nachricht kopieren, Nachricht bearbeiten (mine), Thread
-/// starten, Reaktion hinzufügen ›, Nachricht weiterleiten, Mich erinnern in ›, Nachricht anheften, Nachricht zitieren, Nachricht
-/// übersetzen, Nachricht markieren, Als ungelesen markieren (not mine), Nachricht löschen (mine). Pinning and translation have no
+/// The message's own entries, in the order of the Webex desktop menu: Copy message, Edit message (mine), Start a
+/// thread, Add reaction ›, Forward message, Remind me in ›, Pin message, Quote message, Translate
+/// message, Flag message, Mark as unread (not mine), Delete message (mine). Pinning and translation have no
 /// service behind them in Webox yet: they are shown, disabled.
 pub(crate) fn message_items(m: &Message, flagged: bool) -> Vec<menu::Entry> {
-    let mut v = vec![menu::Item::new("copy-message", "Nachricht kopieren").icon("copy-regular").entry()];
-    if m.mine { v.push(menu::Item::new("edit", "Nachricht bearbeiten").icon("edit-regular").shortcut("Umschalt+Pfeil nach oben").entry()); }
-    // A reply already is in a thread: "Auf Thread antworten" ("Reply to thread"); a root message starts one.
-    v.push(menu::Item::new("reply", if m.parent.is_empty() { "Thread starten" } else { "Auf Thread antworten" }).icon("reply-regular").entry());
-    v.push(menu::Item::new("react", "Reaktion hinzufügen").icon("reactions-regular").submenu().entry());
-    v.push(menu::Item::new("forward", "Nachricht weiterleiten").icon("forward-message-regular").entry());
-    v.push(menu::Item::new("remind", "Mich erinnern in").icon("alarm-regular").submenu().entry());
-    v.push(menu::Item::new("pin", "Nachricht anheften").icon("pin-regular").disabled().entry());
-    v.push(menu::Item::new("quote", "Nachricht zitieren").icon("text-blockquote_12").entry());
-    v.push(menu::Item::new("translate", "Nachricht übersetzen").icon("translate-regular").disabled().entry());
-    v.push(menu::Item::new("flag", if flagged { "Nachrichtenmarkierung aufheben" } else { "Nachricht markieren" }).icon(if flagged { "flag-filled" } else { "flag-regular" }).entry());
+    let mut v = vec![menu::Item::new("copy-message", tr("Copy message")).icon("copy-regular").entry()];
+    if m.mine { v.push(menu::Item::new("edit", tr("Edit message")).icon("edit-regular").shortcut(tr("Shift+Up arrow")).entry()); }
+    // A reply already is in a thread: "Reply to thread"; a root message starts one.
+    v.push(menu::Item::new("reply", if m.parent.is_empty() { tr("Start a thread") } else { tr("Reply to thread") }).icon("reply-regular").entry());
+    v.push(menu::Item::new("react", tr("Add reaction")).icon("reactions-regular").submenu().entry());
+    v.push(menu::Item::new("forward", tr("Forward message")).icon("forward-message-regular").entry());
+    v.push(menu::Item::new("remind", tr("Remind me in")).icon("alarm-regular").submenu().entry());
+    v.push(menu::Item::new("pin", tr("Pin message")).icon("pin-regular").disabled().entry());
+    v.push(menu::Item::new("quote", tr("Quote message")).icon("text-blockquote_12").entry());
+    v.push(menu::Item::new("translate", tr("Translate message")).icon("translate-regular").disabled().entry());
+    v.push(menu::Item::new("flag", if flagged { tr("Unflag message") } else { tr("Flag message") }).icon(if flagged { "flag-filled" } else { "flag-regular" }).entry());
     // My own messages can't make the space unread for me.
-    if !m.mine { v.push(menu::Item::new("unread", "Als ungelesen markieren").icon("mark-as-unread-regular").entry()); }
-    if m.mine { v.push(menu::Item::new("delete", "Nachricht löschen").icon("delete-regular").danger().entry()); }
+    if !m.mine { v.push(menu::Item::new("unread", tr("Mark as unread")).icon("mark-as-unread-regular").entry()); }
+    if m.mine { v.push(menu::Item::new("delete", tr("Delete message")).icon("delete-regular").danger().entry()); }
     v
 }
 
@@ -73,11 +72,11 @@ impl App {
     /// The entries of the "···" menu and the right-click menu (after the right-click menu's own text entries).
     pub(crate) fn msg_menu_entries(&self, id: &str, m: &Message) -> Vec<menu::Entry> {
         let mut v = message_items(m, self.flags.contains(&(id.to_string(), m.id.clone())));
-        // With a reminder set, the official client's pair: "Erinnerung bearbeiten ›" and "Erinnerung entfernen".
+        // With a reminder set, the official client's pair: "Edit reminder ›" and "Remove reminder".
         if self.msgx.reminders.iter().any(|r| r.msg == m.id) {
             if let Some(i) = v.iter().position(|e| matches!(e, menu::Entry::Item(it) if it.id == "remind")) {
-                if let menu::Entry::Item(it) = &mut v[i] { it.label = "Erinnerung bearbeiten".into(); }
-                v.insert(i + 1, menu::Item::new("remind-remove", "Erinnerung entfernen").icon("alarm-regular").entry());
+                if let menu::Entry::Item(it) = &mut v[i] { it.label = tr("Edit reminder").into(); }
+                v.insert(i + 1, menu::Item::new("remind-remove", tr("Remove reminder")).icon("alarm-regular").entry());
             }
         }
         v
@@ -91,7 +90,7 @@ impl App {
             "forward" => self.forward_text = Some(m.text.clone()),
             "edit" => self.start_edit(m),
             "quote" => self.quote_message(ctx, id, m),
-            "copy-msg-link" => { ctx.copy_text(message_link(id, &m.id)); self.toast("Link kopiert", now); } // "Link copied"
+            "copy-msg-link" => { ctx.copy_text(message_link(id, &m.id)); self.toast(tr("Link copied"), now); }
             "copy-message" => ctx.copy_text(m.text.clone()),
             "flag" => self.toggle_flag(id, &m.id, now),
             "unread" => self.mark_unread(id, &m.id),
@@ -110,7 +109,7 @@ impl App {
         match &self.client {
             Some(c) => {
                 let flag_url = self.msgx.flag_urls.get(msg).cloned().unwrap_or_default();
-                if !on && flag_url.is_empty() { self.toast("Markierungsstatus des Elements konnte nicht geändert werden.", now); return; }
+                if !on && flag_url.is_empty() { self.toast(tr("Failed to change the flagged state of the item."), now); return; }
                 c.req(Req::Flag { space: space.into(), msg: msg.into(), on, flag_url });
             }
             None => { if on { self.flags.insert(key); } else { self.flags.remove(&key); } }
@@ -135,14 +134,14 @@ impl App {
         }
     }
 
-    /// "Als ungelesen markieren": the space shows as unread again and gets no read receipt until it is opened again.
+    /// tr("Mark as unread"): the space shows as unread again and gets no read receipt until it is opened again.
     pub(crate) fn mark_unread(&mut self, space: &str, msg: &str) {
         if let Some(c) = &self.client { c.req(Req::MarkUnread { space: space.into(), msg: msg.into() }); }
         if let Some(s) = self.spaces.iter_mut().find(|s| s.id == space) { s.unread = true; }
         self.msgx.unread_hold = Some(space.to_string());
     }
 
-    /// "Nachricht zitieren": the message goes into the composer's quote banner (asks first when another quote is waiting).
+    /// tr("Quote message"): the message goes into the composer's quote banner (asks first when another quote is waiting).
     pub(crate) fn quote_message(&mut self, ctx: &egui::Context, space: &str, m: &Message) {
         let q = Quote { space: space.into(), msg: m.id.clone(), author: if m.mine { self.me.name.clone() } else { m.author.clone() }, email: m.email.clone(), html: m.html.clone(), text: m.text.clone(), files: crate::cloud::shared_names(m) };
         match &self.msgx.quote {
@@ -205,16 +204,16 @@ impl App {
             let xresp = ui.interact(xr, Id::new("quote-banner-x"), Sense::click());
             if xresp.hovered() { p.circle_filled(xr.center(), 12.0, t.hover); ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
             self.icons.paint(ui, "cancel-regular", Rect::from_center_size(xr.center(), Vec2::splat(12.0)), t.text1);
-            if xresp.on_hover_text("Zitat entfernen").clicked() { remove = true; }
+            if xresp.on_hover_text(tr("Remove quote")).clicked() { remove = true; }
         });
         if remove { self.msgx.quote = None; }
     }
 
-    /// "Vorhandenes Zitat ersetzen" when a second message is quoted.
+    /// "Replace existing quote" when a second message is quoted.
     pub(crate) fn quote_replace_dialog(&mut self, ctx: &egui::Context, t: &Th) {
         if self.msgx.replace.is_none() { return; }
-        let res = menu::webex_dialog(ctx, t, "quote-replace", "Vorhandenes Zitat ersetzen", "In Ihrem Nachrichtenentwurf ist bereits ein Zitat enthalten.\nMöchten Sie es durch dieses ersetzen?", None,
-            &[menu::Button::secondary("cancel", "Abbrechen"), menu::Button::primary("replace", "Ersetzen")]);
+        let res = menu::webex_dialog(ctx, t, "quote-replace", tr("Replace existing quote"), tr("Your message draft already contains a quote.\nDo you want to replace it with this one?"), None,
+            &[menu::Button::secondary("cancel", tr("Cancel")), menu::Button::primary("replace", tr("Replace"))]);
         match res.as_deref() {
             Some("replace") => { self.msgx.quote = self.msgx.replace.take(); }
             Some(_) => { self.msgx.replace = None; }
@@ -259,10 +258,10 @@ impl App {
         if self.msgx.unread_hold.is_some() && self.msgx.unread_hold != self.selected { self.msgx.unread_hold = None; }
         self.sched_tick(ctx);
         self.reminders_tick(ctx);
-        // Screenshot checks only (--sample --screenshot): a waiting quote, scheduled messages, the "Später senden" menu / dialog.
+        // Screenshot checks only (--sample --screenshot): a waiting quote, scheduled messages, the "Send later" menu / dialog.
         // WEBOX_SHOT_EDITED=<n>:<text>[;<n>:<text>...]: message <n> is edited to <text>, one edit after the other, and
         // WEBOX_SHOT_KEPT=<n>[,<n>...]: those messages are deleted, through the plugins' message.edited / message.deleted path
-        // (a logging plugin keeps them). WEBOX_SHOT_EDIT_DIALOG=<n> clicks the "(bearbeitet)" of message <n>.
+        // (a logging plugin keeps them). WEBOX_SHOT_EDIT_DIALOG=<n> clicks the "(edited)" of message <n>.
         if self.shot.is_some() && self.frames == 3 {
             if let Some(sel) = self.selected.clone() {
                 let name = self.spaces.iter().find(|s| s.id == sel).map(|s| s.title.clone()).unwrap_or_default();
@@ -278,7 +277,7 @@ impl App {
                 }
                 for v in std::env::var("WEBOX_SHOT_KEPT").unwrap_or_default().split(',').filter(|v| !v.is_empty()) {
                     let mid = format!("{sel}-{v}");
-                    step(self, &|m: &Message| if m.id == mid { Message { id: m.id.clone(), notice: format!("{} hat die Nachricht gelöscht.", m.author), ..Default::default() } } else { m.clone() });
+                    step(self, &|m: &Message| if m.id == mid { Message { id: m.id.clone(), notice: crate::trq!("%1 deleted the message.", m.author), ..Default::default() } } else { m.clone() });
                 }
             }
         }
@@ -297,12 +296,12 @@ impl App {
                 }
                 if std::env::var("WEBOX_SHOT_SCHED").is_ok() {
                     let due = super::schedule_send::tomorrow_nine(super::schedule_send::now_ms());
-                    for (i, t) in ["Nicht vergessen: Daily um 9", "Bericht ist im Ordner"].iter().enumerate() {
+                    for (i, t) in ["Don't forget: daily at 9", "The report is in the folder"].iter().enumerate() {
                         self.msgx.sched.push(super::schedule_send::Scheduled { id: format!("shot{i}"), space: sel.clone(), text: t.to_string(), markdown: false, mentions: vec![], due_ms: due + i as i64 * 3_600_000 });
                     }
                     self.msgx.sched_expanded = std::env::var("WEBOX_SHOT_SCHED").as_deref() == Ok("open");
                 }
-                if std::env::var("WEBOX_SHOT_SCHED_MENU").is_ok() { self.drafts.insert(sel.clone(), "Bis morgen".into()); super::menu::menu_open(ctx, "sched-menu"); }
+                if std::env::var("WEBOX_SHOT_SCHED_MENU").is_ok() { self.drafts.insert(sel.clone(), "See you tomorrow".into()); super::menu::menu_open(ctx, "sched-menu"); }
                 if std::env::var("WEBOX_SHOT_SCHED_CUSTOM").is_ok() { ctx.data_mut(|d| d.insert_temp(Id::new("sched-shot-custom"), true)); }
             }
         }
@@ -323,7 +322,7 @@ mod tests {
     #[test]
     fn message_links_and_previews() {
         assert_eq!(message_link("c-1", "a-2"), "webexteams://im?space=c-1&message=a-2");
-        assert_eq!(quote_preview("\n  erste Zeile \nzweite"), "erste Zeile");
+        assert_eq!(quote_preview("\n  first line \nsecond"), "first line");
         assert_eq!(quote_preview(""), "");
     }
 }

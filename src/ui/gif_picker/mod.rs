@@ -1,8 +1,8 @@
-//! The GIF picker popup of the composer (Giphy is called directly): a search row ("Nach GIFs suchen" with the magnifier
+//! The GIF picker popup of the composer (Giphy is called directly): a search row ("Search for GIFs" with the magnifier
 //! button, the cancel-search button while there is text), below it a 3-column masonry grid of the trending GIFs
 //! (`fixed_width_downsampled`, animated, decoded lazily for the visible tiles only) that turns into search results while typing
 //! (300 ms debounce), infinite scroll by offset paging, keyboard navigation, and a footer with the "POWERED BY GIPHY" logo and
-//! the "Bedingungen anzeigen" link. No tabs, no categories, no favourites, no stars: those live in the built-in plugin
+//! the "View terms" link. No tabs, no categories, no favourites, no stars: those live in the built-in plugin
 //! "GIF-Extras" (`src/extras/gif_extras/`), reached only through the hook in `ext.rs`.
 //!
 //! Layout (px): 652 x 406, vertical layout without spacing or margins; search row 52 high (background + 1 px bottom border
@@ -10,7 +10,7 @@
 //! background `wx-headingColor-background`, text `inputText-primary`), 28 x 28 ghost cancel button (`cancel-light.svg`, hidden
 //! until there is text), 40 px spacer; then the scroll area (no border, transparent, vertical bar as needed); the footer is
 //! 32 high with margins 16 / 0 / 16 / 0: a 75 px spacer, the logo (max 110 x 12) between two expanding spacers, then the
-//! "Bedingungen anzeigen" link (16 px regular underlined; tooltip "Giphy-Geschäftsbedingungen anzeigen"); the empty and
+//! "View terms" link (16 px regular underlined; tooltip "View the Giphy terms and conditions"); the empty and
 //! error states use 15 px / 13 px text. Grid: paddings 12 left, 8 top / right / bottom, 8 px gaps (three 200 px columns next
 //! to the 16 px arrow scroll bar); popup corners 6 px.
 //! Colours: `wx-giphy-background` black / white, `wx-headingColor-background` gray-80 #3B3B3B / gray-10 #EDEDED,

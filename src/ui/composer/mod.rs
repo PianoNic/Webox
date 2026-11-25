@@ -2,8 +2,8 @@
 //! emoticon replacement, markdown legend + formatting, edit overlay, attachment chips, drafts. Pure text logic lives in
 //! `composer_text.rs`, the popups in `emoji_autocomplete.rs` / `mention_popup.rs`.
 //!
-//! The action bar has the "M" markdown button and no rich-text toolbar by default; the rich-text toolbar (Fett, Kursiv,
-//! Unterstrichen, Durchgestrichen, Überschrift 1-3, Link, Weitere) is only shown when the settings key
+//! The action bar has the "M" markdown button and no rich-text toolbar by default; the rich-text toolbar (Bold, Italic,
+//! Underline, Strikethrough, Heading 1-3, Link, More) is only shown when the settings key
 //! `composer_rich_toolbar` is true. egui's TextEdit has no rich text: the formatting commands insert markdown (or `<u>`,
 //! `<sub>`, `<sup>`) markers in both modes. Mentions are stored beside the text (`St::mentions`) and drawn in the mention colour.
 use crate::*;

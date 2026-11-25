@@ -26,7 +26,7 @@ pub(crate) fn sample_photos() -> Vec<(String, Vec<u8>)> {
     vec![mk("jonas@example.com", [30, 60, 140], [120, 80, 200]), mk("mara@example.com", [200, 150, 120], [90, 60, 50]), mk("you@example.com", [40, 90, 60], [140, 170, 90])]
 }
 
-/// Sample last-active times (Unix ms) for inactive contacts: "Vor 40 Minuten aktiv", "Vor 1 Stunde aktiv", ...
+/// Sample last-active times (Unix ms) for inactive contacts: "Active 40 minutes ago", "Active 1 hour ago", ...
 pub(crate) fn sample_last_active(now_ms: i64) -> Vec<(String, i64)> {
     vec![("jonas@example.com".into(), now_ms - 40 * 60_000), ("sample-inactive@example.com".into(), now_ms - 60 * 60_000), ("nina@example.com".into(), now_ms - 45 * 60_000)]
 }

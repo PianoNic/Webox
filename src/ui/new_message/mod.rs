@@ -1,13 +1,13 @@
-//! "Neue Nachricht": header + > "Nachricht senden". Layout (pt, from the content card's top-left) and strings from the
+//! "New message": header + > "Send message". Layout (pt, from the content card's top-left) and strings from the
 //! language pack:
-//! - a temporary row "Neue Nachricht" (ring avatar with the start-chat glyph, selected) at the top of the list's "Andere" section;
-//! - header: "Neue Nachricht" + pencil ("Bereichsnamen bearbeiten"), outlined pill "Abbrechen" at the right;
-//! - "An:" + a rounded search field "Anhand von Name, Nummer oder E-Mail-Adresse hinzufügen", an x clear button while there
+//! - a temporary row "New message" (ring avatar with the start-chat glyph, selected) at the top of the list's "Other" section;
+//! - header: "New message" + pencil ("Edit space name"), outlined pill "Cancel" at the right;
+//! - "To:" + a rounded search field "Add by name, number, or email", an x clear button while there
 //!   is text;
-//! - a dropdown under the field: "Personen" and "Bereiche" sections; a section without matches shows the cactus
-//!   (desert-open-results-192-cobalt-lime) and "Es wurden keine Personen gefunden, ..." / "Es wurden keine Bereiche in Ihrer
-//!   Liste gefunden, ..."; the keyboard row has a blue focus ring (#64B4FA);
-//! - the normal composer below with "Nachricht schreiben" and no AI button; Esc does not close the pane, "Abbrechen" does and
+//! - a dropdown under the field: "People" and "Spaces" sections; a section without matches shows the cactus
+//!   (desert-open-results-192-cobalt-lime) and "We can't find any people ..." / "We can't find any spaces in your
+//!   list that match your search."; the keyboard row has a blue focus ring (#64B4FA);
+//! - the normal composer below with "Write a message" and no AI button; Esc does not close the pane, "Cancel" does and
 //!   re-selects the previous conversation.
 //! Behaviour: a picked person becomes a chip (several allowed); the conversation with exactly the chosen people is looked up
 //! and shown in the pane, the send goes there; without one the user's own Send creates it: one person = `Req::Direct`,
@@ -23,9 +23,9 @@ pub(crate) const SEND_KEY: &str = "\u{1}new-message-send";
 
 #[derive(Clone, Default)]
 pub(crate) struct NewMsg { pub open: bool, pub prev: Option<String>, pub query: String, pub to: Vec<Person>, pub sel: Option<usize>, pub focus: bool,
-    /// The space name typed via the pencil (empty = the default title "Neue Nachricht").
+    /// The space name typed via the pencil (empty = the default title "New message").
     pub name: String,
-    /// The pencil's edit mode (label + pencil hidden, "Bereichsname" field shown) and its text.
+    /// The pencil's edit mode (label + pencil hidden, "Space name" field shown) and its text.
     pub editing: bool, pub name_buf: String,
     /// The last query sent to the directory (one search per change of the text).
     pub asked: String,

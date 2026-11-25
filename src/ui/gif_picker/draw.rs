@@ -18,7 +18,7 @@ impl App {
                     match mode.as_str() {
                         "stage" => { let g = st.sample_all[2].clone(); st.staged.insert(space.to_string(), g); st.open = false; }
                         "empty" => { self.gif_show(&mut st, "xyzzy"); st.focus = false; }
-                        "error" => { st.query = "katze".into(); st.gifs.clear(); st.error = Some(FetchError::Network); st.focus = false; }
+                        "error" => { st.query = "cat".into(); st.gifs.clear(); st.error = Some(FetchError::Network); st.focus = false; }
                         "search" => { self.gif_show(&mut st, "wow"); st.focus = false; }
                         _ => { st.focus = false; }
                     }
@@ -135,7 +135,7 @@ impl App {
             self.icons.paint(ui, "search-regular", Rect::from_center_size(lay.icon.center(), Vec2::splat(16.0)), pal.text2);
             if iresp.clicked() { st.focus = true; }
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(lay.field.shrink2(Vec2::new(6.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-            let r = c.add(egui::TextEdit::singleline(&mut st.query).id(search_id).hint_text(RichText::new("Nach GIFs suchen").color(pal.text2).size(14.0)).text_color(pal.text)
+            let r = c.add(egui::TextEdit::singleline(&mut st.query).id(search_id).hint_text(RichText::new(crate::ui::widgets::tr("Search for GIFs")).color(pal.text2).size(14.0)).text_color(pal.text)
                 .frame(false).margin(Vec2::ZERO).font(FontId::proportional(14.0)).desired_width(lay.field.width() - 12.0));
             if st.focus { r.request_focus(); st.focus = false; }
             if r.changed() { let q = st.query.clone(); st.debounce.set(&q, now); }
@@ -145,7 +145,7 @@ impl App {
                 p.circle_stroke(lay.cancel.center(), 8.5, Stroke::new(1.0_f32, pal.cancel));
                 self.icons.paint(ui, "cancel-bold", Rect::from_center_size(lay.cancel.center(), Vec2::splat(8.0)), pal.cancel);
                 if xresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
-                if xresp.on_hover_text("Eintrag löschen").clicked() { clear_query = true; }
+                if xresp.on_hover_text(crate::ui::widgets::tr("Clear entry")).clicked() { clear_query = true; }
             }
 
             // The grid, or the loading / error / empty page.
@@ -155,18 +155,18 @@ impl App {
                 ui.put(Rect::from_center_size(centre, Vec2::splat(28.0)), egui::Spinner::new().size(28.0).color(pal.text2));
             } else if n == 0 && st.error.is_some() {
                 // Connection error: 15 px title, 13 px inputText-secondary text.
-                let g1 = p.layout_no_wrap("Suchen nach GIFs nicht möglich".into(), FontId::proportional(15.0), pal.text);
+                let g1 = p.layout_no_wrap(crate::ui::widgets::tr("Can't search for GIFs").into(), FontId::proportional(15.0), pal.text);
                 p.galley(pos2(centre.x - g1.size().x / 2.0, centre.y - 24.0), g1, pal.text);
-                let g2 = p.layout("GIFs funktionieren zurzeit nicht, bitte versuchen Sie es später noch einmal.".into(), FontId::proportional(13.0), pal.text2, grid.width() - 80.0);
+                let g2 = p.layout(crate::ui::widgets::tr("GIFs aren't working right now, please try again later.").into(), FontId::proportional(13.0), pal.text2, grid.width() - 80.0);
                 p.galley(pos2(centre.x - g2.size().x / 2.0, centre.y + 2.0), g2, pal.text2);
             } else if n == 0 && !st.loading {
-                // No results: search_gif.png, "Keine Ergebnisse" (15 px), hint (13 px wx-subheading-text).
+                // No results: search_gif.png, "No results" (15 px), hint (13 px wx-subheading-text).
                 if let Some((id, sz)) = giphy_art("search_gif.png").and_then(|b| self.icons.png(ui, "giphy-empty", b)) {
                     p.image(id, Rect::from_center_size(pos2(centre.x, centre.y - 52.0), Vec2::new(sz[0] as f32, sz[1] as f32) / 2.0), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
                 }
-                let g1 = p.layout_no_wrap("Keine Ergebnisse".into(), FontId::proportional(15.0), pal.text);
+                let g1 = p.layout_no_wrap(crate::ui::widgets::tr("No results").into(), FontId::proportional(15.0), pal.text);
                 p.galley(pos2(centre.x - g1.size().x / 2.0, centre.y + 4.0), g1, pal.text);
-                let g2 = p.layout("Wir konnten hierfür kein GIF finden. Versuchen Sie es mit allgemeineren Schlüsselwörtern erneut.".into(), FontId::proportional(13.0), pal.text2, grid.width() - 80.0);
+                let g2 = p.layout(crate::ui::widgets::tr("We couldn't find a GIF for that. Try again with more general keywords.").into(), FontId::proportional(13.0), pal.text2, grid.width() - 80.0);
                 p.galley(pos2(centre.x - g2.size().x / 2.0, centre.y + 28.0), g2, pal.text2);
             } else {
                 // The scroll area: 12 px from the left, 8 px under the search row and above the footer, the arrow scroll bar at its right edge.
@@ -206,7 +206,7 @@ impl App {
             // Footer: 16 px margins, 75 px spacer, logo centred between two expanding spacers, link at the right; no top line.
             let foot = lay.foot;
             let link_font = FontId::proportional(16.0); // 16 px regular, underlined
-            let lg = p.layout_no_wrap("Bedingungen anzeigen".into(), link_font, pal.link);
+            let lg = p.layout_no_wrap(crate::ui::widgets::tr("View terms").into(), link_font, pal.link);
             let lr = Rect::from_min_size(pos2(foot.right() - FOOT_MARGIN - lg.size().x, foot.center().y - lg.size().y / 2.0), lg.size());
             let (l0, _) = lay.logo_x;
             let logo_cx = (l0 + lr.left()) / 2.0;
@@ -221,7 +221,7 @@ impl App {
             if lresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
             p.hline(lr.x_range(), lr.bottom() - 1.0, Stroke::new(1.0_f32, pal.link));
             p.galley(lr.min, lg, pal.link);
-            if lresp.on_hover_text("Giphy-Geschäftsbedingungen anzeigen").clicked() { open_terms = true; }
+            if lresp.on_hover_text(crate::ui::widgets::tr("View the Giphy terms and conditions")).clicked() { open_terms = true; }
         });
 
         if open_terms { system::open(giphy::TERMS_URL); }

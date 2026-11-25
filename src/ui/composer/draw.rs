@@ -54,7 +54,7 @@ impl App {
             if r.double_clicked() { self.settings["composer_rows"] = json!(0); if self.shot.is_none() { system::save_settings(&self.cfg, &self.settings); } }
         }
 
-        // While editing, the title "Nachricht bearbeiten" sits above the composer in the edit overlay (ui/edit_overlay.rs).
+        // While editing, the title "Edit message" sits above the composer in the edit overlay (ui/edit_overlay.rs).
         let off = if edit { EDIT_HDR } else { 0.0 };
 
         // Toolbar (action bar) and, while editing, Cancel / Update (bar.rs).
@@ -69,8 +69,8 @@ impl App {
         if let Compose::Reply { to, .. } = &self.compose {
             let br = Rect::from_min_size(pos2(crect.left() + 19.0, crect.top() + off + crate::ui::theme::density::m().composer_reply_y), Vec2::new(crect.width() - 38.0, 18.0)); // Standard 40
             let mut bc = ui.new_child(egui::UiBuilder::new().max_rect(br).layout(egui::Layout::left_to_right(egui::Align::Center)));
-            bc.label(RichText::new(format!("Antwort im Thread an {to}")).size(12.5).color(t.link));
-            if bc.small_button("Abbrechen (Esc)").clicked() { self.compose = Compose::New; }
+            bc.label(RichText::new(crate::trq!("Reply in thread to %1", to)).size(12.5).color(t.link));
+            if bc.small_button(format!("{} (Esc)", tr("Cancel"))).clicked() { self.compose = Compose::New; }
         }
 
         // Rich-text toolbar row: [B I U S] [H1 H2 H3] link more | markdown.
@@ -159,7 +159,7 @@ impl App {
         if focused_prev && super::super::attach::paste_key_edge(&ctx) && !ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Paste(_)))) {
             super::super::attach::clipboard_png_async(&ctx, &id); // staged when it arrives (above)
         }
-        if paste_too_long { self.toast("Der Inhalt der Zwischenablage überschreitet die maximale Anzahl an Zeichen für eine einzelne Nachricht.", now); }
+        if paste_too_long { self.toast(tr("The clipboard content exceeds the maximum number of characters for a single message."), now); }
         // Esc priority: emoji / mention popups first, then the GIF picker (it closes itself), then edit / reply.
         let gif_open = super::super::gif_picker::gif_picker_open();
         if want_esc && !self.escape_for_popup(&mut st, em_open, mn_open) && !gif_open { self.composer_escape(&mut st, &id); }
@@ -186,7 +186,7 @@ impl App {
         // The edit box.
         let ph = if space.id == super::super::new_message::DRAFT_ID { crate::trq!("Write a message").into_owned() }
             else if edit { crate::trq!("Edit message to {{0}}", &space.title) } // QObject "Edit message to {{0}}"
-            else { format!("Nachricht an {} schreiben", space.title) };
+            else { crate::trq!("Write a message to {{0}}", &space.title) };
         let labels: Vec<String> = ct::live_mentions(&draft_now, &st.mentions).iter().map(|m| m.label()).collect();
         let mcol = mention_colour(t);
         let txt_col = if light { hex(0x121212) } else { t.text1 };
@@ -368,7 +368,7 @@ impl App {
         self.gif_picker(ui, t, gif_anchor, &id);
         self.gif_stage_chip(ui, t, crect, &id);
         self.upload_strip(ui, t, crect, &id, now); // uploads of this space: progress, cancel, retry
-        self.quote_banner(ui, t, crect, &id); // "Nachricht zitieren" waiting to be sent
+        self.quote_banner(ui, t, crect, &id); // "Quote message" waiting to be sent
 
         // Send pill (bar.rs).
         let now_send = self.composer_send_buttons(ui, t, pr, light, &mut st, &id, &ctx, edit, now);
@@ -399,8 +399,8 @@ impl App {
         if st.legend { self.markdown_legend(&ctx, t, &mut st, now); }
         if st.confirm_all {
             let n = space.participants.len().max(1);
-            let body = format!("Wenn Sie eine Nachricht an @all senden, werden {n} Personen im Bereich @erwähnt."); // pack string
-            match super::super::menu::webex_dialog(&ctx, t, "composer-all", "Alle erwähnen", &body, None, &[super::super::menu::Button::secondary("cancel", "Abbrechen"), super::super::menu::Button::primary("send", "Senden")]).as_deref() {
+            let body = crate::trq!("If you send a message to @All, then {{0}} people in the space will be @mentioned.", n);
+            match super::super::menu::webex_dialog(&ctx, t, "composer-all", tr("Mention everyone"), &body, None, &[super::super::menu::Button::secondary("cancel", tr("Cancel")), super::super::menu::Button::primary("send", tr("Send"))]).as_deref() {
                 Some("send") => { st.confirm_all = false; self.composer_send(&mut st, space, true, now); }
                 Some(_) => st.confirm_all = false,
                 None => {}

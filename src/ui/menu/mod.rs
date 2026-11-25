@@ -18,9 +18,9 @@ pub(crate) struct Item { pub id: String, pub icon: Option<&'static str>, pub lab
     pub avatar: Option<(String, Option<egui::TextureId>)>,
     /// A presence dot instead of an icon.
     pub dot: Option<Color32>,
-    /// The dark rounded fill of a prompt row (e.g. "Legen Sie einen Status fest.").
+    /// The dark rounded fill of a prompt row (e.g. "Set a status").
     pub boxed: bool,
-    /// A second, dimmer line under the label (the avatar menu's "Verfügbarkeit" / "<presence>"); makes the row 48 high.
+    /// A second, dimmer line under the label (the avatar menu's "Availability" / "<presence>"); makes the row 48 high.
     pub sub: Option<String> }
 
 /// The avatar menu's header card: cover banner, big avatar on its lower edge, name and e-mail centred. Drawn edge to edge

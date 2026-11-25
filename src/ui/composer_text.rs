@@ -219,7 +219,7 @@ pub(crate) fn apply_format(text: &str, a: usize, b: usize, f: Format) -> Edit {
         Format::Link => {
             let (ab, bb) = (byte_of(text, a), byte_of(text, b));
             let sel = &text[ab..bb];
-            let label = if sel.is_empty() { "Linktext" } else { sel };
+            let label = if sel.is_empty() { crate::ui::widgets::tr("Link text") } else { sel };
             let out = format!("{}[{}](Link){}", &text[..ab], label, &text[bb..]);
             let start = a + 1 + label.chars().count() + 2;
             (out, start, start + 4)

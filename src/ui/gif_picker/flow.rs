@@ -86,7 +86,7 @@ impl App {
             let xresp = ui.interact(xr, egui::Id::new("gif-stage-x"), Sense::click());
             self.icons.paint(ui, "cancel-bold", Rect::from_center_size(xr.center(), Vec2::splat(12.0)), if xresp.hovered() { t.text1 } else { t.text2 });
             if xresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
-            if xresp.on_hover_text("Gestaffelte Datei entfernen").clicked() { remove = true; } // pack: "Remove staged file"
+            if xresp.on_hover_text(crate::ui::widgets::tr("Remove staged file")).clicked() { remove = true; }
         });
         if remove { st.staged.remove(space); }
         put(st);
@@ -109,7 +109,7 @@ impl App {
         let Some(g) = g else { return false };
         match &self.client {
             Some(c) => c.req(cloud::Req::SendGif { space: space.to_string(), url: g.media_url, title: g.title, width: g.media_w, height: g.media_h }),
-            None => self.toast("GIF senden ist noch nicht verfügbar", now),
+            None => self.toast(crate::ui::widgets::tr("Sending GIFs is not available yet"), now),
         }
         true
     }

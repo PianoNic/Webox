@@ -1,4 +1,4 @@
-//! Darstellungsdichte (Settings > Erscheinungsbild): Standard or Kompakt. Kompakt tightens vertical spacing everywhere and keeps
+//! Display density (Settings > Appearance): Standard or Compact. Compact tightens vertical spacing everywhere and keeps
 //! every font size.
 //!
 //! Every spacing that depends on the density is a field of [`Metrics`]; `STANDARD` and `COMPACT` hold the two sets and the
@@ -34,13 +34,13 @@ pub(crate) struct Metrics {
     pub list_top: f32,
     /// Title row -> the All / Direct / Spaces tab row.
     pub list_title_gap: f32,
-    /// Top of the scrolling list -> the "Empfohlene Nachrichten" entry.
+    /// Top of the scrolling list -> the "Recommended messages" entry.
     pub list_scroll_top: f32,
-    /// The "Empfohlene Nachrichten" entry's height, its disc, and the space under it.
+    /// The "Recommended messages" entry's height, its disc, and the space under it.
     pub recommended_h: f32,
     pub recommended_disc: f32,
     pub recommended_gap: f32,
-    /// Section header row ("Favoriten" / "Andere").
+    /// Section header row ("Favorites" / "Other").
     pub section_h: f32,
     /// Two-line list row: the hover / selection pill, the pitch (pill + 1 pt), the avatar, its left
     /// inset in the pill, and the text's x in the pill (avatar left + avatar + 12).
@@ -68,13 +68,13 @@ pub(crate) struct Metrics {
     pub msg_header_to_body: f32,
     /// Between two attachment blocks of one message.
     pub msg_attach_gap: f32,
-    /// Date separators, "Neue Nachrichten" and info rows: text height + this.
+    /// Date separators, "New messages" and info rows: text height + this.
     pub day_pad: f32,
-    /// The "Gesehen von" row.
+    /// The "Seen by" row.
     pub seen_h: f32,
     /// Under the last list row.
     pub msg_list_bottom: f32,
-    /// Collapsed thread row ("N Antworten" pill), and the space under a thread's end buttons.
+    /// Collapsed thread row ("N replies" pill), and the space under a thread's end buttons.
     pub thread_collapsed_h: f32,
     pub thread_end_bottom: f32,
     // ---- composer (ui/composer)
@@ -245,7 +245,7 @@ mod tests {
             assert!(((m.msg_top_pad + m.msg_header_to_body - m.msg_avatar_top) - (STANDARD.msg_top_pad + STANDARD.msg_header_to_body - STANDARD.msg_avatar_top)).abs() < 1e-4);
             // collapsed thread: 28 pt avatars and pill
             assert!(m.thread_collapsed_h >= 28.0 + 8.0);
-            // "Gesehen von": 24 pt avatars
+            // "Seen by": 24 pt avatars
             assert!(m.seen_h >= 24.0 + 8.0);
             // composer: tool row (28) ends before the reply banner, which ends (18) before the text row
             assert!(m.composer_tools_y + 28.0 <= m.composer_reply_y && m.composer_reply_y + 18.0 <= m.composer_text_top);

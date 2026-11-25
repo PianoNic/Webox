@@ -1,5 +1,6 @@
 //! Images, the lightbox, file chips and link preview cards.
 use super::*;
+use crate::ui::widgets::tr;
 
 impl App {
     /// One image attachment: max 320 wide / 320 high, aspect kept, 8 pt corners.
@@ -26,7 +27,7 @@ impl App {
                 let limit = if self.shot.is_some() { std::env::var("WEBOX_SHOT_IMG_FAIL_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(IMG_FAIL_SECS) } else { IMG_FAIL_SECS };
                 ui.painter().rect_filled(r, IMG_RADIUS, c.tile); // attachment-file-preview-thumbnail-sent-background
                 if now - first > limit {
-                    let g = ui.painter().layout_no_wrap("Vorschau konnte nicht geladen werden".to_string(), FontId::proportional(SECOND), c.body);
+                    let g = ui.painter().layout_no_wrap(tr("Fail to load preview").to_string(), FontId::proportional(SECOND), c.body);
                     let top = r.center().y - (32.0 + 8.0 + g.size().y) / 2.0;
                     self.icons.paint(ui, "warning-regular", Rect::from_center_size(pos2(r.center().x, top + 16.0), Vec2::splat(32.0)), c.body);
                     ui.painter().galley(pos2(r.center().x - g.size().x / 2.0, top + 40.0), g, c.body);
@@ -46,7 +47,7 @@ impl App {
         sz.y
     }
 
-    /// "Bild kopieren" / the viewer's "Kopieren": the picture onto the clipboard (the original file when it has arrived, else the
+    /// "Copy image" / the viewer's "Copy": the picture onto the clipboard (the original file when it has arrived, else the
     /// thumbnail).
     pub(super) fn image_copy(&mut self, ctx: &egui::Context, key: &str) {
         let bytes = self.photos.image_bytes(&format!("full:{key}")).or_else(|| self.photos.image_bytes(key)).map(|b| b.to_vec());
@@ -56,9 +57,9 @@ impl App {
         }
     }
 
-    /// "Speichern unter" for a picture: the original file, named as it was shared ("Bild.<ext>" when it has no name).
+    /// "Save as" for a picture: the original file, named as it was shared ("Image.<ext>" when it has no name).
     pub(super) fn image_save(&mut self, key: &str, a: Option<&Attachment>) {
-        let mut name = a.map(|a| a.name.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| "Bild".into());
+        let mut name = a.map(|a| a.name.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| tr("Image").into());
         if !name.contains('.') { name.push_str(match a.map_or("", |a| a.mime.as_str()) { "image/gif" => ".gif", "image/jpeg" => ".jpg", "image/webp" => ".webp", _ => ".png" }); }
         self.file_save_as(key, &name);
     }
@@ -150,23 +151,23 @@ impl App {
                 rs.on_hover_text(tip).clicked()
             };
             let cell = |k: f32| Rect::from_min_size(pos2(tb.left() + 6.0 + k, tb.top() + 4.0), Vec2::splat(32.0));
-            if btn(self, ui, cell(0.0), "zoom-out-regular", "Verkleinern (-)") { zoom_to(zoom / 1.25, screen.center(), &mut zoom, &mut pan); }
+            if btn(self, ui, cell(0.0), "zoom-out-regular", &format!("{} (-)", tr("Zoom out"))) { zoom_to(zoom / 1.25, screen.center(), &mut zoom, &mut pan); }
             ui.painter().text(pos2(tb.left() + 6.0 + 32.0 + 35.0, tb.center().y), Align2::CENTER_CENTER, format!("{:.0} %", s * 100.0), FontId::proportional(SECOND), Color32::WHITE);
-            if btn(self, ui, cell(32.0 + 70.0), "zoom-in-regular", "Vergrößern (+)") { zoom_to(zoom * 1.25, screen.center(), &mut zoom, &mut pan); }
+            if btn(self, ui, cell(32.0 + 70.0), "zoom-in-regular", &format!("{} (+)", tr("Zoom in"))) { zoom_to(zoom * 1.25, screen.center(), &mut zoom, &mut pan); }
             let at_fit = zoom <= 1.01;
-            if btn(self, ui, cell(32.0 + 70.0 + 36.0), if at_fit { "fit-to-window-expand-regular" } else { "fit-to-window-shrink-regular" }, if at_fit { "Originalgröße (100 %)" } else { "An Fenster anpassen (0)" }) {
+            if btn(self, ui, cell(32.0 + 70.0 + 36.0), if at_fit { "fit-to-window-expand-regular" } else { "fit-to-window-shrink-regular" }, &(if at_fit { format!("{} (100 %)", tr("Actual size")) } else { format!("{} (0)", tr("Fit to window")) })) {
                 zoom_to(if at_fit { (1.0 / fit).max(1.0) } else { 1.0 }, screen.center(), &mut zoom, &mut pan);
             }
-            if btn(self, ui, Rect::from_min_size(pos2(r.right() - 52.0, r.top() + 14.0), Vec2::splat(36.0)), "cancel-regular", "Schließen (Esc)") { want_close = true; }
-            // Plugin hook (GIF-Extras, off by default): one extra button left of "Schließen".
+            if btn(self, ui, Rect::from_min_size(pos2(r.right() - 52.0, r.top() + 14.0), Vec2::splat(36.0)), "cancel-regular", &format!("{} (Esc)", tr("Close"))) { want_close = true; }
+            // Plugin hook (GIF-Extras, off by default): one extra button left of "Close".
             let extra = self.gif_ext_viewer_button(ui, Rect::from_min_size(pos2(r.right() - 96.0, r.top() + 14.0), Vec2::splat(36.0)), att.as_ref());
-            // Speichern unter / Kopieren.
+            // Save as / Copy.
             let bx = r.right() - 96.0 - if extra { 44.0 } else { 0.0 };
-            if btn(self, ui, Rect::from_min_size(pos2(bx, r.top() + 14.0), Vec2::splat(36.0)), "save-regular", "Speichern unter") { lb_act = Some("save"); }
-            if btn(self, ui, Rect::from_min_size(pos2(bx - 44.0, r.top() + 14.0), Vec2::splat(36.0)), "copy-regular", "Kopieren") { lb_act = Some("copy"); }
+            if btn(self, ui, Rect::from_min_size(pos2(bx, r.top() + 14.0), Vec2::splat(36.0)), "save-regular", tr("Save as")) { lb_act = Some("save"); }
+            if btn(self, ui, Rect::from_min_size(pos2(bx - 44.0, r.top() + 14.0), Vec2::splat(36.0)), "copy-regular", tr("Copy")) { lb_act = Some("copy"); }
             if let Some(a) = at {
-                if a > 0 && btn(self, ui, Rect::from_center_size(pos2(r.left() + 36.0, r.center().y), Vec2::splat(36.0)), "arrow-left-regular", "Vorheriges Bild (←)") { nav = Some(a - 1); }
-                if a + 1 < keys.len() && btn(self, ui, Rect::from_center_size(pos2(r.right() - 36.0, r.center().y), Vec2::splat(36.0)), "arrow-right-regular", "Nächstes Bild (→)") { nav = Some(a + 1); }
+                if a > 0 && btn(self, ui, Rect::from_center_size(pos2(r.left() + 36.0, r.center().y), Vec2::splat(36.0)), "arrow-left-regular", &format!("{} (←)", tr("Previous image"))) { nav = Some(a - 1); }
+                if a + 1 < keys.len() && btn(self, ui, Rect::from_center_size(pos2(r.right() - 36.0, r.center().y), Vec2::splat(36.0)), "arrow-right-regular", &format!("{} (→)", tr("Next image"))) { nav = Some(a + 1); }
             }
         });
         ctx.data_mut(|d| d.insert_temp(k_view, (zoom, pan)));
@@ -183,8 +184,8 @@ impl App {
 
     /// File card: 320 x 52 tile (radius 8, border 2), blue 64 pt icon box, bold name, size below.
     /// `key`: the attachment for downloads (None: a file the data layer has no descriptor for; in sample mode a stand-in
-    /// key is used so the actions work offline). Click = "Öffnen" (download, then open), the round button on hover = "Herunterladen"
-    /// (once downloaded "In Ordner anzeigen"), right click = the file menu. While the file goes up (pending
+    /// key is used so the actions work offline). Click = "Open" (download, then open), the round button on hover = "Download"
+    /// (once downloaded "Show in folder"), right click = the file menu. While the file goes up (pending
     /// upload) or comes down, a progress bar runs along the card's bottom and the size line shows the percentage.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn file_chip(&mut self, ui: &mut egui::Ui, _t: &Th, c: &Mc, r: Rect, name: &str, size: u64, salt: (&str, usize), key: Option<&str>) {
@@ -242,7 +243,7 @@ impl App {
             if pct > 0 { p.add(egui::Shape::line(pts, Stroke::new(2.0_f32, hex(0x64B4FA)))); } // spinner-progress-cursor
             p.text(pos2(btn.left() - 6.0, btn.center().y), Align2::RIGHT_CENTER, format!("{pct}%"), FontId::proportional(12.0), fg(0.95));
             let bs = ui.interact(btn, Id::new(("msg-file-btn", salt.0, salt.1, cur_seq(ui.ctx()))), Sense::click());
-            if bs.on_hover_text("Abbrechen").clicked() { act = Some("file-cancel"); }
+            if bs.on_hover_text(tr("Cancel")).clicked() { act = Some("file-cancel"); }
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(80));
         } else {
             // Action button: round secondary S, 28 pt: border button-secondary-border (white 50 %), background transparent /
@@ -252,9 +253,9 @@ impl App {
             let fill = if bs.is_pointer_button_down_on() { 0.2 } else if bs.hovered() { 0.07 } else { 0.0 };
             if fill > 0.0 { p.circle_filled(btn.center(), 14.0, fg(fill)); }
             p.circle_stroke(btn.center(), 13.5, Stroke::new(1.0_f32, fg(0.5)));
-            let (ic, tip, a) = if done { ("open-in-folder_12", "In Ordner anzeigen", "file-folder") }
-                else if failed { (if bs.hovered() { "download_12" } else { "warning_12" }, "Fehlgeschlagen", "file-download") }
-                else { ("download_12", "Herunterladen", "file-download") };
+            let (ic, tip, a) = if done { ("open-in-folder_12", tr("Show in folder"), "file-folder") }
+                else if failed { (if bs.hovered() { "download_12" } else { "warning_12" }, tr("Failed!"), "file-download") }
+                else { ("download_12", tr("Download"), "file-download") };
             self.icons.paint(ui, ic, Rect::from_center_size(btn.center(), Vec2::splat(12.0)), fg(0.95));
             if bs.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             if bs.on_hover_text(tip).clicked() { act = Some(a); }

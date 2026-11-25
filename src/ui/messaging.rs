@@ -102,7 +102,7 @@ impl App {
                 let (r, resp) = ui.allocate_exact_size(Vec2::splat(28.0), Sense::click());
                 ui.painter().circle_filled(r.center(), 14.0, if resp.hovered() { t.white_btn.gamma_multiply(0.85) } else { t.white_btn });
                 self.icons.paint(ui, "plus-regular", Rect::from_center_size(r.center(), Vec2::splat(16.0)), t.white_btn_text);
-                if resp.on_hover_text(crate::shortcuts::native_hint(&format!("{} (Strg+Umschalt+N)", tr("Create a space")))).clicked() { self.new_space = Some(String::new()) }
+                if resp.on_hover_text(crate::shortcuts::native_hint(&format!("{} (Ctrl+Shift+N)", tr("Create a space")))).clicked() { self.new_space = Some(String::new()) }
                 // Filter glyph 10.4 x 8.8 pt centred 65.2 pt and the + centred 24 pt from the card's right edge (41.2 apart; here
                 // 28 / 2 + 5.2 + 8 spacing + 28 / 2), glyph drawn at 16.
                 ui.add_space(5.2);
@@ -114,7 +114,7 @@ impl App {
         });
         {
             let mut items: Vec<super::menu::Entry> = FILTERS.iter().enumerate().map(|(i, (f, name))| super::menu::Item::new(&i.to_string(), tr(name)).checked(self.filter == *f).entry()).collect();
-            items.extend(self.filter_menu_options()); // "Kompakte Ansicht anzeigen" (chrome/compact_list.rs)
+            items.extend(self.filter_menu_options()); // "Show compact view" (chrome/compact_list.rs)
             if let Some(a) = super::menu::webex_menu(ui.ctx(), &mut self.icons, t, "filters", filter_rect, super::menu::Side::Below, super::menu::Align::Right, true, &items) {
                 if a == super::chrome::compact_list::MENU_ID { let on = !self.compact_view(); self.set_compact_view(on); }
                 else if let Some((f, _)) = a.parse::<usize>().ok().and_then(|i| FILTERS.get(i)) { self.filter = *f; }
@@ -142,7 +142,7 @@ impl App {
             ui.set_max_width(ui.available_width() - crate::ui::autoscroll::BAR_W);
             ui.spacing_mut().item_spacing = Vec2::ZERO;
             ui.add_space(dm.list_scroll_top);
-            // "Empfohlene Nachrichten" entry at the top of the list: mint disc with a blue bolt (Settings > Oberfläche anpassen can hide it).
+            // "Recommended messages" entry at the top of the list: mint disc with a blue bolt (Settings > Customize the interface can hide it).
             if self.ui_shown(&super::customize::LIST, "recommended") {
                 let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), dm.recommended_h), Sense::hover());
                 let r = Rect::from_min_max(full.min + Vec2::new(12.0, 0.0), full.max - Vec2::new(4.0, 0.0));
@@ -161,7 +161,7 @@ impl App {
             if !fav.is_empty() && self.section(ui, t, "fav", "Favorites", true) { ui.add_space(3.0); for &i in &fav { self.space_row_at(ui, t, i) } }
             if !other.is_empty() && (fav.is_empty() || self.section(ui, t, "other", "Other", false)) {
                 ui.add_space(3.0);
-                if super::new_message::is_open(ui.ctx()) { self.new_message_row(ui, t); } // the temporary "Neue Nachricht" row
+                if super::new_message::is_open(ui.ctx()) { self.new_message_row(ui, t); } // the temporary "New message" row
                 for &i in &other { self.space_row_at(ui, t, i) }
             }
         });

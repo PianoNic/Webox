@@ -24,7 +24,7 @@ pub(super) fn sample_page(space: &str, page: u32, size: u32, me: &Person) -> Vec
             let group = vec![Person { name: "Lena Brandt".into(), email: "lena@example.com".into(), ..Default::default() }, Person { name: "Tom Berger".into(), email: "tom@example.com".into(), ..Default::default() }];
             return Message { id: format!("{space}-old{page}-{i}"), notice: crate::trq!("{{0}} people joined this space.", 2), group, date, time, ..Default::default() };
         }
-        let text = if i % 4 == 1 { format!("Ältere Nachricht {}-{}\nmit einer zweiten Zeile", page + 1, i + 1) } else { format!("Ältere Nachricht {}-{}", page + 1, i + 1) };
+        let text = if i % 4 == 1 { format!("Older message {}-{}\nwith a second line", page + 1, i + 1) } else { format!("Older message {}-{}", page + 1, i + 1) };
         Message { id: format!("{space}-old{page}-{i}"), author: if mine { me.name.clone() } else { "Mara Lind".into() }, email: if mine { me.email.clone() } else { "mara@example.com".into() },
             text, time, mine, date, ..Default::default() }
     }).collect()

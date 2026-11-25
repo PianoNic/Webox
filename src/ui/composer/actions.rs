@@ -2,7 +2,7 @@
 use super::*;
 
 impl App {
-    pub(super) fn emoji_autocomplete_on(&self) -> bool { self.settings["emoji_autocomplete"].as_bool().unwrap_or(true) } // "Emoji-Autovervollständigung verwenden", default on
+    pub(super) fn emoji_autocomplete_on(&self) -> bool { self.settings["emoji_autocomplete"].as_bool().unwrap_or(true) } // "Use emoji autocomplete", default on
     pub(super) fn emoticons_on(&self) -> bool { self.settings["emoticons_to_emojis"].as_bool().unwrap_or(false) } // feature flag desktop-emoticons-to-emojis
 
     /// Height of the composer card (it grows with the text rows, the edit header, the chips and the rich-text toolbar).
@@ -63,12 +63,12 @@ impl App {
         list.insert(at, m);
     }
 
-    /// Enter / the send pill / "Aktualisieren": emoticons first, then the @all confirmation, then the message.
+    /// Enter / the send pill / "Update": emoticons first, then the @all confirmation, then the message.
     pub(super) fn composer_send(&mut self, st: &mut St, space: &Space, confirmed: bool, now: f64) {
         let id = space.id.clone();
         let mut text = self.drafts.get(&id).cloned().unwrap_or_default();
         if self.emoticons_on() { text = ct::parse_emoticons(&text); }
-        // The "Neue Nachricht" pane sends through ui/new_message/ (opens / creates the direct space).
+        // The "New message" pane sends through ui/new_message/ (opens / creates the direct space).
         if id == super::super::new_message::DRAFT_ID {
             if !text.trim().is_empty() { self.drafts.insert(super::super::new_message::SEND_KEY.into(), text); }
             st.mentions.clear(); st.emoji_q = None; st.ment_q = None;
@@ -131,7 +131,7 @@ impl App {
         st.md = !st.md;
         self.settings["markdown_mode"] = json!(st.md);
         if self.shot.is_none() { system::save_settings(&self.cfg, &self.settings); }
-        self.toast(if st.md { "Markdown aktiviert" } else { "Markdown deaktiviert" }, now);
+        self.toast(if st.md { tr("Markdown enabled") } else { tr("Markdown disabled") }, now);
     }
 
     /// Esc closes an open popup first; returns true when it did.
@@ -147,21 +147,22 @@ impl App {
         let ink = if light { hex(0x121212) } else { hex(0xF3F3F3) };
         let mut x = row.left();
         let cy = row.center().y;
-        let groups: [&[(&'static str, &str, Format)]; 2] = [
-            &[("bold-regular", "Fett (Strg+B)", Format::Bold), ("italic-regular", "Kursiv (Strg+I)", Format::Italic), ("underline-bold", "Unterstrichen (Strg+U)", Format::Underline), ("strikethrough-bold", "Durchgestrichen (Alt+K)", Format::Strike)],
-            &[("heading-one-regular", "Überschrift 1 (Alt+Umschalt+1)", Format::Heading(1)), ("heading-two-regular", "Überschrift 2 (Alt+Umschalt+2)", Format::Heading(2)), ("heading-three-regular", "Überschrift 3 (Alt+Umschalt+3)", Format::Heading(3))],
+        // (icon, pack label, shortcut, format); the tooltip is "Label (shortcut)".
+        let groups: [&[(&'static str, &str, &str, Format)]; 2] = [
+            &[("bold-regular", "Bold", "Ctrl+B", Format::Bold), ("italic-regular", "Italic", "Ctrl+I", Format::Italic), ("underline-bold", "Underline", "Ctrl+U", Format::Underline), ("strikethrough-bold", "Strikethrough", "Alt+K", Format::Strike)],
+            &[("heading-one-regular", "Heading 1", "Alt+Shift+1", Format::Heading(1)), ("heading-two-regular", "Heading 2", "Alt+Shift+2", Format::Heading(2)), ("heading-three-regular", "Heading 3", "Alt+Shift+3", Format::Heading(3))],
         ];
         let mut pending: Option<Format> = None;
         for g in groups {
             let w = g.len() as f32 * 24.0 + 2.0;
             let pill = Rect::from_min_size(pos2(x, cy - 13.0), Vec2::new(w, 26.0));
             ui.painter().rect_stroke(pill, 10.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
-            for (i, (icon, tip, f)) in g.iter().enumerate() {
+            for (i, (icon, label, keys, f)) in g.iter().enumerate() {
                 let r = Rect::from_min_size(pos2(pill.left() + 1.0 + i as f32 * 24.0, cy - 12.0), Vec2::splat(24.0));
                 let resp = ui.interact(r, ui.id().with(("rich", *icon)), Sense::click());
                 if resp.hovered() { ui.painter().rect_filled(r.shrink(1.0), 8.0, t.hover); }
                 self.icons.paint(ui, icon, Rect::from_center_size(r.center(), Vec2::splat(16.0)), ink);
-                if resp.on_hover_text(crate::shortcuts::native_hint(tip)).clicked() { pending = Some(*f); }
+                if resp.on_hover_text(crate::shortcuts::native_hint(&format!("{} ({keys})", tr(label)))).clicked() { pending = Some(*f); }
             }
             x += w + 5.0;
         }
@@ -173,19 +174,19 @@ impl App {
             *x += size + 5.0;
             resp.on_hover_text(crate::shortcuts::native_hint(tip))
         };
-        if single(self, ui, &mut x, "link-regular", "Link (Strg+K)", 24.0).clicked() { pending = Some(Format::Link); }
-        let more = single(self, ui, &mut x, "more-regular", "Weitere Formatierungsoptionen", 28.0);
+        if single(self, ui, &mut x, "link-regular", &format!("{} (Ctrl+K)", tr("Link")), 24.0).clicked() { pending = Some(Format::Link); }
+        let more = single(self, ui, &mut x, "more-regular", tr("More formatting options"), 28.0);
         if more.clicked() { super::super::menu::menu_toggle(ui.ctx(), "composer-more"); }
         x += 5.0;
         ui.painter().vline(x, (cy - 11.0)..=(cy + 11.0), Stroke::new(1.0_f32, border)); // 1 x 22 separator, 5 / 6 px spacers
         x += 6.0;
-        if single(self, ui, &mut x, "markdown_16_em", if st.md { "Markdown deaktivieren (Alt+Umschalt+M)" } else { "Markdown einschalten (Alt+Umschalt+M)" }, 28.0).clicked() { st.legend = true; st.legend_anchor = Some(Rect::from_min_size(pos2(x - 33.0, cy - 14.0), Vec2::splat(28.0))); }
-        // "Weitere" menu: Webox's own wording.
+        if single(self, ui, &mut x, "markdown_16_em", &format!("{} (Alt+Shift+M)", if st.md { tr("Turn off Markdown") } else { tr("Turn on Markdown") }), 28.0).clicked() { st.legend = true; st.legend_anchor = Some(Rect::from_min_size(pos2(x - 33.0, cy - 14.0), Vec2::splat(28.0))); }
+        // "More" menu: labels from the pack where it has them.
         let items: Vec<super::super::menu::Entry> = vec![
-            super::super::menu::Item::new("sub", "Tiefgestellt").entry(), super::super::menu::Item::new("sup", "Hochgestellt").entry(), super::super::menu::Entry::Sep,
-            super::super::menu::Item::new("code", "Inline-Code").entry(), super::super::menu::Entry::Sep,
-            super::super::menu::Item::new("bullet", "Aufzählung").entry(), super::super::menu::Item::new("num", "Nummerierte Liste").entry(), super::super::menu::Entry::Sep,
-            super::super::menu::Item::new("dedent", "Einzug verkleinern").entry(), super::super::menu::Item::new("indent", "Einzug vergrößern").entry(),
+            super::super::menu::Item::new("sub", tr("Subscript")).entry(), super::super::menu::Item::new("sup", tr("Superscript")).entry(), super::super::menu::Entry::Sep,
+            super::super::menu::Item::new("code", tr("Inline code")).entry(), super::super::menu::Entry::Sep,
+            super::super::menu::Item::new("bullet", tr("Bulleted list")).entry(), super::super::menu::Item::new("num", tr("Numbered list")).entry(), super::super::menu::Entry::Sep,
+            super::super::menu::Item::new("dedent", tr("Decrease indent")).entry(), super::super::menu::Item::new("indent", tr("Increase indent")).entry(),
         ];
         if let Some(a) = super::super::menu::webex_menu(ui.ctx(), &mut self.icons, t, "composer-more", more.rect, super::super::menu::Side::Above, super::super::menu::Align::Left, true, &items) {
             pending = Some(match a.as_str() { "sub" => Format::Sub, "sup" => Format::Sup, "code" => Format::InlineCode, "bullet" => Format::BulletList, "num" => Format::NumberList, "dedent" => Format::Dedent, _ => Format::Indent });
@@ -194,17 +195,17 @@ impl App {
     }
 
     /// Markdown legend: 280 px wide popup above the M button; title, subtitle, divider, syntax list (scrolls above 200 px),
-    /// divider, "Markdown" checkbox with the contextual warning. German strings from the language pack.
+    /// divider, "Markdown" checkbox with the contextual warning. Headers and texts from the language pack (context MeetingChatMarkdownLegend).
     pub(super) fn markdown_legend(&mut self, ctx: &egui::Context, t: &Th, st: &mut St, now: f64) {
         let light = super::super::menu::light(t);
         let (bg, border) = if light { (Color32::WHITE, alpha(Color32::BLACK, 0.2)) } else { (hex(0x121212), alpha(Color32::WHITE, 0.15)) };
         let div = if light { hex(0xEDEDED) } else { hex(0x3B3B3B) }; // wx-default-border
         // (kind, text): h = header, b = bold item, i = italic item, n = item, x = example header, e = example item, s = 4 px separator.
-        let data: [(char, &str); 29] = [('h', "Schriftart"), ('b', "**Fett**"), ('i', "_Kursiv_"), ('n', "> Zitat"), ('s', ""),
-            ('h', "Listen"), ('n', "1. Erster Punkt"), ('n', "2. Zweiter Punkt"), ('n', "3. Dritter Punkt"), ('n', "* Aufzählungspunkt 1"), ('n', "* Aufzählungspunkt 2"), ('s', ""),
-            ('h', "Überschriften"), ('n', "# Überschrift 1"), ('n', "## Überschrift 2"), ('n', "### Überschrift 3"), ('n', "--- Horizontal line"), ('s', ""),
-            ('h', "Links"), ('n', "[Linktext](Link)"), ('x', "Beispiel"), ('e', "[Cisco](www.cisco.com)"), ('s', ""),
-            ('h', "Code"), ('n', "``` Sprache (optional)\nCODEBLOCK\n```"), ('x', "Beispiel"), ('e', "``` HTML\n<h1>Hallo Welt! </h1>\n```"), ('n', "\"Nicht formatierter Text\""), ('s', "")];
+        let data: [(char, &str); 29] = [('h', "Style"), ('b', "**Bold**"), ('i', "_Italic_"), ('n', "> Quote"), ('s', ""),
+            ('h', "Lists"), ('n', "1. First item"), ('n', "2. Second item"), ('n', "3. Third item"), ('n', "* Bullet item 1"), ('n', "* Bullet item 2"), ('s', ""),
+            ('h', "Headings"), ('n', "# Heading 1"), ('n', "## Heading 2"), ('n', "### Heading 3"), ('n', "--- Horizontal line"), ('s', ""),
+            ('h', "Links"), ('n', "[Link text](Link)"), ('x', "Example"), ('e', "[Cisco](www.cisco.com)"), ('s', ""),
+            ('h', "Code"), ('n', "``` Language (optional)\nCODEBLOCK\n```"), ('x', "Example"), ('e', "``` HTML\n<h1>Hello world! </h1>\n```"), ('n', "\"Unformatted text\""), ('s', "")];
         let anchor = st.legend_anchor.unwrap_or(Rect::NOTHING);
         let mut inside = Rect::NOTHING;
         let area = egui::Area::new(egui::Id::new("md-legend")).fixed_pos(pos2(anchor.left().max(8.0), anchor.top() - 8.0)).pivot(egui::Align2::LEFT_BOTTOM).order(egui::Order::Foreground).show(ctx, |ui| {
@@ -216,14 +217,15 @@ impl App {
                     ui.horizontal(|ui| { ui.add_space(16.0); ui.scope(|ui| { ui.set_max_width(248.0); ui.add(egui::Label::new(RichText::new(text).font(font).color(t.text1)).wrap()); }); });
                     ui.add_space(bottom);
                 };
-                wrap(ui, "Markdown-Formate", semibold(16.0), 12.0, 0.0);
-                wrap(ui, "Sonderzeichen um den Text hinzufügen, um eine Formatierung anzuwenden", FontId::proportional(14.0), 4.0, 8.0);
+                wrap(ui, tr("Markdown Formats"), semibold(16.0), 12.0, 0.0);
+                wrap(ui, tr("Add special characters around your text to apply formatting"), FontId::proportional(14.0), 4.0, 8.0);
                 ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top() + 0.5, Stroke::new(1.0_f32, div));
                 ui.add_space(1.0);
                 crate::ui::widgets::vscroll().id_salt("md-legend-scroll").max_height(200.0).auto_shrink([false, true]).show(ui, |ui| {
                     ui.spacing_mut().item_spacing = Vec2::ZERO;
                     for (k, text) in data {
                         if k == 's' { ui.add_space(4.0); continue; }
+                        let text = tr(text);
                         let lines = text.lines().count().max(1) as f32;
                         let h = (lines * 17.0 + 10.0).max(24.0);
                         let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), h), Sense::hover());
@@ -247,7 +249,7 @@ impl App {
                     if ui.checkbox(&mut md, RichText::new("Markdown").strong().size(14.0).color(t.text1)).changed() { self.toggle_markdown(st, now); }
                 });
                 ui.add_space(2.0);
-                let warn = if st.md { "Durch die Markdown-Deaktivierung werden Markdown-Formatierungen deaktiviert." } else { "Durch die Markdown-Aktivierung werden vorhandene Formatierungen entfernt." };
+                let warn = if st.md { tr("Disabling markdown will turn off markdown formatting.") } else { tr("Enabling markdown will remove existing formatting.") };
                 ui.horizontal(|ui| { ui.add_space(36.0); ui.scope(|ui| { ui.set_max_width(232.0); ui.add(egui::Label::new(RichText::new(warn).size(14.0).color(t.text1)).wrap()); }); });
                 ui.add_space(10.0);
                 inside = ui.min_rect();
