@@ -21,9 +21,13 @@ Works on NixOS and on any Linux distribution with Nix. On NixOS, see [NixOS modu
 4. Run `webox`. After your next login, **Webox** is also in your application menu.
 
 > [!NOTE]
-> The first install builds Webox from source. That takes 5–20 minutes and about 3 GB in `/nix/store`.
+> The first install builds Webox from source. That takes 5–20 minutes and about 3 GB in `/nix/store`. Updates
+> usually rebuild only Webox itself, which takes a few minutes.
 
 Just want to try it without installing? `nix run github:PianoNic/Webox`
+
+If Webox is already running, starting it again only brings its window to the front. Quit it from the tray icon first
+to try another version.
 
 ---
 
@@ -179,16 +183,29 @@ Then set `programs.webox.enable = true;` for that user.
 Same names as the NixOS module: `programs.webox.enable`, `programs.webox.autostart`, `programs.webox.package`.
 
 - `autostart` writes `~/.config/autostart/webox.desktop`. While Home Manager owns that file, the
-  "Start Webox when my computer starts" switch in Webox's settings can't change it.
+  "Webox zusammen mit meinem Computer starten" switch in Webox's settings can't change it.
 - `package` defaults to `webox-nixos` when Home Manager runs as a NixOS module, otherwise to `default`.
 
 </details>
 
 ### Start at login
 
-Tick **Start Webox when my computer starts** in Webox's settings (General), or use the `autostart` option above.
+Tick **Webox zusammen mit meinem Computer starten** (start Webox with my computer) under *Allgemein → Anmelden* in
+Webox's settings, or use the `autostart` option above. The switch writes your profile's path (or `webox` from `PATH`),
+not a `/nix/store` path, so it keeps working after updates.
+
+<details>
+<summary><b>Open meeting links from the browser</b></summary>
+
+Under *Allgemein → Meetings aus dem Browser*, Webox can take over meeting links from Chrome, Chromium, Edge and Firefox.
+The browser needs the Webex extension. While the switch is on, Webox registers itself again at every start, so the
+registration survives updates and garbage collection.
+
+</details>
 
 ### Update
+
+Started from Nix, Webox doesn't check for updates automatically. Nix decides the version:
 
 - `nix profile`: `nix profile upgrade Webox` (or `nix profile upgrade --all`)
 - NixOS: `cd /etc/nixos && sudo nix flake update webox && sudo nixos-rebuild switch --flake .#MYHOST`
@@ -271,6 +288,29 @@ WAYLAND_DISPLAY= webox
 
 On Wayland, notifications are normal desktop notifications, and global shortcuts need the GlobalShortcuts portal
 (KDE Plasma 6, GNOME 48+). The desktop asks you to confirm once.
+
+</details>
+
+<details>
+<summary><b>A video doesn't play</b></summary>
+
+The package has the GStreamer plugins base, good and bad: MP4, WebM, MKV, VP8, VP9, AV1, H.264 (openh264) and AAC.
+For HEVC and older codecs, build it with gst-libav. This adds FFmpeg, so it's off by default:
+
+```nix
+programs.webox.package = webox.packages.x86_64-linux.webox-nixos.override { withLibav = true; };
+# without the NixOS module:
+webox.packages.x86_64-linux.default.override { withLibav = true; }
+```
+
+</details>
+
+<details>
+<summary><b>Screen sharing doesn't work</b></summary>
+
+The package has PipeWire capture and an H.264 encoder (openh264). Picking a screen goes through `xdg-desktop-portal`,
+which needs a backend with ScreenCast (GNOME, KDE, wlroots). On X11 without a portal, Webox lists screens and windows
+itself. See [LINUX.md](LINUX.md) for the details.
 
 </details>
 
