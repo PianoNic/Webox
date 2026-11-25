@@ -58,7 +58,7 @@ impl App {
             Kind::Cmd => self.run_cmd(c.id, ctx),
             Kind::Composer => self.act(Act::Composer(c.id), ctx),
             Kind::Native => {}
-            Kind::Stub => self.toast(format!("{}: nicht verfügbar", c.label), now),
+            Kind::Stub => self.toast(format!("{}: {}", c.label, crate::trq!("unavailable")), now),
         }
     }
 
@@ -136,7 +136,7 @@ impl App {
             let (Some(k), true) = (r.key, r.global) else { continue };
             // Only commands Webox implements are worth taking a key away from the whole system for; call commands only while a call is on screen.
             if !matches!(c.kind, Kind::Run(_) | Kind::Cmd) || (c.needs_call() && !call_on) { continue; }
-            // Strg+Umschalt+Z (global by default, like the official client) is taken from other apps only while we share
+            // Ctrl+Shift+Z (global by default, like the official client) is taken from other apps only while we share
             if cfg!(windows) && c.id == "StopSharing" && !self.call.sharing { continue; }
             want.push((i, k));
         }
