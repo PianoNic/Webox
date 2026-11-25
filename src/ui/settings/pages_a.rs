@@ -336,7 +336,7 @@ fn theme_grid(ui: &mut egui::Ui, t: &Th, cur: ThemeId, enabled: bool, room: f32)
             paint_preview(p, Rect::from_min_size(pos2(tile.center().x - pw / 2.0, tile.top() + 6.0), Vec2::new(pw, PREVIEW_H)), id, a);
             // Name: label-primary-text, 12 px, centred in the 20 px left under the preview, elided.
             let col = t.tk("label-primary-text").gamma_multiply(a);
-            let mut job = egui::text::LayoutJob::simple_singleline(tr(id.label()).to_string(), FontId::proportional(kit::SECOND), col);
+            let mut job = egui::text::LayoutJob::simple_singleline(id.label(), FontId::proportional(kit::SECOND), col);
             job.wrap = egui::text::TextWrapping::truncate_at_width(TW - 8.0);
             let g = p.layout_job(job);
             p.galley(pos2(tile.center().x, tile.bottom() - 16.0) - g.size() / 2.0, g, col);
