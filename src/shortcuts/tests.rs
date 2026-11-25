@@ -73,7 +73,7 @@ fn registry_is_the_json_with_unique_commands_and_labels() {
     assert_eq!(ids.len(), n, "duplicate command ids");
     for c in &r.cmds {
         assert!(table::spec(c.id).is_some(), "{} has no table entry", c.id);
-        assert!(!c.label.is_empty() && c.label != c.id, "{} has no label", c.id);
+        assert!(!c.label.is_empty(), "{} has no label", c.id); // the label is the id only without a table entry (checked above); "Search" is both
         assert_eq!(r.index(c.id).map(|i| r.cmds[i].id), Some(c.id));
     }
     let mut labels: Vec<_> = r.cmds.iter().map(|c| c.label).collect();
