@@ -13,7 +13,14 @@ impl eframe::App for App {
 
     // --screenshot only: scripted pointer / wheel events (ui/shot_input.rs).
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
-        if self.shot.is_some() { super::shot_input::inject(self.frames + 1, raw); }
+        if self.shot.is_some() {
+            // Only scripted input: the real pointer (on X11 one pointer for every window of a parallel screenshot run) and
+            // keys would hover or press whatever lies under them, so the picture would depend on where the mouse rests.
+            raw.events.retain(|e| matches!(e, egui::Event::Screenshot { .. } | egui::Event::WindowFocused(_)));
+            raw.hovered_files.clear();
+            raw.dropped_files.clear();
+            super::shot_input::inject(self.frames + 1, raw);
+        }
         super::autoscroll::begin_frame(ctx, raw); // middle-click autoscroll: ends on Esc / click, frame time
         #[cfg(target_os = "macos")]
         crate::platform::macos::appkit::inject(raw); // Edit menu picked with the mouse (copy, paste, undo, ...)
@@ -108,8 +115,11 @@ impl eframe::App for App {
         let t = self.apply_theme(ctx);
         // Every blink of the text cursor redraws the whole window (egui has no partial redraws): it blinks while you work and
         // stays on, without redraws, from 10 s after the last key press or mouse move, so a window left open is really idle.
-        let blink = now - self.last_input < CURSOR_BLINK_SECS;
+        let blink = self.shot.is_none() && now - self.last_input < CURSOR_BLINK_SECS;
         if ctx.style().visuals.text_cursor.blink != blink { ctx.style_mut(|s| s.visuals.text_cursor.blink = blink); }
+        // Screenshots: no text cursor. egui draws it only while the window has the OS focus, and parallel screenshot runs
+        // (scripts/parity.ps1) take the focus from each other, so a picture must not depend on it.
+        if self.shot.is_some() && ctx.style().visuals.text_cursor.stroke.width != 0.0 { ctx.style_mut(|s| s.visuals.text_cursor.stroke.width = 0.0); }
         if blink { ctx.request_repaint_after(std::time::Duration::from_secs_f64(CURSOR_BLINK_SECS - (now - self.last_input) + 0.01)); }
         self.shortcuts_frame(ctx); // registry dispatch, global hotkeys
         self.type_focus_frame(ctx); // typing with nothing focused goes to the composer (ui/type_focus.rs)
