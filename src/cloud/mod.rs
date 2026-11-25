@@ -36,7 +36,7 @@ mod polls; // periodic refreshes (running / upcoming meetings)
 mod files; // uploads (share), downloads
 pub use files::SendFiles;
 mod msg_ops;
-pub use msg_ops::quote_preview_html;
+pub use msg_ops::{quote_preview_html, shared_names, Shared};
 pub mod meetcall;
 pub mod spaces_ext; // read state, notifications, moderators, teams (cloud/spaces_ext/)
 pub use activities::REACTIONS;
@@ -225,7 +225,9 @@ pub enum Req {
     /// "Als ungelesen markieren" from a message (verb "unacknowledge"). WRITE.
     MarkUnread { space: String, msg: String },
     /// A message that quotes another one (`<blockquote class='messageQuote'>`), new or as a thread reply (`parent`). WRITE.
-    PostQuote { space: String, text: String, markdown: bool, mentions: Vec<crate::richtext::MentionRef>, quoted_html: String, quoted_text: String, author: String, author_email: String, parent: Option<String> },
+    PostQuote { space: String, text: String, markdown: bool, mentions: Vec<crate::richtext::MentionRef>, quoted_html: String, quoted_text: String,
+        /// The file names the quoted message shared (its summary line, `Shared`).
+        quoted_files: Vec<String>, author: String, author_email: String, parent: Option<String> },
     // cloud/meetcall.rs
     /// Read the call history (janus userSessions).
     CallHistory,

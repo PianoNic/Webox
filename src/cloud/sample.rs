@@ -122,7 +122,13 @@ pub fn sample_messages(room: &str) -> Vec<Message> {
             vec![m("0", "Jonas Weber", "jonas@example.com", "perfekt", "15:12"), weekly,
                 m("2", me.0, me.1, "oh", "15:23"), m("3", me.0, me.1, "hahaha", "15:23"),
                 m("4", me.0, me.1, "Kaffee? Ich gehe sonst schon mal vor", "15:52"), notice("9", "Jonas Weber war nicht erreichbar.", "15:55"), shot,
-                m("7", me.0, me.1, "lol", "16:09"), m("8", me.0, me.1, "noch nicht ganz fertig", "16:09")]
+                m("7", me.0, me.1, "lol", "16:09"), m("8", me.0, me.1, "noch nicht ganz fertig", "16:09"),
+                // Quotes of shared files as the official client sends them ("Shared a file: <name>"): my picture (a thumbnail of
+                // the loaded original) and a file that isn't loaded here (the summary in German).
+                { let mut x = m("10", "Jonas Weber", "jonas@example.com", "Was ist das für ein Fenster?", "16:12");
+                    x.html = format!("<blockquote class='messageQuote'>{}<br/>Shared a file: screenshot.png</blockquote><p>Was ist das für ein Fenster?</p>", me.0); x },
+                { let mut x = m("11", "Jonas Weber", "jonas@example.com", "Und das hier?", "16:13");
+                    x.html = "<blockquote class='messageQuote'>Jonas Weber<br/>Shared a file: Protokoll.pdf<br/>Das Protokoll von gestern</blockquote><p>Und das hier?</p>".into(); x }]
         }
         // A portrait screenshot taller than the message area, then several of my own messages in a row.
         "s3" => {

@@ -42,14 +42,82 @@ pub(crate) fn parse_flags(v: &Value) -> Vec<(String, String, String)> {
 /// The activity of "Als ungelesen markieren".
 pub(crate) fn unread_body(msg: &str) -> Value { json!({"verb": "unacknowledge", "object": {"id": msg, "objectType": "activity"}}) }
 
-/// The HTML of a message with a quote: `<blockquote class='messageQuote'>` + author (person mention when the uuid is known) +
-/// `<br/>` + the quoted message's HTML (or its escaped text) + `</blockquote>` + the new text's HTML.
-pub(crate) fn quote_html(author: &str, author_uuid: Option<&str>, quoted_html: &str, quoted_text: &str, new_html: &str) -> String {
+/// What a quoted message shared, as the official client words it in the quote (MessageStringFormatter, sent in English
+/// whatever the UI language, so every client reads the same text): one file "Shared a file: {{0}}", a snapshot
+/// "Shared a snapshot: {{0}}", several files "Shared {{0}} files", recordings / meeting recaps "Shared a recording: {{0}}" /
+/// "Shared meeting recap: {{0}}". There's no thumbnail and no activity id in the quote: the reader finds the original by
+/// author and file name.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Shared { File(String), Snapshot(String), Files(u32), Recording(String), Recap(String) }
+
+impl Shared {
+    /// The summary line as it is sent.
+    pub fn line(&self) -> String {
+        match self {
+            Shared::File(n) => format!("Shared a file: {n}"),
+            Shared::Snapshot(n) => format!("Shared a snapshot: {n}"),
+            Shared::Files(k) => format!("Shared {k} files"),
+            Shared::Recording(n) => format!("Shared a recording: {n}"),
+            Shared::Recap(n) => format!("Shared meeting recap: {n}"),
+        }
+    }
+    /// The same line in the UI's words.
+    pub fn label(&self) -> String {
+        match self {
+            Shared::File(n) => format!("Datei geteilt: {n}"),
+            Shared::Snapshot(n) => format!("Schnappschuss geteilt: {n}"),
+            Shared::Files(k) => format!("{k} Dateien geteilt"),
+            Shared::Recording(n) => format!("Aufzeichnung geteilt: {n}"),
+            Shared::Recap(n) => format!("Besprechungszusammenfassung geteilt: {n}"),
+        }
+    }
+    /// The file name it names (none for "Shared N files").
+    pub fn name(&self) -> Option<&str> {
+        match self { Shared::File(n) | Shared::Snapshot(n) | Shared::Recording(n) | Shared::Recap(n) => Some(n), Shared::Files(_) => None }
+    }
+    /// The summary of a message sharing these files (names in share order): none, one file, or a count.
+    pub fn of(names: &[String]) -> Option<Shared> {
+        match names { [] => None, [one] => Some(Shared::File(one.clone())), more => Some(Shared::Files(more.len() as u32)) }
+    }
+    /// A summary line (whitespace already collapsed) back into what it says; `None` for any other text.
+    pub fn parse(line: &str) -> Option<Shared> {
+        let l = line.trim();
+        let named = |p: &str| l.strip_prefix(p).map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+        if let Some(n) = named("Shared a file:") { return Some(Shared::File(n)); }
+        if let Some(n) = named("Shared a snapshot:") { return Some(Shared::Snapshot(n)); }
+        if let Some(n) = named("Shared a recording:") { return Some(Shared::Recording(n)); }
+        if let Some(n) = named("Shared meeting recap:") { return Some(Shared::Recap(n)); }
+        let k = l.strip_prefix("Shared ")?.strip_suffix(" files")?.trim().parse::<u32>().ok()?;
+        (k > 1).then_some(Shared::Files(k))
+    }
+}
+
+/// The file names a message shared, in order: its pictures, then its other files (the "📎 name" lines of its text).
+pub fn shared_names(m: &Message) -> Vec<String> {
+    let clips = m.text.lines().filter_map(|l| l.trim_start().strip_prefix('📎')).map(|n| n.trim().to_string());
+    m.images.iter().map(|a| a.name.trim().to_string()).chain(clips).filter(|n| !n.is_empty()).collect()
+}
+
+/// A message's text without its "📎 name" file lines.
+fn without_clips(text: &str) -> String {
+    text.lines().filter(|l| !l.trim_start().starts_with('📎')).collect::<Vec<_>>().join("\n").trim().to_string()
+}
+
+/// The HTML of a message with a quote, the official client's shape: `<blockquote class='messageQuote'>` + author (person
+/// mention when the uuid is known) + `<br/>` + the summary of what the quoted message shared (`Shared`, when it shared files)
+/// + `<br/>` + the quoted message's HTML (or its escaped text without the file lines) when it has text + `</blockquote>` +
+/// the new text's HTML.
+pub(crate) fn quote_html(author: &str, author_uuid: Option<&str>, quoted_html: &str, quoted_text: &str, shared: &[String], new_html: &str) -> String {
     let who = match author_uuid {
         Some(u) if !u.is_empty() => format!("<spark-mention data-object-type=\"person\" data-object-id=\"{}\">{}</spark-mention>", esc(u).replace('"', "&quot;"), esc(author)),
         _ => esc(author),
     };
-    let body = if quoted_html.trim().is_empty() { esc(quoted_text).replace('\n', "<br/>") } else { quoted_html.to_string() };
+    let text = if quoted_html.trim().is_empty() { esc(&without_clips(quoted_text)).replace('\n', "<br/>") } else { quoted_html.to_string() };
+    let body = match (Shared::of(shared).map(|s| esc(&s.line())), text.trim().is_empty()) {
+        (Some(s), true) => s,
+        (Some(s), false) => format!("{s}<br/>{text}"),
+        (None, _) => text,
+    };
     format!("<blockquote class='messageQuote'>{who}<br/>{body}</blockquote>{new_html}")
 }
 
@@ -62,8 +130,8 @@ pub(crate) fn text_html(r: &crate::richtext::Rendered, typed: &str) -> String {
 }
 
 /// The same HTML for the offline sample (no uuid: the author stays plain text).
-pub fn quote_preview_html(author: &str, quoted_html: &str, quoted_text: &str, r: &crate::richtext::Rendered, typed: &str) -> String {
-    quote_html(author, None, quoted_html, quoted_text, &text_html(r, typed))
+pub fn quote_preview_html(author: &str, quoted_html: &str, quoted_text: &str, shared: &[String], r: &crate::richtext::Rendered, typed: &str) -> String {
+    quote_html(author, None, quoted_html, quoted_text, shared, &text_html(r, typed))
 }
 
 impl Session {
@@ -112,13 +180,14 @@ impl Session {
     /// A message (new or thread reply) that quotes another one.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn post_quote(&mut self, space: &str, text: &str, markdown: bool, mentions: &[crate::richtext::MentionRef], quoted_html: &str, quoted_text: &str,
-        author: &str, author_email: &str, parent: Option<&str>) -> Result<(), String> {
+        shared: &[String], author: &str, author_email: &str, parent: Option<&str>) -> Result<(), String> {
         let resolved: Vec<crate::richtext::MentionRef> = mentions.iter().filter_map(|m| if m.all { Some(m.clone()) } else { self.msg_uuid_of(&m.id).map(|u| crate::richtext::MentionRef { id: u, ..m.clone() }) }).collect();
         let r = crate::richtext::render(text, markdown, &resolved);
         let uuid = self.msg_uuid_of(author_email);
-        let html = quote_html(author, uuid.as_deref(), quoted_html, quoted_text, &text_html(&r, text));
-        // displayName: the typed text; the quoted text when nothing was typed.
-        let plain = if r.plain.trim().is_empty() { if text.trim().is_empty() { quoted_text.to_string() } else { text.to_string() } } else { r.plain.clone() };
+        let html = quote_html(author, uuid.as_deref(), quoted_html, quoted_text, shared, &text_html(&r, text));
+        // displayName: the typed text; the quoted text (or what it shared) when nothing was typed.
+        let quoted_plain = Some(without_clips(quoted_text)).filter(|t| !t.is_empty()).or_else(|| Shared::of(shared).map(|s| s.line())).unwrap_or_default();
+        let plain = if r.plain.trim().is_empty() { if text.trim().is_empty() { quoted_plain } else { text.to_string() } } else { r.plain.clone() };
         let rr = crate::richtext::Rendered { html, plain, mentions: r.mentions.clone() };
         let key_url = self.key_url(space)?;
         let key = self.key(&key_url)?;
@@ -152,11 +221,60 @@ mod tests {
     #[test]
     fn unread_and_quote_bodies() {
         assert_eq!(unread_body("a1"), json!({"verb": "unacknowledge", "object": {"id": "a1", "objectType": "activity"}}));
-        let h = quote_html("Theo <Sommer>", Some("u-1"), "", "eins\nzwei & drei", "<p>ok</p>");
+        let h = quote_html("Theo <Sommer>", Some("u-1"), "", "eins\nzwei & drei", &[], "<p>ok</p>");
         assert_eq!(h, "<blockquote class='messageQuote'><spark-mention data-object-type=\"person\" data-object-id=\"u-1\">Theo &lt;Sommer&gt;</spark-mention><br/>eins<br/>zwei &amp; drei</blockquote><p>ok</p>");
-        assert_eq!(quote_html("A", None, "<b>x</b>", "x", ""), "<blockquote class='messageQuote'>A<br/><b>x</b></blockquote>");
+        assert_eq!(quote_html("A", None, "<b>x</b>", "x", &[], ""), "<blockquote class='messageQuote'>A<br/><b>x</b></blockquote>");
         let r = crate::richtext::render("hallo\nwelt", false, &[]);
         assert_eq!(text_html(&r, "hallo\nwelt"), "<p>hallo<br/>welt</p>");
         assert_eq!(text_html(&r, "  "), "");
+    }
+
+    fn msg(text: &str, images: &[&str]) -> Message {
+        Message { text: text.into(), images: images.iter().map(|n| Attachment { name: n.to_string(), ..Default::default() }).collect(), ..Default::default() }
+    }
+
+    #[test]
+    fn quote_of_an_image_names_the_file() {
+        let m = msg("", &["IMG_0042.png"]);
+        let names = shared_names(&m);
+        assert_eq!(names, ["IMG_0042.png"]);
+        assert_eq!(quote_html("Lina", None, &m.html, &m.text, &names, "<p>schön</p>"),
+            "<blockquote class='messageQuote'>Lina<br/>Shared a file: IMG_0042.png</blockquote><p>schön</p>");
+    }
+
+    #[test]
+    fn quote_of_a_file_drops_the_clip_line() {
+        let m = msg("📎 Bericht <Q3>.pdf", &[]);
+        let names = shared_names(&m);
+        assert_eq!(quote_html("Lina", None, "", &m.text, &names, ""),
+            "<blockquote class='messageQuote'>Lina<br/>Shared a file: Bericht &lt;Q3&gt;.pdf</blockquote>");
+    }
+
+    #[test]
+    fn quote_of_several_files_counts_them() {
+        let m = msg("📎 a.pdf\n📎 b.xlsx", &["c.png"]);
+        let names = shared_names(&m);
+        assert_eq!(names, ["c.png", "a.pdf", "b.xlsx"]);
+        assert_eq!(quote_html("Lina", None, "", &m.text, &names, ""), "<blockquote class='messageQuote'>Lina<br/>Shared 3 files</blockquote>");
+    }
+
+    #[test]
+    fn quote_of_text_with_a_file_has_summary_then_text() {
+        let m = msg("Hier der Bericht\n📎 a.pdf", &[]);
+        let names = shared_names(&m);
+        assert_eq!(quote_html("Lina", None, "", &m.text, &names, ""), "<blockquote class='messageQuote'>Lina<br/>Shared a file: a.pdf<br/>Hier der Bericht</blockquote>");
+        // The rich text (object.content) never carries the file lines.
+        assert_eq!(quote_html("Lina", None, "<b>Bericht</b>", &m.text, &names, ""), "<blockquote class='messageQuote'>Lina<br/>Shared a file: a.pdf<br/><b>Bericht</b></blockquote>");
+    }
+
+    #[test]
+    fn summary_lines_parse_back() {
+        for s in [Shared::File("a b.png".into()), Shared::Snapshot("s.png".into()), Shared::Files(4), Shared::Recording("r.mp4".into()), Shared::Recap("Weekly".into())] {
+            assert_eq!(Shared::parse(&s.line()), Some(s.clone()));
+        }
+        assert_eq!(Shared::parse("  Shared a file:  x.png "), Some(Shared::File("x.png".into())));
+        for no in ["Shared a file:", "Shared files", "Shared 1 files", "Shared abc files", "Datei geteilt: x", "shared a file: x"] { assert_eq!(Shared::parse(no), None, "{no}"); }
+        assert_eq!(Shared::File("x.png".into()).label(), "Datei geteilt: x.png");
+        assert_eq!(Shared::Files(2).label(), "2 Dateien geteilt");
     }
 }

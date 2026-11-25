@@ -141,7 +141,9 @@ struct Style { bold: bool, italic: bool, underline: bool, strike: bool, code: bo
 /// `files` / `file_atts`: the file cards (names and their attachments); `videos`: the video files of the share, drawn as video
 /// cards after the pictures (a video with a thumbnail comes in `Message.images` and is drawn there).
 /// `history`: earlier texts a plugin attached (struck through above the text); `tag`: "(gelöscht)" / "(bearbeitet)" below it.
-struct Content { text: Option<Arc<Galley>>, links: Vec<(std::ops::Range<usize>, String)>, emojis: Vec<EmojiRun>, quotes: Vec<(usize, usize)>, jump: Option<String>, files: Vec<String>, file_atts: Vec<Option<Attachment>>, videos: Vec<Attachment>,
+/// `jump`: what the reply's quote says about the quoted message; `thumb`: the quoted picture and the char index of the line kept
+/// free for its thumbnail.
+struct Content { text: Option<Arc<Galley>>, links: Vec<(std::ops::Range<usize>, String)>, emojis: Vec<EmojiRun>, quotes: Vec<(usize, usize)>, jump: Option<QuoteRef>, thumb: Option<(Attachment, usize)>, files: Vec<String>, file_atts: Vec<Option<Attachment>>, videos: Vec<Attachment>,
     history: Vec<Arc<Galley>>, tag: Option<Arc<Galley>>, h: f32 }
 
 #[cfg(test)]
