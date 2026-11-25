@@ -186,6 +186,9 @@ pub struct Plugins {
     pub dialog: Option<dialog::Dialog>,
     /// `i18n::generation` the plugins' texts were last translated for.
     i18n_gen: u64,
+    /// Bumped whenever a plugin is loaded, unloaded, switched or its settings change: what the plugins answer for the theme
+    /// (palette, accents, decorations) is resolved again only then (`App::apply_theme`).
+    pub(crate) generation: u64,
 }
 
 fn s(p: *const c_char) -> String { if p.is_null() { String::new() } else { unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned() } }
@@ -441,7 +444,7 @@ impl Plugins {
         let mut p = Plugins { dirs, list: vec![], out: Default::default(), install_root, data: Arc::new(Mutex::new(read_json(&data_file))),
             state_file: config.join("plugins.json"), data_file, settings_store: ps::Store::new(config), recent: Default::default(), seen: Default::default(),
             kept: Default::default(), fired: Default::default(), view: Default::default(), fed: false, confirms: Default::default(),
-            ui_thread: std::thread::current().id(), dialog: None, i18n_gen: 0 };
+            ui_thread: std::thread::current().id(), dialog: None, i18n_gen: 0, generation: 0 };
         store::clean(&p.install_root);
         p.rescan();
         p
@@ -454,6 +457,7 @@ impl Plugins {
     }
 
     pub fn rescan(&mut self) {
+        self.generation += 1;
         for e in &mut self.list { unload(e) }
         self.list.clear();
         let state = read_json(&self.state_file);
@@ -557,6 +561,7 @@ impl Plugins {
     }
 
     pub fn set_enabled(&mut self, i: usize, on: bool) {
+        self.generation += 1;
         // Not loaded yet (switched off at start): load it now, which starts it. A blocked or broken one (error set) stays off;
         // a repository install is hashed again first.
         let e = &self.list[i];
@@ -607,6 +612,7 @@ impl Plugins {
     /// Moves a verified download (`staged`, inside a `store::stage_dir`) into place and loads it, replacing an installed version
     /// of the same package. If the new version does not load, the old one is put back and loaded again.
     pub fn install(&mut self, inst: store::Installed, staged: &Path) -> Result<(), String> {
+        self.generation += 1;
         let discard = || { if let Some(d) = staged.parent() { let _ = std::fs::remove_dir_all(d); } };
         if crate::system::side_loading_protection() { discard(); return Err(policy_block_reason()); }
         // Hashed again on this thread right before it can run: what is loaded is exactly what was pinned.
@@ -643,6 +649,7 @@ impl Plugins {
 
     /// Unloads a repository plugin and deletes its files.
     pub fn uninstall(&mut self, pkg: &str) -> Result<(), String> {
+        self.generation += 1;
         let i = self.list.iter().position(|e| e.source.as_ref().is_some_and(|s| s.pkg == pkg)).ok_or_else(|| crate::trq!("not installed").into_owned())?;
         let mut e = self.list.remove(i);
         unload(&mut e);

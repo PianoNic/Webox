@@ -12,8 +12,12 @@ thread_local! {
     static ROWS: RefCell<std::collections::HashMap<u64, RowEntry>> = RefCell::new(std::collections::HashMap::new());
 }
 /// Entries kept at most before unused ones are swept, and how many passes "unused" means.
-const ROW_CACHE_SWEEP: usize = 4096;
-const ROW_CACHE_IDLE_PASSES: u64 = 600;
+/// A measured row holds its laid-out text (galleys), tens of KB for a long message; the 4096 rows kept after browsing through
+/// many spaces were most of the heap. Rows of chats no longer shown (and of other window widths) go after 60 passes.
+const ROW_CACHE_SWEEP: usize = 256;
+const ROW_CACHE_IDLE_PASSES: u64 = 60;
+/// Measured rows cached (the `WEBOX_PROBE=1` report).
+pub(crate) fn row_cache_len() -> usize { ROWS.with(|r| r.borrow().len()) }
 
 thread_local! {
     /// Height of a message header line by (sender name, pixels per point): the height of the name's galley.
@@ -29,17 +33,15 @@ fn header_height(ui: &egui::Ui, who: &str) -> f32 {
 }
 
 thread_local! {
-    /// `html::reply_ref` by a hash of the message HTML (a pure function of it): `quote_thumb` runs for every row each frame,
-    /// and tokenizing the whole HTML of each quoting reply there grew with the list.
-    static REPLY_REFS: RefCell<std::collections::HashMap<u64, Option<QuoteRef>>> = RefCell::new(std::collections::HashMap::new());
+    /// `html::reply_ref` by the message HTML itself (a pure function of it): `quote_thumb` runs for every row each frame, and
+    /// tokenizing the whole HTML of each quoting reply there grew with the list. Keyed by the text, not a hash: a crafted
+    /// message must not be able to collide with another and show its quote or jump target.
+    static REPLY_REFS: RefCell<std::collections::HashMap<String, Option<QuoteRef>>> = RefCell::new(std::collections::HashMap::new());
 }
 fn reply_ref_cached(html: &str) -> Option<QuoteRef> {
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    html.hash(&mut h);
-    let k = h.finish();
-    if let Some(q) = REPLY_REFS.with(|m| m.borrow().get(&k).cloned()) { return q; }
+    if let Some(q) = REPLY_REFS.with(|m| m.borrow().get(html).cloned()) { return q; }
     let q = html::reply_ref(html);
-    REPLY_REFS.with(|m| { let mut m = m.borrow_mut(); if m.len() > 4096 { m.clear(); } m.insert(k, q.clone()); });
+    REPLY_REFS.with(|m| { let mut m = m.borrow_mut(); if m.len() > 1024 { m.clear(); } m.insert(html.to_string(), q.clone()); });
     q
 }
 

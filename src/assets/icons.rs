@@ -201,8 +201,27 @@ fn take_prewarmed(kind: Kind, name: &'static str) -> Option<egui::ColorImage> {
 /// emoji's mouth) vanished.
 const SCALED: egui::TextureOptions = egui::TextureOptions { mipmap_mode: Some(egui::TextureFilter::Linear), ..egui::TextureOptions::LINEAR };
 
+/// Rasters per (name, pixel size) with the pass they were last drawn in: an emoji picker scrolled through draws thousands of
+/// them, so the ones not drawn for `SIZED_IDLE_PASSES` are dropped once there are more than `SIZED_KEEP`.
 #[derive(Default)]
-pub struct Icons(HashMap<&'static str, TextureHandle>, HashMap<(&'static str, u32), (TextureHandle, bool)>, HashMap<(&'static str, u32), TextureHandle>);
+pub struct Sized(HashMap<(&'static str, u32), (TextureHandle, u64)>);
+const SIZED_KEEP: usize = 512;
+const SIZED_IDLE_PASSES: u64 = 600;
+impl Sized {
+    fn get(&mut self, ctx: &egui::Context, key: (&'static str, u32), make: impl FnOnce() -> Option<TextureHandle>) -> Option<egui::TextureId> {
+        let pass = ctx.cumulative_pass_nr();
+        if let Some(e) = self.0.get_mut(&key) { e.1 = pass; return Some(e.0.id()); }
+        let t = make()?;
+        if self.0.len() >= SIZED_KEEP { self.0.retain(|_, e| pass.saturating_sub(e.1) < SIZED_IDLE_PASSES); }
+        let id = t.id();
+        self.0.insert(key, (t, pass));
+        Some(id)
+    }
+}
+
+#[derive(Default)]
+/// (plain icons, art rasters per size, emoji rasters per size, whether an art SVG is single-colour; parsed once per name)
+pub struct Icons(HashMap<&'static str, TextureHandle>, Sized, Sized, HashMap<&'static str, bool>);
 
 impl Icons {
     fn tex(&mut self, ctx: &egui::Context, name: &'static str) -> Option<egui::TextureId> {
@@ -224,14 +243,11 @@ impl Icons {
         // and was cut flat on whichever sides the sub-pixel position put on that border.
         let ppp = ui.ctx().pixels_per_point();
         let px = (rect.width() * ppp).round().clamp(1.0, 1024.0) as u32;
-        if !self.1.contains_key(&(name, px)) {
-            let mono = mono_black(data);
-            let Some(img) = raster_px(data, mono, px, None) else { return false };
-            self.1.insert((name, px), (ui.ctx().load_texture(format!("art-{name}@{px}"), img, egui::TextureOptions::LINEAR), mono));
-        }
-        let (tex, mono) = &self.1[&(name, px)];
-        let tint = if *mono { art_ink() } else { Color32::WHITE };
-        ui.painter().image(tex.id(), grow(on_grid(rect, px, ppp), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
+        let mono = *self.3.entry(name).or_insert_with(|| mono_black(data));
+        let ctx = ui.ctx();
+        let Some(id) = self.1.get(ctx, (name, px), || raster_px(data, mono, px, None).map(|img| ctx.load_texture(format!("art-{name}@{px}"), img, egui::TextureOptions::LINEAR))) else { return false };
+        let tint = if mono { art_ink() } else { Color32::WHITE };
+        ui.painter().image(id, grow(on_grid(rect, px, ppp), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
         true
     }
 
@@ -240,12 +256,9 @@ impl Icons {
         let Some(key) = emoji_key(s) else { return false }; // e.g. ❤ is stored as 2764-fe0f
         // Rasterised at the drawn size, like `paint`: a small emoji keeps its details (a 64 px raster scaled down lost the mouth).
         let px = (rect.width() * ui.ctx().pixels_per_point()).round().clamp(1.0, 256.0) as u32;
-        if !self.2.contains_key(&(key, px)) {
-            let Some(data) = find(EMOJI_TABLE, key) else { return false };
-            let Some(img) = raster_px(data, false, px, None) else { return false };
-            self.2.insert((key, px), ui.ctx().load_texture(format!("{key}@{px}"), img, egui::TextureOptions::LINEAR));
-        }
-        ui.painter().image(self.2[&(key, px)].id(), grow(on_grid(rect, px, ui.ctx().pixels_per_point()), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
+        let ctx = ui.ctx();
+        let Some(id) = self.2.get(ctx, (key, px), || find(EMOJI_TABLE, key).and_then(|data| raster_px(data, false, px, None)).map(|img| ctx.load_texture(format!("{key}@{px}"), img, egui::TextureOptions::LINEAR))) else { return false };
+        ui.painter().image(id, grow(on_grid(rect, px, ui.ctx().pixels_per_point()), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), Color32::WHITE);
         true
     }
 
@@ -279,14 +292,12 @@ impl Icons {
     /// scaled down turned round edges into steps. Falls back to that raster when the SVG can't be rasterised at this size.
     pub fn paint(&mut self, ui: &egui::Ui, name: &'static str, rect: Rect, tint: Color32) {
         let px = (rect.width() * ui.ctx().pixels_per_point()).round().clamp(1.0, 256.0) as u32;
-        if !self.2.contains_key(&(name, px)) {
-            let Some(img) = lookup(name).and_then(|d| raster_px(d, true, px, Some(name))) else {
-                if let Some(id) = self.tex(ui.ctx(), name) { ui.painter().image(id, grow(rect, PX), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint); }
-                return;
-            };
-            self.2.insert((name, px), ui.ctx().load_texture(format!("{name}@{px}"), img, egui::TextureOptions::LINEAR));
-        }
-        ui.painter().image(self.2[&(name, px)].id(), grow(on_grid(rect, px, ui.ctx().pixels_per_point()), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
+        let ctx = ui.ctx();
+        let Some(id) = self.2.get(ctx, (name, px), || lookup(name).and_then(|d| raster_px(d, true, px, Some(name))).map(|img| ctx.load_texture(format!("{name}@{px}"), img, egui::TextureOptions::LINEAR))) else {
+            if let Some(id) = self.tex(ui.ctx(), name) { ui.painter().image(id, grow(rect, PX), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint); }
+            return;
+        };
+        ui.painter().image(id, grow(on_grid(rect, px, ui.ctx().pixels_per_point()), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
     }
 
     /// An icon button: `size` is the clickable square, the icon is drawn at `icon` px inside it.
