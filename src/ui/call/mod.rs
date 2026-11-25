@@ -28,6 +28,9 @@ pub(crate) struct CallUi {
     pub(crate) mute: cloud::locus::MuteInfo,
     /// Everyone in the call (the participants panel, `call_win/roster.rs`), as Locus has them.
     pub(crate) roster: cloud::locus::controls::Roster,
+    /// Camera video in the call (ours and the other side's), as the cloud thread reports it (`Resp::CallVideo`). The
+    /// pictures: `cloud::video_rx::{remote, self_view}`; on / off / switch: `CallReq::Video`.
+    pub(crate) video: cloud::locus::video::VideoInfo,
     // Separate-window state, offline sample mode (no sound, no microphone), toast's ring switch.
     pub(crate) win: super::call_win::WinState, pub(crate) sample: bool, pub(crate) ring_muted: bool,
     /// Plays ringtone / ringback / test tones (its own streams, on the ringtone or speaker device).

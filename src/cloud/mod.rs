@@ -15,6 +15,7 @@ pub mod locus;
 pub mod media;
 pub mod media_stats; // call statistics: packet counters, receiver reports and get_stats for the call window's panel
 pub mod share_rx; // a screen share received in a call: decode, newest picture for the call window
+pub mod video_rx; // camera video in a call: the far end's picture and our self view
 mod sdp; // answer filtering and address-free summaries for the media leg
 mod sdp_compat; // remote descriptions rewritten into what webrtc-rs accepts
 mod ice_socket; // the call's own ICE socket (survives Windows' ICMP errors)
@@ -275,6 +276,9 @@ pub enum Resp {
     CallRoster(locus::controls::Roster),
     /// The other side shares its screen (their name), or stopped (None). The pictures: `share_rx::latest`.
     RemoteShare(Option<String>),
+    /// Camera video in the call changed: ours (wanted / sending, which camera, size, rate) and the other side's camera on
+    /// or off. The pictures: `video_rx::remote` / `video_rx::self_view`.
+    CallVideo(locus::video::VideoInfo),
     /// Directory people for a search query (query, people, last batch).
     Directory(String, Vec<Person>, bool),
     /// All my flags: (space id or "" when the flag doesn't say, message id, flag url).

@@ -24,21 +24,35 @@ pub const KEYFRAME_RETRY: Duration = Duration::from_millis(1000);
 /// One decoded picture, made into an image on the decoder thread: the UI hands the same `Arc` to the GPU, no copy there.
 pub struct Picture { pub image: Arc<eframe::egui::ColorImage>, pub seq: u64 }
 
-static LATEST: Mutex<Option<Arc<Picture>>> = Mutex::new(None);
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
+/// Where a decoder (or the camera) leaves its newest picture: the received share (`SHARE`), the far end's camera
+/// (`video_rx::MAIN`) and our own camera for the self view (`video_rx::SELF`). One picture, never a queue.
+pub struct Slot(Mutex<Option<Arc<Picture>>>);
+
+impl Slot {
+    pub const fn new() -> Slot { Slot(Mutex::new(None)) }
+    /// The newest picture (None before the first one, and after `clear`).
+    pub fn latest(&self) -> Option<Arc<Picture>> { self.0.lock().ok().and_then(|g| g.clone()) }
+    pub fn clear(&self) { if let Ok(mut g) = self.0.lock() { *g = None; } }
+    /// Makes `rgba` (`w` x `h`) the newest picture and wakes the UI once.
+    pub fn publish(&self, w: usize, h: usize, rgba: &[u8]) {
+        let image = Arc::new(eframe::egui::ColorImage::from_rgba_unmultiplied([w, h], rgba));
+        let seq = SEQ.fetch_add(1, Ordering::Relaxed) + 1;
+        if let Ok(mut g) = self.0.lock() { *g = Some(Arc::new(Picture { image, seq })); }
+        crate::ui::wake();
+    }
+}
+
+pub static SHARE: Slot = Slot::new();
+
 /// The newest decoded picture of the received share (None before the first one, and after `clear`).
-pub fn latest() -> Option<Arc<Picture>> { LATEST.lock().ok().and_then(|g| g.clone()) }
+pub fn latest() -> Option<Arc<Picture>> { SHARE.latest() }
 
 /// The received share ended: the picture goes (the call window returns to its normal layout).
-pub fn clear() { if let Ok(mut g) = LATEST.lock() { *g = None; } }
+pub fn clear() { SHARE.clear() }
 
-fn publish(w: usize, h: usize, rgba: &[u8]) {
-    let image = Arc::new(eframe::egui::ColorImage::from_rgba_unmultiplied([w, h], rgba));
-    let seq = SEQ.fetch_add(1, Ordering::Relaxed) + 1;
-    if let Ok(mut g) = LATEST.lock() { *g = Some(Arc::new(Picture { image, seq })); }
-    crate::ui::wake();
-}
+fn publish(w: usize, h: usize, rgba: &[u8]) { SHARE.publish(w, h, rgba) }
 
 /// `WEBOX_SAMPLE_CALL=share` (offline sample): a made-up received picture (`media::share::convert::test_picture`).
 pub fn show_sample(w: u32, h: u32) {
@@ -73,13 +87,14 @@ pub fn remote_sharer(l: &Value, self_url: &str) -> Option<String> {
 pub struct Decode { tx: SyncSender<Vec<u8>>, pub keyframe: Arc<AtomicBool>, pub decoded: Arc<AtomicU64> }
 
 impl Decode {
-    /// Starts the decoder thread (it ends when the `Decode` is dropped).
-    pub fn start() -> Decode {
+    /// Starts a decoder thread whose pictures go to `slot` (the share's `SHARE`, the camera's `video_rx::MAIN`); it ends
+    /// when the `Decode` is dropped. `what` names the thread and its log lines; `decoded` counts the pictures (the call's
+    /// counter, kept across streams).
+    pub fn start_into(slot: &'static Slot, what: &'static str, decoded: Arc<AtomicU64>) -> Decode {
         let (tx, rx) = sync_channel::<Vec<u8>>(3);
         let keyframe = Arc::new(AtomicBool::new(true)); // a key frame first
-        let decoded = Arc::new(AtomicU64::new(0));
         let (k, n) = (keyframe.clone(), decoded.clone());
-        let _ = std::thread::Builder::new().name("webox-share-decode".into()).spawn(move || decode_loop(rx, k, n));
+        let _ = std::thread::Builder::new().name(format!("webox-{what}-decode")).spawn(move || decode_loop(rx, k, n, slot, what));
         Decode { tx, keyframe, decoded }
     }
     /// One access unit (Annex B). A full queue drops it and asks for a key frame: the UI shows the newest picture only.
@@ -92,8 +107,8 @@ impl Decode {
     }
 }
 
-fn decode_loop(rx: Receiver<Vec<u8>>, keyframe: Arc<AtomicBool>, decoded: Arc<AtomicU64>) {
-    let mut dec = match openh264::decoder::Decoder::new() { Ok(d) => d, Err(e) => { dbg_conn(&format!("call: share decoder failed to start: {e}")); return } };
+fn decode_loop(rx: Receiver<Vec<u8>>, keyframe: Arc<AtomicBool>, decoded: Arc<AtomicU64>, slot: &'static Slot, what: &str) {
+    let mut dec = match openh264::decoder::Decoder::new() { Ok(d) => d, Err(e) => { dbg_conn(&format!("call: {what} decoder failed to start: {e}")); return } };
     let mut rgba: Vec<u8> = vec![];
     while let Ok(au) = rx.recv() {
         let mut got = None;
@@ -114,8 +129,8 @@ fn decode_loop(rx: Receiver<Vec<u8>>, keyframe: Arc<AtomicBool>, decoded: Arc<At
         }
         if failed { keyframe.store(true, Ordering::SeqCst); }
         if let Some((w, h)) = got {
-            if decoded.fetch_add(1, Ordering::Relaxed) == 0 { dbg_conn(&format!("call: share: first picture decoded ({w}x{h})")); }
-            publish(w, h, &rgba);
+            if decoded.fetch_add(1, Ordering::Relaxed) == 0 { dbg_conn(&format!("call: {what}: first picture decoded ({w}x{h})")); }
+            slot.publish(w, h, &rgba);
         }
     }
 }

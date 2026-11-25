@@ -9,7 +9,8 @@
 //! The preview applies what the page's options mean for the user's own view: mirror, rotate, zoom to fit (fill the preview
 //! instead of showing the whole frame), and the video enhancements as plain image adjustments (`Look`): brightness /
 //! contrast / saturation, "Belichtung anpassen" as an automatic exposure gain, "Aussehen auffrischen" as a smoothing blur
-//! blended in by its level. None of this reaches a call: Webox calls are audio only.
+//! blended in by its level. None of this reaches a call: the call's camera (`send.rs`) sends the picture as the camera (and
+//! the plugins) deliver it, and the far end decides how to show it.
 //!
 //! Plugins (`hook.rs`): every captured picture passes `hook::apply` right after decoding, where plugins' frame filters edit it
 //! under a time budget (`camera.filter`); a plugin can also put a video file or a picture in place of the device
@@ -26,6 +27,7 @@ pub(crate) mod v4l2;
 mod avf; // AVFoundation capture session
 pub(crate) mod v4l2_parse;
 pub mod hook; // plugin frame filters and file sources (camera.filter / camera.source / media.*)
+pub mod send; // the camera in a call: capture -> filters -> H.264 for the call's video/main line
 
 /// A camera as listed in the picker. `id`: MF symbolic link / V4L2 device path. The settings store the name (stable across
 /// USB ports, like the audio devices).

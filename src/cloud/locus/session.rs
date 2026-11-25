@@ -18,6 +18,7 @@ impl Session {
             CallReq::Cleanup => self.audit(true),
             CallReq::Dtmf(t) => self.dtmf(&t),
             CallReq::Share(r) => self.share_req(r),
+            CallReq::Video(r) => self.video_req(r),
             CallReq::JoinSpace(id, c) => self.join_space(&id, &c),
             CallReq::Control(c) => self.control(c),
         }
@@ -45,7 +46,7 @@ impl Session {
                 return Err(format!("Stummschaltung aufheben fehlgeschlagen: {}", scrub(&e)));
             }
         }
-        let r = self.http("PUT", &format!("{self_url}/media"), Some(local_mute_body(self.device_body(), &corr, &media_id, m, true)));
+        let r = self.http("PUT", &format!("{self_url}/media"), Some(local_mute_body(self.device_body(), &corr, &media_id, m, self.video_muted())));
         dbg_conn(&format!("call: {} sent to locus -> {}", if m { "mute" } else { "unmute" }, if r.is_ok() { "ok" } else { "failed" }));
         self.mute_sync(None);
         r.map(|_| ()).map_err(|e| format!("{} konnte nicht an Webex gemeldet werden: {}", if m { "Stummschalten" } else { "Stummschaltung aufheben" }, scrub(&e)))
@@ -114,6 +115,7 @@ impl Session {
 
     pub(super) fn end_call(&mut self, why: &str) {
         self.emit(CallState::Ended(why.into()));
+        self.video_end(); // the camera stops before the media leg closes
         if let Some(mut c) = self.calls.cur.take() {
             if let Some(s) = c.share.take() { s.stop(); let _ = self.out.send(Resp::CallShare(false)); }
             if c.remote_share.take().is_some() { dbg_conn("call: share: received share ended with the call"); let _ = self.out.send(Resp::RemoteShare(None)); }
@@ -268,7 +270,7 @@ impl Session {
         if !webex_host(&url) { return Err("Keine gültige Medien-Adresse.".into()); }
         if media_id.is_empty() { return Err("no media id".into()); } // like the original client: no ROAP message without it
         let body = json!({"device": self.device_body(), "correlationId": corr, "clientMediaPreferences": {"preferTranscoding": true},
-            "localMedias": [{"localSdp": roap_local_sdp(message_type, sdp, seq, self.calls.muted), "mediaId": media_id}]});
+            "localMedias": [{"localSdp": roap_local_sdp_av(message_type, sdp, seq, self.calls.muted, self.video_muted()), "mediaId": media_id}]});
         self.http("PUT", &format!("{url}/media"), Some(body)).map(|_| ())
     }
 
@@ -287,7 +289,7 @@ impl Session {
                 }
                 if done || seq != ours { dbg_conn(&format!("call: ANSWER seq={seq} does not match our OFFER seq={ours}, ignored")); return; }
                 let (Some(sdp), Some(m)) = (sdp, c.media.as_ref()) else { dbg_conn("call: ANSWER without SDP or media"); return };
-                let r = if share_seq == Some(seq) { m.apply_share_answer(sdp) } else { m.apply_answer(sdp) };
+                let r = if share_seq == Some(seq) { m.apply_lines_answer(sdp) } else { m.apply_answer(sdp) };
                 match r {
                     Ok(()) => {
                         if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; c.offer_at = None; c.lines_seq = None; c.lines_at = None; }
@@ -299,7 +301,7 @@ impl Session {
                         dbg_conn(&format!("call: bad answer: {}", scrub(&e)));
                         if share_seq == Some(seq) {
                             if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; c.lines_seq = None; c.lines_at = None; }
-                            self.lines_failed(&format!("Der Medienserver hat die Freigabe-Verbindung abgelehnt: {}", scrub(&e)));
+                            self.lines_failed(&format!("Der Medienserver hat die Videoverbindung abgelehnt: {}", scrub(&e)));
                         }
                         else { self.media_trouble("Medienaushandlung fehlgeschlagen: die Antwort des Medienservers wurde nicht angenommen."); }
                     }
@@ -323,7 +325,7 @@ impl Session {
                 let share_offer = self.calls.cur.as_ref().is_some_and(|c| c.lines_seq == Some(seq) && !c.roap_done);
                 if share_offer {
                     if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; c.offer_at = None; c.lines_seq = None; c.lines_at = None; }
-                    self.lines_failed("Der Medienserver hat die Freigabe abgelehnt (ROAP-Fehler).");
+                    self.lines_failed("Der Medienserver hat die Videoverbindung abgelehnt (ROAP-Fehler).");
                 }
             }
             _ => {} // OK, TURN_DISCOVERY_RESPONSE, SHUTDOWN: nothing to do
@@ -402,7 +404,7 @@ impl Session {
             return Ok(());
         }
         let (tick, now) = (d["tick"].as_bool() == Some(true), Instant::now());
-        if tick { self.share_tick(); self.share_rx_tick(); }
+        if tick { self.share_tick(); self.share_rx_tick(); self.video_tick(); }
         // any locus event with its state: a group space's meeting starting / ending shows on the space
         else if full_locus(d).is_some() { self.space_meeting_locus(locus_of(d), &locus_url_of(d)); }
         let (url, carried) = match self.calls.cur.as_mut() {
@@ -413,7 +415,9 @@ impl Session {
                     c.stats_at = Some(now);
                     if let Some(m) = c.media.as_ref() {
                         let share = c.share.as_ref().map_or(String::new(), |s| format!(" share_pictures={}", s.sent()));
-                        dbg_conn(&format!("call: media {:?} rx={} tx={} rx_video={}{share}", m.state(), m.rx_packets.load(Ordering::Relaxed), m.tx_frames.load(Ordering::Relaxed), m.rx_video.load(Ordering::Relaxed)));
+                        let cam = c.video.sent().map_or(String::new(), |n| format!(" camera_pictures={n}"));
+                        dbg_conn(&format!("call: media {:?} rx={} tx={} rx_video={} rx_camera={} camera_decoded={}{share}{cam}", m.state(), m.rx_packets.load(Ordering::Relaxed), m.tx_frames.load(Ordering::Relaxed),
+                            m.rx_video.load(Ordering::Relaxed), m.rx_main.load(Ordering::Relaxed), m.decoded_main.load(Ordering::Relaxed)));
                     }
                 }
                 if !poll_due(c.read_at, now, c.last == Some(CallState::Connected), c.stale) {
@@ -467,6 +471,7 @@ impl Session {
         if let Some(c) = self.calls.cur.as_mut() {
             c.view = Some(v.clone());
             self.share_locus(&l);
+            self.video_locus(&l);
             self.mute_sync(Some(&v));
             return self.evaluate(&v);
         }
