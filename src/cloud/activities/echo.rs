@@ -36,11 +36,18 @@ impl Session {
     /// Folds a space's raw cache again and hands the list to the UI (no request; decrypted texts come from the cache).
     pub(super) fn refold(&mut self, space: &str) {
         let key_url = self.spaces.get(space).map(|s| s.key_url.clone()).unwrap_or_default();
-        let acts = self.hist.acts.get(space).cloned().unwrap_or_default();
-        let msgs = self.fold_in(space, &acts, &key_url);
+        let msgs = self.fold_cached(space, &key_url);
         if let Some(m) = msgs.first() { self.hist.first.insert(space.to_string(), m.id.clone()); }
         let _ = self.out.send(Resp::Messages(space.to_string(), msgs));
         self.fetch_images();
+    }
+
+    /// `fold_in` over the space's raw cache without copying it (folding reads no cached activities).
+    pub(super) fn fold_cached(&mut self, space: &str, key_url: &str) -> Vec<Message> {
+        let Some(acts) = self.hist.acts.remove(space) else { return self.fold_in(space, &[], key_url) };
+        let msgs = self.fold_in(space, &acts, key_url);
+        self.hist.acts.insert(space.to_string(), acts);
+        msgs
     }
 
     /// The fallback: the newest page again (merged into what is known, folded), without participants / covers.

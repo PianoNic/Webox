@@ -35,7 +35,7 @@ impl Plugins {
     }
 
     /// The current value of setting `id` of the plugin with `key` (defaults filled in).
-    pub fn setting(&self, key: &str, id: &str) -> Option<Value> { self.list.iter().find(|e| e.key == key)?.settings.values().get(id).cloned() }
+    pub fn setting(&self, key: &str, id: &str) -> Option<Value> { self.list.iter().find(|e| e.key == key)?.settings.value(id) }
     pub fn setting_bool(&self, key: &str, id: &str, fallback: bool) -> bool { self.setting(key, id).and_then(|v| v.as_bool()).unwrap_or(fallback) }
 
     /// Where a secret setting is kept.

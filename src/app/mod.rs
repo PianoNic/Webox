@@ -236,9 +236,10 @@ impl App {
         self.go(self.tab, Some(id));
     }
 
-    pub(crate) fn mentions(&self, id: &str, all: bool) -> bool {
-        let needle = if all { "@all".to_string() } else { self.me.name.to_lowercase() };
-        self.messages.get(id).is_some_and(|m| m.iter().any(|m| !m.mine && m.text.to_lowercase().contains(&needle)))
+    /// Whether a message of someone else in `id` contains `needle` (lower case: my name, or "@all"). The caller lowers it once:
+    /// the list filter asks for every space each frame.
+    pub(crate) fn mentions_of(&self, id: &str, needle: &str) -> bool {
+        self.messages.get(id).is_some_and(|m| m.iter().any(|m| !m.mine && m.text.to_lowercase().contains(needle)))
     }
 
     pub(crate) fn visible(&self) -> Vec<Space> {
@@ -249,16 +250,17 @@ impl App {
     /// participants included, each frame).
     pub(crate) fn visible_idx(&self) -> Vec<usize> {
         let q = self.search.to_lowercase();
+        let me = if matches!(self.filter, Filter::Notifications | Filter::MentionMe) { self.me.name.to_lowercase() } else { String::new() };
         self.spaces.iter().enumerate().filter(|(_, s)| {
             let tab = match self.list_tab { ListTab::All => true, ListTab::Direct => s.direct, ListTab::Spaces => !s.direct, ListTab::Public => s.public };
             let f = match self.filter {
                 Filter::None => true,
-                Filter::Notifications => s.unread || self.mentions(&s.id, false),
+                Filter::Notifications => s.unread || self.mentions_of(&s.id, &me),
                 Filter::Drafts => self.drafts.get(&s.id).is_some_and(|d| !d.trim().is_empty()),
                 Filter::Unread => s.unread,
                 Filter::Favorites => s.favorite,
-                Filter::MentionMe => self.mentions(&s.id, false),
-                Filter::MentionAll => self.mentions(&s.id, true),
+                Filter::MentionMe => self.mentions_of(&s.id, &me),
+                Filter::MentionAll => self.mentions_of(&s.id, "@all"),
                 Filter::Flags => self.flags.iter().any(|f| f.0 == s.id),
             };
             !s.hidden && tab && f && (q.is_empty() || s.title.to_lowercase().contains(&q)) && self.team_sel.as_ref().is_none_or(|t| &s.team == t)
@@ -362,7 +364,7 @@ pub mod actions;
 pub mod files; // upload / download state shared by the UI and the cloud thread
 
 /// Whether `m` @-mentions me: a person mention with my id in its rich text, else (plain text only) my name in the text, as
-/// `App::mentions` reads it.
+/// `App::mentions_of` reads it.
 fn mentions_me(m: &crate::cloud::Message, me: &crate::cloud::Person) -> bool {
     if !m.html.is_empty() { return !me.id.is_empty() && m.html.contains(&format!("data-object-id=\"{}\"", me.id)); }
     !me.name.is_empty() && m.text.to_lowercase().contains(&me.name.to_lowercase())

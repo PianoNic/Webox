@@ -144,7 +144,9 @@ struct Style { bold: bool, italic: bool, underline: bool, strike: bool, code: bo
 /// `jump`: what the reply's quote says about the quoted message; `thumb`: the quoted picture and the char index of the line kept
 /// free for its thumbnail.
 struct Content { text: Option<Arc<Galley>>, links: Vec<(std::ops::Range<usize>, String)>, emojis: Vec<EmojiRun>, quotes: Vec<(usize, usize)>, jump: Option<QuoteRef>, thumb: Option<(Attachment, usize)>, files: Vec<String>, file_atts: Vec<Option<Attachment>>, videos: Vec<Attachment>,
-    history: Vec<Arc<Galley>>, tag: Option<Arc<Galley>>, h: f32 }
+    history: Vec<Arc<Galley>>, tag: Option<Arc<Galley>>, h: f32,
+    /// The message as HTML for "copy selected messages" (`body_html`), made once with the layout, not per row and frame.
+    copy_body: Arc<str> }
 
 #[cfg(test)]
 mod tests;

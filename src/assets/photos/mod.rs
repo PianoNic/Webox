@@ -150,7 +150,7 @@ fn decode_anim(ctx: &egui::Context, key: &str, bytes: &[u8]) -> Option<Anim> {
     }
     match image::load_from_memory(bytes) {
         Ok(img) => {
-            let mut img = img.to_rgba8();
+            let mut img = img.into_rgba8(); // no copy of an RGBA picture (a large one would briefly need twice its memory)
             let max_side = if key.starts_with("full:") { MAX_FULL_SIDE } else { MAX_TEXTURE_SIDE };
             if img.width().max(img.height()) > max_side { // larger than useful (viewer) or than a GPU texture can be: scale down
                 let s = max_side as f32 / img.width().max(img.height()) as f32;
@@ -372,13 +372,20 @@ impl Photos {
 
     /// The decoded picture for a person id, uuid or email (decoded lazily, cached); `None` if there is none.
     pub fn texture(&mut self, ctx: &egui::Context, key: &str) -> Option<egui::TextureId> {
-        let key = if self.bytes.contains_key(key) { key.to_string() } else { key.to_lowercase() };
         for id in self.forget_round.drain(..) { round::forget(ctx, id); }
+        // Already decoded under this exact key (called per avatar and frame): no key copy.
+        if let Some(t) = self.tex.get(key) { return t.as_ref().map(|t| t.id()); }
+        let key = if self.bytes.contains_key(key) { key.to_string() } else { key.to_lowercase() };
         if !self.bytes.contains_key(&key) { return None; }
         if !self.tex.contains_key(&key) {
             let t = match image::load_from_memory(&self.bytes[&key]) {
                 Ok(img) => {
-                    let img = img.to_rgba8();
+                    let mut img = img.into_rgba8();
+                    // Larger than a GPU texture can be (the glow renderer panics on such an upload): scaled down like message images.
+                    if img.width().max(img.height()) > MAX_TEXTURE_SIDE {
+                        let s = MAX_TEXTURE_SIDE as f32 / img.width().max(img.height()) as f32;
+                        img = image::imageops::resize(&img, ((img.width() as f32 * s) as u32).max(1), ((img.height() as f32 * s) as u32).max(1), image::imageops::FilterType::Triangle);
+                    }
                     let size = [img.width() as usize, img.height() as usize];
                     // Mipmapped for the fallback drawing (scaled mesh); the avatars themselves use round.rs textures.
                     let opts = egui::TextureOptions { mipmap_mode: Some(egui::TextureFilter::Linear), ..egui::TextureOptions::LINEAR };

@@ -91,9 +91,11 @@ pub struct State {
 }
 impl State {
     pub fn values(&self) -> Map<String, Value> { self.values.lock().unwrap_or_else(|e| e.into_inner()).clone() }
+    /// One value, without copying the others (built-in plugins read theirs every frame).
+    pub fn value(&self, id: &str) -> Option<Value> { self.values.lock().unwrap_or_else(|e| e.into_inner()).get(id).cloned() }
     pub fn json(&self) -> String { Value::Object(self.values()).to_string() }
     pub fn secret_at(&self, id: &str) -> SecretAt {
-        let set = self.values().get(id).and_then(Value::as_str).is_some_and(|s| !s.is_empty());
+        let set = self.value(id).as_ref().and_then(Value::as_str).is_some_and(|s| !s.is_empty());
         if !set { SecretAt::Unset } else if self.in_file.iter().any(|x| x == id) { SecretAt::File } else { SecretAt::Keyring }
     }
     /// Sets the schema (or its parse error) and loads the values.

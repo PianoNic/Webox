@@ -7,10 +7,11 @@ impl Session {
         let v = self.http("GET", &self.url("conversation", &newest_query(id, now_ms())), None)?;
         self.merge_acts(id, v["items"].as_array().cloned().unwrap_or_default());
         // Everything known about the space (older pages that were loaded stay), folded together.
-        let acts = self.hist.acts.get(id).cloned().unwrap_or_default();
+        let acts = self.hist.acts.remove(id).unwrap_or_default();
         self.hmac_oracle(id, &acts, &key_url);
         self.load_person_cover(id);
         let msgs = self.fold_in(id, &acts, &key_url);
+        self.hist.acts.insert(id.to_string(), acts);
         if let Some(m) = msgs.first() { self.hist.first.insert(id.to_string(), m.id.clone()); }
         let _ = self.out.send(Resp::Messages(id.to_string(), msgs));
         self.fetch_images();
@@ -64,8 +65,7 @@ impl Session {
             dbg_conn(&format!("older messages: {n} new activities ({visible} visible so far), reached start {reached}"));
         }
         if reached { self.hist.done.insert(id.to_string()); }
-        let acts = self.hist.acts.get(id).cloned().unwrap_or_default();
-        let msgs = self.fold_in(id, &acts, &key_url);
+        let msgs = self.fold_cached(id, &key_url);
         let prepended = self.hist.first.get(id).and_then(|f| msgs.iter().position(|m| m.id == *f)).unwrap_or(0);
         if let Some(m) = msgs.first() { self.hist.first.insert(id.to_string(), m.id.clone()); }
         let _ = self.out.send(Resp::OlderMessages(id.to_string(), msgs, prepended, reached));

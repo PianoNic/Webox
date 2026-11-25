@@ -189,6 +189,8 @@ impl Session {
         }
         let ws = st(&dev, "webSocketUrl");
         if ws.is_empty() { return Err("the device registration has no webSocketUrl".into()); }
+        // The socket is authorised with the bearer: only over TLS to a Webex host, like `http()`.
+        if !url_host(&ws, &["wss"]).is_some_and(|h| WEBEX_DOMAINS.iter().any(|d| subdomain_of(&h, d))) { return Err("the device registration's webSocketUrl is not a Webex wss:// address".into()); }
         let out = self.out.clone();
         std::thread::spawn(move || mercury(ws, gen, jobs, kms_tx, out)); // bearer read live, ends with the session
 

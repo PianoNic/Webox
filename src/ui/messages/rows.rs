@@ -28,6 +28,21 @@ fn header_height(ui: &egui::Ui, who: &str) -> f32 {
     h
 }
 
+thread_local! {
+    /// `html::reply_ref` by a hash of the message HTML (a pure function of it): `quote_thumb` runs for every row each frame,
+    /// and tokenizing the whole HTML of each quoting reply there grew with the list.
+    static REPLY_REFS: RefCell<std::collections::HashMap<u64, Option<QuoteRef>>> = RefCell::new(std::collections::HashMap::new());
+}
+fn reply_ref_cached(html: &str) -> Option<QuoteRef> {
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    html.hash(&mut h);
+    let k = h.finish();
+    if let Some(q) = REPLY_REFS.with(|m| m.borrow().get(&k).cloned()) { return q; }
+    let q = html::reply_ref(html);
+    REPLY_REFS.with(|m| { let mut m = m.borrow_mut(); if m.len() > 4096 { m.clear(); } m.insert(k, q.clone()); });
+    q
+}
+
 impl App {
     /// "Seen by": who has seen the conversation's newest message (whoever wrote it). The banner is always the list's last row,
     /// at the very end of the conversation. The readers come from `seen_keys`; the offline sample has no marks and shows the chat
@@ -132,7 +147,7 @@ impl App {
     fn info_row_select(&self, ui: &egui::Ui, m: &Message, r: Rect) {
         if super::super::widgets::hover_ok(ui, r) { record_pointer_row(ui.ctx(), &m.id, ui.input(|i| i.pointer.primary_pressed())); }
         let esc = m.notice.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
-        record_copy(ui.ctx(), CopyRow { id: m.id.clone(), stamp: copy_stamp(&m.date, &m.time), body: esc, ..Default::default() });
+        record_copy(ui.ctx(), CopyRow { id: m.id.clone(), stamp: copy_stamp(&m.date, &m.time), body: esc.into(), ..Default::default() });
     }
 
     /// Day separator: secondary label centred, 1 px lines of the same colour from x=75 to the label and from the label to the
@@ -201,14 +216,14 @@ impl App {
         if let Some(g) = &galley { if attach { h += CAPTION_GAP; } h += g.size().y; }
         if !m.reactions.is_empty() { h += 2.0 + REACT_H; } // 2 pt spacer + reactions row
         let thumb = thumb.zip(thumb_at).map(|(a, i)| (a.clone(), i));
-        Content { text: galley, links, emojis, quotes, jump, thumb, files, file_atts, videos, history, tag, h }
+        Content { text: galley, links, emojis, quotes, jump, thumb, files, file_atts, videos, history, tag, h, copy_body: body_html(m).into() }
     }
 
     /// The picture a reply quotes, when its quote names a shared file ("Shared a file: <name>") and the quoted message (found like
     /// "Go to message" does) is loaded in this space with a picture of that name.
     pub(super) fn quote_thumb(&self, space: &str, m: &Message) -> Option<Attachment> {
         if !m.html.contains("<blockquote") || !m.html.contains("Shared ") { return None; }
-        let q = html::reply_ref(&m.html)?;
+        let q = reply_ref_cached(&m.html)?;
         let name = q.shared.as_ref()?.name()?.to_string();
         let msgs = self.messages.get(space)?;
         let tg = jump_target(msgs, &m.id, &q)?;
@@ -290,7 +305,7 @@ impl App {
         if !hovered { ui.ctx().data_mut(|d| d.remove::<Rect>(bar_key)); }
         // Multi-selection (multisel.rs): the row under the pointer / pressed, and the row as "copy selected messages" reads it.
         if inside { record_pointer_row(ui.ctx(), &m.id, ui.input(|i| i.pointer.primary_pressed())); }
-        record_copy(ui.ctx(), CopyRow { id: m.id.clone(), name: if head { who.clone() } else { String::new() }, stamp: copy_stamp(&m.date, &m.time), grouped: !head, body: body_html(m) });
+        record_copy(ui.ctx(), CopyRow { id: m.id.clone(), name: if head { who.clone() } else { String::new() }, stamp: copy_stamp(&m.date, &m.time), grouped: !head, body: ct.copy_body.clone() });
         let picked = msel(ui.ctx(), id).highlighted(&m.id);
 
         let vis = ui.is_rect_visible(row.expand(40.0));

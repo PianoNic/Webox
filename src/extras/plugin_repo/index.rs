@@ -37,15 +37,16 @@ pub struct RepoIndex {
 fn text(v: &Value, k: &str) -> Option<String> { v.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(String::from) }
 
 pub fn parse(json: &str) -> Result<RepoIndex, String> {
-    let v: Value = serde_json::from_str(json).map_err(|e| crate::trq!("The index is not valid JSON: {{0}}", e))?;
-    let (mut idx, list) = match &v {
-        Value::Array(a) => (RepoIndex::default(), a.clone()),
-        Value::Object(_) => {
-            let list = v.get("plugins").and_then(Value::as_array).cloned().ok_or_else(|| crate::trq!("Index without a \"plugins\" list").into_owned())?;
-            (RepoIndex { name: text(&v, "name"), description: text(&v, "description"), homepage: text(&v, "homepage"), ..Default::default() }, list)
-        }
+    let mut v: Value = serde_json::from_str(json).map_err(|e| crate::trq!("The index is not valid JSON: {{0}}", e))?;
+    // The list is moved out, not copied (an index may be a few MB).
+    let list = match &mut v {
+        Value::Array(a) => std::mem::take(a),
+        Value::Object(o) => match o.get_mut("plugins") { Some(Value::Array(a)) => std::mem::take(a), _ => return Err(crate::trq!("Index without a \"plugins\" list").into_owned()) },
         _ => return Err(crate::trq!("The index must be a list or an object").into_owned()),
     };
+    let mut idx = if v.is_object() {
+        RepoIndex { name: text(&v, "name"), description: text(&v, "description"), homepage: text(&v, "homepage"), ..Default::default() }
+    } else { RepoIndex::default() };
     let mut seen = std::collections::HashSet::new();
     for e in &list {
         match plugin(e) {

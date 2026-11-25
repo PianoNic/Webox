@@ -104,7 +104,8 @@ pub fn merge_delta(full: &Value, delta: &Value) -> Value {
             "participants" => {
                 let mut ps = o.get("participants").and_then(Value::as_array).cloned().unwrap_or_default();
                 for p in v.as_array().into_iter().flatten() {
-                    match ps.iter_mut().find(|q| !st(p, "id").is_empty() && st(q, "id") == st(p, "id")) { Some(q) => *q = p.clone(), None => ps.push(p.clone()) }
+                    let id = p["id"].as_str().unwrap_or("");
+                    match ps.iter_mut().find(|q| !id.is_empty() && q["id"].as_str().unwrap_or("") == id) { Some(q) => *q = p.clone(), None => ps.push(p.clone()) }
                 }
                 o.insert(k.clone(), Value::Array(ps));
             }

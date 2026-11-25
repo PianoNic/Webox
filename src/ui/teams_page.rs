@@ -188,7 +188,7 @@ impl App {
                     let mut seen = HashSet::new();
                     for s in self.spaces.iter().filter(|s| s.team == tm.id) { for p in &s.participants { if seen.insert(p.email.clone() + &p.id) { members.push(p.clone()); } } }
                 }
-                members.sort_by_key(|p| p.name.to_lowercase());
+                members.sort_by_cached_key(|p| p.name.to_lowercase()); // per frame: one lowercase copy per member, not per comparison
                 for p in &members {
                     let pp = self.live_person(p);
                     let photo = self.photo_for(ui.ctx(), &pp.id, &pp.email);

@@ -233,15 +233,23 @@ impl Session {
                 },
             }
         }
-        for (pid, text) in edits { if let Some(m) = list.iter_mut().find(|m| m.id == pid) { m.text = text; m.edited = true; } }
+        // The first row with each id (what a search from the front finds).
+        fn first_at(list: &[Message]) -> HashMap<String, usize> {
+            let mut at = HashMap::with_capacity(list.len());
+            for (i, m) in list.iter().enumerate() { at.entry(m.id.clone()).or_insert(i); }
+            at
+        }
+        let at = first_at(&list);
+        for (pid, text) in edits { if let Some(&i) = at.get(&pid) { let m = &mut list[i]; m.text = text; m.edited = true; } }
         // A deleted message's row is its tombstone ("… deleted …", `merge_acts`): only other rows go.
         list.retain(|m| !m.notice.is_empty() || !deleted.contains(&m.id));
+        let at = first_at(&list);
         // A single reaction (a live event merged into the cache) that is not newer than the message's newest summary is already
         // counted in that summary (a later page load brings the summary that includes it): only newer ones are added on top.
         let summary_at: HashMap<String, String> = summaries.iter().map(|(m, a)| (m.clone(), st(a, "published"))).collect();
         reacts.retain(|r| summary_at.get(&r.0).map_or(true, |s| r.4 > *s));
         for (msg, a) in summaries {
-            let Some(m) = list.iter_mut().find(|m| m.id == msg) else { continue };
+            let Some(&i) = at.get(&msg) else { continue };
             let ku = Some(st(a, "encryptionKeyUrl")).filter(|k| !k.is_empty()).unwrap_or_else(|| key_url.to_string());
             let mut out: Vec<Reaction> = vec![];
             for r in a["object"]["reactions"].as_array().into_iter().flatten() {
@@ -261,13 +269,14 @@ impl Session {
                 // The summary doesn't carry my own reaction activity id; `unreact` resolves this token lazily.
                 out.push(Reaction { mine: mine.then(|| format!("{msg}|{name}")), name, count, users });
             }
-            m.reactions = out;
+            list[i].reactions = out;
         }
         for (msg, name, rid, mine, published, actor) in reacts.into_iter().filter(|r| !deleted.contains(&r.2)) {
-            let Some(m) = list.iter_mut().find(|m| m.id == msg) else { continue };
+            let Some(&i) = at.get(&msg) else { continue };
+            let m = &mut list[i];
             let who = Reactor { id: actor, published, ..Default::default() };
             match m.reactions.iter_mut().find(|r| r.name == name) {
-                Some(r) => { r.count += 1; if mine { r.mine = Some(rid) } if !who.id.is_empty() && !r.users.iter().any(|u| u.id == who.id) { r.users.push(who) } }
+                Some(r) => { r.count = r.count.saturating_add(1); if mine { r.mine = Some(rid) } if !who.id.is_empty() && !r.users.iter().any(|u| u.id == who.id) { r.users.push(who) } }
                 None => m.reactions.push(Reaction { name, count: 1, mine: mine.then_some(rid), users: if who.id.is_empty() { vec![] } else { vec![who] } }),
             }
         }
@@ -405,7 +414,7 @@ impl Session {
             }
         }
         added += tombstone_deleted(list);
-        if added > 0 { list.sort_by(|a, b| st(a, "published").cmp(&st(b, "published"))); }
+        if added > 0 { list.sort_by(|a, b| a["published"].as_str().unwrap_or("").cmp(b["published"].as_str().unwrap_or(""))); }
         added
     }
 }

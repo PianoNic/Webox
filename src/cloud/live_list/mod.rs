@@ -155,7 +155,6 @@ impl Session {
     /// The fetched conversation joins the list (and the UI's), its people are followed.
     pub(super) fn add_conversation(&mut self, id: &str, c: &Value) -> bool {
         if st(c, "id") != id { return false }
-        let c = c.clone();
         let (mut people, mut teams) = (HashMap::new(), HashMap::new());
         let mut one = vec![self.space_of(&c, &mut people, &mut teams)];
         // A team's general space is titled "Allgemein" like in the list load (lists.rs `name_team_generals`).

@@ -56,7 +56,8 @@ pub fn parse_retry_after(v: &str, now_unix: i64) -> Option<Duration> {
     let month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"].iter().position(|m| *m == f[2])? as i64 + 1;
     let year: i64 = f[3].parse().ok()?;
     let t: Vec<i64> = f[4].split(':').map(|x| x.parse().ok()).collect::<Option<_>>()?;
-    if t.len() != 3 { return None; }
+    // out-of-range fields would overflow the arithmetic below
+    if t.len() != 3 || !(1..=31).contains(&day) || !(0..=9999).contains(&year) || t.iter().any(|x| !(0..=60).contains(x)) { return None; }
     // days from civil (Howard Hinnant)
     let (y, m) = if month <= 2 { (year - 1, month + 9) } else { (year, month - 3) };
     let era = y.div_euclid(400);

@@ -202,7 +202,7 @@ fn take_prewarmed(kind: Kind, name: &'static str) -> Option<egui::ColorImage> {
 const SCALED: egui::TextureOptions = egui::TextureOptions { mipmap_mode: Some(egui::TextureFilter::Linear), ..egui::TextureOptions::LINEAR };
 
 #[derive(Default)]
-pub struct Icons(HashMap<&'static str, TextureHandle>, HashMap<(&'static str, u32), TextureHandle>, HashMap<(&'static str, u32), TextureHandle>);
+pub struct Icons(HashMap<&'static str, TextureHandle>, HashMap<(&'static str, u32), (TextureHandle, bool)>, HashMap<(&'static str, u32), TextureHandle>);
 
 impl Icons {
     fn tex(&mut self, ctx: &egui::Context, name: &'static str) -> Option<egui::TextureId> {
@@ -218,32 +218,30 @@ impl Icons {
     pub fn art(&mut self, ui: &egui::Ui, name: &'static str, rect: Rect) -> bool {
         let Some(data) = lookup(name) else { return false };
         // Single-colour black line art (the Momentum fallbacks contacts-320 / message-send-320, ...) is drawn in the theme's ink,
-        // like the -black / -white art variants switch by theme.
-        let mono = mono_black(data);
+        // like the -black / -white art variants switch by theme. Found once with the raster (kept with it), not every frame.
         // Rasterised at the drawn size in device pixels (cached per size), snapped to the pixel grid, like `paint`: a 256 px raster
         // shrunk with mipmaps also shrank the transparent margin below a pixel, so a full disc touched the quad's border again
         // and was cut flat on whichever sides the sub-pixel position put on that border.
         let ppp = ui.ctx().pixels_per_point();
         let px = (rect.width() * ppp).round().clamp(1.0, 1024.0) as u32;
         if !self.1.contains_key(&(name, px)) {
+            let mono = mono_black(data);
             let Some(img) = raster_px(data, mono, px, None) else { return false };
-            self.1.insert((name, px), ui.ctx().load_texture(format!("art-{name}@{px}"), img, egui::TextureOptions::LINEAR));
+            self.1.insert((name, px), (ui.ctx().load_texture(format!("art-{name}@{px}"), img, egui::TextureOptions::LINEAR), mono));
         }
-        let tint = if mono { art_ink() } else { Color32::WHITE };
-        ui.painter().image(self.1[&(name, px)].id(), grow(on_grid(rect, px, ppp), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
+        let (tex, mono) = &self.1[&(name, px)];
+        let tint = if *mono { art_ink() } else { Color32::WHITE };
+        ui.painter().image(tex.id(), grow(on_grid(rect, px, ppp), px), Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
         true
     }
 
     /// Draws a colour emoji; false when there is no picture for that character.
     pub fn emoji(&mut self, ui: &egui::Ui, s: &str, rect: Rect) -> bool {
-        let file = emoji_file(s);
-        let bare = file.replace("-fe0f", "");
-        let with_vs = format!("{bare}-fe0f"); // e.g. ❤ is stored as 2764-fe0f
-        let Some((key, data)) = [file.as_str(), bare.as_str(), with_vs.as_str()].into_iter()
-            .find_map(|f| EMOJI_TABLE.binary_search_by(|e| e.0.cmp(f)).ok().map(|i| EMOJI_TABLE[i])) else { return false };
+        let Some(key) = emoji_key(s) else { return false }; // e.g. ❤ is stored as 2764-fe0f
         // Rasterised at the drawn size, like `paint`: a small emoji keeps its details (a 64 px raster scaled down lost the mouth).
         let px = (rect.width() * ui.ctx().pixels_per_point()).round().clamp(1.0, 256.0) as u32;
         if !self.2.contains_key(&(key, px)) {
+            let Some(data) = find(EMOJI_TABLE, key) else { return false };
             let Some(img) = raster_px(data, false, px, None) else { return false };
             self.2.insert((key, px), ui.ctx().load_texture(format!("{key}@{px}"), img, egui::TextureOptions::LINEAR));
         }
@@ -314,7 +312,18 @@ fn on_grid(rect: Rect, px: u32, ppp: f32) -> Rect {
 pub fn emoji_exists(s: &str) -> bool { emoji_key(s).is_some() }
 
 /// The name of the emoji file for a character sequence: an EXACT code-point match (with / without U+FE0F), never a fuzzy one.
+/// Memoised per thread: the UI asks for every emoji it draws (messages, reactions, the picker's cells) each frame.
 pub fn emoji_key(s: &str) -> Option<&'static str> {
+    thread_local! {
+        static KEYS: std::cell::RefCell<HashMap<String, Option<&'static str>>> = std::cell::RefCell::new(HashMap::new());
+    }
+    if let Some(k) = KEYS.with(|m| m.borrow().get(s).copied()) { return k; }
+    let found = emoji_key_uncached(s);
+    KEYS.with(|m| { let mut m = m.borrow_mut(); if m.len() >= 8192 { m.clear(); } m.insert(s.to_string(), found); });
+    found
+}
+
+fn emoji_key_uncached(s: &str) -> Option<&'static str> {
     let file = emoji_file(s);
     let bare = file.replace("-fe0f", "");
     let with_vs = format!("{bare}-fe0f");

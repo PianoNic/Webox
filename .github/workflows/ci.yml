@@ -23,6 +23,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: useblacksmith/checkout@75c49b6ed30ce59336e9252425796cfcfac155f8 # v1
+        with:
+          persist-credentials: false
 
       # docs/LINUX.md: WebKitGTK + GTK for the sign-in window, ALSA, GStreamer headers for video playback.
       - name: Install the Linux build dependencies
@@ -51,6 +53,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
@@ -70,6 +74,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
@@ -113,10 +119,14 @@ jobs:
       - uses: useblacksmith/checkout@75c49b6ed30ce59336e9252425796cfcfac155f8 # v1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - id: need
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          if [ "${{ github.event_name }}" != pull_request ] || git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE '^(flake\.(nix|lock)|packaging/nix/|Cargo\.(toml|lock)|build\.rs)'; then
+          if [ "$EVENT_NAME" != pull_request ] || git diff --name-only "origin/$BASE_REF...HEAD" | grep -qE '^(flake\.(nix|lock)|packaging/nix/|Cargo\.(toml|lock)|build\.rs)'; then
             echo run=1 >> "$GITHUB_OUTPUT"
           else
             echo "No Nix packaging or dependency change: skipped."; echo run=0 >> "$GITHUB_OUTPUT"
