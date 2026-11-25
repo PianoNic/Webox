@@ -373,6 +373,11 @@ impl Session {
             return;
         }
         let down = *c.media_down_at.get_or_insert(now);
+        // our restart OFFER got no ANSWER: that round is over, the next restart may go out
+        if !c.roap_done && c.lines_seq.is_none() && c.ice_restart_at.is_some() && c.offer_at.is_some_and(|t| now.saturating_duration_since(t) > ROAP_TIMEOUT) {
+            dbg_conn("call: ice restart OFFER unanswered");
+            (c.roap_done, c.offer_at) = (true, None);
+        }
         if now.saturating_duration_since(down) < ICE_RESTART_AFTER || !c.roap_done || c.lines_seq.is_some() { return; }
         if c.ice_restart_at.is_some_and(|t| now.saturating_duration_since(t) < ICE_RESTART_EVERY) { return; }
         c.ice_restart_at = Some(now);
@@ -432,7 +437,9 @@ impl Session {
         // re-read the locus, and end only when it is still so after the grace time.
         if c.space.is_none() && matches!(s, CallState::Ended(_)) && v.active && v.self_state == "JOINED" && peer_devices_gone(v) {
             let since = *c.gone_since.get_or_insert(now);
-            if now.saturating_duration_since(since) < DEVICES_GONE_GRACE {
+            // a cached view (a failed read, a tick between reads) never ends the call: a locus applied after the grace does
+            let fresh = c.fresh_at.is_some_and(|t| t >= since + DEVICES_GONE_GRACE);
+            if now.saturating_duration_since(since) < DEVICES_GONE_GRACE || !fresh {
                 if since == now { dbg_conn("call: the other side's devices all show LEFT while still joined, waiting before ending"); }
                 c.stale = true;
                 return Ok(());
@@ -527,6 +534,7 @@ impl Session {
             if seq != 0 && seq < c.seq { dbg_conn("call: older locus ignored"); return Ok(()); }
             c.seq = c.seq.max(seq);
             c.locus = l.clone();
+            c.fresh_at = Some(now);
         }
         let v = parse_locus(&l, &self.my_email);
         let v = LocusView { url: if v.url.is_empty() { url.clone() } else { v.url }, ..v };

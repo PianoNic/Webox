@@ -382,6 +382,8 @@ struct Active {
     video: video::CallVideo,
     /// Since when the other side shows only LEFT devices while still JOINED (`peer_devices_gone`).
     gone_since: Option<Instant>,
+    /// When a locus was last applied (an event or a successful read): the grace above ends only on a fresh one.
+    fresh_at: Option<Instant>,
     /// ICE recovery: since when the media is not connected after having been up, and when the last ICE restart OFFER
     /// went out (`ice_tick`).
     media_down_at: Option<Instant>, ice_restart_at: Option<Instant>,
@@ -393,7 +395,7 @@ impl Active {
             media: None, roap_seq: 0, roap_done: false, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None,
             locus: Value::Null, joined_at: None, media_up_at: None, offer_at: None, share: None,
             lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false, rx_lines_tried: false, mute_info: None, space: None, roster_sent: None,
-            video: Default::default(), gone_since: None, media_down_at: None, ice_restart_at: None }
+            video: Default::default(), gone_since: None, fresh_at: None, media_down_at: None, ice_restart_at: None }
     }
 }
 

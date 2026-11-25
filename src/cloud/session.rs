@@ -50,7 +50,8 @@ impl Session {
         if !self.device.is_empty() && webex_host(url) && !url.contains("idbroker") { r = r.set("cisco-device-url", &self.device); }
         let resp = match body { Some(b) => r.send_json(b), None => r.call() };
         match resp {
-            Ok(r) => { backoff::BACKOFF.ok(&host); Ok(r.into_json::<Value>().unwrap_or(Value::Null)) }
+            // a signalling request sent through a wait leaves the wait for polling as it is
+            Ok(r) => { if !urgent { backoff::BACKOFF.ok(&host); } Ok(r.into_json::<Value>().unwrap_or(Value::Null)) }
             Err(ureq::Error::Status(code, r)) => {
                 if backoff::is_throttle(code) {
                     let after = r.header("Retry-After").and_then(|v| backoff::parse_retry_after(v, keepalive_now() / 1000));

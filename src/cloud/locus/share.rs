@@ -40,6 +40,8 @@ pub struct Share {
     phase: Phase,
     since: Instant,
     granted: bool,
+    /// The share line's sent packets when this feed started, and whether the zero-packet check ran (`TX_CHECK`).
+    tx_base: u64, tx_checked: bool,
 }
 
 impl Share {
@@ -108,7 +110,7 @@ impl Session {
         if !webex_host(&floor_url) { return Err("Freigabe nicht möglich: ungültige Freigabe-Adresse.".into()); }
         dbg_conn(&format!("call: share: capture starting ({:?}, {:?}, {} fps)", r.source.kind, r.opts.max_size, r.opts.fps));
         let stream = Arc::new(std::sync::Mutex::new(capture::start(&r.source, r.opts)));
-        c.share = Some(Share { stream, feed: None, floor_url, phase: Phase::Capturing, since: Instant::now(), granted: false });
+        c.share = Some(Share { stream, feed: None, floor_url, phase: Phase::Capturing, since: Instant::now(), granted: false, tx_base: 0, tx_checked: false });
         self.share_tick();
         Ok(())
     }
@@ -139,22 +141,28 @@ impl Session {
 
     /// Every tick: follows the capture until it delivers, then negotiates; watches a running share.
     pub(super) fn share_tick(&mut self) {
-        let Some(s) = self.calls.cur.as_ref().and_then(|c| c.share.as_ref()) else { return };
+        let Some(c) = self.calls.cur.as_ref() else { return };
+        let Some(s) = c.share.as_ref() else { return };
         let (phase, status, age, granted) = (s.phase, s.stream.lock().map(|x| x.status()).unwrap_or(Status::Ended), s.since.elapsed(), s.granted);
+        // another ROAP round (an ICE restart) runs: the share's lines wait for the next tick
+        let (busy, tx_due) = (!c.roap_done, phase == Phase::Sharing && !s.tx_checked && age > TX_CHECK);
+        if tx_due {
+            // `write_sample` succeeds even when nothing goes out: what the share line really sent since this feed began decides
+            let sent = c.media.as_ref().map_or(0, |m| m.share_tx_packets()).saturating_sub(s.tx_base);
+            if let Some(s) = self.calls.cur.as_mut().and_then(|c| c.share.as_mut()) { s.tx_checked = true; }
+            if sent == 0 { return self.share_failed("Freigabe fehlgeschlagen: Es werden keine Bilddaten an den Medienserver gesendet."); }
+        }
         match (phase, status) {
             (_, Status::Failed(e)) => self.share_failed(&format!("Bildschirmaufnahme fehlgeschlagen: {e}")),
             (Phase::Capturing, Status::Ended) => self.share_failed("Freigabe abgebrochen: Es wurde nichts zum Freigeben gewählt, oder die Quelle ist nicht mehr da."),
             (_, Status::Ended) => self.share_failed("Die Freigabe wurde beendet: Die freigegebene Quelle ist nicht mehr verfügbar."),
+            (Phase::Capturing, Status::Running { .. }) if busy => {}
             (Phase::Capturing, Status::Running { width, height, encoder }) => {
                 dbg_conn(&format!("call: share: capture running {width}x{height} ({})", encoder.chars().take(60).collect::<String>()));
                 self.share_negotiate();
             }
             (Phase::Capturing, Status::Starting) if age > CAPTURE_START => self.share_failed("Bildschirmaufnahme startet nicht (Zeitüberschreitung)."),
             (Phase::Negotiating, _) if age > ROAP_TIMEOUT => self.share_failed("Freigabe fehlgeschlagen: Der Medienserver hat auf die Freigabe-Verbindung nicht geantwortet."),
-            // `write_sample` succeeds even when nothing goes out: the share sender's real packet count decides
-            (Phase::Sharing, _) if age > TX_CHECK && age < TX_CHECK + Duration::from_secs(2)
-                && self.calls.cur.as_ref().and_then(|c| c.media.as_ref()).is_some_and(|m| m.share_tx_packets() == 0) =>
-                self.share_failed("Freigabe fehlgeschlagen: Es werden keine Bilddaten an den Medienserver gesendet."),
             (Phase::Sharing, _) if !granted && age > FLOOR_GRANT => {
                 dbg_conn("call: share: floor GRANTED not seen in the locus, sharing on (like the official client)");
                 if let Some(s) = self.calls.cur.as_mut().and_then(|c| c.share.as_mut()) { s.granted = true; }
@@ -227,7 +235,7 @@ impl Session {
         let Some(c) = self.calls.cur.as_mut() else { return };
         let (Some(m), Some(s)) = (c.media.as_ref(), c.share.as_mut()) else { return };
         match m.feed_share(s.stream.clone()) {
-            Ok(f) => { s.feed = Some(f); s.phase = Phase::Sharing; s.since = Instant::now(); }
+            Ok(f) => { (s.feed, s.phase, s.since, s.tx_base, s.tx_checked) = (Some(f), Phase::Sharing, Instant::now(), m.share_tx_packets(), false); }
             Err(e) => return self.share_failed(&format!("Freigabe fehlgeschlagen: {e}")),
         }
         dbg_conn("call: share: sharing");
