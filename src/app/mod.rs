@@ -211,6 +211,7 @@ impl App {
         }
         if let Some(t) = out.clipboard { crate::ui::copy_text(t); }
         if let Some(d) = out.dialog { self.plugins.dialog = Some(d); }
+        self.plugins.acts.extend(out.dispatches);
         // Plugin threads read spaces, people and messages from a copy (`spaces.list`, `space.history`, ...), kept only while a
         // plugin listens to `message.received`.
         self.plugins.feed(&self.spaces, &self.people, &self.messages, changed);
@@ -278,7 +279,11 @@ impl App {
         }).map(|(i, _)| i).collect()
     }
 
-    pub(crate) fn act(&mut self, a: Act, ctx: &egui::Context) {
+    /// Runs an action through the bus, as built-in UI does (`bus::Origin::Ui`); a refusal shows its toast.
+    pub(crate) fn act(&mut self, a: Act, ctx: &egui::Context) { let _ = self.dispatch(a, bus::Origin::Ui, ctx); }
+
+    /// The actions that need no guard beyond what they check themselves (called by `bus::App::run`).
+    pub(super) fn act_builtin(&mut self, a: Act, ctx: &egui::Context) {
         let step = |app: &mut App, d: i32| {
             let v = app.visible();
             let i = v.iter().position(|s| Some(&s.id) == app.selected.as_ref()).map_or(0, |i| (i as i32 + d).clamp(0, v.len() as i32 - 1) as usize);
@@ -321,6 +326,8 @@ impl App {
             Act::Reload => if let (Some(c), Some(id)) = (&self.client, &self.selected) { c.req(Req::Messages(id.clone())); c.req(Req::Spaces) },
             Act::Composer(id) => self.sc.composer_events.push(id),
             Act::CopyInfo => if let Some(s) = self.spaces.iter().find(|s| Some(&s.id) == self.selected.as_ref()) { ctx.copy_text(format!("{} ({})", s.title, s.id)) },
+            // Guarded actions run in `bus::App::run`.
+            Act::SpaceOpen(_) | Act::SpaceFavorite(..) | Act::CallStart { .. } | Act::CallHangUp | Act::CallMute | Act::CallVideo | Act::PanelToggle(_) => {}
         }
     }
 
@@ -391,6 +398,7 @@ mod signin;
 mod live_list;
 mod data_sync; // the data API's store (extras/data/)
 pub mod actions;
+pub(crate) mod bus;
 pub mod files; // upload / download state shared by the UI and the cloud thread
 
 /// Whether `m` @-mentions me: a person mention with my id in its rich text, else (plain text only) my name in the text, as

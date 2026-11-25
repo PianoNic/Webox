@@ -78,7 +78,7 @@ impl App {
     pub(crate) fn space_action(&mut self, ctx: &egui::Context, action: &str, space: &Space, now: f64) {
         let current = |s: &mut Self| if s.selected.as_ref() != Some(&space.id) { s.open_space(space.id.clone()); };
         match action {
-            "favorite" => self.set_favorite(&space.id, !space.favorite),
+            "favorite" => self.act(Act::SpaceFavorite(space.id.clone(), !space.favorite), ctx),
             "unread" => self.mark_space_unread(&space.id),
             "read" => self.mark_read(&space.id),
             "mute" => self.toggle_mute(&space.id, now),

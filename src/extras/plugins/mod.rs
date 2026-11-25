@@ -35,7 +35,9 @@ pub struct Outbox {
     /// `clipboard.write`: the text to put on the clipboard.
     pub clipboard: Option<String>,
     /// `ui.dialog`: the dialog to show (replaces the one on screen).
-    pub dialog: Option<dialog::Dialog> }
+    pub dialog: Option<dialog::Dialog>,
+    /// `ui.dispatch`: actions to run through the action bus (`App::dispatch`, origin Plugin).
+    pub(crate) dispatches: Vec<crate::Act> }
 
 /// One message of a space as `space.history` hands it out (`date` / `time` UTC).
 struct Recent { id: String, author: String, email: String, mine: bool, text: String, date: String, time: String, published_ms: i64 }
@@ -186,6 +188,8 @@ pub struct Plugins {
     ui_thread: std::thread::ThreadId,
     /// The `ui.dialog` on screen (moved here from the outbox by the window).
     pub dialog: Option<dialog::Dialog>,
+    /// `ui.dispatch` actions taken from the outbox, run by the window on its next frame (it has the egui context).
+    pub(crate) acts: Vec<crate::Act>,
     /// `i18n::generation` the plugins' texts were last translated for.
     i18n_gen: u64,
     /// The data API's store (extras/data/): filled by the window only while a plugin uses it.
@@ -269,6 +273,12 @@ const METHODS: &[(&str, u32, Method)] = &[
     ("settings.set", 1, |c, a| match (a.get("id").and_then(Value::as_str), a.get("value")) {
         (Some(id), Some(v)) => { post(c, |o| o.settings_set.push((c.plugin.clone(), id.to_string(), v.clone()))); Value::Object(Map::new()) }
         _ => serde_json::json!({ "error": "id and value required" }),
+    }),
+    // `{"action": "<id>", <arguments>}`: runs a UI action on the next frame with the same guards as the built-in UI
+    // (docs/plugins.md, "Actions and state keys"); a refusal shows its toast. Unknown ids and missing arguments: an error.
+    ("ui.dispatch", 1, |c, a| match a.get("action").and_then(Value::as_str).and_then(|id| crate::Act::parse(id, a)) {
+        Some(act) => { post(c, |o| o.dispatches.push(act)); Value::Object(Map::new()) }
+        None => serde_json::json!({ "error": "unknown action or missing arguments" }),
     }),
     // `{"text"}`: puts the text on the clipboard (next frame).
     ("clipboard.write", 1, |c, a| with_text(a, |t| post(c, |o| o.clipboard = Some(t.to_string())))),
@@ -465,7 +475,7 @@ impl Plugins {
         let mut p = Plugins { dirs, list: vec![], out: Default::default(), install_root, data: Arc::new(Mutex::new(read_json(&data_file))),
             state_file: config.join("plugins.json"), data_file, settings_store: ps::Store::new(config), recent: Default::default(), seen: Default::default(),
             kept: Default::default(), fired: Default::default(), view: Default::default(), fed: false, confirms: Default::default(),
-            ui_thread: std::thread::current().id(), dialog: None, i18n_gen: 0, hub: Default::default(), generation: 0 };
+            ui_thread: std::thread::current().id(), dialog: None, acts: vec![], i18n_gen: 0, hub: Default::default(), generation: 0 };
         store::clean(&p.install_root);
         p.rescan();
         p

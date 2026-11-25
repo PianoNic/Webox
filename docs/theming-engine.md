@@ -659,7 +659,7 @@ literal `hex(0x…)` colours to component tokens whose defaults equal the litera
 → space list → conversation banner and tabs → message list → composer → menus and dialogs → settings → pages → call
 windows.
 
-**Phase 3: action bus and state keys (4–5 d).** `Action` + `App::dispatch` with guards. Route the rail, header,
+**Phase 3: action bus and state keys (4–5 d).** *Done:* `src/app/bus.rs`: the existing `Act` enum grew into the bus (stable ids, `Act::parse`, `App::dispatch` with guards and refusal toasts, `Origin`), the state keys with `App::state` and the packed `StateBits`, and `ui.dispatch` for plugins. Shortcuts, the header call buttons, the list rows and the favourite star dispatch through it; the ids are listed in docs/plugins.md. Planned: `Action` + `App::dispatch` with guards. Route the rail, header,
 banner buttons, composer toolbar and shortcut commands through it. Add the `StateKey` reader and `StateBits`.
 
 **Phase 4: layout engine for the main surface (8–12 d).** `Node`, compile, solve, render. Replace the panel sequence in

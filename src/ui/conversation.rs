@@ -47,7 +47,7 @@ impl App {
         let sr = Rect::from_center_size(pos2(title_g.right() + 21.0, banner.top() + dm.banner_actions_y), Vec2::splat(24.0));
         let sresp = ui.interact(sr, ui.id().with("fav-star"), Sense::click());
         self.icons.paint(ui, if space.favorite { "favorite-filled" } else { "favorite-regular" }, Rect::from_center_size(sr.center(), Vec2::splat(17.0)), if space.favorite { t.star } else { t.text2 });
-        if sresp.on_hover_text(crate::shortcuts::native_hint(&format!("{} (Ctrl+Shift+F)", tr("Favorite")))).clicked() { self.set_favorite(&space.id, !space.favorite) }
+        if sresp.on_hover_text(crate::shortcuts::native_hint(&format!("{} (Ctrl+Shift+F)", tr("Favorite")))).clicked() { self.act(Act::SpaceFavorite(space.id.clone(), !space.favorite), ui.ctx()) }
         let line = person.as_ref().map(|p| self.person_line(p, super::chrome::now_ms()));
         let (sub, sub_col) = header_subline(t, line, &space, &self.teams, t.text2);
         if !sub.is_empty() { ui.painter().text(pos2(banner.left() + 21.0, banner.top() + dm.banner_sub_y), egui::Align2::LEFT_CENTER, sub, F::Secondary.font(), sub_col); }
@@ -95,7 +95,7 @@ impl App {
             if put(self, ui, 0).on_hover_text(tr("Video call")).clicked() { call_peer = Some(true); }
             if put(self, ui, 1).on_hover_text(tr("Audio call")).clicked() { call_peer = Some(false); }
             if put(self, ui, 2).on_hover_text(tr("Screen share")).clicked() { call_peer = Some(false); }
-            if let Some(video) = call_peer { match &peer { Some((e, n)) => self.start_call_with(e, n, now, video), None => self.toast(crate::cloud::locus::call_allowed("", None).err().unwrap_or_default(), now) } }
+            if let Some(video) = call_peer { match &peer { Some((e, n)) => self.act(Act::CallStart { email: e.clone(), name: n.clone(), video }, ui.ctx()), None => self.toast(crate::cloud::locus::call_allowed("", None).err().unwrap_or_default(), now) } }
             if put(self, ui, 3).on_hover_text(tr("Schedule a meeting. Share the link and meet later")).clicked() {
                 let inv: Vec<String> = peer.iter().map(|(e, _)| e.clone()).collect();
                 self.open_scheduler(&space.title, &inv);

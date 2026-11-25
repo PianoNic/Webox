@@ -98,6 +98,7 @@ impl eframe::App for App {
         let can_restore = true;
         if self.minimize { self.minimize = false; if can_restore { ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)); } }
         self.poll(now);
+        for a in std::mem::take(&mut self.plugins.acts) { let _ = self.dispatch(a, crate::app::bus::Origin::Plugin, ctx); }
         // Hidden in the tray or minimised: the pictures' textures are freed (decoded again when the window is back).
         let away = crate::platform::tray::HIDDEN.load(std::sync::atomic::Ordering::Relaxed) || ctx.input(|i| i.viewport().minimized == Some(true));
         crate::assets::photos::AWAY.store(away, std::sync::atomic::Ordering::Relaxed);
