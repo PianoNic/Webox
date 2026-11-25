@@ -164,7 +164,7 @@ fn quoted_picture_gets_the_header_and_a_label() {
     let p = parse(PIC);
     let lines: Vec<&str> = p.job.text.lines().collect();
     assert!(lines[0].ends_with("Lina Roth \u{2022} Zur Originalnachricht springen"), "{lines:?}");
-    assert!(lines[1].ends_with("Datei geteilt: IMG_0042.png"), "{lines:?}");
+    assert!(lines[1].ends_with(&*crate::trq!("Shared a file: {{0}}", "IMG_0042.png")), "{lines:?}");
     assert_eq!(lines[2], "Was ist das?");
     let want = QuoteRef { author: "Lina Roth".into(), shared: Some(cloud::Shared::File("IMG_0042.png".into())), text: String::new() };
     assert_eq!(p.reply_quote.as_ref(), Some(&want));
@@ -176,7 +176,7 @@ fn quoted_picture_gets_the_header_and_a_label() {
 #[test]
 fn quoted_picture_with_thumbnail_keeps_a_line_free() {
     let p = html_job_thumb(PIC, &mc(&crate::dark()), "", 400.0, false, true).unwrap();
-    assert!(!p.job.text.contains("Datei geteilt"), "{:?}", p.job.text);
+    assert!(!p.job.text.contains(&*crate::trq!("Shared a file: {{0}}", "IMG_0042.png")), "{:?}", p.job.text);
     let at = p.thumb_at.expect("thumbnail place");
     assert_eq!(p.job.text.chars().nth(at), Some('\u{2003}'));
     assert_eq!(p.links.iter().filter(|l| l.1 == JUMP).count(), 2, "header link and the thumbnail");
@@ -186,10 +186,10 @@ fn quoted_picture_with_thumbnail_keeps_a_line_free() {
 fn summary_with_text_and_other_summaries() {
     let p = parse("<blockquote class='messageQuote'>Lina<br/><span class='spark-ignore-file-info'>Shared 3 files</span><br/>Hier die Unterlagen</blockquote>Danke");
     let lines: Vec<&str> = p.job.text.lines().collect();
-    assert!(lines[1].ends_with("3 Dateien geteilt") && lines[2].ends_with("Hier die Unterlagen"), "{lines:?}");
+    assert!(lines[1].ends_with(&*crate::trq!("Shared {{0}} files", 3)) && lines[2].ends_with("Hier die Unterlagen"), "{lines:?}");
     assert_eq!(p.reply_quote, Some(QuoteRef { author: "Lina".into(), shared: Some(cloud::Shared::Files(3)), text: "Hier die Unterlagen".into() }));
     assert_eq!(reply_ref("<blockquote class='messageQuote'>Lina<br/><span class='spark-ignore-file-info'>Shared 3 files</span><br/>Hier die Unterlagen</blockquote>Danke"), p.reply_quote);
-    assert!(parse("<blockquote class='messageQuote'>A<br/>Shared a snapshot: s.png</blockquote>").job.text.contains("Schnappschuss geteilt: s.png"));
+    assert!(parse("<blockquote class='messageQuote'>A<br/>Shared a snapshot: s.png</blockquote>").job.text.contains(&*crate::trq!("Shared a snapshot: {{0}}", "s.png")));
     // The words only count as a summary right after the author line.
     let t = parse("<blockquote class='messageQuote'>A<br/>Hallo<br/>Shared a file: x.png</blockquote>");
     assert!(t.job.text.contains("Shared a file: x.png") && t.reply_quote.unwrap().shared.is_none());
