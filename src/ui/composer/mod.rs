@@ -98,7 +98,7 @@ fn local_format_keys(i: &mut egui::InputState) -> Option<KeyAct> {
     })
 }
 
-fn mention_colour(t: &Th) -> Color32 { t.tk("message-bodyText-mention-all-text") }
+fn mention_colour(t: &Th) -> Color32 { t.at(tok!("message-bodyText-mention-all-text")) }
 
 fn em_none(items: &[&eac::Item]) -> bool { items.is_empty() }
 

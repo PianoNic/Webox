@@ -39,7 +39,7 @@ pub(crate) fn webex_dialog_bg(ctx: &egui::Context, t: &Th, k: &str, title: &str,
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 10.0;
                 for b in buttons.iter().rev() {
-                    let tw = ui.fonts(|f| f.layout_no_wrap(b.label.clone(), semibold(14.0), text).size().x);
+                    let tw = ui.fonts(|f| f.layout_no_wrap(b.label.clone(), F::Body.semibold(), text).size().x);
                     let (r, resp) = ui.allocate_exact_size(Vec2::new(tw + 40.0, 32.0), Sense::click());
                     let hov = resp.hovered();
                     if hov { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -48,7 +48,7 @@ pub(crate) fn webex_dialog_bg(ctx: &egui::Context, t: &Th, k: &str, title: &str,
                         else { (if hov { if light { alpha(Color32::BLACK, 0.07) } else { alpha(Color32::WHITE, 0.12) } } else { Color32::TRANSPARENT }, text, Stroke::new(1.0_f32, if light { alpha(Color32::BLACK, 0.3) } else { alpha(Color32::WHITE, 0.3) }) ) };
                     ui.painter().rect_filled(r, 16.0, fill);
                     if stroke.width > 0.0 { ui.painter().rect_stroke(r, 16.0, stroke, egui::StrokeKind::Inside); }
-                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, &b.label, semibold(14.0), fg);
+                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, &b.label, F::Body.semibold(), fg);
                     if resp.clicked() { result = Some(b.id.clone()); }
                 }
             });
@@ -91,7 +91,7 @@ pub(crate) fn dropdown(ui: &mut egui::Ui, icons: &mut icons::Icons, t: &Th, id: 
     p.rect_filled(r, 8.0, fill);
     p.rect_stroke(r, 8.0, Stroke::new(1.0_f32, alpha(base, border_a)), egui::StrokeKind::Inside);
     let col = alpha(base, text_a);
-    super::super::chrome::fit_text(p, r.left() + 12.0, r.center().y, options.get(*selected).map_or("", |s| s.as_str()), FontId::proportional(15.0), col, r.width() - 12.0 - 34.0);
+    super::super::chrome::fit_text(p, r.left() + 12.0, r.center().y, options.get(*selected).map_or("", |s| s.as_str()), F::Subtitle.font(), col, r.width() - 12.0 - 34.0);
     // The chevron points up while the list is open.
     icons.paint(ui, if open { "arrow-up-regular" } else { "arrow-down-regular" }, Rect::from_center_size(pos2(r.right() - 17.0, r.center().y), Vec2::splat(16.0)), col);
     if resp.clicked() { menu_toggle(&ctx, &key); }

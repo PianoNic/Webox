@@ -142,10 +142,10 @@ pub(crate) fn popup(ctx: &egui::Context, icons: &mut icons::Icons, t: &Th, pos: 
                     let p = ui.painter().with_clip_rect(clip);
                     let code = format!(":{}:", it.code);
                     match VIEW_MODE {
-                        ViewMode::ShortcutOnly => { p.text(pos2(tx, r.center().y), egui::Align2::LEFT_CENTER, code, FontId::proportional(14.0), t.text1); }
+                        ViewMode::ShortcutOnly => { p.text(pos2(tx, r.center().y), egui::Align2::LEFT_CENTER, code, F::Body.font(), t.text1); }
                         ViewMode::DescriptionAndShortcut => {
-                            p.text(pos2(tx, r.center().y - 7.0), egui::Align2::LEFT_CENTER, &it.de, FontId::proportional(14.0), t.text1);
-                            p.text(pos2(tx, r.center().y + 8.0), egui::Align2::LEFT_CENTER, code, FontId::proportional(12.0), t.text2);
+                            p.text(pos2(tx, r.center().y - 7.0), egui::Align2::LEFT_CENTER, &it.de, F::Body.font(), t.text1);
+                            p.text(pos2(tx, r.center().y + 8.0), egui::Align2::LEFT_CENTER, code, F::Caption.font(), t.text2);
                         }
                     }
                     if resp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }

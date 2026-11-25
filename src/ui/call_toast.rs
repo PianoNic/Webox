@@ -136,7 +136,7 @@ impl App {
             // The window is the card, without a drop shadow.
             let body = full;
             // modal-primary-background (#000000 dark / #FFFFFF light) with modal-primary-border (#FFFFFF33 / #00000033).
-            let bg = t.tk("modal-primary-background");
+            let bg = t.at(tok!("modal-primary-background"));
             ui.painter().rect_filled(body, 0.0, bg);
             ui.painter().rect_stroke(body, 0.0, Stroke::new(1.0_f32, t.sep), egui::StrokeKind::Inside);
             let o = body.min;
@@ -156,7 +156,7 @@ impl App {
                     if resp.hovered() || resp.has_focus() { ui.painter().rect_filled(r, 6.0, if resp.is_pointer_button_down_on() { t.pill } else { t.hover }); }
                     if resp.has_focus() { ui.painter().rect_stroke(r, 6.0, Stroke::new(2.0_f32, ring), egui::StrokeKind::Inside); }
                     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                    crate::ui::chrome::fit_text(ui.painter(), r.min.x + 8.0, r.center().y - 9.0, text, FontId::proportional(14.0), if kind == 0 { t.text1 } else { t.text2 }, r.width() - 16.0);
+                    crate::ui::chrome::fit_text(ui.painter(), r.min.x + 8.0, r.center().y - 9.0, text, F::Body.font(), if kind == 0 { t.text1 } else { t.text2 }, r.width() - 16.0);
                     if resp.clicked() { match kind { 0 => a.reply = Some(text.to_string()), 1 => a.message = true, _ => self.call.reply_open = false } }
                     y += REPLY_ROW_H;
                 }
@@ -171,7 +171,7 @@ impl App {
                 let resp = ui.interact(pill, ui.id().with("answer-pc"), Sense::click());
                 let fill = if resp.hovered() { t.pill } else { t.selected };
                 ui.painter().rect_filled(pill, 20.0, fill);
-                ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, tr("Answer on my computer"), semibold(14.0), t.text1);
+                ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, tr("Answer on my computer"), F::Body.semibold(), t.text1);
                 if resp.has_focus() { ui.painter().rect_stroke(pill.expand(1.5), 21.5, Stroke::new(2.0_f32, ring), egui::StrokeKind::Inside); }
                 if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 if resp.clicked() { a.answer = true; }
@@ -198,10 +198,10 @@ impl App {
             if ghost_at(ui, &mut self.icons, t, "close", at(CONTENT_W - 16.0 - 16.0, 8.0 + 16.0), 32.0, "cancel-regular", t.text1).on_hover_text(tr("Ignore call")).clicked() { a.dismiss = true; }
             // Static content.
             let p = ui.painter().clone();
-            p.text(at(16.0, 8.0 + 16.0), egui::Align2::LEFT_CENTER, state_text(&CallState::Incoming, 0), semibold(14.0), t.text1);
+            p.text(at(16.0, 8.0 + 16.0), egui::Align2::LEFT_CENTER, state_text(&CallState::Incoming, 0), F::Body.semibold(), t.text1);
             if !replies {
-                crate::ui::chrome::fit_text(&p, 16.0 + o.x + 44.0, o.y + mid_y - 12.0, &v.name, semibold(15.0), t.text1, CONTENT_W - 32.0 - 44.0);
-                if !v.email.is_empty() { crate::ui::chrome::fit_text(&p, 16.0 + o.x + 44.0, o.y + mid_y + 6.0, &v.email, FontId::proportional(13.0), t.text2, CONTENT_W - 32.0 - 44.0); }
+                crate::ui::chrome::fit_text(&p, 16.0 + o.x + 44.0, o.y + mid_y - 12.0, &v.name, F::Subtitle.semibold(), t.text1, CONTENT_W - 32.0 - 44.0);
+                if !v.email.is_empty() { crate::ui::chrome::fit_text(&p, 16.0 + o.x + 44.0, o.y + mid_y + 6.0, &v.email, F::Secondary.font(), t.text2, CONTENT_W - 32.0 - 44.0); }
             }
         });
         vctx.request_repaint_after(std::time::Duration::from_millis(100));

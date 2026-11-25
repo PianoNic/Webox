@@ -146,7 +146,7 @@ impl App {
         p.rect_filled(r, 6.0, t.card);
         let title = Rect::from_min_size(r.min, Vec2::new(w, TITLE_H));
         p.rect_filled(title, egui::CornerRadius { nw: 6, ne: 6, sw: 0, se: 0 }, t.selected);
-        p.text(pos2(title.left() + 16.0, title.center().y), egui::Align2::LEFT_CENTER, tr("Statistics"), semibold(14.0), t.text1);
+        p.text(pos2(title.left() + 16.0, title.center().y), egui::Align2::LEFT_CENTER, tr("Statistics"), F::Body.semibold(), t.text1);
         let x = Rect::from_min_size(pos2(title.right() - TITLE_H, title.top()), Vec2::splat(TITLE_H));
         if title_button(ui, &mut self.icons, t, x, "stats-x", "cancel-regular", false, tr("Close")).clicked() { self.call.win.stats.close(); return; }
         let st = &self.call.win.stats;
@@ -160,22 +160,22 @@ impl App {
             let line = Rect::from_min_size(room.min, Vec2::new(w, ROW_H));
             let (good, says) = match &tab { Some((tb, rtt)) => verdict(tb, *rtt), None => (true, tr("Loading statistics…")) };
             p.circle_filled(pos2(line.left() + 20.0, line.center().y), 4.0, if tab.is_none() { t.text2 } else if good { t.green } else { t.badge });
-            p.text(pos2(line.left() + 32.0, line.center().y), egui::Align2::LEFT_CENTER, says, FontId::proportional(12.0), t.text1);
+            p.text(pos2(line.left() + 32.0, line.center().y), egui::Align2::LEFT_CENTER, says, F::Caption.font(), t.text1);
             let half = if two { (w - 8.0) / 2.0 } else { w };
             for (d, name) in [tr("Transmit"), tr("Receive")].into_iter().enumerate() {
                 let o = if two { pos2(room.left() + d as f32 * (half + 8.0), line.bottom()) } else { pos2(room.left(), line.bottom() + d as f32 * (table_h + 8.0)) };
                 let band = Rect::from_min_size(o, Vec2::new(half, BAND_H));
                 p.rect_filled(band, 0.0, t.win_b);
-                p.text(pos2(band.left() + 16.0, band.center().y), egui::Align2::LEFT_CENTER, name, FontId::proportional(16.0), t.text1);
+                p.text(pos2(band.left() + 16.0, band.center().y), egui::Align2::LEFT_CENTER, name, F::Title.font(), t.text1);
                 let col_w = (half - 16.0 - LABEL_W) / 3.0;
                 let cx = |k: usize| band.left() + 16.0 + LABEL_W + col_w * (k as f32 + 0.5);
-                for (k, h) in COLS.iter().enumerate() { p.text(pos2(cx(k), band.bottom() + ROW_H / 2.0), egui::Align2::CENTER_CENTER, tr(h), semibold(12.0), t.text2); }
+                for (k, h) in COLS.iter().enumerate() { p.text(pos2(cx(k), band.bottom() + ROW_H / 2.0), egui::Align2::CENTER_CENTER, tr(h), F::Caption.semibold(), t.text2); }
                 for (row, label) in ROWS.iter().enumerate() {
                     let y = band.bottom() + ROW_H * (row as f32 + 1.5);
-                    p.text(pos2(band.left() + 16.0, y), egui::Align2::LEFT_CENTER, tr(label), FontId::proportional(12.0), t.text2);
+                    p.text(pos2(band.left() + 16.0, y), egui::Align2::LEFT_CENTER, tr(label), F::Caption.font(), t.text2);
                     for k in 0..3 {
                         let v = tab.as_ref().map_or(DASH, |(tb, _)| tb[d][row][k].as_str());
-                        p.text(pos2(cx(k), y), egui::Align2::CENTER_CENTER, v, FontId::proportional(12.0), t.text1);
+                        p.text(pos2(cx(k), y), egui::Align2::CENTER_CENTER, v, F::Caption.font(), t.text1);
                     }
                 }
             }
@@ -183,7 +183,7 @@ impl App {
             let b = Rect::from_min_size(pos2(room.right() - 16.0 - 96.0, room.bottom() - 40.0), Vec2::new(96.0, 32.0));
             let br = ui.interact(b, ui.id().with("stats-close"), Sense::click());
             ui.painter().rect_filled(b, 16.0, if br.hovered() { t.accent.gamma_multiply(0.85) } else { t.accent });
-            ui.painter().text(b.center(), egui::Align2::CENTER_CENTER, tr("Close"), semibold(14.0), Color32::WHITE);
+            ui.painter().text(b.center(), egui::Align2::CENTER_CENTER, tr("Close"), F::Body.semibold(), Color32::WHITE);
             if br.has_focus() { ui.painter().rect_stroke(b.expand(1.5), 17.5, Stroke::new(2.0_f32, t.focus), egui::StrokeKind::Inside); }
             close = br.clicked();
         });

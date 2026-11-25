@@ -167,7 +167,7 @@ impl App {
             let text2 = t.text2;
             // Body + 1 px border (wx-popup-widget-border = white / black @ 15 %) + the caret pointing at the button. Body: dark #0F0F0F;
             // light: wx-emojiPickerEmoji-background (#FFFFFF).
-            let body = if t.light { t.tk("wx-emojiPickerEmoji-background") } else { hex(0x0F0F0F) };
+            let body = if t.light { t.at(tok!("wx-emojiPickerEmoji-background")) } else { hex(0x0F0F0F) };
             let edge = t.ink_a(0.15);
             if embed.is_none() {
                 p.rect_filled(rect, 6.0, body);
@@ -182,11 +182,11 @@ impl App {
             let sr = Rect::from_min_size(rect.min + Vec2::new(12.0, 12.0), Vec2::new(W - 24.0, 28.0));
             let search_id = egui::Id::new("emoji-search");
             let focused = ui.memory(|m| m.has_focus(search_id));
-            p.rect_filled(sr, 14.0, if ui.rect_contains_pointer(sr) && !focused { t.tk("wx-emojiPickerSearch-background:hovered") } else { t.tk("wx-emojiPickerSearch-background") });
-            if focused { p.rect_stroke(sr, 14.0, Stroke::new(1.0_f32, t.tk("wx-emojiPickerSearch-border:focused")), egui::StrokeKind::Inside); }
+            p.rect_filled(sr, 14.0, if ui.rect_contains_pointer(sr) && !focused { t.at(tok!("wx-emojiPickerSearch-background:hovered")) } else { t.at(tok!("wx-emojiPickerSearch-background")) });
+            if focused { p.rect_stroke(sr, 14.0, Stroke::new(1.0_f32, t.at(tok!("wx-emojiPickerSearch-border:focused"))), egui::StrokeKind::Inside); }
             self.icons.paint(ui, "search-regular", Rect::from_center_size(sr.left_center() + Vec2::new(18.0, 0.0), Vec2::splat(15.0)), text2);
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(sr.min + Vec2::new(34.0, 0.0), sr.max - Vec2::new(54.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-            let r = c.add(egui::TextEdit::singleline(&mut st.query).id(search_id).hint_text(RichText::new(crate::ui::widgets::tr("Search")).color(text2).size(14.0)).frame(false).margin(Vec2::ZERO).font(FontId::proportional(14.0)).desired_width(sr.width() - 88.0));
+            let r = c.add(egui::TextEdit::singleline(&mut st.query).id(search_id).hint_text(RichText::new(crate::ui::widgets::tr("Search")).color(text2).size(14.0)).frame(false).margin(Vec2::ZERO).font(F::Body.font()).desired_width(sr.width() - 88.0));
             if st.focus { r.request_focus(); st.focus = false; }
             if r.changed() { st.sel = None; st.jump = Some(0.0); }
             if !st.query.is_empty() {
@@ -198,7 +198,7 @@ impl App {
             let tr = Rect::from_center_size(pos2(sr.right() - 15.0, sr.center().y), Vec2::splat(20.0));
             let tresp = ui.interact(tr, egui::Id::new("emoji-tone"), Sense::click());
             p.circle_filled(tr.center(), 7.5, hex(TONES[tone]));
-            if tresp.hovered() { p.circle_stroke(tr.center(), 9.0, Stroke::new(1.0_f32, t.tk("wx-emojiPickerSkin-background:pressed"))); }
+            if tresp.hovered() { p.circle_stroke(tr.center(), 9.0, Stroke::new(1.0_f32, t.at(tok!("wx-emojiPickerSkin-background:pressed")))); }
             if tresp.clicked() { st.tone_open = !st.tone_open; }
 
             // Grid: virtualised (only the visible rows are drawn), headings in semibold.
@@ -225,7 +225,7 @@ impl App {
                     let c = pos2(area.center().x, area.top() + 90.0);
                     if q.is_empty() { return; }
                     self.icons.art(ui, "emojipicker_illustration", Rect::from_center_size(c, Vec2::splat(110.0)));
-                    let g = ui.painter().layout(crate::ui::widgets::tr("We can't find a matching emoji. Try something else, there are plenty to choose from.").to_string(), FontId::proportional(13.5), text2, area.width() - 40.0);
+                    let g = ui.painter().layout(crate::ui::widgets::tr("We can't find a matching emoji. Try something else, there are plenty to choose from.").to_string(), F::Label.font(), text2, area.width() - 40.0);
                     ui.painter().galley(pos2(area.left() + 20.0, c.y + 70.0), g, text2);
                     return;
                 }
@@ -235,7 +235,7 @@ impl App {
                     let h = row_h(r);
                     let visible = y + h >= vp.top() - 1.0 && y <= vp.bottom() + 1.0;
                     match r {
-                        Row::Head(_, title) => if visible { ui.painter().text(pos2(area.left() + 2.0, area.top() + y + HEAD_H * 0.6), egui::Align2::LEFT_CENTER, title, semibold(14.0), t.text1); },
+                        Row::Head(_, title) => if visible { ui.painter().text(pos2(area.left() + 2.0, area.top() + y + HEAD_H * 0.6), egui::Align2::LEFT_CENTER, title, F::Body.semibold(), t.text1); },
                         Row::Cells(cells) => {
                             for (k, &ei) in cells.iter().enumerate() {
                                 if visible {
@@ -243,7 +243,7 @@ impl App {
                                     let cell = Rect::from_min_size(area.min + Vec2::new(k as f32 * CELL, y), Vec2::splat(CELL));
                                     let resp = ui.interact(cell, egui::Id::new(("emoji-cell", ei, count + k)), Sense::click());
                                     let selected = st.sel == Some(count + k);
-                                    if selected { ui.painter().rect_filled(cell.shrink(1.0), 6.0, t.tk("wx-emojiPickerEmoji-background:focused")); } else if resp.hovered() { ui.painter().rect_filled(cell.shrink(1.0), 6.0, t.tk("wx-emojiPickerEmoji-background:hovered")); }
+                                    if selected { ui.painter().rect_filled(cell.shrink(1.0), 6.0, t.at(tok!("wx-emojiPickerEmoji-background:focused"))); } else if resp.hovered() { ui.painter().rect_filled(cell.shrink(1.0), 6.0, t.at(tok!("wx-emojiPickerEmoji-background:hovered"))); }
                                     let shown = toned(&e.ch, tone).unwrap_or_else(|| e.ch.clone());
                                     let gr = Rect::from_center_size(cell.center(), Vec2::splat(GLYPH));
                                     // Colour picture only (entries without one were dropped from the list); a failed rasterise stays blank.
@@ -263,7 +263,7 @@ impl App {
 
             // Category bar: 8 tabs, 1 px gray-80 top edge, the active one with a 4 px light segment (gray-05); disabled = gray-80.
             let bar = Rect::from_min_max(pos2(rect.left(), rect.bottom() - TAB_H), rect.right_bottom());
-            p.hline(bar.x_range(), bar.top(), Stroke::new(1.0_f32, t.tk("wx-emojiPickerCategory-border-top")));
+            p.hline(bar.x_range(), bar.top(), Stroke::new(1.0_f32, t.at(tok!("wx-emojiPickerCategory-border-top"))));
             let active = head_y.iter().rev().find(|(_, y)| *y <= offset + 8.0).map(|(t, _)| *t).unwrap_or(0);
             // WEBOX_SHOT_EMOJI_TAB=<n> (screenshot runs only) scrolls to that category on the first frames.
             if self.shot.is_some() && self.frames > 2 && self.frames < 6 {
@@ -278,9 +278,9 @@ impl App {
                 let enabled = target.is_some() && q.is_empty();
                 let resp = ui.interact(tr, egui::Id::new(("emoji-tab", tab)), if enabled { Sense::click() } else { Sense::hover() });
                 let on = q.is_empty() && active == tab && enabled;
-                if on { p.rect_filled(Rect::from_min_size(tr.min, Vec2::new(tw, 4.0)), 0.0, t.tk("wx-emojiPickerCategory-border-top:checked")); }
-                else if enabled && resp.hovered() { p.rect_filled(Rect::from_min_size(tr.min, Vec2::new(tw, 4.0)), 0.0, t.tk("wx-emojiPickerCategory-border-top:hovered")); }
-                self.icons.paint(ui, TAB_ICONS[tab], Rect::from_center_size(tr.center() + Vec2::new(0.0, 2.0), Vec2::splat(20.0)), if enabled || !q.is_empty() && tab != 0 { t.tk("wx-emojiPickerCategory-icon") } else { t.tk("wx-emojiPickerCategory-icon:disabled") });
+                if on { p.rect_filled(Rect::from_min_size(tr.min, Vec2::new(tw, 4.0)), 0.0, t.at(tok!("wx-emojiPickerCategory-border-top:checked"))); }
+                else if enabled && resp.hovered() { p.rect_filled(Rect::from_min_size(tr.min, Vec2::new(tw, 4.0)), 0.0, t.at(tok!("wx-emojiPickerCategory-border-top:hovered"))); }
+                self.icons.paint(ui, TAB_ICONS[tab], Rect::from_center_size(tr.center() + Vec2::new(0.0, 2.0), Vec2::splat(20.0)), if enabled || !q.is_empty() && tab != 0 { t.at(tok!("wx-emojiPickerCategory-icon")) } else { t.at(tok!("wx-emojiPickerCategory-icon:disabled")) });
                 if enabled { if resp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); } if resp.on_hover_text(crate::ui::widgets::tr(TITLES[tab])).clicked() { st.jump = target; } }
             }
 
@@ -292,7 +292,7 @@ impl App {
                 for (i, col) in TONES.iter().enumerate() {
                     let c = pos2(tb.left() + 17.0 + i as f32 * 26.0, tb.center().y);
                     let r = ui.interact(Rect::from_center_size(c, Vec2::splat(24.0)), egui::Id::new(("emoji-tone-pick", i)), Sense::click());
-                    if r.hovered() || i == tone { p.circle_filled(c, 12.0, if i == tone { t.tk("wx-emojiPickerSkin-background:checked") } else { t.tk("wx-emojiPickerSkin-background:pressed") }); }
+                    if r.hovered() || i == tone { p.circle_filled(c, 12.0, if i == tone { t.at(tok!("wx-emojiPickerSkin-background:checked")) } else { t.at(tok!("wx-emojiPickerSkin-background:pressed")) }); }
                     p.circle_filled(c, 8.0, hex(*col));
                     if r.clicked() { self.settings["emoji_tone"] = json!(i); if self.shot.is_none() { system::save_settings(&self.cfg, &self.settings); } st.tone_open = false; }
                 }

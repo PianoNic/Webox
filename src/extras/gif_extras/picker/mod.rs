@@ -166,7 +166,7 @@ impl Plugin {
             let mut x = rect.left() + PAD;
             for (tab, label) in [(Tab::Gifs, crate::trq!("GIFs")), (Tab::Stickers, crate::trq!("Stickers")), (Tab::Emojis, crate::trq!("Emojis"))] {
                 let on = st.tab == tab;
-                let font = if on { semibold(13.0) } else { FontId::proportional(13.0) };
+                let font = if on { F::Secondary.semibold() } else { F::Secondary.font() };
                 let tw = p.layout_no_wrap(label.to_string(), font.clone(), pal.text).size().x;
                 let tr = Rect::from_min_size(pos2(x, rect.top() + 9.0), Vec2::new(tw + 24.0, 28.0));
                 let resp = ui.interact(tr, egui::Id::new(("gif-tab", tab_idx(tab), tab == Tab::Emojis)), Sense::click());
@@ -197,7 +197,7 @@ impl Plugin {
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(sr.min + Vec2::new(34.0, 0.0), sr.max - Vec2::new(34.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
             let hint = if sticker { crate::trq!("Search stickers") } else { crate::trq!("Search GIFs") }; // Webox wording (the pack has neither)
             let r = c.add(egui::TextEdit::singleline(&mut st.query).id(search_id).hint_text(RichText::new(hint).color(pal.text2).size(14.0)).text_color(pal.text)
-                .frame(false).margin(Vec2::ZERO).font(FontId::proportional(14.0)).desired_width(sr.width() - 68.0));
+                .frame(false).margin(Vec2::ZERO).font(F::Body.font()).desired_width(sr.width() - 68.0));
             if st.focus { r.request_focus(); st.focus = false; }
             if r.changed() { let q = st.query.clone(); st.debounce.set(&q, now); }
             if !st.query.is_empty() {
@@ -240,7 +240,7 @@ impl Plugin {
                             }
                         }
                         // Label: bold, centred, white on the darkened picture (a soft shadow keeps it readable on light pictures).
-                        let font = semibold(14.0);
+                        let font = F::Body.semibold();
                         let lw = ui.painter().layout_no_wrap(label.clone(), font.clone(), Color32::WHITE).size().x;
                         let iw = if icon.is_some() { 20.0 } else { 0.0 };
                         let x0 = r.center().x - (lw + iw) / 2.0;
@@ -255,24 +255,24 @@ impl Plugin {
             } else if n == 0 && st.loading {
                 ui.put(Rect::from_center_size(centre, Vec2::splat(28.0)), egui::Spinner::new().size(28.0).color(pal.text2));
             } else if n == 0 && st.error.is_some() {
-                let g1 = p.layout_no_wrap(crate::trq!("Unable to search GIFs").into_owned(), semibold(15.0), pal.text);
+                let g1 = p.layout_no_wrap(crate::trq!("Unable to search GIFs").into_owned(), F::Subtitle.semibold(), pal.text);
                 p.galley(pos2(centre.x - g1.size().x / 2.0, centre.y - 24.0), g1, pal.text);
-                let g2 = p.layout(crate::trq!("GIFs aren't working right now. Please try again later.").into_owned(), FontId::proportional(13.0), pal.text2, grid.width() - 50.0);
+                let g2 = p.layout(crate::trq!("GIFs aren't working right now. Please try again later.").into_owned(), F::Secondary.font(), pal.text2, grid.width() - 50.0);
                 p.galley(pos2(centre.x - g2.size().x / 2.0, centre.y + 2.0), g2, pal.text2);
             } else if n == 0 && st.view == View::Favorites {
                 // Webox's own wording (no pack string for an empty favourites list).
                 app.icons.paint(ui, "favorite-regular", Rect::from_center_size(pos2(centre.x, centre.y - 40.0), Vec2::splat(36.0)), pal.text2);
-                let g1 = p.layout_no_wrap(crate::trq!("No favorites yet").into_owned(), semibold(15.0), pal.text);
+                let g1 = p.layout_no_wrap(crate::trq!("No favorites yet").into_owned(), F::Subtitle.semibold(), pal.text);
                 p.galley(pos2(centre.x - g1.size().x / 2.0, centre.y - 6.0), g1, pal.text);
-                let g2 = p.layout(if sticker { crate::trq!("Star stickers to save them here.") } else { crate::trq!("Star GIFs to save them here.") }.into_owned(), FontId::proportional(13.0), pal.text2, grid.width() - 50.0);
+                let g2 = p.layout(if sticker { crate::trq!("Star stickers to save them here.") } else { crate::trq!("Star GIFs to save them here.") }.into_owned(), F::Secondary.font(), pal.text2, grid.width() - 50.0);
                 p.galley(pos2(centre.x - g2.size().x / 2.0, centre.y + 20.0), g2, pal.text2);
             } else if n == 0 && !st.loading {
                 if let Some((id, sz)) = giphy_art("search_gif.png").and_then(|b| app.icons.png(ui, "giphy-empty", b)) {
                     p.image(id, Rect::from_center_size(pos2(centre.x, centre.y - 60.0), Vec2::new(sz[0] as f32, sz[1] as f32) / 2.0 * 1.4), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
                 }
-                let g1 = p.layout_no_wrap(crate::tr!("ExchangeListPopup", "No results").into_owned(), semibold(15.0), pal.text);
+                let g1 = p.layout_no_wrap(crate::tr!("ExchangeListPopup", "No results").into_owned(), F::Subtitle.semibold(), pal.text);
                 p.galley(pos2(centre.x - g1.size().x / 2.0, centre.y - 6.0), g1, pal.text);
-                let g2 = p.layout(crate::trq!("We couldn't find a GIF for that. Try again with more general keywords.").into_owned(), FontId::proportional(13.0), pal.text2, grid.width() - 50.0);
+                let g2 = p.layout(crate::trq!("We couldn't find a GIF for that. Try again with more general keywords.").into_owned(), F::Secondary.font(), pal.text2, grid.width() - 50.0);
                 p.galley(pos2(centre.x - g2.size().x / 2.0, centre.y + 20.0), g2, pal.text2);
             } else {
                 let mut gui = ui.new_child(egui::UiBuilder::new().max_rect(grid));

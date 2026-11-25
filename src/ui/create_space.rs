@@ -18,7 +18,7 @@ struct Pending { title: String, known: Vec<String>, emails: Vec<String> }
 // [Create >= 75 x 32] [20] [Close >= 75 x 32].
 /// inputBackground (#121212 / #FFFFFF) with a 1 px border at 60 % ink.
 fn outline_field(ui: &mut egui::Ui, t: &Th, rect: Rect) {
-    ui.painter().rect_filled(rect, 14.0, t.tk("inputBackground"));
+    ui.painter().rect_filled(rect, 14.0, t.at(tok!("inputBackground")));
     ui.painter().rect_stroke(rect, 14.0, Stroke::new(1.0_f32, t.ink_a(0.6)), egui::StrokeKind::Inside);
 }
 /// The bottom row's left edge (the row is 577 pt wide and centred), and its top (y of the checkbox / buttons from the card top).
@@ -40,10 +40,10 @@ impl App {
         ui.painter().text(pos2(cx, full.top() + 72.0), egui::Align2::CENTER_CENTER, tr("Create a space"), semibold(24.0), t.text1);
         // In a team the subtitle names the team, with an x to create the space outside it.
         let team_now = d.team.clone().and_then(|tid| self.teams.iter().find(|x| x.id == tid).cloned());
-        if team_now.is_none() { ui.painter().text(pos2(cx, full.top() + 101.0), egui::Align2::CENTER_CENTER, tr("Start a group conversation with others"), FontId::proportional(14.0), t.text2); }
+        if team_now.is_none() { ui.painter().text(pos2(cx, full.top() + 101.0), egui::Align2::CENTER_CENTER, tr("Start a group conversation with others"), F::Body.font(), t.text2); }
         if let Some(tm) = team_now {
             let label = format!("{}: {}", tr("Create a space for this team"), tm.name);
-            let g = ui.painter().text(pos2(cx, full.top() + 101.0), egui::Align2::CENTER_CENTER, label, FontId::proportional(14.0), team_tones(t, tm.color, &tm.id).1);
+            let g = ui.painter().text(pos2(cx, full.top() + 101.0), egui::Align2::CENTER_CENTER, label, F::Body.font(), team_tones(t, tm.color, &tm.id).1);
             let xr = Rect::from_center_size(pos2(g.right() + 12.0, g.center().y), Vec2::splat(16.0));
             let xresp = ui.interact(xr, egui::Id::new("create-team-x"), Sense::click());
             self.icons.paint(ui, "cancel-regular", Rect::from_center_size(xr.center(), Vec2::splat(10.0)), if xresp.hovered() { t.text1 } else { t.text2 });
@@ -55,7 +55,7 @@ impl App {
         outline_field(ui, t, r1);
         let mut c1 = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(r1.min + Vec2::new(30.0, 0.0), r1.max - Vec2::new(14.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
         let name_resp = c1.add(egui::TextEdit::singleline(&mut name).hint_text(RichText::new(tr("Name the space (required)")).color(t.text2).size(14.0))
-            .frame(false).margin(Vec2::ZERO).font(FontId::proportional(14.0)).desired_width(r1.width() - 44.0));
+            .frame(false).margin(Vec2::ZERO).font(F::Body.font()).desired_width(r1.width() - 44.0));
         if !name_resp.has_focus() && !ui.memory(|m| m.has_focus(egui::Id::new("create-people"))) && name.is_empty() && self.new_space.as_deref() == Some("") { name_resp.request_focus(); }
 
         // Field 2: add people by name, number or e-mail address.
@@ -64,7 +64,7 @@ impl App {
         self.icons.paint(ui, "search-regular", Rect::from_center_size(r2.left_center() + Vec2::new(14.0, 0.0), Vec2::splat(14.0)), t.text2);
         let mut c2 = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(r2.min + Vec2::new(30.0, 0.0), r2.max - Vec2::new(14.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
         c2.add(egui::TextEdit::singleline(&mut d.query).id(egui::Id::new("create-people")).hint_text(RichText::new(tr("Add by name, number, or email")).color(t.text2).size(14.0))
-            .frame(false).margin(Vec2::ZERO).font(FontId::proportional(14.0)).desired_width(r2.width() - 48.0));
+            .frame(false).margin(Vec2::ZERO).font(F::Body.font()).desired_width(r2.width() - 48.0));
 
         // Matches from the contacts (self.people) under the field, then the chosen people as chips.
         let q = d.query.trim().to_lowercase();
@@ -80,7 +80,7 @@ impl App {
                 let mut ac = ui.new_child(egui::UiBuilder::new().max_rect(av));
                 let ph = self.photo_for(ui.ctx(), &p.id, &p.email);
                 avatar_photo(&mut ac, &mut self.icons, t, &p.name, 24.0, false, None, None, ph);
-                ui.painter().text(pos2(rr.left() + 38.0, rr.center().y), egui::Align2::LEFT_CENTER, format!("{}   {}", p.name, p.email), FontId::proportional(13.5), t.text1);
+                ui.painter().text(pos2(rr.left() + 38.0, rr.center().y), egui::Align2::LEFT_CENTER, format!("{}   {}", p.name, p.email), F::Label.font(), t.text1);
                 if resp.clicked() { d.people.push(p); d.query.clear(); }
                 y += 32.0;
             }
@@ -89,11 +89,11 @@ impl App {
             let mut x = r2.left();
             let mut remove = None;
             for (i, p) in d.people.iter().enumerate() {
-                let w = ui.fonts(|f| f.layout_no_wrap(p.name.clone(), FontId::proportional(13.5), t.text1).size().x) + 44.0;
+                let w = ui.fonts(|f| f.layout_no_wrap(p.name.clone(), F::Label.font(), t.text1).size().x) + 44.0;
                 if x + w > r2.right() { x = r2.left(); y += 32.0; }
                 let rr = Rect::from_min_size(pos2(x, y), Vec2::new(w, 26.0));
                 ui.painter().rect_filled(rr, 13.0, t.selected);
-                ui.painter().text(pos2(rr.left() + 12.0, rr.center().y), egui::Align2::LEFT_CENTER, &p.name, FontId::proportional(13.5), t.text1);
+                ui.painter().text(pos2(rr.left() + 12.0, rr.center().y), egui::Align2::LEFT_CENTER, &p.name, F::Label.font(), t.text1);
                 let xr = Rect::from_center_size(pos2(rr.right() - 14.0, rr.center().y), Vec2::splat(18.0));
                 let xresp = ui.interact(xr, egui::Id::new(("create-chip-x", &p.id)), Sense::click());
                 self.icons.paint(ui, "cancel-regular", Rect::from_center_size(xr.center(), Vec2::splat(11.0)), if xresp.hovered() { t.text1 } else { t.text2 });
@@ -122,11 +122,11 @@ impl App {
             ui.painter().rect_filled(cb, 4.0, t.white_btn);
             self.icons.paint(ui, "check-bold", Rect::from_center_size(cb.center(), Vec2::splat(12.0)), t.white_btn_text);
         } else {
-            ui.painter().rect_stroke(cb, 4.0, Stroke::new(1.0_f32, dim(t.tk("checkbox-unchecked-border"))), egui::StrokeKind::Inside);
+            ui.painter().rect_stroke(cb, 4.0, Stroke::new(1.0_f32, dim(t.at(tok!("checkbox-unchecked-border")))), egui::StrokeKind::Inside);
         }
-        ui.painter().text(pos2(row_x + 24.0, cb.center().y), egui::Align2::LEFT_CENTER, tr("Make this space public"), FontId::proportional(14.0), dim(t.text1));
+        ui.painter().text(pos2(row_x + 24.0, cb.center().y), egui::Align2::LEFT_CENTER, tr("Make this space public"), F::Body.font(), dim(t.text1));
         // Explanation: indented 22, three lines (~236 wide).
-        let mut job = egui::text::LayoutJob::simple(tr("Anyone in your organization can find and join a public space.").to_string(), FontId::proportional(12.5), t.text2, 236.0);
+        let mut job = egui::text::LayoutJob::simple(tr("Anyone in your organization can find and join a public space.").to_string(), F::Small.font(), t.text2, 236.0);
         job.wrap.max_width = 236.0;
         let g = ui.fonts(|f| f.layout_job(job));
         ui.painter().galley(pos2(row_x + 22.0, full.top() + 552.0), g, t.text2);
@@ -138,12 +138,12 @@ impl App {
         let close = Rect::from_min_size(pos2(row_x + 481.0, by), Vec2::new(96.0, 32.0));
         let mresp = ui.interact(make, egui::Id::new("create-make"), if ready { Sense::click() } else { Sense::hover() });
         // Disabled: button-primary-background / -text disabled = 20 % / 40 %.
-        ui.painter().rect_filled(make, 16.0, if !ready { t.tk("button-primary-background:disabled") } else if mresp.hovered() { t.tk("button-primary-background:hovered") } else { t.white_btn });
-        ui.painter().text(make.center(), egui::Align2::CENTER_CENTER, tr("Create"), semibold(14.0), if ready { t.white_btn_text } else { t.tk("button-primary-text:disabled") });
+        ui.painter().rect_filled(make, 16.0, if !ready { t.at(tok!("button-primary-background:disabled")) } else if mresp.hovered() { t.at(tok!("button-primary-background:hovered")) } else { t.white_btn });
+        ui.painter().text(make.center(), egui::Align2::CENTER_CENTER, tr("Create"), F::Body.semibold(), if ready { t.white_btn_text } else { t.at(tok!("button-primary-text:disabled")) });
         let cresp2 = ui.interact(close, egui::Id::new("create-close"), Sense::click());
         if cresp2.hovered() { ui.painter().rect_filled(close, 16.0, t.hover); }
-        ui.painter().rect_stroke(close, 16.0, Stroke::new(1.0_f32, t.tk("button-secondary-border")), egui::StrokeKind::Inside);
-        ui.painter().text(close.center(), egui::Align2::CENTER_CENTER, tr("Close"), semibold(14.0), t.text1);
+        ui.painter().rect_stroke(close, 16.0, Stroke::new(1.0_f32, t.at(tok!("button-secondary-border"))), egui::StrokeKind::Inside);
+        ui.painter().text(close.center(), egui::Align2::CENTER_CENTER, tr("Close"), F::Body.semibold(), t.text1);
 
         let enter = name_resp.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
         let esc = ui.input(|i| i.key_pressed(Key::Escape));

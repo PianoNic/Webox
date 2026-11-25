@@ -241,7 +241,7 @@ impl App {
             p.circle_stroke(sp, 12.0, Stroke::new(2.0_f32, hex(0x8F8F8F))); // spinner-progress-track
             let pts: Vec<egui::Pos2> = (0..=48).map(|i| { let a = -std::f32::consts::FRAC_PI_2 + std::f32::consts::TAU * (pct as f32 / 100.0) * i as f32 / 48.0; sp + Vec2::new(a.cos(), a.sin()) * 12.0 }).collect();
             if pct > 0 { p.add(egui::Shape::line(pts, Stroke::new(2.0_f32, hex(0x64B4FA)))); } // spinner-progress-cursor
-            p.text(pos2(btn.left() - 6.0, btn.center().y), Align2::RIGHT_CENTER, format!("{pct}%"), FontId::proportional(12.0), fg(0.95));
+            p.text(pos2(btn.left() - 6.0, btn.center().y), Align2::RIGHT_CENTER, format!("{pct}%"), F::Caption.font(), fg(0.95));
             let bs = ui.interact(btn, Id::new(("msg-file-btn", salt.0, salt.1, cur_seq(ui.ctx()))), Sense::click());
             if bs.on_hover_text(tr("Cancel")).clicked() { act = Some("file-cancel"); }
             ui.ctx().request_repaint_after(std::time::Duration::from_millis(80));

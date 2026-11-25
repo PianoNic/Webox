@@ -28,16 +28,16 @@ impl App {
     pub(super) fn share_picker_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, t: &Th, p: &mut Picker, r: Rect, own_window: bool) -> Act {
         let mut act = Act::None;
         let painter = ui.painter().clone();
-        vquad(&painter, r, t.tk("theme-gradient-primary-0-background"), t.tk("theme-gradient-primary-1-background"));
-        painter.rect_stroke(r, 8.0, Stroke::new(1.0f32, t.tk("wx-searchInputBox-border")), egui::StrokeKind::Inside);
+        vquad(&painter, r, t.at(tok!("theme-gradient-primary-0-background")), t.at(tok!("theme-gradient-primary-1-background")));
+        painter.rect_stroke(r, 8.0, Stroke::new(1.0f32, t.at(tok!("wx-searchInputBox-border"))), egui::StrokeKind::Inside);
         // title bar
         let bar = Rect::from_min_size(r.min, Vec2::new(r.width(), TITLE_H));
         let drag = ui.interact(bar, ui.id().with("share-title"), Sense::click_and_drag());
         if own_window && drag.drag_started() { crate::ui::chrome::note_os_grab(ctx); ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); }
-        painter.text(pos2(bar.left() + 16.0, bar.center().y), egui::Align2::LEFT_CENTER, crate::tr!("ShareDialogTitleBar", "Share content"), semibold(14.0), t.text1);
+        painter.text(pos2(bar.left() + 16.0, bar.center().y), egui::Align2::LEFT_CENTER, crate::tr!("ShareDialogTitleBar", "Share content"), F::Body.semibold(), t.text1);
         let x = Rect::from_center_size(pos2(bar.right() - 24.0, bar.center().y), Vec2::splat(28.0));
         let xr = ui.interact(x, ui.id().with("share-close"), Sense::click());
-        if xr.hovered() { painter.rect_filled(x, 14.0, t.tk("listItem-primary:hovered")); }
+        if xr.hovered() { painter.rect_filled(x, 14.0, t.at(tok!("listItem-primary:hovered"))); }
         let (c, d) = (x.center(), 5.0);
         painter.line_segment([c - Vec2::splat(d), c + Vec2::splat(d)], Stroke::new(1.3f32, t.text1));
         painter.line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.3f32, t.text1));
@@ -55,15 +55,15 @@ impl App {
         let (fill, fg) = if t.light { (hex(0x121212), Color32::WHITE) } else { (hex(0xF2F3F1), hex(0x121212)) };
         let fill = if !enabled { alpha(fill, 0.2) } else if sr.hovered() { alpha(fill, 0.85) } else { fill };
         painter.rect_filled(share_r, 20.0, fill);
-        painter.text(share_r.center(), egui::Align2::CENTER_CENTER, crate::tr!("FileTabController", "Share"), semibold(16.0), if enabled { fg } else { alpha(fg, 0.6) });
+        painter.text(share_r.center(), egui::Align2::CENTER_CENTER, crate::tr!("FileTabController", "Share"), F::Title.semibold(), if enabled { fg } else { alpha(fg, 0.6) });
         if sr.clicked() || (enabled && ctx.input(|i| i.key_pressed(Key::Enter))) { act = Act::Share; }
         let label = if p.options { crate::tr!("ShareDialogBottomView", "Hide sharing options") } else { crate::tr!("ShareDialogBottomView", "Show sharing options") };
-        let tw = ui.fonts(|f| f.layout_no_wrap(label.to_string(), semibold(14.0), t.text1).size().x);
+        let tw = ui.fonts(|f| f.layout_no_wrap(label.to_string(), F::Body.semibold(), t.text1).size().x);
         let tog = Rect::from_min_size(pos2(bottom.right() - 16.0 - tw - 52.0, bottom.center().y - 20.0), Vec2::new(tw + 52.0, 40.0));
         let tr = ui.interact(tog, ui.id().with("share-opts"), Sense::click());
-        if tr.hovered() { painter.rect_filled(tog, 20.0, t.tk("listItem-primary:hovered")); }
+        if tr.hovered() { painter.rect_filled(tog, 20.0, t.at(tok!("listItem-primary:hovered"))); }
         self.icons.paint(ui, "side-panel-bold", Rect::from_center_size(pos2(tog.left() + 26.0, tog.center().y), Vec2::splat(18.0)), t.text1);
-        painter.text(pos2(tog.left() + 42.0, tog.center().y), egui::Align2::LEFT_CENTER, label, semibold(14.0), t.text1);
+        painter.text(pos2(tog.left() + 42.0, tog.center().y), egui::Align2::LEFT_CENTER, label, F::Body.semibold(), t.text1);
         if tr.clicked() { p.options = !p.options; }
         act
     }
@@ -88,7 +88,7 @@ impl App {
         let mut go = false;
         for (title, list) in sections.iter() {
             if list.is_empty() { continue; }
-            child.painter().text(pos2(inner.left(), y + 14.0), egui::Align2::LEFT_CENTER, title, semibold(16.0), t.tk("label-primary-text"));
+            child.painter().text(pos2(inner.left(), y + 14.0), egui::Align2::LEFT_CENTER, title, F::Title.semibold(), t.at(tok!("label-primary-text")));
             y += 28.0 + 8.0;
             for (i, s) in list.iter().enumerate() {
                 let cell = Rect::from_min_size(pos2(inner.left() + (i % cols) as f32 * CELL.x, y + (i / cols) as f32 * CELL.y), CELL - Vec2::splat(CELL_GAP));
@@ -107,12 +107,12 @@ impl App {
         if resp.clicked() { p.sel = Some(k); }
         let selected = p.sel == Some(k);
         let painter = ui.painter().clone();
-        let border = if selected { Some(t.tk("sharewindow-viewwindow-selected")) } else if resp.hovered() { Some(t.tk("sharewindow-viewwindow-hovered")) } else { None };
+        let border = if selected { Some(t.at(tok!("sharewindow-viewwindow-selected"))) } else if resp.hovered() { Some(t.at(tok!("sharewindow-viewwindow-hovered"))) } else { None };
         if let Some(c) = border { painter.rect_stroke(cell, 12.0, Stroke::new(2.0f32, c), egui::StrokeKind::Inside); }
         let app = is_app(s);
         let name_h = if app { 40.0 } else { 32.0 };
         let prev = Rect::from_min_max(pos2(cell.left() + 18.0, cell.top() + 18.0), pos2(cell.right() - 18.0, cell.bottom() - name_h));
-        painter.rect_filled(prev, 6.0, t.tk("background-quaternary"));
+        painter.rect_filled(prev, 6.0, t.at(tok!("background-quaternary")));
         match p.tex.get(&k) {
             Some(tex) => {
                 let sz = tex.size_vec2();
@@ -122,12 +122,12 @@ impl App {
             }
             None if p.no_pic.contains(&k) || s.kind == Kind::Portal => {
                 let icon = if app { "application-bold" } else { "share-screen-bold" };
-                self.icons.paint(ui, icon, Rect::from_center_size(prev.center(), Vec2::splat(24.0)), t.tk("text-secondary"));
+                self.icons.paint(ui, icon, Rect::from_center_size(prev.center(), Vec2::splat(24.0)), t.at(tok!("text-secondary")));
             }
             None => { ui.put(Rect::from_center_size(prev.center(), Vec2::splat(32.0)), egui::Spinner::new().size(24.0).color(t.text2)); }
         }
         // the name: one line for screens, two for windows, elided
-        let mut job = egui::text::LayoutJob::simple(s.name.clone(), FontId::proportional(13.0), t.tk("label-primary-text"), cell.width() - 8.0);
+        let mut job = egui::text::LayoutJob::simple(s.name.clone(), F::Secondary.font(), t.at(tok!("label-primary-text")), cell.width() - 8.0);
         job.halign = egui::Align::Center;
         job.wrap.max_rows = if app { 2 } else { 1 };
         job.wrap.break_anywhere = false;
@@ -143,10 +143,10 @@ impl App {
         // radius 12 on the left; the right edge runs into the window border
         let bg = Rect::from_min_max(r.min, pos2(r.right() + 12.0, r.bottom() + 12.0));
         let clip = painter.with_clip_rect(r);
-        clip.rect_filled(bg, 12.0, t.tk("theme-gradient-secondary-0-background"));
-        vquad(&clip, Rect::from_min_max(pos2(r.left() + 12.0, r.top()), r.max), t.tk("theme-gradient-secondary-0-background"), t.tk("theme-gradient-secondary-1-background"));
+        clip.rect_filled(bg, 12.0, t.at(tok!("theme-gradient-secondary-0-background")));
+        vquad(&clip, Rect::from_min_max(pos2(r.left() + 12.0, r.top()), r.max), t.at(tok!("theme-gradient-secondary-0-background")), t.at(tok!("theme-gradient-secondary-1-background")));
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(r.shrink2(Vec2::new(12.0, 12.0))));
-        c.label(RichText::new(crate::trq!("Sharing options")).font(semibold(14.0)).color(t.text1));
+        c.label(RichText::new(crate::trq!("Sharing options")).font(F::Body.semibold()).color(t.text1));
         c.add_space(12.0);
         let opts = [crate::ui::widgets::tr("Optimize for text and images").to_string(), crate::ui::widgets::tr("Optimize for motion and video").to_string()];
         let cur = if p.optimize == Optimize::Motion { 1 } else { 0 };
@@ -168,5 +168,5 @@ impl App {
 
 /// One muted line at the top of the (empty) source list.
 fn child_note(ui: &mut egui::Ui, t: &Th, r: Rect, msg: &str) {
-    ui.painter().text(pos2(r.left() + 24.0, r.top() + 14.0), egui::Align2::LEFT_CENTER, msg, FontId::proportional(14.0), t.text2);
+    ui.painter().text(pos2(r.left() + 24.0, r.top() + 14.0), egui::Align2::LEFT_CENTER, msg, F::Body.font(), t.text2);
 }

@@ -79,7 +79,7 @@ impl App {
                 let hov = ui.rect_contains_pointer(br);
                 let ink = |k: &str| t.tk(&format!("button-primary-{k}{}", if hov { ":hovered" } else { "" }));
                 p.circle_filled(br.center(), PLAY_XL / 2.0, ink("background"));
-                self.icons.paint(ui, "play-filled", Rect::from_center_size(br.center() + Vec2::new(1.5, 0.0), Vec2::splat(20.0)), t.tk("button-primary-text"));
+                self.icons.paint(ui, "play-filled", Rect::from_center_size(br.center() + Vec2::new(1.5, 0.0), Vec2::splat(20.0)), t.at(tok!("button-primary-text")));
             }
         }
         // the overlay banner on hover: name, size (+ our duration), download / show-in-folder
@@ -116,7 +116,7 @@ impl App {
         p.text(pos2(tx, b.top() + 8.0), Align2::LEFT_TOP, name, semibold(SECOND), fg(0.95));
         let mut sub = human_size(a.size);
         if dur > 0.0 { if !sub.is_empty() { sub.push_str(" · "); } sub.push_str(&format::time_text(dur)); }
-        p.text(pos2(tx, b.top() + 28.0), Align2::LEFT_TOP, sub, FontId::proportional(12.0), fg(0.7));
+        p.text(pos2(tx, b.top() + 28.0), Align2::LEFT_TOP, sub, F::Caption.font(), fg(0.7));
         if matches!(src, Src::Fetching(_)) { return None; }
         // download, or show in folder once the file is in the download folder
         let shown = shown_file(a).is_some();
@@ -150,17 +150,17 @@ impl App {
         let body = if inline_format { String::new() } else { crate::trq!("We ran into an issue while trying to play the video. Try again in a bit.").into_owned() };
         let w = r.width() - 24.0;
         let tg = ui.painter().layout(title.into_owned(), semibold(SECOND), c.white, w);
-        let bg = ui.painter().layout(body, FontId::proportional(12.0), wa(c.white, 0.7), w);
+        let bg = ui.painter().layout(body, F::Caption.font(), wa(c.white, 0.7), w);
         let reload = crate::tr!("LobbyMediaPlayer_qt6", "Reload").into_owned();
         let total = 32.0 + 6.0 + tg.size().y + 4.0 + bg.size().y + 10.0 + 28.0;
         let mut y = r.center().y - total / 2.0;
-        self.icons.paint(ui, "warning-bold", Rect::from_center_size(pos2(r.center().x, y + 16.0), Vec2::splat(32.0)), t.tk("label-secondary-text"));
+        self.icons.paint(ui, "warning-bold", Rect::from_center_size(pos2(r.center().x, y + 16.0), Vec2::splat(32.0)), t.at(tok!("label-secondary-text")));
         y += 38.0;
         p.galley(pos2(r.center().x - tg.size().x / 2.0, y), tg.clone(), c.white);
         y += tg.size().y + 4.0;
         p.galley(pos2(r.center().x - bg.size().x / 2.0, y), bg.clone(), c.white);
         y += bg.size().y + 10.0;
-        let g = ui.painter().layout_no_wrap(reload, semibold(13.0), c.white);
+        let g = ui.painter().layout_no_wrap(reload, F::Secondary.semibold(), c.white);
         let pill = Rect::from_center_size(pos2(r.center().x, y + 14.0), Vec2::new(g.size().x + 28.0, 28.0));
         if pill.bottom() > r.bottom() { return false; }
         let rs = ui.interact(pill, ui.id().with(("video-reload", r.min.x as i32, r.min.y as i32)), Sense::click());
@@ -192,8 +192,8 @@ impl App {
         else if resp.clicked() && !resp.interact_pointer_pos().is_some_and(|q| bar.contains(q)) { ACTIVE.with(|s| if let Some(x) = s.borrow().as_ref() { if x.player.ended() { x.player.seek(0.0); } x.player.toggle(); }); }
         if (!playing || ended) && tid.is_some() {
             let br = Rect::from_center_size(r.center(), Vec2::splat(PLAY_XL));
-            p.circle_filled(br.center(), PLAY_XL / 2.0, t.tk("button-primary-background"));
-            self.icons.paint(ui, "play-filled", Rect::from_center_size(br.center() + Vec2::new(1.5, 0.0), Vec2::splat(20.0)), t.tk("button-primary-text"));
+            p.circle_filled(br.center(), PLAY_XL / 2.0, t.at(tok!("button-primary-background")));
+            self.icons.paint(ui, "play-filled", Rect::from_center_size(br.center() + Vec2::new(1.5, 0.0), Vec2::splat(20.0)), t.at(tok!("button-primary-text")));
         }
         if resp.hovered() { self.video_keys(&ctx); }
     }

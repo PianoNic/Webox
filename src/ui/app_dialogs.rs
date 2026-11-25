@@ -76,7 +76,7 @@ impl App {
             let tb = &d.tabs[tab];
             let spans = if on && !tb.alt.is_empty() { &tb.alt } else { &tb.text };
             crate::ui::widgets::vscroll().max_height(360.0).show(ui, |ui| {
-                let job = crate::ui::messages::spans_job(spans, FontId::proportional(15.0), t.text1, added, removed, ui.available_width());
+                let job = crate::ui::messages::spans_job(spans, F::Subtitle.font(), t.text1, added, removed, ui.available_width());
                 ui.add(egui::Label::new(job).selectable(true));
             });
         };
@@ -104,7 +104,7 @@ impl App {
         let signed = self.client.is_some();
         let mut body = |ui: &mut egui::Ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("WebOx on {}", std::env::consts::OS)).font(semibold(14.5)).color(t.text1));
+                ui.label(RichText::new(format!("WebOx on {}", std::env::consts::OS)).font(F::BodyLarge.semibold()).color(t.text1));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(RichText::new(if signed { tr("This session · active") } else { tr("Not signed in") }).size(13.5).color(t.text2));
                 });
@@ -164,9 +164,9 @@ impl App {
                 avatar_photo(ui, icons, t, &name, 96.0, false, None, None, photo);
                 ui.add_space(20.0);
                 ui.vertical(|ui| {
-                    ui.label(RichText::new(tr("Profile picture")).font(semibold(14.0)).color(t.text1));
+                    ui.label(RichText::new(tr("Profile picture")).font(F::Body.semibold()).color(t.text1));
                     ui.add_space(14.0);
-                    ui.label(RichText::new(tr("Display name")).font(semibold(14.0)).color(t.text1));
+                    ui.label(RichText::new(tr("Display name")).font(F::Body.semibold()).color(t.text1));
                     ui.label(RichText::new(if name.is_empty() { "—" } else { &name }).size(15.0).color(t.text1));
                     if !email.is_empty() { ui.add_space(4.0); ui.label(RichText::new(&email).size(13.5).color(t.text2)); }
                 });
@@ -186,7 +186,7 @@ impl App {
         ];
         let ok = rows.iter().all(|r| r.2);
         let mut body = |ui: &mut egui::Ui| {
-                        ui.label(RichText::new(if ok { tr("Everything looks good here!") } else { tr("One or more services are inaccessible") }).font(semibold(15.0)).color(t.text1));
+                        ui.label(RichText::new(if ok { tr("Everything looks good here!") } else { tr("One or more services are inaccessible") }).font(F::Subtitle.semibold()).color(t.text1));
             ui.add_space(10.0);
             for (k, v, good) in &rows {
                 ui.horizontal(|ui| {

@@ -59,9 +59,9 @@ impl App {
             let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width() - 6.0, 22.0), Sense::click());
             let label = if collapsed { crate::tr!("MeetingsHeadView", "Expand") } else { crate::tr!("MeetingsHeadView", "Collapse") };
             let c = r.center();
-            let tw = ui.fonts(|f| f.layout_no_wrap(label.to_string(), FontId::proportional(12.5), t.text2).size().x);
+            let tw = ui.fonts(|f| f.layout_no_wrap(label.to_string(), F::Small.font(), t.text2).size().x);
             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            ui.painter().text(pos2(c.x - 8.0, c.y), egui::Align2::CENTER_CENTER, label, FontId::proportional(12.5), if resp.hovered() { t.text1 } else { t.text2 });
+            ui.painter().text(pos2(c.x - 8.0, c.y), egui::Align2::CENTER_CENTER, label, F::Small.font(), if resp.hovered() { t.text1 } else { t.text2 });
             self.icons.paint(ui, if collapsed { "arrow-down-bold" } else { "arrow-up-bold" }, Rect::from_center_size(pos2(c.x + tw / 2.0 + 2.0, c.y), Vec2::splat(11.0)), t.text2);
             if resp.clicked() { st.meet_view = if collapsed { 0 } else { 1 }; }
         }
@@ -80,12 +80,12 @@ impl App {
             // Calendar integration prompt ("Connect your calendar to see all your meetings right here.").
             if !st.cal_prompt_closed && !calendar_connected {
                 let w = ui.available_width() - 10.0;
-                let g = ui.fonts(|f| f.layout(tr("Connect your calendar to see all your meetings right here.").into(), FontId::proportional(13.5), t.text2, w - 32.0));
+                let g = ui.fonts(|f| f.layout(tr("Connect your calendar to see all your meetings right here.").into(), F::Label.font(), t.text2, w - 32.0));
                 let h = 16.0 + 22.0 + 4.0 + g.size().y + 12.0 + 32.0 + 16.0;
                 let (r, _) = ui.allocate_exact_size(Vec2::new(w, h), Sense::hover());
                 let r = r.translate(Vec2::new(8.0, 0.0));
                 ui.painter().rect_filled(r, 12.0, t.ink_a(0.07));
-                ui.painter().text(pos2(r.left() + 16.0, r.top() + 27.0), egui::Align2::LEFT_CENTER, tr("Connect a calendar"), semibold(15.0), t.text1);
+                ui.painter().text(pos2(r.left() + 16.0, r.top() + 27.0), egui::Align2::LEFT_CENTER, tr("Connect a calendar"), F::Subtitle.semibold(), t.text1);
                 let xr = Rect::from_center_size(pos2(r.right() - 20.0, r.top() + 27.0), Vec2::splat(24.0));
                 let xresp = ui.interact(xr, ui.id().with("cal-x"), Sense::click());
                 if xresp.hovered() { ui.painter().circle_filled(xr.center(), 12.0, t.ink_a(0.12)); ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -101,14 +101,14 @@ impl App {
             }
             if rows.is_empty() {
                 ui.add_space(24.0);
-                ui.vertical_centered(|ui| { ui.label(RichText::new(tr("No meetings found")).font(semibold(15.0)).color(t.text1)); });
+                ui.vertical_centered(|ui| { ui.label(RichText::new(tr("No meetings found")).font(F::Subtitle.semibold()).color(t.text1)); });
             } else {
                 let mut last_day = String::new();
                 for (i, m) in rows.iter().enumerate() {
                     let day = if m.start_ms > 0 { day_title(m.start_ms, nowms) } else { tr("Today").to_string() };
                     if day != last_day {
                         let (hr, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.0), Sense::hover());
-                        ui.painter().text(hr.left_center() + Vec2::new(24.0, 0.0), egui::Align2::LEFT_CENTER, &day, FontId::proportional(14.0), t.text2);
+                        ui.painter().text(hr.left_center() + Vec2::new(24.0, 0.0), egui::Align2::LEFT_CENTER, &day, F::Body.font(), t.text2);
                         last_day = day;
                     }
                     let sub = if m.start_ms > 0 { time_range(m.start_ms, m.end_ms) } else { String::new() };
@@ -127,7 +127,7 @@ impl App {
             if !hist.is_empty() {
                 ui.add_space(10.0);
                 let (hr, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.0), Sense::hover());
-                ui.painter().text(hr.left_center() + Vec2::new(24.0, 0.0), egui::Align2::LEFT_CENTER, tr("Recently joined"), FontId::proportional(14.0), t.text2); // Webox's own wording
+                ui.painter().text(hr.left_center() + Vec2::new(24.0, 0.0), egui::Align2::LEFT_CENTER, tr("Recently joined"), F::Body.font(), t.text2); // Webox's own wording
                 for (site, url) in hist.iter().take(8) {
                     let mut spec = RowSpec::new(format!("hist-{url}"), site);
                     spec.sub = url; spec.icon = Some("history-regular"); spec.action = Some(("enter-room-regular", tr("Join")));
@@ -160,7 +160,7 @@ impl App {
         let nowms = crate::i18n::now_ms();
         let area = ui.max_rect().shrink2(Vec2::new(40.0, 36.0));
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::top_down(egui::Align::Min)));
-        c.label(RichText::new(&m.title).font(semibold(22.0)).color(t.text1));
+        c.label(RichText::new(&m.title).font(F::Display.semibold()).color(t.text1));
         c.add_space(4.0);
         fn line(ui: &mut egui::Ui, icons: &mut icons::Icons, icon: &'static str, text: String, col: Color32) {
             ui.horizontal(|ui| {
@@ -186,7 +186,7 @@ impl App {
         });
         if !m.link.is_empty() {
             c.add_space(18.0);
-            c.label(RichText::new(tr("Meeting link")).font(semibold(14.0)).color(t.text1));
+            c.label(RichText::new(tr("Meeting link")).font(F::Body.semibold()).color(t.text1));
             if c.add(egui::Label::new(RichText::new(&m.link).size(14.0).color(t.link)).sense(Sense::click())).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() { self.join_meeting_link(&m.link, now); }
         }
     }
@@ -231,7 +231,7 @@ impl App {
                     let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 40.0), Sense::click());
                     if resp.hovered() { ui.painter().rect_filled(r, 8.0, t.ink_a(0.1)); ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     self.icons.paint(ui, icon, Rect::from_center_size(r.left_center() + Vec2::new(18.0, 0.0), Vec2::splat(20.0)), t.text1);
-                    ui.painter().text(r.left_center() + Vec2::new(40.0, 0.0), egui::Align2::LEFT_CENTER, name, FontId::proportional(15.0), t.text1);
+                    ui.painter().text(r.left_center() + Vec2::new(40.0, 0.0), egui::Align2::LEFT_CENTER, name, F::Subtitle.font(), t.text1);
                     if resp.clicked() { ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("cal-pick"), true)); }
                 }
             };

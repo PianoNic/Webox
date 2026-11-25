@@ -22,15 +22,15 @@ impl App {
         let w = if self.rail_wide { ui.available_width() } else { 40.0_f32.min(ui.available_width()) }; // collapsed: the 40 pt circle itself
         let (r, resp) = ui.allocate_exact_size(Vec2::new(w, h), Sense::click());
         // navigationtab-background: hovered white/black 7 %, checked 20 % (pressed = checked).
-        let bg = if on || resp.is_pointer_button_down_on() { Some(t.rail_sel) } else if resp.hovered() { Some(t.tk("navigationtab-background:hovered")) } else { None };
+        let bg = if on || resp.is_pointer_button_down_on() { Some(t.rail_sel) } else if resp.hovered() { Some(t.at(tok!("navigationtab-background:hovered"))) } else { None };
         if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
         if let Some(c) = bg { if self.rail_wide { ui.painter().rect_filled(r, h / 2.0, c); } else { ui.painter().circle_filled(r.center(), 20.0, c); } }
         let ic = if self.rail_wide { pos2(r.left() + 20.0, r.center().y) } else { r.center() };
         // navigationtab-text: normal 70 %, checked 95 %.
-        let icon_col = tint.unwrap_or_else(|| if on { t.tk("navigationtab-text:checked") } else { t.tk("navigationtab-text") });
+        let icon_col = tint.unwrap_or_else(|| if on { t.at(tok!("navigationtab-text:checked")) } else { t.at(tok!("navigationtab-text")) });
         self.icons.paint(ui, icon, Rect::from_center_size(ic, Vec2::splat(24.0) /* 24 pt icon box */), icon_col);
         // The rail badge is appNav-badge (red-60), not the blue mainList-indicator.
-        let badge_col = || if crate::ui::theme::decor::on(collabhost_plugin_api::deco::BADGE_CYCLE) { crate::ui::theme::decor::cycle(0).unwrap_or(t.tk("appNav-badge")) } else { t.tk("appNav-badge") }; // = t.badge unless an accent theme sets it
+        let badge_col = || if crate::ui::theme::decor::on(collabhost_plugin_api::deco::BADGE_CYCLE) { crate::ui::theme::decor::cycle(0).unwrap_or(t.at(tok!("appNav-badge"))) } else { t.at(tok!("appNav-badge")) }; // = t.badge unless an accent theme sets it
         match badge {
             Some("") => { ui.painter().circle_filled(ic + Vec2::new(10.0, -10.0), 5.0, badge_col()); }
             Some(n) => {
@@ -52,7 +52,7 @@ impl App {
     pub(crate) fn rail(&mut self, ctx: &egui::Context, t: &Th) {
         self.about_dialog(ctx, t);
         // Expand / collapse slides the rail between RAIL_NARROW and RAIL_WIDE.
-        let k = ctx.animate_bool_with_time(egui::Id::new("rail-open"), self.rail_wide, 0.18);
+        let k = ctx.animate_bool_with_time(egui::Id::new("rail-open"), self.rail_wide, M::RailExpand.secs());
         let width = RAIL_NARROW + (RAIL_WIDE - RAIL_NARROW) * k;
         // Collapsed: left 5 puts the 40 pt circle at 5-45, right 15 leaves exactly its 40 pt (60.8 - 5 - 15).
         let (m, mr, h, gap) = if self.rail_wide { (12, 12, 40.0, 5.0) } else { (5, 15, 40.0, 5.0) }; // same 45 pt pitch collapsed and expanded
@@ -143,7 +143,7 @@ impl App {
     /// 70 %, thin chevron) sits centred in the area under the header. ">" opens the labelled rail, "<" closes it (same as
     /// Alt+Shift+Q, ToggleNavigationMenu).
     pub(crate) fn rail_edge_button(&mut self, ctx: &egui::Context, t: &Th) {
-        let k = ctx.animate_bool_with_time(egui::Id::new("rail-open"), self.rail_wide, 0.18);
+        let k = ctx.animate_bool_with_time(egui::Id::new("rail-open"), self.rail_wide, M::RailExpand.secs());
         let e = edge_inset(ctx);
         let bx = (e + RAIL_NARROW + (RAIL_WIDE - RAIL_NARROW) * k).round();
         let screen = ctx.screen_rect();
@@ -157,7 +157,7 @@ impl App {
             ui.painter().vline(bx - 0.5, top..=(screen.bottom() - e), Stroke::new(1.0_f32, t.sep));
             let resp = ui.interact(btn, egui::Id::new("rail-edge-btn"), Sense::click());
             ui.painter().circle_filled(btn.center(), 10.0, t.win_b);
-            ui.painter().circle_stroke(btn.center(), 9.4, Stroke::new(1.2_f32, if resp.hovered() { t.tk("navigationtab-text:checked") } else { t.tk("navigationtab-text") }));
+            ui.painter().circle_stroke(btn.center(), 9.4, Stroke::new(1.2_f32, if resp.hovered() { t.at(tok!("navigationtab-text:checked")) } else { t.at(tok!("navigationtab-text")) }));
             self.icons.paint(ui, if self.rail_wide { "arrow-left-optical_10" } else { "arrow-right-optical_10" }, Rect::from_center_size(btn.center(), Vec2::splat(11.0)), t.text1);
             // Tooltip: the pack's "Expand or collapse navigation menu" with the shortcut.
             if resp.on_hover_text(format!("{} (Alt+Shift+Q)", tr("Expand or collapse navigation menu"))).clicked() { self.act(Act::ToggleRail, ctx) }

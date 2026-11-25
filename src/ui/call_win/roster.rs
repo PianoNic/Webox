@@ -147,7 +147,7 @@ impl App {
         let roster = self.call.roster.clone();
         // Header: "Participants (n)" and close.
         let head = Rect::from_min_size(r.min, Vec2::new(r.width(), HEAD_H));
-        crate::ui::chrome::fit_text(ui.painter(), head.left() + 16.0, head.center().y, &crate::trq!("Participants ({{0}})", roster.joined()), semibold(14.0), t.text1, head.width() - 64.0);
+        crate::ui::chrome::fit_text(ui.painter(), head.left() + 16.0, head.center().y, &crate::trq!("Participants ({{0}})", roster.joined()), F::Body.semibold(), t.text1, head.width() - 64.0);
         let close = Rect::from_center_size(pos2(head.right() - 12.0 - BTN / 2.0, head.center().y), Vec2::splat(BTN));
         if icon_btn(ui, &mut self.icons, t, "roster-close", close, "cancel-regular", t.text1, tr("Hide participants panel")).clicked() { self.call.win.roster.open = false; }
         // Invite: a field, known people matching it, "Invite".
@@ -165,7 +165,7 @@ impl App {
             let row = Rect::from_min_size(pos2(r.left(), y), Vec2::new(r.width(), 32.0));
             let resp = ui.interact(row, ui.id().with(("roster-sugg", i)), Sense::click());
             if resp.hovered() { ui.painter().rect_filled(row, 0.0, t.hover); }
-            crate::ui::chrome::fit_text(ui.painter(), row.left() + 16.0, row.center().y, &format!("{name} · {email}"), FontId::proportional(13.0), t.text1, row.width() - 32.0);
+            crate::ui::chrome::fit_text(ui.painter(), row.left() + 16.0, row.center().y, &format!("{name} · {email}"), F::Secondary.font(), t.text1, row.width() - 32.0);
             if resp.on_hover_text(tr("Invite")).clicked() { ctl = Some(Ctl::Invite(email.clone())); }
             y += 32.0;
         }
@@ -220,10 +220,10 @@ impl App {
                 let second = second_line(m);
                 let p = ui.painter();
                 if second.is_empty() {
-                    crate::ui::chrome::fit_text(p, tx, row.center().y, &m.name, semibold(13.0), t.text1, w);
+                    crate::ui::chrome::fit_text(p, tx, row.center().y, &m.name, F::Secondary.semibold(), t.text1, w);
                 } else {
-                    crate::ui::chrome::fit_text(p, tx, row.center().y - 8.0, &m.name, semibold(13.0), t.text1, w);
-                    crate::ui::chrome::fit_text(p, tx, row.center().y + 9.0, second, FontId::proportional(12.0), t.text2, w);
+                    crate::ui::chrome::fit_text(p, tx, row.center().y - 8.0, &m.name, F::Secondary.semibold(), t.text1, w);
+                    crate::ui::chrome::fit_text(p, tx, row.center().y + 9.0, second, F::Caption.font(), t.text2, w);
                 }
             }
         });
@@ -231,7 +231,7 @@ impl App {
             let b = Rect::from_center_size(pos2(r.center().x, r.bottom() - foot_h / 2.0), Vec2::new(r.width() - 32.0, 36.0));
             let resp = ui.interact(b, ui.id().with("roster-end-all"), Sense::click());
             ui.painter().rect_filled(b, 18.0, if resp.hovered() { t.badge.gamma_multiply(0.85) } else { t.badge });
-            ui.painter().text(b.center(), egui::Align2::CENTER_CENTER, tr("End call for everyone"), semibold(13.0), Color32::WHITE);
+            ui.painter().text(b.center(), egui::Align2::CENTER_CENTER, tr("End call for everyone"), F::Secondary.semibold(), Color32::WHITE);
             if resp.has_focus() { ui.painter().rect_stroke(b.expand(1.5), 19.5, Stroke::new(2.0_f32, t.focus), egui::StrokeKind::Inside); }
             if resp.clicked() { self.call.win.roster.confirm = Some(Confirm::EndAll); }
         }
@@ -242,7 +242,7 @@ impl App {
             ui.painter().rect_filled(bx, 8.0, t.win_b);
             ui.painter().rect_stroke(bx, 8.0, Stroke::new(1.0_f32, t.sep), egui::StrokeKind::Inside);
             let _ = ui.interact(bx, ui.id().with("roster-confirm-bg"), Sense::click()); // swallow clicks on the list below
-            crate::ui::chrome::fit_text(ui.painter(), bx.left() + 16.0, bx.top() + 28.0, &q, semibold(14.0), t.text1, bx.width() - 32.0);
+            crate::ui::chrome::fit_text(ui.painter(), bx.left() + 16.0, bx.top() + 28.0, &q, F::Body.semibold(), t.text1, bx.width() - 32.0);
             let bw = 120.0;
             let yes = Rect::from_min_size(pos2(bx.right() - 16.0 - bw, bx.bottom() - 16.0 - 32.0), Vec2::new(bw, 32.0));
             let no = yes.translate(Vec2::new(-bw - 8.0, 0.0));
@@ -250,7 +250,7 @@ impl App {
                 let resp = ui.interact(rect, ui.id().with(("roster-confirm", label)), Sense::click());
                 let fill = if danger { t.badge } else { t.selected };
                 ui.painter().rect_filled(rect, 16.0, if resp.hovered() { fill.gamma_multiply(0.85) } else { fill });
-                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, semibold(13.0), if danger { Color32::WHITE } else { t.text1 });
+                ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, label, F::Secondary.semibold(), if danger { Color32::WHITE } else { t.text1 });
                 if resp.clicked() {
                     self.call.win.roster.confirm = None;
                     if danger { ctl = Some(match &cf { Confirm::Remove(id, _) => Ctl::Remove(id.clone()), Confirm::EndAll => Ctl::EndAll }); }

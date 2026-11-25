@@ -72,10 +72,10 @@ impl App {
             let (ur, cr) = (Rect::from_center_size(pos2(tb.right() - 52.0, tb.center().y), Vec2::new(104.0, 28.0)), Rect::from_center_size(pos2(tb.right() - 104.0 - 8.0 - 46.0, tb.center().y), Vec2::new(92.0, 28.0)));
             let (ru, rc) = (ui.interact(ur, ui.id().with("edit-update"), Sense::click()), ui.interact(cr, ui.id().with("edit-cancel"), Sense::click()));
             ui.painter().rect_filled(ur, 14.0, if ru.hovered() { t.white_btn.gamma_multiply(0.85) } else { t.white_btn });
-            ui.painter().text(ur.center(), egui::Align2::CENTER_CENTER, tr("Update"), semibold(13.5), t.white_btn_text);
+            ui.painter().text(ur.center(), egui::Align2::CENTER_CENTER, tr("Update"), F::Label.semibold(), t.white_btn_text);
             ui.painter().rect_stroke(cr, 14.0, Stroke::new(1.0_f32, t.sep), egui::StrokeKind::Inside);
             if rc.hovered() { ui.painter().rect_filled(cr, 14.0, t.hover); }
-            ui.painter().text(cr.center(), egui::Align2::CENTER_CENTER, tr("Cancel"), semibold(13.5), t.text1);
+            ui.painter().text(cr.center(), egui::Align2::CENTER_CENTER, tr("Cancel"), F::Label.semibold(), t.text1);
             if ru.clicked() { update_hint = true; }
             if rc.clicked() { self.composer_escape(st, id); st.emoji_q = None; st.ment_q = None; }
         } else {

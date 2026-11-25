@@ -224,14 +224,14 @@ impl App {
         let r = Rect::from_center_size(area.center(), Vec2::new(w, h));
         ui.painter().rect_filled(r, 12.0, if menu::light(t) { Color32::WHITE } else { hex(0x000000) });
         ui.painter().rect_stroke(r, 12.0, Stroke::new(1.0_f32, t.sep), egui::StrokeKind::Inside);
-        ui.painter().text(r.left_top() + Vec2::new(16.0, 20.0), egui::Align2::LEFT_CENTER, tr("Keyboard"), semibold(15.0), t.text1);
+        ui.painter().text(r.left_top() + Vec2::new(16.0, 20.0), egui::Align2::LEFT_CENTER, tr("Keyboard"), F::Subtitle.semibold(), t.text1);
         let close = super::call_toast::ghost_at(ui, &mut self.icons, t, "kp-close", r.right_top() + Vec2::new(-22.0, 20.0), 28.0, "cancel-regular", t.text1).on_hover_text(tr("Close"));
         if close.clicked() { self.call.mc.keypad = false; }
         let eye = super::call_toast::ghost_at(ui, &mut self.icons, t, "kp-eye", r.right_top() + Vec2::new(-54.0, 20.0), 28.0, if self.call.mc.keypad_hidden { "show-regular" } else { "hide-regular" }, t.text1)
             .on_hover_text(if self.call.mc.keypad_hidden { tr("Show input") } else { tr("Hide input") });
         if eye.clicked() { self.call.mc.keypad_hidden = !self.call.mc.keypad_hidden; }
         let shown = if self.call.mc.keypad_hidden { "•".repeat(self.call.mc.keypad_text.chars().count()) } else { self.call.mc.keypad_text.clone() };
-        ui.painter().text(pos2(r.center().x, r.top() + 54.0), egui::Align2::CENTER_CENTER, shown, FontId::proportional(20.0), t.text1);
+        ui.painter().text(pos2(r.center().x, r.top() + 54.0), egui::Align2::CENTER_CENTER, shown, F::Banner.font(), t.text1);
         let x0 = r.left() + 16.0;
         let y0 = r.top() + 74.0;
         let mut pressed: Option<&str> = None;

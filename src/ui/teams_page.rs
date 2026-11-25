@@ -42,7 +42,7 @@ impl App {
             }
             if active.is_empty() && archived.is_empty() {
                 ui.add_space(30.0);
-                ui.vertical_centered(|ui| { ui.label(RichText::new(tr("No teams")).font(semibold(15.0)).color(t.text1)); }); // Webox's own wording
+                ui.vertical_centered(|ui| { ui.label(RichText::new(tr("No teams")).font(F::Subtitle.semibold()).color(t.text1)); }); // Webox's own wording
             }
         });
         self.set_pst(&ctx, st);
@@ -58,7 +58,7 @@ impl App {
         let area = Rect::from_min_size(pos2(ui.max_rect().center().x - w / 2.0, ui.max_rect().top() + 48.0), Vec2::new(w, ui.max_rect().height() - 72.0));
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(area).layout(egui::Layout::top_down(egui::Align::Min)));
         c.spacing_mut().item_spacing.y = 8.0;
-        c.vertical_centered(|ui| ui.label(RichText::new(tr("Create a team")).font(semibold(22.0)).color(t.text1)));
+        c.vertical_centered(|ui| ui.label(RichText::new(tr("Create a team")).font(F::Display.semibold()).color(t.text1)));
         c.add_space(20.0);
         c.label(RichText::new(tr("Team name")).size(14.0).color(t.text1));
         c.add(egui::TextEdit::singleline(&mut name).hint_text(tr("Name the team (required)")).desired_width(f32::INFINITY).margin(egui::Margin::symmetric(10, 8)));
@@ -74,7 +74,7 @@ impl App {
             for p in hits {
                 let (r, resp) = c.allocate_exact_size(Vec2::new(w, 30.0), Sense::click());
                 if resp.hovered() { c.painter().rect_filled(r, 15.0, t.hover); c.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                c.painter().text(pos2(r.left() + 12.0, r.center().y), egui::Align2::LEFT_CENTER, format!("{}   {}", p.name, p.email), FontId::proportional(13.5), t.text1);
+                c.painter().text(pos2(r.left() + 12.0, r.center().y), egui::Align2::LEFT_CENTER, format!("{}   {}", p.name, p.email), F::Label.font(), t.text1);
                 if resp.clicked() { people.push(p); q.clear(); }
             }
         }
@@ -93,7 +93,7 @@ impl App {
                 let resp = c.interact(av, egui::Id::new(("new-team-chip", &p.id)), Sense::click());
                 if resp.hovered() { c.painter().circle_filled(av.center(), 16.0, alpha(Color32::BLACK, 0.55)); self.icons.paint(&c, "cancel-regular", Rect::from_center_size(av.center(), Vec2::splat(12.0)), Color32::WHITE); }
                 if resp.clicked() { remove = Some(i); }
-                super::page_kit::fit_label(&c, pos2(cell.center().x, av.bottom() + 12.0), &p.name, FontId::proportional(12.5), t.text1, 70.0);
+                super::page_kit::fit_label(&c, pos2(cell.center().x, av.bottom() + 12.0), &p.name, F::Small.font(), t.text1, 70.0);
             }
             if let Some(i) = remove { people.remove(i); }
         }
@@ -143,7 +143,7 @@ impl App {
             avatar_photo(ui, &mut self.icons, t, &tm.name, 56.0, true, Some(team_tones(t, tm.color, &tm.id).0), None, None);
             ui.vertical(|ui| {
                 ui.add_space(6.0);
-                ui.label(RichText::new(&tm.name).font(semibold(22.0)).color(t.text1));
+                ui.label(RichText::new(&tm.name).font(F::Display.semibold()).color(t.text1));
                 let sub = if archived { tr("Archived").to_string() } else { crate::trq!("%1 spaces", spaces.iter().filter(|s| s.joined).count()) };
                 ui.label(RichText::new(sub).size(14.0).color(t.text2));
             });
@@ -250,7 +250,7 @@ impl App {
             ui.painter().rect_filled(r, 16.0, t.ink_a(0.07));
             self.icons.paint(ui, "search-regular", Rect::from_center_size(r.left_center() + Vec2::new(18.0, 0.0), Vec2::splat(16.0)), t.text2);
             let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(r.min + Vec2::new(34.0, 0.0), r.max - Vec2::new(10.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-            inner.add(egui::TextEdit::singleline(&mut st.wb_q).hint_text(RichText::new(tr("Search whiteboards")).color(t.text2).size(14.5)).font(FontId::proportional(14.5)).frame(false).desired_width(r.width() - 48.0));
+            inner.add(egui::TextEdit::singleline(&mut st.wb_q).hint_text(RichText::new(tr("Search whiteboards")).color(t.text2).size(14.5)).font(F::BodyLarge.font()).frame(false).desired_width(r.width() - 48.0));
             ui.label(RichText::new(tr("Sort by:")).size(13.5).color(t.text2));
             if text_tab(ui, if st.wb_sort == 0 { tr("Name") } else { tr("Last modified") }, false, t, t.tab_on).clicked() { st.wb_sort = 1 - st.wb_sort; } // "Last modified": Webox's own wording
         });
@@ -263,7 +263,7 @@ impl App {
         ui.painter().rect_stroke(r, 12.0, Stroke::new(1.0_f32, t.ink_a(0.2)), egui::StrokeKind::Inside);
         if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
         self.icons.paint(ui, "plus-circle-regular", Rect::from_center_size(r.center() - Vec2::new(0.0, 12.0), Vec2::splat(32.0)), t.text1);
-        ui.painter().text(r.center() + Vec2::new(0.0, 28.0), egui::Align2::CENTER_CENTER, tr("New Whiteboard"), semibold(14.0), t.text1);
+        ui.painter().text(r.center() + Vec2::new(0.0, 28.0), egui::Align2::CENTER_CENTER, tr("New Whiteboard"), F::Body.semibold(), t.text1);
         if resp.clicked() { new_wb = true; }
         let rest = Rect::from_min_max(pos2(r.right() + 20.0, r.top()), pos2(ui.max_rect().right(), ui.max_rect().bottom()));
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(rest));

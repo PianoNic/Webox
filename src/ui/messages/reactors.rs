@@ -127,7 +127,7 @@ impl App {
 
         let dark = !t.light;
         let ink = if dark { Color32::WHITE } else { Color32::BLACK };
-        let (bg, border) = (t.tk("popover-primary-background"), wa(ink, 0.2));
+        let (bg, border) = (t.at(tok!("popover-primary-background")), wa(ink, 0.2));
         let glyph = chip_emoji(&r.name);
         let (today, yesterday) = day_ref(self.client.is_some());
         let local = self.client.is_some();
@@ -178,7 +178,7 @@ impl App {
         let ng = if ng.size().x > name_w { ui.painter().layout_job(elided(&row.name, BODY, c.body, name_w)) } else { ng };
         ui.painter().galley(pos2(x, l1 - ng.size().y / 2.0), ng, c.body);
         let er = Rect::from_center_size(pos2(right - 8.0, l2), Vec2::splat(16.0));
-        if let Some(g) = glyph { if !self.icons.emoji(ui, g, er) { ui.painter().text(er.center(), Align2::CENTER_CENTER, g, FontId::proportional(14.0), c.body); } }
+        if let Some(g) = glyph { if !self.icons.emoji(ui, g, er) { ui.painter().text(er.center(), Align2::CENTER_CENTER, g, F::Body.font(), c.body); } }
         if !status.is_empty() {
             let sg = ui.painter().layout_job(elided(&status, SECOND, t.text2, (er.left() - 8.0 - x).max(20.0)));
             ui.painter().galley(pos2(x, l2 - sg.size().y / 2.0), sg, t.text2);

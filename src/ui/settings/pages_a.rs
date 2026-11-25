@@ -335,12 +335,12 @@ fn theme_grid(ui: &mut egui::Ui, t: &Th, cur: ThemeId, enabled: bool, room: f32)
             let pw = PREVIEW_H * 140.0 / 92.0;
             paint_preview(p, Rect::from_min_size(pos2(tile.center().x - pw / 2.0, tile.top() + 6.0), Vec2::new(pw, PREVIEW_H)), id, a);
             // Name: label-primary-text, 12 px, centred in the 20 px left under the preview, elided.
-            let col = t.tk("label-primary-text").gamma_multiply(a);
+            let col = t.at(tok!("label-primary-text")).gamma_multiply(a);
             let mut job = egui::text::LayoutJob::simple_singleline(id.label(), FontId::proportional(kit::SECOND), col);
             job.wrap = egui::text::TextWrapping::truncate_at_width(TW - 8.0);
             let g = p.layout_job(job);
             p.galley(pos2(tile.center().x, tile.bottom() - 16.0) - g.size() / 2.0, g, col);
-            let ring = if cur == id { Some(t.tk("button-primary-border")) } else if hover { Some(t.tk("button-secondary-border:hovered")) } else { None };
+            let ring = if cur == id { Some(t.at(tok!("button-primary-border"))) } else if hover { Some(t.at(tok!("button-secondary-border:hovered"))) } else { None };
             if let Some(c) = ring { p.rect_stroke(tile, 12.0, Stroke::new(2.0_f32, c.gamma_multiply(a)), egui::StrokeKind::Inside); }
             if hover { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             if enabled && resp.clicked() && cur != id { pick = Some(id); }

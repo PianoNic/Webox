@@ -253,14 +253,14 @@ impl App {
         let p = ui.painter();
         p.rect_filled(bar, 0.0, t.win_b);
         let who = self.call.remote_share.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| v.name.clone());
-        crate::ui::chrome::fit_text(p, bar.left() + 12.0, bar.center().y, &crate::trq!("%1 is sharing the screen", who), semibold(13.0), t.text1, bar.width() - 24.0);
+        crate::ui::chrome::fit_text(p, bar.left() + 12.0, bar.center().y, &crate::trq!("%1 is sharing the screen", who), F::Secondary.semibold(), t.text1, bar.width() - 24.0);
         p.rect_filled(stage, 4.0, Color32::BLACK);
         match self.remote_share_picture(vctx) {
             Some((id, size)) => {
                 let r = Rect::from_center_size(stage.center(), fit_size(size, stage.size()));
                 ui.painter().image(id, r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
             }
-            None => { ui.painter().text(stage.center(), egui::Align2::CENTER_CENTER, tr("Loading share…"), FontId::proportional(14.0), t.text2); }
+            None => { ui.painter().text(stage.center(), egui::Align2::CENTER_CENTER, tr("Loading share…"), F::Body.font(), t.text2); }
         }
         strip
     }
@@ -288,7 +288,7 @@ impl App {
             let drag = ui.interact(bar, ui.id().with("titlebar"), Sense::click_and_drag());
             if drag.drag_started() { crate::ui::chrome::note_os_grab(vctx); vctx.send_viewport_cmd(egui::ViewportCommand::StartDrag); }
             if drag.double_clicked() { vctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maxed)); }
-            crate::ui::chrome::fit_text(ui.painter(), bar.left() + 8.0 + 8.0, bar.center().y, &v.name, semibold(14.0), t.text1, bar.width() - 5.0 * WIN_BTN_W - 40.0);
+            crate::ui::chrome::fit_text(ui.painter(), bar.left() + 8.0 + 8.0, bar.center().y, &v.name, F::Body.semibold(), t.text1, bar.width() - 5.0 * WIN_BTN_W - 40.0);
             let (mn, mx, cl) = Self::win_buttons(ui, t, bar.right_top(), TITLE_BAR_H, maxed);
             self.call_title_buttons(ui, t, bar, connected && !v.ended, fullscreen);
             if mn { vctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)); }
@@ -315,7 +315,7 @@ impl App {
                 ui.painter().rect_filled(body, 0.0, Color32::BLACK);
                 ui.painter().image(id, Rect::from_center_size(body.center(), fit_size(size, body.size())), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
                 let label = format!("{} · {}", v.name, v.status());
-                let g = ui.painter().layout_no_wrap(label, semibold(13.0), Color32::WHITE);
+                let g = ui.painter().layout_no_wrap(label, F::Secondary.semibold(), Color32::WHITE);
                 let tag = Rect::from_min_size(pos2(body.left() + 8.0, pip_area.bottom() - 8.0 - 28.0), Vec2::new((g.size().x + 20.0).min(body.width() - 16.0), 28.0));
                 ui.painter().rect_filled(tag, 4.0, Color32::from_black_alpha(150)); // overlayFade-meetings-background
                 ui.painter().with_clip_rect(tag).galley(pos2(tag.left() + 10.0, tag.center().y - g.size().y / 2.0), g, Color32::WHITE);
@@ -335,11 +335,11 @@ impl App {
             let name_y = cy + av / 2.0 + 24.0;
             if remote.is_none() {
                 if stage {
-                    crate::ui::chrome::fit_text(ui.painter(), body.left() + 8.0, name_y, &v.name, semibold(14.0), t.text1, body.width() - 16.0);
+                    crate::ui::chrome::fit_text(ui.painter(), body.left() + 8.0, name_y, &v.name, F::Body.semibold(), t.text1, body.width() - 16.0);
                 } else {
-                    ui.painter().text(pos2(cx, name_y), egui::Align2::CENTER_CENTER, &v.name, semibold(22.0), t.text1);
+                    ui.painter().text(pos2(cx, name_y), egui::Align2::CENTER_CENTER, &v.name, F::Display.semibold(), t.text1);
                 }
-                ui.painter().text(pos2(cx, name_y + 28.0), egui::Align2::CENTER_CENTER, v.status(), FontId::proportional(14.0), t.text2);
+                ui.painter().text(pos2(cx, name_y + 28.0), egui::Align2::CENTER_CENTER, v.status(), F::Body.font(), t.text2);
             }
             if v.ended { return; }
             if !connected {
@@ -406,7 +406,7 @@ impl App {
                 bu.painter().rect_filled(pill, 20.0, if pr.hovered() { t.badge.gamma_multiply(0.85) } else { t.badge });
                 let ic = if wide { pill.left_center() + Vec2::new(24.0, 0.0) } else { pill.center() };
                 self.icons.paint(&bu, "handset-down-slash-regular", Rect::from_center_size(ic, Vec2::splat(20.0)), Color32::WHITE);
-                if wide { bu.painter().text(pill.left_center() + Vec2::new(42.0, 0.0), egui::Align2::LEFT_CENTER, tr("End call"), semibold(13.0), Color32::WHITE); }
+                if wide { bu.painter().text(pill.left_center() + Vec2::new(42.0, 0.0), egui::Align2::LEFT_CENTER, tr("End call"), F::Secondary.semibold(), Color32::WHITE); }
                 if pr.has_focus() { bu.painter().rect_stroke(pill.expand(1.5), 21.5, Stroke::new(2.0_f32, t.focus), egui::StrokeKind::Inside); }
                 if pr.on_hover_text(tr("End call")).clicked() { a.hang = true; }
                 self.device_menu(vctx, t, now, dev.rect);

@@ -82,7 +82,7 @@ pub(crate) fn popup(ui_app: &mut App, ctx: &egui::Context, t: &Th, pl: Placement
                     if last_section != 255 { ui.add_space(SECTION_PADDING); }
                     last_section = cd.section;
                     let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), SECTION_HEADER_H), Sense::hover());
-                    ui.painter().text(pos2(r.left() + 16.0, r.center().y), egui::Align2::LEFT_CENTER, if cd.section == 0 { crate::ui::widgets::tr("People") } else { crate::ui::widgets::tr("Search results") }, FontId::proportional(14.0), t.text2);
+                    ui.painter().text(pos2(r.left() + 16.0, r.center().y), egui::Align2::LEFT_CENTER, if cd.section == 0 { crate::ui::widgets::tr("People") } else { crate::ui::widgets::tr("Search results") }, F::Body.font(), t.text2);
                 }
                 let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_H), Sense::click());
                 if scroll && i == sel { ui.scroll_to_rect(r, None); }
@@ -101,10 +101,10 @@ pub(crate) fn popup(ui_app: &mut App, ctx: &egui::Context, t: &Th, pl: Placement
                 let clip = Rect::from_min_max(pos2(tx, r.top()), pos2(r.right() - 16.0, r.bottom()));
                 let p = ui.painter().with_clip_rect(clip);
                 let (title, sub) = if cd.all { (crate::ui::widgets::tr("Mention everyone").to_string(), String::new()) } else { (cd.name.clone(), cd.email.clone()) };
-                if sub.is_empty() { p.text(pos2(tx, r.center().y), egui::Align2::LEFT_CENTER, title, semibold(15.0), t.text1); }
+                if sub.is_empty() { p.text(pos2(tx, r.center().y), egui::Align2::LEFT_CENTER, title, F::Subtitle.semibold(), t.text1); }
                 else {
-                    p.text(pos2(tx, r.center().y - 9.0), egui::Align2::LEFT_CENTER, title, semibold(15.0), t.text1);
-                    p.text(pos2(tx, r.center().y + 10.0), egui::Align2::LEFT_CENTER, sub, FontId::proportional(13.0), t.text2);
+                    p.text(pos2(tx, r.center().y - 9.0), egui::Align2::LEFT_CENTER, title, F::Subtitle.semibold(), t.text1);
+                    p.text(pos2(tx, r.center().y + 10.0), egui::Align2::LEFT_CENTER, sub, F::Secondary.font(), t.text2);
                 }
                 if resp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
                 if resp.clicked() { clicked = Some(i); }

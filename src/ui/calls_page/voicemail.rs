@@ -94,7 +94,7 @@ impl App {
             self.call.mc.vm_pos = Some((i, f, if playing { Some(now) } else { None }));
         }
         if playing { ui.ctx().request_repaint_after(std::time::Duration::from_millis(200)); }
-        c.painter().text(r.right_center() - Vec2::new(16.0, 0.0), egui::Align2::RIGHT_CENTER, format!("{} / {}", duration_text(pos as u32), duration_text(v.secs)), FontId::proportional(12.5), t.text2);
+        c.painter().text(r.right_center() - Vec2::new(16.0, 0.0), egui::Align2::RIGHT_CENTER, format!("{} / {}", duration_text(pos as u32), duration_text(v.secs)), F::Small.font(), t.text2);
         c.add_space(14.0);
         c.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 10.0;
@@ -105,7 +105,7 @@ impl App {
             }
         });
         c.add_space(18.0);
-        c.label(RichText::new(tr("Transcript")).font(semibold(15.0)).color(t.text1));
+        c.label(RichText::new(tr("Transcript")).font(F::Subtitle.semibold()).color(t.text1));
         c.add_space(4.0);
         let text = if v.transcript.is_empty() { tr("No transcript available.") } else { v.transcript.as_str() }; // Webox's own wording
         let mut tc = c.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_size(c.cursor().min, Vec2::new(w, 120.0))));

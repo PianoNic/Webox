@@ -82,8 +82,8 @@ impl App {
             let full = ui.available_rect_before_wrap();
             let _ = ui.allocate_rect(full, Sense::hover());
             let (nav_r, page_r) = (Rect::from_min_max(full.min, pos2(full.left() + NAV_W, full.bottom())), Rect::from_min_max(pos2(full.left() + NAV_W + 4.0, full.top()), full.max));
-            vgrad(ui.painter(), nav_r, 10.0, t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), nav_r, 10.0, true);
-            vgrad(ui.painter(), page_r, 10.0, t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), page_r, 10.0, false);
+            vgrad(ui.painter(), nav_r, L::CardRadius.get(), t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), nav_r, L::CardRadius.get(), true);
+            vgrad(ui.painter(), page_r, L::CardRadius.get(), t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), page_r, L::CardRadius.get(), false);
             let mut s: SUi = ctx.data(|d| d.get_temp(egui::Id::new("settings-ui"))).unwrap_or_default();
             if let Some(p) = ctx.data_mut(|d| d.remove_temp::<Page>(egui::Id::new("settings-goto"))) { s.page = p; if let Some(par) = nav::parent(p) { if !s.open.contains(&par) { s.open.push(par); } } }
             self.settings_nav(ui, t, &mut s, nav_r);
@@ -112,7 +112,7 @@ impl App {
             if !icon.is_empty() { self.icons.paint(ui, icon, Rect::from_center_size(pos2(x0 + 10.0, r.center().y), Vec2::splat(20.0)), t.text1); }
             let tx = x0 + if icon.is_empty() { 0.0 } else { 28.0 };
             let col = if sel || depth == 0 { t.text1 } else { t.text2 };
-            crate::ui::chrome::fit_text(ui.painter(), tx, r.center().y, tr(title), if sel { semibold(14.0) } else { FontId::proportional(14.0) }, col, r.right() - tx - 30.0);
+            crate::ui::chrome::fit_text(ui.painter(), tx, r.center().y, tr(title), if sel { F::Body.semibold() } else { F::Body.font() }, col, r.right() - tx - 30.0);
             if nav::has_children(p) { self.icons.paint(ui, if s.open.contains(&p) { "arrow-down-bold" } else { "arrow-right-bold" }, Rect::from_center_size(pos2(r.right() - 16.0, r.center().y), Vec2::splat(16.0)), col); }
             if resp.clicked() {
                 s.page = p;
@@ -123,7 +123,7 @@ impl App {
     }
 
     fn settings_content(&mut self, ui: &mut egui::Ui, t: &Th, s: &mut SUi, pr: Rect, now: f64) {
-        ui.painter().text(pr.left_top() + Vec2::new(24.0, 10.0 + 18.0), egui::Align2::LEFT_CENTER, nav::title(s.page), semibold(20.0), t.text1);
+        ui.painter().text(pr.left_top() + Vec2::new(24.0, 10.0 + 18.0), egui::Align2::LEFT_CENTER, nav::title(s.page), F::Banner.semibold(), t.text1);
         let mut top = pr.top() + header_h() + 8.0;
         // Pinned content: the Video page's camera preview stays above the scrolling body.
         if s.page == Page::Video {
@@ -186,7 +186,7 @@ impl App {
         self.icons.paint(ui, "search-regular", Rect::from_center_size(sf.left_center() + Vec2::new(16.0, 0.0), Vec2::splat(16.0)), t.text2);
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(sf.min + Vec2::new(32.0, 0.0), sf.max - Vec2::new(28.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
         
-        let r = c.add(egui::TextEdit::singleline(&mut s.search).id(id).frame(false).margin(Vec2::ZERO).font(FontId::proportional(14.0)).hint_text(RichText::new(tr(SEARCH_HINT)).color(t.text2).size(14.0)).desired_width(sf.width() - 60.0));
+        let r = c.add(egui::TextEdit::singleline(&mut s.search).id(id).frame(false).margin(Vec2::ZERO).font(F::Body.font()).hint_text(RichText::new(tr(SEARCH_HINT)).color(t.text2).size(14.0)).desired_width(sf.width() - 60.0));
         if r.changed() { s.edited = now; }
         if r.has_focus() && ui.input(|i| i.key_pressed(Key::Enter)) { s.applied = s.search.clone(); }
         if r.has_focus() && ui.input(|i| i.key_pressed(Key::Escape)) { s.search.clear(); s.applied.clear(); }
@@ -214,7 +214,7 @@ impl App {
             ui.painter().rect_filled(pop, 12.0, k.popup_bg);
             ui.painter().rect_stroke(pop, 12.0, Stroke::new(1.0_f32, k.border), egui::StrokeKind::Inside);
             ui.allocate_rect(pop, Sense::hover());
-            if res.is_empty() { ui.painter().text(pop.center(), egui::Align2::CENTER_CENTER, tr("No matching settings found"), FontId::proportional(14.0), t.text1); return; }
+            if res.is_empty() { ui.painter().text(pop.center(), egui::Align2::CENTER_CENTER, tr("No matching settings found"), F::Body.font(), t.text1); return; }
             let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(pop.shrink(8.0)));
             crate::ui::widgets::vscroll().id_salt("settings-search-scroll").auto_shrink([false, false]).show(&mut inner, |ui| {
                 for (i, (p, label, desc, path, key)) in res.iter().enumerate() {
@@ -222,8 +222,8 @@ impl App {
                     if rs.hovered() { s.hi = i; }
                     if s.hi == i && rs.hovered() { ui.painter().rect_filled(rr, 6.0, k.item_hover); }
                     let pad = rr.left() + 12.0;
-                    crate::ui::chrome::fit_text(ui.painter(), pad, rr.top() + 12.0, label, FontId::proportional(14.0), t.text1, rr.width() - 24.0);
-                    crate::ui::chrome::fit_text(ui.painter(), pad, rr.top() + 28.0, desc, FontId::proportional(12.0), t.text2, rr.width() - 24.0);
+                    crate::ui::chrome::fit_text(ui.painter(), pad, rr.top() + 12.0, label, F::Body.font(), t.text1, rr.width() - 24.0);
+                    crate::ui::chrome::fit_text(ui.painter(), pad, rr.top() + 28.0, desc, F::Caption.font(), t.text2, rr.width() - 24.0);
                     crate::ui::chrome::fit_text(ui.painter(), pad, rr.top() + 43.0, path, FontId::proportional(11.0), alpha(t.text2, 0.8), rr.width() - 24.0);
                     if rs.clicked() { goto = Some((*p, key.clone())); }
                 }

@@ -57,17 +57,17 @@ impl App {
         self.icons.paint(ui, "search-regular", Rect::from_center_size(pos2(fr.left() + 20.0, fr.center().y), Vec2::splat(16.0)), text2);
         let mut fui = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(pos2(fr.left() + 36.0, fr.top()), pos2(fr.right() - 12.0, fr.bottom()))).layout(egui::Layout::left_to_right(egui::Align::Center)));
         fui.add(egui::TextEdit::singleline(&mut self.sc.page.q).id(egui::Id::new("sc-page-search")).frame(false).margin(Vec2::ZERO).desired_width(f32::INFINITY)
-            .hint_text(RichText::new(tr("Search shortcuts")).color(dim)).font(FontId::proportional(14.0)).text_color(text));
+            .hint_text(RichText::new(tr("Search shortcuts")).color(dim)).font(F::Body.font()).text_color(text));
         ui.add_space(12.0);
 
         // Column headers.
         let (hr, _) = ui.allocate_exact_size(Vec2::new(w, 24.0), Sense::hover());
         let hp = ui.painter();
-        hp.text(pos2(hr.left() + 8.0, hr.center().y), egui::Align2::LEFT_CENTER, tr("Description"), FontId::proportional(13.0), text2);
+        hp.text(pos2(hr.left() + 8.0, hr.center().y), egui::Align2::LEFT_CENTER, tr("Description"), F::Secondary.font(), text2);
         let col_r = hr.right() - ACTIONS_W - 16.0;
-        hp.text(pos2(col_r, hr.center().y), egui::Align2::RIGHT_CENTER, tr("Shortcut"), FontId::proportional(13.0), text2);
+        hp.text(pos2(col_r, hr.center().y), egui::Align2::RIGHT_CENTER, tr("Shortcut"), F::Secondary.font(), text2);
         let gx = hr.right() - ACTIONS_W + 10.0;
-        hp.text(pos2(gx, hr.center().y), egui::Align2::CENTER_CENTER, "Global", FontId::proportional(13.0), text2);
+        hp.text(pos2(gx, hr.center().y), egui::Align2::CENTER_CENTER, "Global", F::Secondary.font(), text2);
         let ir = Rect::from_center_size(pos2(gx + 38.0, hr.center().y), Vec2::splat(18.0));
         self.icons.paint(ui, "info_16", ir, text2);
         ui.interact(ir, egui::Id::new("sc-global-info"), Sense::hover()).on_hover_text(crate::tr!("SettingsKeyboardShortcutsPage", INFO).to_string());
@@ -87,7 +87,7 @@ impl App {
             let (r, resp) = ui.allocate_exact_size(Vec2::new(w, HEAD_H), Sense::click());
             if resp.hovered() { ui.painter().rect_filled(r, 8.0, alpha(base, 0.07)); ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
             self.icons.paint(ui, if open { "arrow-down-optical_12" } else { "arrow-right-optical_10" }, Rect::from_center_size(pos2(r.left() + 20.0, r.center().y), Vec2::splat(12.0)), text);
-            ui.painter().text(pos2(r.left() + 36.0, r.center().y), egui::Align2::LEFT_CENTER, g.title(), semibold(14.5), text);
+            ui.painter().text(pos2(r.left() + 36.0, r.center().y), egui::Align2::LEFT_CENTER, g.title(), F::BodyLarge.semibold(), text);
             if resp.clicked() && q.is_empty() { todo.push(Do::Group(gi)); }
             if !open { continue; }
             for i in rows { shown += 1; self.sc_row(ui, t, i, w, [text, text2, dim, base], now, &mut todo); }
@@ -114,12 +114,12 @@ impl App {
         }
         // Reset button.
         ui.add_space(16.0);
-        let tw = ui.fonts(|f| f.layout_no_wrap(tr("Reset to default").into(), semibold(14.0), text).size().x);
+        let tw = ui.fonts(|f| f.layout_no_wrap(tr("Reset to default").into(), F::Body.semibold(), text).size().x);
         let (br, bresp) = ui.allocate_exact_size(Vec2::new(tw + 40.0, 32.0), Sense::click());
         if bresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
         ui.painter().rect_filled(br, 16.0, if bresp.hovered() { alpha(base, 0.12) } else { Color32::TRANSPARENT });
         ui.painter().rect_stroke(br, 16.0, Stroke::new(1.0_f32, alpha(base, 0.3)), egui::StrokeKind::Inside);
-        ui.painter().text(br.center(), egui::Align2::CENTER_CENTER, tr("Reset to default"), semibold(14.0), text);
+        ui.painter().text(br.center(), egui::Align2::CENTER_CENTER, tr("Reset to default"), F::Body.semibold(), text);
         if bresp.clicked() { todo.push(Do::ResetAll); }
         ui.add_space(16.0);
 
@@ -200,7 +200,7 @@ impl App {
         };
         let mut left_limit = right;
         if look != Look::Inactive || key.is_some() || editing {
-            let tw = if label.is_empty() { 0.0 } else { ui.fonts(|f| f.layout_no_wrap(label.clone(), FontId::proportional(14.0), text).size().x) };
+            let tw = if label.is_empty() { 0.0 } else { ui.fonts(|f| f.layout_no_wrap(label.clone(), F::Body.font(), text).size().x) };
             let badge = matches!(look, Look::Available | Look::Unavailable);
             let pw = if label.is_empty() { 112.0 } else { tw + 16.0 + if badge { 24.0 } else { 0.0 } }; // preferred width 112 when empty; padding 8 + 8
             let pr = Rect::from_min_size(pos2(right - pw, row.center().y - 14.0), Vec2::new(pw, 28.0));
@@ -216,13 +216,13 @@ impl App {
         } else if c.customizable {
             // Pill button, secondary XS, left icon plus-bold: "Add shortcut".
             let label = tr("Add shortcut");
-            let tw = ui.fonts(|f| f.layout_no_wrap(label.into(), semibold(13.0), text).size().x);
+            let tw = ui.fonts(|f| f.layout_no_wrap(label.into(), F::Secondary.semibold(), text).size().x);
             let pr = Rect::from_min_size(pos2(right - (tw + 16.0 + 18.0 + 8.0), row.center().y - 12.0), Vec2::new(tw + 42.0, 24.0));
             let presp = ui.interact(pr, egui::Id::new(("sc-add", i)), Sense::click());
             if presp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); ui.painter().rect_filled(pr, 12.0, alpha(base, 0.11)); }
             ui.painter().rect_stroke(pr, 12.0, Stroke::new(1.0_f32, alpha(base, 0.3)), egui::StrokeKind::Inside);
             self.icons.paint(ui, "plus-bold", Rect::from_center_size(pos2(pr.left() + 16.0, pr.center().y), Vec2::splat(12.0)), text);
-            ui.painter().text(pos2(pr.left() + 28.0, pr.center().y), egui::Align2::LEFT_CENTER, label, semibold(13.0), text);
+            ui.painter().text(pos2(pr.left() + 28.0, pr.center().y), egui::Align2::LEFT_CENTER, label, F::Secondary.semibold(), text);
             if presp.clicked() { todo.push(Do::Edit(i)); }
             left_limit = pr.left() - 8.0;
         }
@@ -235,7 +235,7 @@ impl App {
         }
         // Title.
         let tcol = if c.customizable || r.key.is_none() { text } else { text };
-        crate::ui::chrome::fit_text(ui.painter(), row.left() + 12.0, row.center().y, tr(c.label), FontId::proportional(14.5), tcol, (left_limit - row.left() - 24.0).max(40.0));
+        crate::ui::chrome::fit_text(ui.painter(), row.left() + 12.0, row.center().y, tr(c.label), F::BodyLarge.font(), tcol, (left_limit - row.left() - 24.0).max(40.0));
         let _ = text2;
     }
 
@@ -309,5 +309,5 @@ fn paint_pill(ui: &egui::Ui, r: Rect, look: Look, light: bool, hovered: bool, la
     let _ = text;
     let mut x = r.left() + 8.0;
     if let Some(ic) = badge { icons.paint(ui, ic, Rect::from_center_size(pos2(r.left() + 16.0, r.center().y), Vec2::splat(14.0)), border); x += 20.0; }
-    if !label.is_empty() { p.text(pos2(x, r.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(14.0), fg); }
+    if !label.is_empty() { p.text(pos2(x, r.center().y), egui::Align2::LEFT_CENTER, label, F::Body.font(), fg); }
 }

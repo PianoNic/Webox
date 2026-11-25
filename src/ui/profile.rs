@@ -13,7 +13,7 @@ enum Pill { Green, Outline }
 
 /// A 32 pt pill button with an icon and a label; returns the response.
 fn pill(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th, icon: &'static str, label: &str, style: Pill) -> egui::Response {
-    let tw = ui.fonts(|f| f.layout_no_wrap(label.to_string(), semibold(14.0), t.text1).size().x);
+    let tw = ui.fonts(|f| f.layout_no_wrap(label.to_string(), F::Body.semibold(), t.text1).size().x);
     let (r, resp) = ui.allocate_exact_size(Vec2::new(tw + 56.0, 32.0), Sense::click());
     if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
     let down = resp.is_pointer_button_down_on();
@@ -27,7 +27,7 @@ fn pill(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th, icon: &'static str, la
     }
     let fg = if style == Pill::Green { Color32::WHITE } else { t.text1 };
     ic.paint(ui, icon, Rect::from_center_size(pos2(r.left() + 20.0, r.center().y), Vec2::splat(16.0)), fg);
-    ui.painter().text(pos2(r.left() + 34.0, r.center().y), egui::Align2::LEFT_CENTER, label, semibold(14.0), fg);
+    ui.painter().text(pos2(r.left() + 34.0, r.center().y), egui::Align2::LEFT_CENTER, label, F::Body.semibold(), fg);
     resp
 }
 
@@ -71,7 +71,7 @@ impl App {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.add_space(10.0);
-                ui.label(RichText::new(&p.name).font(semibold(22.0)).color(t.text1));
+                ui.label(RichText::new(&p.name).font(F::Display.semibold()).color(t.text1));
                 let line = self.person_line(&p, super::chrome::now_ms());
                 if !line.is_empty() { ui.add_space(2.0); ui.label(RichText::new(line).size(14.0).color(t.text2)); }
             });

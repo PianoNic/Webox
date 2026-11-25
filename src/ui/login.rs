@@ -31,7 +31,7 @@ impl App {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!max));
         }
         self.icons.logo(ui, Rect::from_center_size(pos2(full.left() + 16.0, full.top() + 16.0), Vec2::splat(15.0)));
-        p.text(pos2(full.left() + 27.0, full.top() + 16.0), egui::Align2::LEFT_CENTER, "Webox", FontId::proportional(12.5), white);
+        p.text(pos2(full.left() + 27.0, full.top() + 16.0), egui::Align2::LEFT_CENTER, "Webox", F::Small.font(), white);
         let ctl = |ui: &mut egui::Ui, id: &str, rect: Rect, hover: Color32, glyph: &dyn Fn(&egui::Painter, Rect)| {
             let resp = ui.interact(rect, egui::Id::new(id), Sense::click());
             if resp.hovered() { ui.painter().rect_filled(rect, 0.0, hover); }
@@ -70,7 +70,7 @@ impl App {
                 p.rect_stroke(r, 16.0, Stroke::new(1.0_f32, hex(0x848A91)), egui::StrokeKind::Inside);
             }
             let col = if filled { hex(0x0C0C0C) } else { white };
-            for dx in [0.0, 0.45] { p.text(r.center() + Vec2::new(dx, 0.0), egui::Align2::CENTER_CENTER, label, FontId::proportional(14.5), col); } // drawn twice for a semibold look
+            for dx in [0.0, 0.45] { p.text(r.center() + Vec2::new(dx, 0.0), egui::Align2::CENTER_CENTER, label, F::BodyLarge.font(), col); } // drawn twice for a semibold look
             resp
         };
 
@@ -183,7 +183,7 @@ impl App {
 
         // Terms line (two lines, 46 and 27 points above the bottom) with underlined links.
         let line = |y: f32, parts: &[(&str, Option<&str>)], ui: &mut egui::Ui| {
-            let f = FontId::proportional(13.0);
+            let f = F::Secondary.font();
             let w: f32 = parts.iter().map(|(s, _)| ui.fonts(|fo| fo.layout_no_wrap(s.to_string(), f.clone(), white).size().x)).sum();
             let mut x = cx - w / 2.0;
             for (s, link) in parts {
@@ -227,8 +227,8 @@ impl App {
                         let on = self.settings["gov"].as_bool().unwrap_or(false) == gov;
                         let (r, resp) = ui.allocate_exact_size(Vec2::new(298.0, 48.0), Sense::click());
                         if on || resp.hovered() { ui.painter().rect_filled(r, 8.0, hex(0x121212)); }
-                        ui.painter().text(r.left_top() + Vec2::new(11.0, 7.0), egui::Align2::LEFT_TOP, title, FontId::proportional(14.5), white);
-                        ui.painter().text(r.left_top() + Vec2::new(11.0, 27.0), egui::Align2::LEFT_TOP, sub, FontId::proportional(12.5), hex(0xB8B8B8));
+                        ui.painter().text(r.left_top() + Vec2::new(11.0, 7.0), egui::Align2::LEFT_TOP, title, F::BodyLarge.font(), white);
+                        ui.painter().text(r.left_top() + Vec2::new(11.0, 27.0), egui::Align2::LEFT_TOP, sub, F::Small.font(), hex(0xB8B8B8));
                         if on { self.icons.paint(ui, "check-regular", Rect::from_center_size(r.right_center() - Vec2::new(22.0, 0.0), Vec2::splat(14.0)), hex(0x418ED3)); }
                         if resp.clicked() {
                             if gov { self.login_error = "Webex for Government isn't in this version.".into(); }

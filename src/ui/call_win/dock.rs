@@ -99,7 +99,7 @@ impl App {
         }
         self.call.win.dock_mode = mode;
 
-        let bg = t.tk("modal-secondary-background"); // #1A1A1A dark / #F7F7F7 light
+        let bg = t.at(tok!("modal-secondary-background")); // #1A1A1A dark / #F7F7F7 light
         let border = t.sep; // modal-primary-border
         let pin = self.settings[crate::ui::settings::DOCK_KEEP_IN_FRONT].as_bool().unwrap_or(false);
         if vctx.input(|i| i.viewport().close_requested()) { vctx.send_viewport_cmd(egui::ViewportCommand::CancelClose); self.dock_close_request(); }
@@ -168,7 +168,7 @@ impl App {
                 }
                 _ => {
                     bu.add_space(40.0);
-                    bu.label(RichText::new(tr("No active calls")).font(semibold(16.0)).color(t.text1));
+                    bu.label(RichText::new(tr("No active calls")).font(F::Title.semibold()).color(t.text1));
                     bu.add_space(16.0);
                     let hist = self.call.history.clone();
                     for (name, incoming, res) in hist.iter().take(8) {
@@ -181,9 +181,9 @@ impl App {
                 ui.painter().rect_filled(full, 0.0, Color32::from_black_alpha(120));
                 let w = 402.0_f32.min(full.width() - 24.0);
                 egui::Area::new(egui::Id::new("dock-confirm")).order(egui::Order::Foreground).fixed_pos(full.center() - Vec2::new(w / 2.0, 80.0)).show(vctx, |ui| {
-                    egui::Frame::default().fill(t.tk("modal-primary-background")).stroke(Stroke::new(1.0_f32, border)).inner_margin(20).show(ui, |ui| {
+                    egui::Frame::default().fill(t.at(tok!("modal-primary-background"))).stroke(Stroke::new(1.0_f32, border)).inner_margin(20).show(ui, |ui| {
                         ui.set_width(w - 42.0);
-                        ui.label(RichText::new(tr("Close calling dock?")).font(semibold(16.0)).color(t.text1));
+                        ui.label(RichText::new(tr("Close calling dock?")).font(F::Title.semibold()).color(t.text1));
                         ui.add_space(8.0);
                         ui.label(RichText::new(crate::shortcuts::native_hint(tr("You can use Ctrl + Shift + X to reopen it instantly."))).size(14.0).color(t.text2));
                         ui.add_space(12.0);

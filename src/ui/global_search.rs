@@ -144,7 +144,7 @@ impl App {
             p.rect_stroke(field, 14.0, Stroke::new(1.0_f32, t.accent), egui::StrokeKind::Inside); // `focus` is the keyboard-focus ring
             self.icons.paint(ui, "search-regular", Rect::from_center_size(field.left_center() + Vec2::new(18.0, 0.0), Vec2::splat(16.0)), text);
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(field.min + Vec2::new(34.0, 0.0), field.max - Vec2::new(12.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-            let r = c.add(egui::TextEdit::singleline(&mut g2.q).id(egui::Id::new("gs-input")).hint_text(RichText::new(tr("Search, meet, and call")).color(text2).size(14.5)).font(FontId::proportional(14.5)).frame(false).desired_width(field.width() - 46.0));
+            let r = c.add(egui::TextEdit::singleline(&mut g2.q).id(egui::Id::new("gs-input")).hint_text(RichText::new(tr("Search, meet, and call")).color(text2).size(14.5)).font(F::BodyLarge.font()).frame(false).desired_width(field.width() - 46.0));
             if std::mem::take(&mut g2.focus) { r.request_focus(); }
             let xr = Rect::from_center_size(pos2(outer.right() - 24.0 - 14.0, field.center().y), Vec2::splat(28.0));
             let xresp = ui.interact(xr, egui::Id::new("gs-close"), Sense::click());
@@ -170,11 +170,11 @@ impl App {
                     let (full, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), row.height()), Sense::hover());
                     let r = Rect::from_min_max(full.min + Vec2::new(8.0, 0.0), full.max - Vec2::new(8.0, 0.0));
                     match row {
-                        Row::Section(s) => { ui.painter().text(pos2(r.left() + 4.0, r.center().y), egui::Align2::LEFT_CENTER, s, FontId::proportional(13.5), text2); }
+                        Row::Section(s) => { ui.painter().text(pos2(r.left() + 4.0, r.center().y), egui::Align2::LEFT_CENTER, s, F::Label.font(), text2); }
                         Row::Placeholder | Row::NoFound => {
                             let (art, msg) = if matches!(row, Row::Placeholder) { ("lighthouse-filter-192-cobalt-lime", crate::ui::widgets::tr("Search for people, spaces and devices")) } else { ("desert-open-results-192-cobalt-lime", crate::ui::widgets::tr("No results found")) };
                             self.icons.art(ui, art, Rect::from_center_size(pos2(r.left() + 48.0, r.center().y), Vec2::splat(80.0)));
-                            let job = { let mut j = egui::text::LayoutJob::simple(msg.into(), FontId::proportional(13.5), text2, r.width() - 112.0); j.wrap.max_rows = 4; j };
+                            let job = { let mut j = egui::text::LayoutJob::simple(msg.into(), F::Label.font(), text2, r.width() - 112.0); j.wrap.max_rows = 4; j };
                             let gal = ui.painter().layout_job(job);
                             ui.painter().galley(pos2(r.left() + 100.0, r.center().y - gal.size().y / 2.0), gal, text2);
                         }
@@ -183,10 +183,10 @@ impl App {
                             let on = g.sel == i || resp.hovered();
                             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); if hover_moves { g2.sel = i; } }
                             if on { ui.painter().rect_filled(r, 14.0, t.ink_a(0.05)); }
-                            if matches!(row, Row::More(_)) { ui.painter().text(pos2(r.left() + 4.0, r.center().y), egui::Align2::LEFT_CENTER, crate::ui::widgets::tr("Show more"), FontId::proportional(14.0), t.link); }
+                            if matches!(row, Row::More(_)) { ui.painter().text(pos2(r.left() + 4.0, r.center().y), egui::Align2::LEFT_CENTER, crate::ui::widgets::tr("Show more"), F::Body.font(), t.link); }
                             else {
-                                ui.painter().text(pos2(r.left() + 4.0, r.center().y), egui::Align2::LEFT_CENTER, crate::ui::widgets::tr(NAMES[*k]), FontId::proportional(13.5), text2);
-                                ui.painter().text(pos2(r.right() - 4.0, r.center().y), egui::Align2::RIGHT_CENTER, crate::ui::widgets::tr("Show less"), FontId::proportional(14.0), t.link);
+                                ui.painter().text(pos2(r.left() + 4.0, r.center().y), egui::Align2::LEFT_CENTER, crate::ui::widgets::tr(NAMES[*k]), F::Label.font(), text2);
+                                ui.painter().text(pos2(r.right() - 4.0, r.center().y), egui::Align2::RIGHT_CENTER, crate::ui::widgets::tr("Show less"), F::Body.font(), t.link);
                             }
                             if resp.clicked() || (action == Some((i, 0))) { g2.more[*k] = matches!(row, Row::More(_)); action = None; }
                         }
@@ -224,8 +224,8 @@ impl App {
                             let lay = ui.painter().layout_job(hl(&title, &q, 15.0, text, right - tx));
                             let two = !sub.is_empty();
                             ui.painter().galley(pos2(tx, if two { r.center().y - 17.0 } else { r.center().y - lay.size().y / 2.0 }), lay, text);
-                            if two { super::chrome::fit_text(ui.painter(), tx, r.center().y + 10.0, &sub, FontId::proportional(13.0), sub_col, right - tx); }
-                            if !when_.is_empty() { ui.painter().text(pos2(r.right() - 12.0, r.center().y - 8.0), egui::Align2::RIGHT_CENTER, &when_, FontId::proportional(12.5), text2); }
+                            if two { super::chrome::fit_text(ui.painter(), tx, r.center().y + 10.0, &sub, F::Secondary.font(), sub_col, right - tx); }
+                            if !when_.is_empty() { ui.painter().text(pos2(r.right() - 12.0, r.center().y - 8.0), egui::Align2::RIGHT_CENTER, &when_, F::Small.font(), text2); }
                             let mut btn_hit = false;
                             if btns > 0 {
                                 // S round buttons (28 pt), normal / hovered / pressed: Message style = button-message-fill-background, Join style =
@@ -247,16 +247,16 @@ impl App {
             // Right column: "Filter" with the two filter fields (modal-secondary-background, radius 8).
             let rc = Rect::from_min_max(pos2(outer.right() - 24.0 - 250.0 + 12.0, top), pos2(outer.right() - 14.0, top + 178.0));
             p.rect_filled(rc, 8.0, bg2);
-            p.text(pos2(rc.left() + 12.0, rc.top() + 18.0), egui::Align2::LEFT_CENTER, crate::ui::widgets::tr("Filter"), FontId::proportional(14.0), text);
+            p.text(pos2(rc.left() + 12.0, rc.top() + 18.0), egui::Align2::LEFT_CENTER, crate::ui::widgets::tr("Filter"), F::Body.font(), text);
             for (k, (label, val)) in [("People", 0), ("Spaces", 1)].into_iter().enumerate() {
                 let y = rc.top() + 40.0 + 68.0 * k as f32;
-                p.text(pos2(rc.left() + 12.0, y + 6.0), egui::Align2::LEFT_CENTER, crate::ui::widgets::tr(label), FontId::proportional(12.5), text2);
+                p.text(pos2(rc.left() + 12.0, y + 6.0), egui::Align2::LEFT_CENTER, crate::ui::widgets::tr(label), F::Small.font(), text2);
                 let fr = Rect::from_min_size(pos2(rc.left() + 12.0, y + 16.0), Vec2::new(rc.width() - 24.0, 32.0));
                 p.rect_filled(fr, 8.0, if light { hex(0xEDEDED) } else { hex(0x3B3B3B) });
                 self.icons.paint(ui, "search-regular", Rect::from_center_size(fr.left_center() + Vec2::new(14.0, 0.0), Vec2::splat(14.0)), text2);
                 let mut fc = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(fr.min + Vec2::new(28.0, 0.0), fr.max - Vec2::new(8.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
                 let target = if val == 0 { &mut g2.pf } else { &mut g2.sf };
-                fc.add(egui::TextEdit::singleline(target).id(egui::Id::new(("gs-filter", val))).hint_text(RichText::new(crate::ui::widgets::tr("Search")).color(text2).size(13.5)).font(FontId::proportional(13.5)).frame(false).desired_width(fr.width() - 40.0));
+                fc.add(egui::TextEdit::singleline(target).id(egui::Id::new(("gs-filter", val))).hint_text(RichText::new(crate::ui::widgets::tr("Search")).color(text2).size(13.5)).font(F::Label.font()).frame(false).desired_width(fr.width() - 40.0));
             }
         });
         if tab_before != g2.tab || g2.q != g.q || g2.pf != g.pf || g2.sf != g.sf { g2.sel = 0; } // (a non-selectable row 0 is corrected next frame)

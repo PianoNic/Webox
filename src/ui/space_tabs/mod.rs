@@ -114,7 +114,7 @@ fn empty_state(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th, art: Option<&'s
     }
     ui.add_space(8.0);
     let (r, _) = ui.allocate_exact_size(Vec2::new(w, 24.0), Sense::hover());
-    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, text, FontId::proportional(15.0), t.text2);
+    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, text, F::Subtitle.font(), t.text2);
 }
 
 mod tabs;

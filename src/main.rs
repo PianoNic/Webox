@@ -24,8 +24,8 @@ use ui::widgets::*;
 use app::actions::Compose;
 
 // Colours: the Momentum theme tokens (ui/theme, resolved through their parent chains). `Th` is the active theme's
-// palette; `t.tk("token")` reads any other token.
-pub(crate) use ui::theme::{Th, ThemeId};
+// palette; `t.at(tok!("token"))` reads any other token.
+pub(crate) use ui::theme::{tok, values::{F, L, M, C}, Th, ThemeId};
 const fn hex(v: u32) -> Color32 { Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8) }
 /// `c` at opacity `a`, composited like Qt does (premultiplied in gamma space). egui's
 /// `from_rgba_unmultiplied` premultiplies in linear light, which makes "white 7 %" about 34 % bright.

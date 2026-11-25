@@ -97,8 +97,8 @@ impl App {
         egui::Area::new(id).order(egui::Order::Tooltip).fixed_pos(at).show(&ctx, |ui| {
             let (r, _) = ui.allocate_exact_size(size, Sense::hover());
             let p = ui.painter();
-            p.rect_filled(r, 8.0, t.tk("wx-menuList-background"));
-            p.rect_stroke(r, 8.0, Stroke::new(1.0_f32, t.tk("wx-default-border")), StrokeKind::Inside);
+            p.rect_filled(r, 8.0, t.at(tok!("wx-menuList-background")));
+            p.rect_stroke(r, 8.0, Stroke::new(1.0_f32, t.at(tok!("wx-default-border"))), StrokeKind::Inside);
             let sl = Rect::from_center_size(r.center(), Vec2::new(140.0, 16.0));
             if let Some(v) = slider(ui, t, sl, vol, 1.0, id.with("s")) {
                 let v = ((v / VOL_STEP).round() * VOL_STEP).clamp(0.0, 1.0);
@@ -146,15 +146,15 @@ fn slider(ui: &mut egui::Ui, t: &Th, r: Rect, value: f32, alpha: f32, id: Id) ->
     let p = ui.painter();
     let track = Rect::from_min_max(pos2(r.left(), r.center().y - 2.0), pos2(r.right(), r.center().y + 2.0));
     let a = |c: Color32| c.gamma_multiply(alpha);
-    p.rect_filled(track, 2.0, a(t.tk("slider-track-empty-background")));
+    p.rect_filled(track, 2.0, a(t.at(tok!("slider-track-empty-background"))));
     let v = value.clamp(0.0, 1.0);
     let x = track.left() + track.width() * v;
-    p.rect_filled(Rect::from_min_max(track.min, pos2(x, track.max.y)), 2.0, a(t.tk("slider-track-indicator-background")));
+    p.rect_filled(Rect::from_min_max(track.min, pos2(x, track.max.y)), 2.0, a(t.at(tok!("slider-track-indicator-background"))));
     let active = rs.hovered() || rs.dragged() || rs.has_focus();
     if active {
         let st = if rs.dragged() { ":pressed" } else if rs.hovered() { ":hovered" } else { "" };
         p.circle_filled(pos2(x, r.center().y), 6.0, a(t.tk(&format!("slider-handle-background{st}"))));
-        p.circle_stroke(pos2(x, r.center().y), 6.0, Stroke::new(1.0_f32, a(t.tk("slider-handle-border"))));
+        p.circle_stroke(pos2(x, r.center().y), 6.0, Stroke::new(1.0_f32, a(t.at(tok!("slider-handle-border")))));
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     if rs.dragged() || rs.clicked() || rs.drag_stopped() {

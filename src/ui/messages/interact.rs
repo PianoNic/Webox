@@ -10,7 +10,7 @@ impl App {
         for (ri, r) in m.reactions.clone().into_iter().enumerate() {
             let sq = cur_seq(ui.ctx());
             let Some(glyph) = chip_emoji(&r.name) else { continue }; // a name that isn't an emoji is never shown as text
-            let count = ui.painter().layout_no_wrap(r.count.to_string(), FontId::proportional(13.0), if r.mine.is_some() { c.accent } else { c.body });
+            let count = ui.painter().layout_no_wrap(r.count.to_string(), F::Secondary.font(), if r.mine.is_some() { c.accent } else { c.body });
             let who = self.chip_layout(ui, c, &r, avatars); // who_reacted.rs
             let (cw, aw) = (count.size().x, who.as_ref().map_or(0.0, |w| w.width));
             let (lw, rw) = (8.0 + 16.0 + 6.0, 6.0 + cw + aw + 8.0); // emoji padding 6 / 8; count padding 6 / 8
@@ -25,7 +25,7 @@ impl App {
             ui.painter().rect_stroke(rect.shrink(0.5), REACT_H / 2.0, Stroke::new(1.0_f32, c.chip_border), StrokeKind::Inside);
             ui.painter().vline(rect.left() + lw + 0.5, (rect.top() + 4.0)..=(rect.bottom() - 4.0), Stroke::new(1.0_f32, c.chip_border));
             let er = Rect::from_center_size(pos2(rect.left() + 8.0 + 8.0, rect.center().y), Vec2::splat(16.0));
-            if !self.icons.emoji(ui, &glyph, er) { ui.painter().text(er.center(), Align2::CENTER_CENTER, &glyph, FontId::proportional(14.0), c.body); }
+            if !self.icons.emoji(ui, &glyph, er) { ui.painter().text(er.center(), Align2::CENTER_CENTER, &glyph, F::Body.font(), c.body); }
             ui.painter().galley(pos2(right.left() + 6.0, rect.center().y - count.size().y / 2.0), count, c.body);
             if let Some(w) = &who { self.chip_avatars_draw(ui, t, c, m, &r, ri, w, right.left() + 6.0 + cw, rect.center().y); }
             // The emoji adds or takes back my reaction; the count shows who reacted (the reactors popover, no tooltip).
@@ -208,7 +208,7 @@ impl App {
                     ui.painter().rect_filled(r.shrink(1.0), cr, c.pill_hover);
                 }
                 let ir = Rect::from_center_size(r.center(), Vec2::splat(16.0));
-                if let Some(e) = emo { if !s.icons.emoji(ui, e, ir) { ui.painter().text(ir.center(), Align2::CENTER_CENTER, e, FontId::proportional(14.0), c.white); } }
+                if let Some(e) = emo { if !s.icons.emoji(ui, e, ir) { ui.painter().text(ir.center(), Align2::CENTER_CENTER, e, F::Body.font(), c.white); } }
                 if let Some(n) = icon { s.icons.paint(ui, n, ir, c.white); }
                 if i + 1 < n { ui.painter().vline(r.right() - 0.5, (r.top() + 1.0)..=(r.bottom() - 1.0), Stroke::new(1.0_f32, c.pill_border)); }
                 i += 1;
@@ -279,7 +279,7 @@ impl App {
                 for (sid, title) in &spaces {
                     let (r, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 36.0), Sense::click());
                     if resp.hovered() { ui.painter().rect_filled(r, 8.0, wa(fg, 0.15)); ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                    ui.painter().text(pos2(r.left() + 10.0, r.center().y), Align2::LEFT_CENTER, title, FontId::proportional(15.0), wa(fg, 0.95));
+                    ui.painter().text(pos2(r.left() + 10.0, r.center().y), Align2::LEFT_CENTER, title, F::Subtitle.font(), wa(fg, 0.95));
                     if resp.clicked() { target = Some(sid.clone()); }
                 }
             });

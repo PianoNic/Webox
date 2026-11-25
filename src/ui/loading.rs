@@ -192,7 +192,7 @@ impl App {
             if let Some(id) = logo {
                 p.image(id, Rect::from_center_size(c, Vec2::splat(LOGO_PT)), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE.gamma_multiply(a));
             }
-            p.text(c + Vec2::new(0.0, LOGO_PT / 2.0 + 22.0), egui::Align2::CENTER_CENTER, &shown, FontId::proportional(14.5), t.text2.gamma_multiply(a));
+            p.text(c + Vec2::new(0.0, LOGO_PT / 2.0 + 22.0), egui::Align2::CENTER_CENTER, &shown, F::BodyLarge.font(), t.text2.gamma_multiply(a));
         });
         // Fades: one frame after another; while shown, the logo schedules its own frames (logo_frame) and status changes wake the window.
         if a < 1.0 { ctx.request_repaint(); }
@@ -237,7 +237,7 @@ impl App {
             let mut x = r.center().x;
             let fallback = banner();
             let txt = text.unwrap_or(&fallback);
-            let galley = p.layout_no_wrap(txt.to_string(), FontId::proportional(13.5), t.text1);
+            let galley = p.layout_no_wrap(txt.to_string(), F::Label.font(), t.text1);
             x -= (galley.size().x + 28.0) / 2.0;
             if let Some(id) = logo { p.image(id, Rect::from_center_size(pos2(x + 10.0, r.center().y), Vec2::splat(22.0)), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE); }
             p.galley(pos2(x + 28.0, r.center().y - galley.size().y / 2.0), galley, t.text1);

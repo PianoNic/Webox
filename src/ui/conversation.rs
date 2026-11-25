@@ -26,8 +26,8 @@ impl App {
         let full = ui.max_rect();
         // Only the top-left corner is rounded: the card runs flat into the window's right edge, so it is painted 10 pt wider and
         // its right-hand rounding falls outside the window.
-        vgrad(ui.painter(), Rect::from_min_max(full.min, pos2(full.max.x + 10.0, full.max.y)), 10.0, t.conv, t.conv_b);
-        crate::ui::theme::decor::card(ui.painter(), Rect::from_min_max(full.min, pos2(full.max.x + 10.0, full.max.y)), 10.0, false);
+        vgrad(ui.painter(), Rect::from_min_max(full.min, pos2(full.max.x + 10.0, full.max.y)), L::CardRadius.get(), t.conv, t.conv_b);
+        crate::ui::theme::decor::card(ui.painter(), Rect::from_min_max(full.min, pos2(full.max.x + 10.0, full.max.y)), L::CardRadius.get(), false);
         let dm = crate::ui::theme::density::m(); // banner geometry
         let banner = Rect::from_min_size(full.min, Vec2::new(full.width(), dm.banner_h));
         // The banner picture: in a direct chat the other person's own cover (their own, else the global default "@default", via
@@ -43,14 +43,14 @@ impl App {
             cover_banner(ui.painter(), tid, banner, uv, 10.0, t.conv);
         }
         let has_cover = cover_tex.is_some(); // title (semibold 20) + favourite star at x=21 / y=28 inside the card
-        let title_g = ui.painter().text(pos2(banner.left() + 21.0, banner.top() + dm.banner_title_y), egui::Align2::LEFT_CENTER, &space.title, semibold(20.0), if has_cover { Color32::WHITE } else { t.text1 });
+        let title_g = ui.painter().text(pos2(banner.left() + 21.0, banner.top() + dm.banner_title_y), egui::Align2::LEFT_CENTER, &space.title, F::Banner.semibold(), if has_cover { Color32::WHITE } else { t.text1 });
         let sr = Rect::from_center_size(pos2(title_g.right() + 21.0, banner.top() + dm.banner_actions_y), Vec2::splat(24.0));
         let sresp = ui.interact(sr, ui.id().with("fav-star"), Sense::click());
         self.icons.paint(ui, if space.favorite { "favorite-filled" } else { "favorite-regular" }, Rect::from_center_size(sr.center(), Vec2::splat(17.0)), if space.favorite { t.star } else { t.text2 });
         if sresp.on_hover_text(crate::shortcuts::native_hint(&format!("{} (Ctrl+Shift+F)", tr("Favorite")))).clicked() { self.set_favorite(&space.id, !space.favorite) }
         let line = person.as_ref().map(|p| self.person_line(p, super::chrome::now_ms()));
         let (sub, sub_col) = header_subline(t, line, &space, &self.teams, t.text2);
-        if !sub.is_empty() { ui.painter().text(pos2(banner.left() + 21.0, banner.top() + dm.banner_sub_y), egui::Align2::LEFT_CENTER, sub, FontId::proportional(13.0), sub_col); }
+        if !sub.is_empty() { ui.painter().text(pos2(banner.left() + 21.0, banner.top() + dm.banner_sub_y), egui::Align2::LEFT_CENTER, sub, F::Secondary.font(), sub_col); }
         // Top-right actions: a group space shows the calendar button and the grey "Meet" pill; a direct space shows the round
         // action buttons.
         let cy = banner.top() + dm.banner_actions_y;
@@ -72,7 +72,7 @@ impl App {
                     0 => ("video-regular", Some([hex(0x248052), hex(0x1C5E3D), hex(0x17422C)]), Color32::TRANSPARENT, Color32::WHITE),
                     1 => ("handset-regular", Some([hex(0x248052), hex(0x1C5E3D), hex(0x17422C)]), Color32::TRANSPARENT, Color32::WHITE),
                     2 => ("share-screen-regular", Some([hex(0x0A78CC), hex(0x08599C), hex(0x103C63)]), Color32::TRANSPARENT, Color32::WHITE),
-                    3 => ("calendar-add-regular", None, t.tk("button-primary-background:disabled"), t.tk("button-primary-background:disabled")), // 20 %
+                    3 => ("calendar-add-regular", None, t.at(tok!("button-primary-background:disabled")), t.at(tok!("button-primary-background:disabled"))), // 20 %
                     _ => ("start-chat-regular", None, t.text2, t.text1),
                 };
                 let c = r.center();
@@ -104,29 +104,29 @@ impl App {
             // "Meet" starts the space's meeting; while one runs it is the green "Join" ("Meeting in progress"). Both join the
             // space's meeting through its locus (cloud/locus/session.rs `join_space`); audio only.
             let (label, tip) = meet_pill(space.meeting);
-            let galley = ui.painter().layout_no_wrap(label.to_string(), FontId::proportional(14.5), Color32::WHITE);
+            let galley = ui.painter().layout_no_wrap(label.to_string(), F::BodyLarge.font(), Color32::WHITE);
             let w = (galley.size().x + 26.0).max(65.0);
             let pill = Rect::from_center_size(pos2(banner.right() - 26.0 - w / 2.0, cy), Vec2::new(w, 28.0));
             let in_call = self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none());
             let presp = ui.interact(pill, ui.id().with("meet-pill"), if in_call { Sense::hover() } else { Sense::click() });
             let down = presp.is_pointer_button_down_on();
             let fill = match (in_call, space.meeting) {
-                (true, _) => t.tk("button-primary-background:disabled"),
+                (true, _) => t.at(tok!("button-primary-background:disabled")),
                 // the call buttons' emerald (-60 / -70 hover / -80 pressed) for "join the running meeting"
                 (false, true) => if down { hex(0x17422C) } else if presp.hovered() { hex(0x1C5E3D) } else { hex(0x248052) },
                 // the enabled primary button (button-primary-background, as in ui/invite.rs)
-                (false, false) => if down { t.tk("button-primary-background:pressed") } else if presp.hovered() { t.tk("button-primary-background:hovered") } else { t.white_btn },
+                (false, false) => if down { t.at(tok!("button-primary-background:pressed")) } else if presp.hovered() { t.at(tok!("button-primary-background:hovered")) } else { t.white_btn },
             };
             ui.painter().rect_filled(pill, 14.0, fill);
-            let text = if in_call { t.tk("button-primary-text:disabled") } else if space.meeting { Color32::WHITE } else { t.white_btn_text };
-            ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, label, FontId::proportional(14.5), text);
+            let text = if in_call { t.at(tok!("button-primary-text:disabled")) } else if space.meeting { Color32::WHITE } else { t.white_btn_text };
+            ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, label, F::BodyLarge.font(), text);
             if presp.hovered() && !in_call { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             if presp.on_hover_text(if in_call { tr("A call is already in progress.") } else { tip }).clicked() { self.join_space_meeting(&space, now); }
             // A 28 pt round S button, 6 pt before the pill.
             let cal = Rect::from_center_size(pos2(pill.left() - 6.0 - 14.0, cy), Vec2::splat(28.0));
             let cresp = ui.interact(cal, ui.id().with("cal-btn"), Sense::click());
             if cresp.hovered() { ui.painter().circle_filled(cal.center(), 14.0, t.hover); }
-            ui.painter().circle_stroke(cal.center(), 13.5, Stroke::new(1.0_f32, t.tk("button-secondary-border:disabled")));
+            ui.painter().circle_stroke(cal.center(), 13.5, Stroke::new(1.0_f32, t.at(tok!("button-secondary-border:disabled"))));
             self.icons.paint(ui, "calendar-add-regular", Rect::from_center_size(cal.center(), Vec2::splat(15.0)), t.ink_a(0.8));
             // The in-app scheduler with the space's people invited ("Schedule a meeting. Share a link and meet later").
             if cresp.on_hover_text(tr("Schedule a meeting. Share the link and meet later")).clicked() {

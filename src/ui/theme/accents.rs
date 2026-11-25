@@ -82,10 +82,10 @@ mod tests {
         assert!(r.overrides.iter().any(|(n, _)| *n == "checkbox-checked-background"));
         assert_eq!(r.gradient.len(), 2);
         crate::ui::theme::set_accent_overrides(r.overrides, r.gradient);
-        assert_eq!(base.tk("appNav-badge"), crate::hex(0xFF8C00));
+        assert_eq!(base.at(crate::tok!("appNav-badge")), crate::hex(0xFF8C00));
         assert_eq!(Th::of(ThemeId::Dark).badge, base.badge, "Th::of never reads the overrides");
         assert!(crate::ui::theme::accent_gradient().is_some());
         crate::ui::theme::set_accent_overrides(vec![], vec![]);
-        assert_ne!(base.tk("appNav-badge"), crate::hex(0xFF8C00));
+        assert_ne!(base.at(crate::tok!("appNav-badge")), crate::hex(0xFF8C00));
     }
 }
