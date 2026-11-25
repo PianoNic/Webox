@@ -323,3 +323,88 @@ mod tests {
         assert_eq!(body_html(&m), "a&lt;b<br>c");
     }
 }
+
+/// The composer's markdown for this HTML (the reverse of cloud/richtext.rs), for editing a message without losing its
+/// formatting: paragraphs and `<br>` as lines, `<ol>` items as `1. `, `<ul>` items as `- `, `<strong>`/`<b>` as `**`, `<em>`/`<i>`
+/// as `_`, `<s>` as `~~`, `<code>` as backticks, `<pre>` as a fenced block, `<blockquote>` lines with `> `, headings with `#`,
+/// `<hr>` as `---`, links as `[text](url)` (just the url when the text is the url). Mentions keep their name. Other tags are dropped.
+pub(crate) fn html_to_markdown(html: &str) -> String {
+    let mut out = String::new();
+    let mut lists: Vec<(bool, usize)> = Vec::new(); // (ordered, next number)
+    let (mut quote, mut pre) = (0usize, 0usize);
+    let mut link: Option<(String, usize)> = None; // (href, where its text starts in `out`)
+    let line_start = |out: &mut String, quote: usize| {
+        if !out.is_empty() && !out.ends_with('\n') { out.push('\n'); }
+        for _ in 0..quote { out.push_str("> "); }
+    };
+    let mut rest = html;
+    while !rest.is_empty() {
+        if let Some(t) = rest.strip_prefix('<') {
+            let end = t.find('>').unwrap_or(t.len());
+            let tag = &t[..end];
+            rest = t.get(end + 1..).unwrap_or("");
+            let closing = tag.starts_with('/');
+            let name: String = tag.trim_start_matches('/').chars().take_while(|c| c.is_ascii_alphanumeric()).collect::<String>().to_ascii_lowercase();
+            let attr = |a: &str| tag.find(&format!("{a}=\"")).map(|i| { let v = &tag[i + a.len() + 2..]; v[..v.find('"').unwrap_or(v.len())].to_string() });
+            match (name.as_str(), closing) {
+                ("br", _) => line_start(&mut out, quote),
+                ("p" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6", false) => {
+                    line_start(&mut out, quote);
+                    if let Some(n) = name.strip_prefix('h').and_then(|n| n.parse::<usize>().ok()) { out.push_str(&"#".repeat(n)); out.push(' '); }
+                }
+                ("p" | "div" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6", true) => {}
+                ("ul", false) => lists.push((false, 1)),
+                ("ol", false) => lists.push((true, attr("start").and_then(|s| s.parse().ok()).unwrap_or(1))),
+                ("ul" | "ol", true) => { lists.pop(); }
+                ("li", false) => {
+                    line_start(&mut out, quote);
+                    let depth = lists.len().saturating_sub(1);
+                    out.push_str(&"   ".repeat(depth));
+                    match lists.last_mut() { Some((true, n)) => { out.push_str(&format!("{n}. ")); *n += 1; } _ => out.push_str("- ") }
+                }
+                ("blockquote", false) => { quote += 1; line_start(&mut out, quote); }
+                ("blockquote", true) => { quote = quote.saturating_sub(1); }
+                ("pre", false) => { pre += 1; line_start(&mut out, quote); out.push_str("```\n"); }
+                ("pre", true) => { pre = pre.saturating_sub(1); if !out.ends_with('\n') { out.push('\n'); } out.push_str("```"); }
+                ("code", _) if pre == 0 => out.push('`'),
+                ("strong" | "b", _) => out.push_str("**"),
+                ("em" | "i", _) => out.push('_'),
+                ("s" | "del" | "strike", _) => out.push_str("~~"),
+                ("hr", _) => { line_start(&mut out, quote); out.push_str("---"); }
+                ("a", false) => link = attr("href").map(|h| (h, out.len())),
+                ("a", true) => if let Some((h, at)) = link.take() {
+                    let text = out[at..].to_string();
+                    if text != h && !h.is_empty() { out.truncate(at); out.push_str(&format!("[{text}]({h})")); }
+                },
+                _ => {}
+            }
+            continue;
+        }
+        let next = rest.find('<').unwrap_or(rest.len());
+        let text = decode_entities(&rest[..next]);
+        rest = &rest[next..];
+        if pre > 0 { out.push_str(&text); continue; }
+        for ch in text.chars() {
+            if ch == '\n' || ch == '\r' || ch == '\t' { if !out.ends_with([' ', '\n']) && !out.is_empty() { out.push(' '); } }
+            else { out.push(if ch == '\u{a0}' { ' ' } else { ch }); }
+        }
+    }
+    out.lines().map(|l| l.trim_end()).collect::<Vec<_>>().join("\n").trim_matches('\n').to_string()
+}
+
+#[cfg(test)]
+mod markdown_tests {
+    use super::html_to_markdown as md;
+    #[test]
+    fn lists_and_lines_survive_editing() {
+        let h = "<ol><li>DocIntel is running</li></ol><ul><li>URL: <a href=\"http://h/health\">http://h/health</a></li><li>Interval: 60 s</li></ul><p>das hät <strong>dr</strong> claude gmeint</p>";
+        assert_eq!(md(h), "1. DocIntel is running\n- URL: http://h/health\n- Interval: 60 s\ndas hät **dr** claude gmeint");
+    }
+    #[test]
+    fn links_quotes_code_and_breaks() {
+        assert_eq!(md("<p>a<br>b <a href=\"https://x.y\">site</a></p>"), "a\nb [site](https://x.y)");
+        assert_eq!(md("<blockquote>zitiert</blockquote><p>x</p>"), "> zitiert\nx");
+        assert_eq!(md("<pre><code>let a = 1;\n</code></pre>"), "```\nlet a = 1;\n```");
+        assert_eq!(md("<ol start=\"3\"><li>c</li><li>d</li></ol>"), "3. c\n4. d");
+    }
+}

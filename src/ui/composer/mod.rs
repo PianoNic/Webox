@@ -46,11 +46,17 @@ fn st_get(ctx: &egui::Context) -> St { ctx.data(|d| d.get_temp::<St>(egui::Id::n
 fn st_put(ctx: &egui::Context, st: St) { ctx.data_mut(|d| d.insert_temp(egui::Id::new("composer-st"), st)); }
 
 /// Layout: (text row top offset from the composer line, text row height, total composer height).
+/// Rows the text box shows: the text's own rows up to 6, but at least the height the user dragged the box to (`composer_rows`,
+/// which may exceed 6); text beyond that scrolls.
+fn eff_rows(rows: usize, user: usize) -> usize { rows.min(6).max(user).max(1) }
+/// The user's dragged box height in rows (0 = automatic).
+fn user_rows(settings: &serde_json::Value) -> usize { settings["composer_rows"].as_u64().unwrap_or(0) as usize }
+
 fn metrics(edit: bool, rich: bool, chips_h: f32, rows: usize) -> (f32, f32, f32) {
     let mut top = base_top() + if edit { EDIT_HDR } else { 0.0 };
     if rich { top += 30.0; }
     top += chips_h; // the staging area (68 .. 92), 0 without files
-    let h = 25.0 + (rows.clamp(1, 6) - 1) as f32 * LINE_H;
+    let h = 25.0 + (rows.max(1) - 1) as f32 * LINE_H; // callers pass the effective rows (`eff_rows`)
     (top, h, top + h + bottom_pad())
 }
 
@@ -150,3 +156,15 @@ mod draw;
 mod restore; // first frame / space switch
 mod bar; // toolbar row + send pill
 mod actions;
+
+#[cfg(test)]
+mod resize_tests {
+    use super::eff_rows;
+    #[test]
+    fn dragged_height_is_a_minimum_and_may_exceed_six_rows() {
+        assert_eq!(eff_rows(1, 0), 1);
+        assert_eq!(eff_rows(9, 0), 6, "automatic growth stops at 6 rows, then the text scrolls");
+        assert_eq!(eff_rows(2, 10), 10, "the dragged height holds even for short text");
+        assert_eq!(eff_rows(30, 10), 10, "longer text scrolls inside the dragged height");
+    }
+}

@@ -9,12 +9,12 @@ impl App {
     pub(crate) fn composer_height(&self, ctx: &egui::Context) -> f32 {
         let st = st_get(ctx);
         let rich = st.rich || self.settings["composer_rich_toolbar"].as_bool().unwrap_or(false);
-        metrics(matches!(self.compose, Compose::Edit { .. }), rich, chips_height(&st), st.rows).2
+        metrics(matches!(self.compose, Compose::Edit { .. }), rich, chips_height(&st), eff_rows(st.rows, user_rows(&self.settings))).2
     }
 
     /// The space's own composer while a message is edited in the overlay: one text row, no chips (they belong to the editor).
     pub(crate) fn composer_idle_height(&self) -> f32 {
-        metrics(false, self.settings["composer_rich_toolbar"].as_bool().unwrap_or(false), 0.0, 1).2
+        metrics(false, self.settings["composer_rich_toolbar"].as_bool().unwrap_or(false), 0.0, eff_rows(1, user_rows(&self.settings))).2
     }
 
     pub(crate) fn save_drafts(&mut self) {

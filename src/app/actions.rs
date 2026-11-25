@@ -149,7 +149,9 @@ impl App {
     pub(crate) fn start_edit(&mut self, m: &Message) {
         if let Some(id) = self.selected.clone() {
             if !matches!(self.compose, Compose::Edit { .. }) { let own = self.drafts.get(&id).cloned().unwrap_or_default(); self.drafts.insert(edit_stash_key(&id), own); }
-            self.drafts.insert(id, m.text.clone());
+            // The message's formatting comes back as the composer's markdown (lists, line breaks, bold, links ...).
+            let md = if m.html.trim().is_empty() { m.text.clone() } else { crate::ui::messages::html_to_markdown(&m.html) };
+            self.drafts.insert(id, md);
         }
         self.compose = Compose::Edit { msg: m.id.clone() };
     }

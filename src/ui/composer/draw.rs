@@ -30,9 +30,29 @@ impl App {
         let rich = st.rich;
         st.chips_w = full.width() - 2.0 * super::super::attach::AREA_SIDE; // the staging area's inner width
         let chips_h = chips_height(&st);
-        let (top, text_h, total) = metrics(edit, rich, chips_h, st.rows);
+        let user = user_rows(&self.settings);
+        let (top, text_h, total) = metrics(edit, rich, chips_h, eff_rows(st.rows, user));
         let crect = Rect::from_min_max(pos2(full.left(), full.bottom() - total), full.max);
         ui.painter().rect_filled(crect, 0.0, t.composer);
+        // Drag the composer's top edge to make the text box taller or shorter (kept in settings, double click = automatic again).
+        // At most 60 % of the window, so the messages stay visible.
+        if !edit {
+            let edge = Rect::from_min_max(pos2(crect.left(), crect.top() - 3.0), pos2(crect.right(), crect.top() + 4.0));
+            let r = ui.interact(edge, egui::Id::new("composer-resize"), Sense::click_and_drag());
+            if r.hovered() || r.dragged() { ctx.set_cursor_icon(egui::CursorIcon::ResizeVertical); }
+            if r.dragged() {
+                let k = egui::Id::new("composer-resize-acc");
+                let acc = ctx.data(|d| d.get_temp::<f32>(k)).unwrap_or(0.0) - r.drag_delta().y;
+                let max_rows = (((ctx.screen_rect().height() * 0.6) - (total - text_h)) / LINE_H).max(1.0) as usize;
+                let base = eff_rows(st.rows, user) as f32 * LINE_H;
+                let want = (((base + acc) / LINE_H).round() as usize).clamp(1, max_rows);
+                let applied = (want as f32 * LINE_H) - base;
+                ctx.data_mut(|d| d.insert_temp(k, acc - applied));
+                if want != eff_rows(st.rows, user) { self.settings["composer_rows"] = json!(want); }
+            }
+            if r.drag_stopped() { ctx.data_mut(|d| d.remove::<f32>(egui::Id::new("composer-resize-acc"))); if self.shot.is_none() { system::save_settings(&self.cfg, &self.settings); } }
+            if r.double_clicked() { self.settings["composer_rows"] = json!(0); if self.shot.is_none() { system::save_settings(&self.cfg, &self.settings); } }
+        }
 
         // While editing, the title "Nachricht bearbeiten" sits above the composer in the edit overlay (ui/edit_overlay.rs).
         let off = if edit { EDIT_HDR } else { 0.0 };
@@ -212,8 +232,11 @@ impl App {
         // While the mention list is open the field keeps focus on Tab, so Tab picks the person like Enter; otherwise Tab moves focus
         // as usual. The same for the emoji suggestions: Tab picks the current emoji like Enter.
         // (lock_focus = the Tab focus filter; the Tab key itself is consumed above, so no tab character is typed.)
-        let out = egui::TextEdit::multiline(draft).id(cid).hint_text(RichText::new(ph).color(t.text2).size(16.0)).layouter(&mut layouter)
-            .lock_focus(mn_open || em_open).desired_rows(1).desired_width(mr.width()).frame(false).margin(Vec2::ZERO).font(FontId::proportional(16.0)).show(&mut e);
+        // The box grows to 6 rows; longer text scrolls inside it (the TextEdit keeps the caret in view).
+        let out = egui::ScrollArea::vertical().id_salt(("composer-scroll", &id)).max_height(mr.height()).auto_shrink([false, true]).show(&mut e, |ui| {
+            egui::TextEdit::multiline(draft).id(cid).hint_text(RichText::new(ph).color(t.text2).size(16.0)).layouter(&mut layouter)
+                .lock_focus(mn_open || em_open).desired_rows(1).desired_width(mr.width() - 12.0).frame(false).margin(Vec2::ZERO).font(FontId::proportional(16.0)).show(ui)
+        }).inner;
         let mut focused = out.response.has_focus();
         // A press on one of the composer's own popups (emoji suggestions, mention list: rows or their scroll bar) must not take the
         // focus from the field: egui surrenders a widget's focus on any press outside it, and without focus the queries below are
@@ -228,7 +251,7 @@ impl App {
             let cl: Vec<(usize, usize)> = super::super::emoji_text::clusters(&d).into_iter().filter(|(a, b)| super::super::emoji_text::resolve(&d[*a..*b]).is_some()).collect();
             let ranges: Vec<(usize, usize)> = cl.iter().map(|(a, b)| (ct::char_of(&d, *a), ct::char_of(&d, *b))).collect();
             let rects = cluster_rects(&out.galley, &ranges);
-            let clip = out.text_clip_rect;
+            let clip = out.text_clip_rect.intersect(mr); // scrolled-away emoji pictures stay inside the box
             for ((a, b), r) in cl.iter().zip(rects) {
                 let Some(r) = r else { continue };
                 let Some(name) = super::super::emoji_text::resolve(&d[*a..*b]) else { continue };
