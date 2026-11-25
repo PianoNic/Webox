@@ -165,7 +165,7 @@ mod tests {
         let mut out = vec![];
         let mut q = VecDeque::from(vec![0.5; 4800]);
         chain.process(SmartMic::Off, false, &mut q, &x, &mut out);
-        assert_eq!(out, x, "Aus outside a call: untouched");
+        assert_eq!(out, x, "Off outside a call: untouched");
         assert!(q.is_empty() && chain.aec.is_none());
     }
 

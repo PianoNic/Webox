@@ -125,7 +125,7 @@ impl Session {
                     (true, false, false, false) => crate::trq!("{{0}} added {{1}} to this team.", by, who),
                 })
             }
-            // A deleted message ("Sie haben Ihre Nachricht gelöscht. 15.12.2025, 15:08"). The service replaces the activity by a
+            // A deleted message ("You deleted your message. 12/15/2025, 3:08 PM"). The service replaces the activity by a
             // `tombstone` with the same id: `actor` deleted it, `object.actor` wrote it. A tombstone of an edit is not shown.
             // Strings: QObject "You deleted your message." … "{{0}} deleted {{1}}'s reply".
             ("tombstone", _) if a["parent"]["type"] != "edit" => {
@@ -277,7 +277,7 @@ impl Session {
 
     /// Gives every reactor (a uuid) the name and e-mail the session knows: read from their reaction activities
     /// (`reactor_names`), an actor of a loaded activity (`uuidEntryFormat` actors carry displayName / emailAddress), or the
-    /// space's participant with that uuid. Me: my e-mail too (the UI calls me "Sie").
+    /// space's participant with that uuid. Me: my e-mail too (the UI calls me "You").
     fn name_reactors(&self, space: &str, acts: &[Value], list: &mut [Message]) {
         if !list.iter().any(|m| m.reactions.iter().any(|r| !r.users.is_empty())) { return }
         let mut known: HashMap<String, (String, String)> = HashMap::new();
@@ -412,7 +412,7 @@ impl Session {
 
 /// Turns every cached post/share that a cached `delete` points at into the tombstone the service makes of it: same id and
 /// parent, `actor` = who deleted it, `object.actor` = who wrote it, `published` = the deletion time (the official client shows
-/// "Sie haben Ihre Nachricht gelöscht. 15.12.2025, 15:08" in its place). Returns how many were turned.
+/// "You deleted your message. 12/15/2025, 3:08 PM" in its place). Returns how many were turned.
 fn tombstone_deleted(list: &mut [Value]) -> usize {
     let deletes: HashMap<String, (Value, String)> = list.iter().filter(|a| a["verb"] == "delete")
         .map(|d| (st(&d["object"], "id"), (d["actor"].clone(), st(d, "published")))).filter(|(id, _)| !id.is_empty()).collect();

@@ -54,7 +54,7 @@ pub fn set(account: &str, value: &str) -> Result<(), String> {
         },
         Err(e) => e,
     };
-    if st == 0 { Ok(()) } else { Err(format!("Schlüsselbund nicht erreichbar (Fehler {st})")) }
+    if st == 0 { Ok(()) } else { Err(crate::trq!("Keychain not reachable (error {{0}})", st)) }
 }
 
 pub fn delete(account: &str) {

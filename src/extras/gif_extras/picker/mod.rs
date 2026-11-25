@@ -1,13 +1,13 @@
 //! The plugin's extended GIF popup (drawn in the standard popup's place and size while the plugin is on), modelled on other
-//! chat apps with Webox's own colours / fonts / frame: tabs "GIFs | Sticker | Emojis"; the GIF and Sticker tabs open on a
-//! home screen of tiles with a darkened looping thumbnail behind a bold centred label: "Favoriten" (latest favourite),
-//! "Angesagte GIFs" / "Angesagte Sticker" (trending, with the `trending-regular` icon) and Giphy's top-level categories
+//! chat apps with Webox's own colours / fonts / frame: tabs "GIFs | Stickers | Emojis"; the GIF and Sticker tabs open on a
+//! home screen of tiles with a darkened looping thumbnail behind a bold centred label: "Favorites" (latest favourite),
+//! "Trending GIFs" / "Trending stickers" (trending, with the `trending-regular` icon) and Giphy's top-level categories
 //! (`/v1/gifs/categories`: name + picture); a tile runs that search / opens trending / the favourites list, the arrow in the
 //! search field goes back, typing searches. Stickers use `/v1/stickers/trending|search` (same key) and are sent
 //! exactly like GIFs. A star on each tile saves it to the plugin's local favourites (`favs.rs`). The Emojis tab embeds the
-//! emoji picker. "Nach GIFs suchen", "Keine Ergebnisse", ... come from the language pack; "Favoriten", "Angesagte GIFs", the
+//! emoji picker. "No results", "Favorites", ... come from the language pack; "Search GIFs", "Trending GIFs", the
 //! tab labels, the sticker search hint and the empty-favourites texts are Webox's own wording.
-//! The setting "Kompakte Größe" switches to the smaller popup of earlier versions (`layout.rs`), read every frame.
+//! The setting "Compact size" switches to the smaller popup of earlier versions (`layout.rs`), read every frame.
 //! Screenshot runs (with `WEBOX_SHOT_GIF_EXTRAS=1`): `WEBOX_SHOT_GIF=1|stickers|emoji|trending|search|favs|favs-empty|home-favs`,
 //! `WEBOX_SHOT_GIF_COMPACT=0|1` overrides the size setting.
 use super::{upload_favs, upload_stars, Plugin};
@@ -32,7 +32,7 @@ pub(super) enum Tab { #[default] Gifs, Stickers, Emojis }
 #[derive(Clone, Copy, PartialEq, Default, Debug)]
 pub(super) enum View { #[default] Home, Trending, Search, Favorites }
 
-/// The home-screen tiles in order: Favoriten, Angesagte GIFs / Sticker, then Giphy's categories.
+/// The home-screen tiles in order: Favorites, Trending GIFs / stickers, then Giphy's categories.
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(super) enum Tile { Favs, Trending, Cat(usize) }
 pub(super) fn home_tiles(ncats: usize) -> Vec<Tile> { let mut v = vec![Tile::Favs, Tile::Trending]; v.extend((0..ncats).map(Tile::Cat)); v }
@@ -160,16 +160,16 @@ impl Plugin {
                 for c in [a, b] { p.line_segment([c, tip], Stroke::new(1.0_f32, edge)); }
             }
 
-            // Tabs: GIFs | Sticker | Emojis (28 pt pills, the selected one filled). Labels are Webox's own (not in the pack).
+            // Tabs: GIFs | Stickers | Emojis (28 pt pills, the selected one filled). Labels are Webox's own (not in the pack).
             let mut x = rect.left() + PAD;
-            for (tab, label) in [(Tab::Gifs, "GIFs"), (Tab::Stickers, "Sticker"), (Tab::Emojis, "Emojis")] {
+            for (tab, label) in [(Tab::Gifs, crate::trq!("GIFs")), (Tab::Stickers, crate::trq!("Stickers")), (Tab::Emojis, crate::trq!("Emojis"))] {
                 let on = st.tab == tab;
                 let font = if on { semibold(13.0) } else { FontId::proportional(13.0) };
-                let tw = p.layout_no_wrap(label.into(), font.clone(), pal.text).size().x;
+                let tw = p.layout_no_wrap(label.to_string(), font.clone(), pal.text).size().x;
                 let tr = Rect::from_min_size(pos2(x, rect.top() + 9.0), Vec2::new(tw + 24.0, 28.0));
-                let resp = ui.interact(tr, egui::Id::new(("gif-tab", label)), Sense::click());
+                let resp = ui.interact(tr, egui::Id::new(("gif-tab", tab_idx(tab), tab == Tab::Emojis)), Sense::click());
                 if on { p.rect_filled(tr, 14.0, alpha(pal.text, 0.14)); } else if resp.hovered() { p.rect_filled(tr, 14.0, alpha(pal.text, 0.07)); }
-                p.text(tr.center(), egui::Align2::CENTER_CENTER, label, font, if on { pal.text } else { pal.text2 });
+                p.text(tr.center(), egui::Align2::CENTER_CENTER, &label, font, if on { pal.text } else { pal.text2 });
                 if resp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
                 if resp.clicked() { new_tab = Some(tab); }
                 x += tr.width() + 4.0;
@@ -190,10 +190,10 @@ impl Plugin {
                 let bresp = ui.interact(br, egui::Id::new("gif-back"), Sense::click());
                 if bresp.hovered() { p.circle_filled(br.center(), 11.0, alpha(pal.text, 0.10)); ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
                 app.icons.paint(ui, "arrow-left-regular", Rect::from_center_size(br.center(), Vec2::splat(15.0)), pal.text);
-                if bresp.on_hover_text("Zurück").clicked() { go_home = true; }
+                if bresp.on_hover_text(crate::tr!("AuxiliaryDevicesSettings", "Back")).clicked() { go_home = true; }
             }
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(sr.min + Vec2::new(34.0, 0.0), sr.max - Vec2::new(34.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-            let hint = if sticker { "Nach Stickern suchen" } else { "Nach GIFs suchen" }; // sticker wording is Webox's own (the pack only has the GIF string)
+            let hint = if sticker { crate::trq!("Search stickers") } else { crate::trq!("Search GIFs") }; // Webox wording (the pack has neither)
             let r = c.add(egui::TextEdit::singleline(&mut st.query).id(search_id).hint_text(RichText::new(hint).color(pal.text2).size(14.0)).text_color(pal.text)
                 .frame(false).margin(Vec2::ZERO).font(FontId::proportional(14.0)).desired_width(sr.width() - 68.0));
             if st.focus { r.request_focus(); st.focus = false; }
@@ -204,7 +204,7 @@ impl Plugin {
                 p.circle_stroke(xr.center(), 8.5, Stroke::new(1.0_f32, pal.cancel));
                 app.icons.paint(ui, "cancel-bold", Rect::from_center_size(xr.center(), Vec2::splat(8.0)), pal.cancel);
                 if xresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
-                if xresp.on_hover_text("Eintrag löschen").clicked() { clear_query = true; }
+                if xresp.on_hover_text(crate::trq!("Clear entry")).clicked() { clear_query = true; }
             }
 
             // Content.
@@ -222,10 +222,10 @@ impl Plugin {
                         if rel.bottom() < vp.top() - 40.0 || rel.top() > vp.bottom() + 40.0 { continue }
                         let r = rel.translate(area.min.to_vec2());
                         let (label, icon, thumb): (String, Option<&str>, Option<(String, String)>) = match tile {
-                            Tile::Favs => ("Favoriten".into(), None, favs.latest(sticker).map(|f| (f.id.clone(), f.thumb_url.clone()))),
+                            Tile::Favs => (crate::trq!("Favorites").into_owned(), None, favs.latest(sticker).map(|f| (f.id.clone(), f.thumb_url.clone()))),
                             Tile::Trending => {
                                 let first = st.trending[tab_idx(st.tab)].as_ref().and_then(|t| t.0.first()).map(|g| (g.id.clone(), g.thumb_url.clone()));
-                                (if sticker { "Angesagte Sticker" } else { "Angesagte GIFs" }.into(), Some("trending-regular"), first)
+                                (if sticker { crate::trq!("Trending stickers") } else { crate::trq!("Trending GIFs") }.into_owned(), Some("trending-regular"), first)
                             }
                             Tile::Cat(k) => (cats[*k].name.clone(), None, Some((format!("cat:{}", cats[*k].name), cats[*k].thumb_url.clone()))),
                         };
@@ -253,24 +253,24 @@ impl Plugin {
             } else if n == 0 && st.loading {
                 ui.put(Rect::from_center_size(centre, Vec2::splat(28.0)), egui::Spinner::new().size(28.0).color(pal.text2));
             } else if n == 0 && st.error.is_some() {
-                let g1 = p.layout_no_wrap("Suchen nach GIFs nicht möglich".into(), semibold(15.0), pal.text);
+                let g1 = p.layout_no_wrap(crate::trq!("Unable to search GIFs").into_owned(), semibold(15.0), pal.text);
                 p.galley(pos2(centre.x - g1.size().x / 2.0, centre.y - 24.0), g1, pal.text);
-                let g2 = p.layout("GIFs funktionieren zurzeit nicht, bitte versuchen Sie es später noch einmal.".into(), FontId::proportional(13.0), pal.text2, grid.width() - 50.0);
+                let g2 = p.layout(crate::trq!("GIFs aren't working right now. Please try again later.").into_owned(), FontId::proportional(13.0), pal.text2, grid.width() - 50.0);
                 p.galley(pos2(centre.x - g2.size().x / 2.0, centre.y + 2.0), g2, pal.text2);
             } else if n == 0 && st.view == View::Favorites {
                 // Webox's own wording (no pack string for an empty favourites list).
                 app.icons.paint(ui, "favorite-regular", Rect::from_center_size(pos2(centre.x, centre.y - 40.0), Vec2::splat(36.0)), pal.text2);
-                let g1 = p.layout_no_wrap("Noch keine Favoriten".into(), semibold(15.0), pal.text);
+                let g1 = p.layout_no_wrap(crate::trq!("No favorites yet").into_owned(), semibold(15.0), pal.text);
                 p.galley(pos2(centre.x - g1.size().x / 2.0, centre.y - 6.0), g1, pal.text);
-                let g2 = p.layout(if sticker { "Markieren Sie Sticker mit dem Stern, um sie hier zu speichern." } else { "Markieren Sie GIFs mit dem Stern, um sie hier zu speichern." }.into(), FontId::proportional(13.0), pal.text2, grid.width() - 50.0);
+                let g2 = p.layout(if sticker { crate::trq!("Star stickers to save them here.") } else { crate::trq!("Star GIFs to save them here.") }.into_owned(), FontId::proportional(13.0), pal.text2, grid.width() - 50.0);
                 p.galley(pos2(centre.x - g2.size().x / 2.0, centre.y + 20.0), g2, pal.text2);
             } else if n == 0 && !st.loading {
                 if let Some((id, sz)) = giphy_art("search_gif.png").and_then(|b| app.icons.png(ui, "giphy-empty", b)) {
                     p.image(id, Rect::from_center_size(pos2(centre.x, centre.y - 60.0), Vec2::new(sz[0] as f32, sz[1] as f32) / 2.0 * 1.4), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
                 }
-                let g1 = p.layout_no_wrap("Keine Ergebnisse".into(), semibold(15.0), pal.text);
+                let g1 = p.layout_no_wrap(crate::tr!("ExchangeListPopup", "No results").into_owned(), semibold(15.0), pal.text);
                 p.galley(pos2(centre.x - g1.size().x / 2.0, centre.y - 6.0), g1, pal.text);
-                let g2 = p.layout("Wir konnten hierfür kein GIF finden. Versuchen Sie es mit allgemeineren Schlüsselwörtern erneut.".into(), FontId::proportional(13.0), pal.text2, grid.width() - 50.0);
+                let g2 = p.layout(crate::trq!("We couldn't find a GIF for that. Try again with more general keywords.").into_owned(), FontId::proportional(13.0), pal.text2, grid.width() - 50.0);
                 p.galley(pos2(centre.x - g2.size().x / 2.0, centre.y + 20.0), g2, pal.text2);
             } else {
                 let mut gui = ui.new_child(egui::UiBuilder::new().max_rect(grid));
@@ -302,7 +302,7 @@ impl Plugin {
                             ui.painter().circle_filled(sr.center(), 12.0, Color32::from_black_alpha(if sresp.hovered() { 190 } else { 140 }));
                             app.icons.paint(ui, if is_fav { "favorite-filled" } else { "favorite-regular" }, Rect::from_center_size(sr.center(), Vec2::splat(15.0)), if is_fav { hex(0xF2990A) } else { Color32::WHITE });
                             if sresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
-                            if sresp.on_hover_text(if is_fav { "Aus Favoriten entfernen" } else { "Zu Favoriten hinzufügen" }).clicked() { fav_toggle = Some(i); continue; }
+                            if sresp.on_hover_text(if is_fav { crate::tr!("AppPickerGridViewDelegate", "Remove from favorites") } else { crate::trq!("Add to favorites") }).clicked() { fav_toggle = Some(i); continue; }
                         }
                         if resp.clicked() { pick = Some(i); }
                     }
@@ -323,13 +323,13 @@ impl Plugin {
             } else {
                 p.text(pos2(foot.left() + PAD, foot.center().y), egui::Align2::LEFT_CENTER, "POWERED BY GIPHY", FontId::proportional(10.0), pal.text2);
             }
-            let (link, size) = if geo.compact { ("Giphy-Geschäftsbedingungen anzeigen", 11.0) } else { ("Bedingungen anzeigen", 12.0) };
-            let lg = p.layout_no_wrap(link.into(), FontId::proportional(size), pal.link);
+            let (link, size) = if geo.compact { (crate::trq!("View Giphy terms"), 11.0) } else { (crate::trq!("View terms"), 12.0) };
+            let lg = p.layout_no_wrap(link.into_owned(), FontId::proportional(size), pal.link);
             let lr = Rect::from_min_size(pos2(foot.right() - PAD - lg.size().x, foot.center().y - lg.size().y / 2.0), lg.size());
             let lresp = ui.interact(lr.expand(3.0), egui::Id::new("gif-terms-extras"), Sense::click());
             if lresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); p.hline(lr.x_range(), lr.bottom(), Stroke::new(1.0_f32, pal.link)); }
             p.galley(lr.min, lg, pal.link);
-            if lresp.on_hover_text("Giphy-Geschäftsbedingungen anzeigen").clicked() { open_terms = true; }
+            if lresp.on_hover_text(crate::trq!("View Giphy terms")).clicked() { open_terms = true; }
         });
 
         // The Emojis tab: the emoji picker drawn inside this popup (below the tab row).
@@ -372,7 +372,7 @@ impl Plugin {
             if let Some(g) = self.picker.gifs.get(i).cloned() {
                 if upload_favs::is_upload_id(&g.id) {
                     // A favourite uploaded GIF goes out as a file (encrypted upload on Send), staged in the composer like an attachment.
-                    match upload_favs::stage_copy(&g) { Some(p) => crate::app::files::push_picks(space, vec![p]), None => app.toast("Die Datei ist nicht mehr vorhanden", now) }
+                    match upload_favs::stage_copy(&g) { Some(p) => crate::app::files::push_picks(space, vec![p]), None => app.toast(crate::trq!("The file no longer exists").into_owned(), now) }
                 } else { let b = self.picker.thumbs.get(&g.id); out.pick = Some((g, b)); }
             }
             close = true;

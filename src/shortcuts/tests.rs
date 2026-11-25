@@ -34,13 +34,15 @@ fn parses_qt_key_strings() {
 }
 
 #[test]
-fn round_trips_and_displays_in_german() {
+fn round_trips_and_displays_with_translated_modifiers() {
     for s in ["Ctrl+Alt+Shift+D", "Alt+LeftArrow", "Ctrl+Shift+Spacebar", "PgUp", "Ctrl++", "F1", "Ctrl+Shift+Return"] { assert_eq!(c(s).qt(), s); assert_eq!(c(&c(s).qt()), c(s)); }
     #[cfg(not(target_os = "macos"))] // macOS: keys_macos.rs
     {
-        assert_eq!(c("Ctrl+Shift+N").display(), "Strg+Umschalt+N");
-        assert_eq!(c("Ctrl+Alt+Shift+D").display(), "Strg+Alt+Umschalt+D");
-        assert_eq!(c("PgUp").display(), "Bild↑");
+        let (ctrl, alt, shift) = (crate::trq!("Ctrl"), crate::trq!("Alt"), crate::trq!("Shift"));
+        assert_eq!(c("Ctrl+Shift+N").display(), format!("{ctrl}+{shift}+N"));
+        assert_eq!(c("Ctrl+Alt+Shift+D").display(), format!("{ctrl}+{alt}+{shift}+D"));
+        assert_eq!(c("PgUp").display(), crate::trq!("PgUp"));
+        assert_eq!(c("Ctrl+Shift+Return").display(), format!("{ctrl}+{shift}+Enter"));
     }
 }
 
@@ -61,7 +63,7 @@ fn matches_events_exactly_but_symbols_ignore_shift() {
 }
 
 #[test]
-fn registry_is_the_json_with_unique_commands_and_german_labels() {
+fn registry_is_the_json_with_unique_commands_and_labels() {
     let r = registry();
     assert!(r.cmds.len() > 160, "{} commands", r.cmds.len());
     let mut ids: Vec<_> = r.cmds.iter().map(|c| c.id).collect();
@@ -71,7 +73,7 @@ fn registry_is_the_json_with_unique_commands_and_german_labels() {
     assert_eq!(ids.len(), n, "duplicate command ids");
     for c in &r.cmds {
         assert!(table::spec(c.id).is_some(), "{} has no table entry", c.id);
-        assert!(!c.label.is_empty() && c.label != c.id, "{} has no German label", c.id);
+        assert!(!c.label.is_empty(), "{} has no label", c.id); // the label is the id only without a table entry (checked above); "Search" is both
         assert_eq!(r.index(c.id).map(|i| r.cmds[i].id), Some(c.id));
     }
     let mut labels: Vec<_> = r.cmds.iter().map(|c| c.label).collect();
@@ -89,7 +91,7 @@ fn registry_is_the_json_with_unique_commands_and_german_labels() {
     assert!(!get("Quit").customizable && get("Search").customizable);
     assert!(get("AnswerCall").default_global && get("AnswerCall").can_be_global);
     assert!(!get("EndCall").default_global && get("EndCall").can_be_global);
-    assert_eq!(get("ShortcutMenu").label, "Suche nach Tastenkombination öffnen");
+    assert_eq!(get("ShortcutMenu").label, crate::trq!("Open keyboard shortcut search"));
     assert_eq!(get("OpenSpaces").group, Group::General);
     assert_eq!(get("ToggleBold").group, Group::Formatting);
     assert_eq!(get("DeclineCall").group, Group::Calling);
@@ -126,9 +128,12 @@ fn conflict_detection_and_fates() {
     // Ctrl+Shift+N is CreateSpace: assigning it to another customizable command conflicts, the other is disabled.
     let cf = find_conflict(cmds, &res, i("ShowAll"), c("Ctrl+Shift+N")).unwrap();
     assert_eq!((cf.other, cf.fate), (i("CreateSpace"), Fate::Disable));
-    // the key as this platform writes it ("Strg+Umschalt+N", macOS "⇧⌘N")
-    assert!(conflict_message(cmds, &cf, c("Ctrl+Shift+N"), false).starts_with(&format!("{} wird von Bereich erstellen verwendet. Wenn Sie fortfahren möchten, wird die Tastenkombination für Bereich erstellen deaktiviert.", c("Ctrl+Shift+N").display())));
-    assert!(conflict_message(cmds, &cf, c("Ctrl+Shift+N"), true).contains("Wenn Sie die Werte auf die Standardwerte zurücksetzen"));
+    // the key as this platform writes it ("Ctrl+Shift+N", macOS "⇧⌘N")
+    let (key, space) = (c("Ctrl+Shift+N").display(), crate::trq!("Create a space"));
+    assert_eq!(conflict_message(cmds, &cf, c("Ctrl+Shift+N"), false),
+        crate::trq!("{{0}} is in use by {{1}}. If you choose to continue, the shortcut for {{1}} will be disabled.", key, space));
+    assert_eq!(conflict_message(cmds, &cf, c("Ctrl+Shift+N"), true),
+        crate::trq!("{{0}} is in use by {{1}}. If you reset to default, the shortcut for {{1}} will be disabled.", key, space));
     // No conflict for a free combination, none with itself.
     assert!(find_conflict(cmds, &res, i("ShowAll"), c("Ctrl+Alt+Shift+F9")).is_none());
     assert!(find_conflict(cmds, &res, i("CreateSpace"), c("Ctrl+Shift+N")).is_none());
@@ -140,7 +145,8 @@ fn conflict_detection_and_fates() {
     let cf = find_conflict(cmds, &res, i("ShowDrafts"), c("Ctrl+Alt+Shift+F9")).unwrap();
     assert_eq!((cf.other, cf.fate), (i("ShowAll"), Fate::ResetTo(c("Alt+Shift+A"))));
     let m = conflict_message(cmds, &cf, c("Ctrl+Alt+Shift+F9"), false);
-    assert!(m.ends_with(&format!("auf {} zurückgesetzt.", c("Ctrl+Alt+Shift+F9").display())) || m.contains(&format!("auf {} zurückgesetzt.", c("Alt+Shift+A").display())));
+    assert_eq!(m, crate::trq!("{{0}} is in use by {{1}}. If you choose to continue, the shortcut for {{1}} will reset to {{2}}",
+        c("Ctrl+Alt+Shift+F9").display(), crate::trq!("View all"), c("Alt+Shift+A").display()));
 }
 
 #[test]
@@ -230,13 +236,13 @@ fn share_and_full_screen_keys_act_on_the_call_window() {
     use crate::cloud::locus::CallState;
     use commands::call_view_cmd;
     let on = Some(&CallState::Connected);
-    // Strg+Umschalt+D: the picker only on a connected call that isn't sharing (or starting to)
+    // Ctrl+Shift+D: the picker only on a connected call that isn't sharing (or starting to)
     assert!(call_view_cmd("ShareContent", on, false, false, true));
     assert!(!call_view_cmd("ShareContent", on, true, false, true));
     assert!(!call_view_cmd("ShareContent", on, false, true, true));
     assert!(!call_view_cmd("ShareContent", Some(&CallState::Dialing), false, false, true));
     assert!(!call_view_cmd("ShareContent", None, false, false, true));
-    // Strg+Umschalt+Z: only while sharing (otherwise the key stays redo)
+    // Ctrl+Shift+Z: only while sharing (otherwise the key stays redo)
     assert!(call_view_cmd("StopSharing", on, true, false, true));
     assert!(!call_view_cmd("StopSharing", on, false, false, true));
     // Alt+Eingabe: a call window is on screen, not the ringing toast

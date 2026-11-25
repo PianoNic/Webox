@@ -71,21 +71,21 @@ pub fn floor_body(disposition: &str, self_url: &str, device_url: &str, device_ty
         "beneficiary": {"url": self_url, "devices": [{"deviceType": device_type, "url": device_url}]}}})
 }
 
-/// The German reason for a failed floor request.
+/// The reason for a failed floor request.
 pub fn floor_error(e: &str) -> String {
     match http_status(e) {
-        Some(409) => "Freigabe nicht möglich: Gerade gibt jemand anderes Inhalte frei.".into(),
-        Some(403) => "Freigabe nicht erlaubt: Die Richtlinie deiner Organisation verbietet das Freigeben in diesem Anruf.".into(),
-        Some(404) => "Freigabe nicht möglich: Webex kennt den Freigabe-Kanal dieses Anrufs nicht (mehr).".into(),
-        _ => format!("Freigabe-Anfrage an Webex fehlgeschlagen: {}", scrub(e)),
+        Some(409) => crate::trq!("Can't share: someone else is sharing right now.").into_owned(),
+        Some(403) => crate::trq!("Sharing not allowed: your organization's policy doesn't allow sharing in this call.").into_owned(),
+        Some(404) => crate::trq!("Can't share: Webex doesn't know this call's sharing channel (anymore).").into_owned(),
+        _ => crate::trq!("The share request to Webex failed: {{0}}", scrub(e)),
     }
 }
 
-/// Why a share can't start in this call, or None.
+/// Why a share can't start in this call (English source, translated where shown), or None.
 pub fn share_blocked(state: Option<&CallState>, answered: bool, has_media: bool, roap_busy: bool, content_url: Option<&str>) -> Option<&'static str> {
-    if !answered || !has_media || state != Some(&CallState::Connected) { return Some("Bildschirmfreigabe ist erst möglich, wenn der Anruf verbunden ist."); }
-    if content_url.is_none() { return Some("Freigabe nicht möglich: Dieser Anruf bietet keinen Freigabe-Kanal an (kein „content“ in Locus)."); }
-    if roap_busy { return Some("Freigabe nicht möglich: Die Medienverbindung wird gerade noch ausgehandelt. Bitte gleich nochmals versuchen."); }
+    if !answered || !has_media || state != Some(&CallState::Connected) { return Some("Screen sharing is only possible once the call is connected."); }
+    if content_url.is_none() { return Some("Can't share: this call offers no sharing channel (no 'content' in Locus)."); }
+    if roap_busy { return Some("Can't share: the media connection is still being negotiated. Please try again in a moment."); }
     None
 }
 
@@ -99,15 +99,15 @@ impl Session {
     }
 
     fn share_start(&mut self, r: ShareReq) -> Result<(), String> {
-        let Some(c) = self.calls.cur.as_mut() else { return Err("Bildschirmfreigabe ist nur in einem Anruf möglich.".into()) };
+        let Some(c) = self.calls.cur.as_mut() else { return Err(crate::trq!("Screen sharing is only possible in a call.").into_owned()) };
         if c.share.is_some() { return Ok(()); }
         let url = content_share_url(&c.locus);
         if let Some(why) = share_blocked(c.last.as_ref(), c.answered, c.media.is_some(), !c.roap_done, url.as_deref()) {
             dbg_conn(&format!("call: share refused: {why}"));
-            return Err(why.into());
+            return Err(crate::trq!(why).into_owned());
         }
         let floor_url = url.unwrap_or_default();
-        if !webex_host(&floor_url) { return Err("Freigabe nicht möglich: ungültige Freigabe-Adresse.".into()); }
+        if !webex_host(&floor_url) { return Err(crate::trq!("Can't share: invalid sharing address.").into_owned()); }
         dbg_conn(&format!("call: share: capture starting ({:?}, {:?}, {} fps)", r.source.kind, r.opts.max_size, r.opts.fps));
         let stream = Arc::new(std::sync::Mutex::new(capture::start(&r.source, r.opts)));
         c.share = Some(Share { stream, feed: None, floor_url, phase: Phase::Capturing, since: Instant::now(), granted: false, tx_base: 0, tx_checked: false });
@@ -128,7 +128,7 @@ impl Session {
             Ok(_) => dbg_conn("call: share: floor RELEASED -> ok"),
             // like the official client: a release that raced the server (409) or found the share gone (404) is fine
             Err(e) if matches!(http_status(&e), Some(404 | 409)) => dbg_conn(&format!("call: share: floor release {:?}, ignored", http_status(&e))),
-            Err(e) => { dbg_conn(&format!("call: share: floor release failed: {}", scrub(&e))); let _ = self.out.send(Resp::Error(format!("Freigabe beenden fehlgeschlagen: {}", scrub(&e)))); }
+            Err(e) => { dbg_conn(&format!("call: share: floor release failed: {}", scrub(&e))); let _ = self.out.send(Resp::Error(crate::trq!("Stopping the share failed: {{0}}", scrub(&e)))); }
         }
     }
 
@@ -150,19 +150,19 @@ impl Session {
             // `write_sample` succeeds even when nothing goes out: what the share line really sent since this feed began decides
             let sent = c.media.as_ref().map_or(0, |m| m.share_tx_packets()).saturating_sub(s.tx_base);
             if let Some(s) = self.calls.cur.as_mut().and_then(|c| c.share.as_mut()) { s.tx_checked = true; }
-            if sent == 0 { return self.share_failed("Freigabe fehlgeschlagen: Es werden keine Bilddaten an den Medienserver gesendet."); }
+            if sent == 0 { return self.share_failed(&crate::trq!("Sharing failed: no picture data is being sent to the media server.").into_owned()); }
         }
         match (phase, status) {
-            (_, Status::Failed(e)) => self.share_failed(&format!("Bildschirmaufnahme fehlgeschlagen: {e}")),
-            (Phase::Capturing, Status::Ended) => self.share_failed("Freigabe abgebrochen: Es wurde nichts zum Freigeben gewählt, oder die Quelle ist nicht mehr da."),
-            (_, Status::Ended) => self.share_failed("Die Freigabe wurde beendet: Die freigegebene Quelle ist nicht mehr verfügbar."),
+            (_, Status::Failed(e)) => self.share_failed(&crate::trq!("Screen capture failed: {{0}}", e)),
+            (Phase::Capturing, Status::Ended) => self.share_failed(&crate::trq!("Sharing cancelled: nothing was picked to share, or the source is gone.").into_owned()),
+            (_, Status::Ended) => self.share_failed(&crate::trq!("Sharing stopped: the shared source is no longer available.").into_owned()),
             (Phase::Capturing, Status::Running { .. }) if busy => {}
             (Phase::Capturing, Status::Running { width, height, encoder }) => {
                 dbg_conn(&format!("call: share: capture running {width}x{height} ({})", encoder.chars().take(60).collect::<String>()));
                 self.share_negotiate();
             }
-            (Phase::Capturing, Status::Starting) if age > CAPTURE_START => self.share_failed("Bildschirmaufnahme startet nicht (Zeitüberschreitung)."),
-            (Phase::Negotiating, _) if age > ROAP_TIMEOUT => self.share_failed("Freigabe fehlgeschlagen: Der Medienserver hat auf die Freigabe-Verbindung nicht geantwortet."),
+            (Phase::Capturing, Status::Starting) if age > CAPTURE_START => self.share_failed(&crate::trq!("Screen capture doesn't start (timeout).").into_owned()),
+            (Phase::Negotiating, _) if age > ROAP_TIMEOUT => self.share_failed(&crate::trq!("Sharing failed: the media server didn't answer the sharing connection.").into_owned()),
             (Phase::Sharing, _) if !granted && age > FLOOR_GRANT => {
                 dbg_conn("call: share: floor GRANTED not seen in the locus, sharing on (like the official client)");
                 if let Some(s) = self.calls.cur.as_mut().and_then(|c| c.share.as_mut()) { s.granted = true; }
@@ -178,18 +178,18 @@ impl Session {
         if let Some(s) = c.share.as_mut() { s.phase = Phase::Negotiating; s.since = Instant::now(); }
         if ready { return self.share_answered(); }
         if c.lines_seq.is_some() { return; } // a negotiation for the far end's share / the camera runs: `lines_ready` goes on
-        if let Err(e) = self.negotiate_lines(false) { self.share_failed(&format!("Freigabe fehlgeschlagen: {e}")); }
+        if let Err(e) = self.negotiate_lines(false) { self.share_failed(&crate::trq!("Sharing failed: {{0}}", e)); }
     }
 
     /// One ROAP round that adds the video lines (`video/main`, `audio/slides`, `video/slides`, all for the camera and the
     /// share, `Media::add_lines`) or, with `again`, offers them once more (to declare the SSRC a received share or camera
     /// really comes from).
     pub(super) fn negotiate_lines(&mut self, again: bool) -> Result<(), String> {
-        let Some(c) = self.calls.cur.as_mut() else { return Err("Kein Anruf.".into()) };
-        let Some(m) = c.media.as_ref() else { return Err("Keine Medienverbindung.".into()) };
+        let Some(c) = self.calls.cur.as_mut() else { return Err(crate::trq!("No call.").into_owned()) };
+        let Some(m) = c.media.as_ref() else { return Err(crate::trq!("No media connection.").into_owned()) };
         // lines that exist but whose round failed are offered again, not added twice
         let sdp = if again || m.has_lines() { m.reoffer() } else { m.add_lines() }
-            .map_err(|e| format!("Die Medienleitung ließ sich nicht anlegen ({}).", scrub(&e)))?;
+            .map_err(|e| crate::trq!("Couldn't create the media line ({{0}}).", scrub(&e)))?;
         let seq = c.roap_seq + 1;
         (c.roap_seq, c.roap_done, c.lines_seq, c.lines_at) = (seq, false, Some(seq), Some(Instant::now()));
         dbg_conn(&format!("call: lines: roap OFFER seq={seq} ({}) {}", if again { "again" } else { "video lines" }, crate::cloud::sdp::summary(&sdp)));
@@ -213,10 +213,10 @@ impl Session {
     pub(super) fn lines_failed(&mut self, why: &str) {
         dbg_conn(&format!("call: lines refused: {why}"));
         self.video_lines_failed(why);
-        if self.calls.cur.as_ref().is_some_and(|c| c.share.is_some()) { return self.share_failed(&format!("Freigabe fehlgeschlagen: {why}")); }
+        if self.calls.cur.as_ref().is_some_and(|c| c.share.is_some()) { return self.share_failed(&crate::trq!("Sharing failed: {{0}}", why)); }
         let Some(c) = self.calls.cur.as_ref() else { return };
         if let Some(n) = &c.remote_share {
-            let _ = self.out.send(Resp::Error(format!("Die Freigabe von {} kann nicht angezeigt werden: {why}", if n.is_empty() { "deinem Gegenüber" } else { n })));
+            let _ = self.out.send(Resp::Error(if n.is_empty() { crate::trq!("The other side's share can't be shown: {{0}}", why) } else { crate::trq!("{{0}}'s share can't be shown: {{1}}", n, why) }));
         }
     }
 
@@ -237,7 +237,7 @@ impl Session {
         let base = m.share_tx_packets(); // before the feed sends anything
         match m.feed_share(s.stream.clone()) {
             Ok(f) => { (s.feed, s.phase, s.since, s.tx_base, s.tx_checked) = (Some(f), Phase::Sharing, Instant::now(), base, false); }
-            Err(e) => return self.share_failed(&format!("Freigabe fehlgeschlagen: {e}")),
+            Err(e) => return self.share_failed(&crate::trq!("Sharing failed: {{0}}", e)),
         }
         dbg_conn("call: share: sharing");
         let _ = self.out.send(Resp::CallShare(true));
@@ -253,11 +253,11 @@ impl Session {
                 if !s.granted { dbg_conn("call: share: floor GRANTED to this device"); }
                 s.granted = true;
             } else if s.granted && (disp == "RELEASED" || (disp == "GRANTED" && !ours)) {
-                let why = if disp == "GRANTED" { "Deine Freigabe wurde beendet: Jetzt gibt jemand anderes frei." } else { "Deine Freigabe wurde von Webex beendet." };
+                let why = if disp == "GRANTED" { crate::trq!("Your share stopped: someone else is sharing now.").into_owned() } else { crate::trq!("Webex stopped your share.").into_owned() };
                 dbg_conn(&format!("call: share: floor {disp} elsewhere, stopping"));
                 s.granted = false; // nothing left to release
                 self.share_stop();
-                let _ = self.out.send(Resp::Error(why.into()));
+                let _ = self.out.send(Resp::Error(why));
             }
         }
         self.remote_share_from(l);
@@ -303,7 +303,7 @@ impl Session {
         if c.lines_at.is_some_and(|t| t.elapsed() > ROAP_TIMEOUT) {
             (c.lines_seq, c.lines_at, c.roap_done) = (None, None, true);
             if let Some(m) = c.media.as_ref() { m.lines_unnegotiated(); }
-            return self.lines_failed("Der Medienserver hat auf die Videoverbindung nicht geantwortet.");
+            return self.lines_failed(&crate::trq!("The media server didn't answer the video connection.").into_owned());
         }
         let Some(since) = c.remote_since.filter(|_| c.remote_share.is_some()) else { return };
         let Some(m) = c.media.as_ref() else { return };
@@ -325,8 +325,11 @@ impl Session {
         if !c.rx_warned && crate::cloud::share_rx::latest().is_none() && since.elapsed() > RX_NOTHING {
             c.rx_warned = true;
             dbg_conn(&format!("call: share: nothing decoded after {} s (video packets {rx}, seen on the wire {})", RX_NOTHING.as_secs(), seen));
-            let who = c.remote_share.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| "Dein Gegenüber".into());
-            let _ = self.out.send(Resp::Error(format!("{who} gibt den Bildschirm frei, aber es kommt kein Bild an.")));
+            let msg = match c.remote_share.clone().filter(|n| !n.is_empty()) {
+                Some(who) => crate::trq!("{{0}} is sharing the screen, but no picture arrives.", who),
+                None => crate::trq!("The other side is sharing the screen, but no picture arrives.").into_owned(),
+            };
+            let _ = self.out.send(Resp::Error(msg));
         }
     }
 }

@@ -33,9 +33,9 @@ pub fn content_id(bytes: &[u8]) -> String {
 /// Keeps a GIF as a favourite: writes `<dir>/<hash>.gif` and `<hash>.thumb.png` and returns the store entry.
 /// Refused: not a GIF, larger than `MAX_BYTES`, or undecodable.
 pub fn star(dir: &Path, title: &str, bytes: &[u8]) -> Result<Fav, String> {
-    if bytes.len() > MAX_BYTES { return Err("GIF zu groß".into()); }
-    if image::guess_format(bytes).ok() != Some(image::ImageFormat::Gif) { return Err("kein GIF".into()); }
-    let first = first_frame(bytes).ok_or("GIF nicht lesbar")?;
+    if bytes.len() > MAX_BYTES { return Err(crate::trq!("GIF too large").into_owned()); }
+    if image::guess_format(bytes).ok() != Some(image::ImageFormat::Gif) { return Err(crate::trq!("Not a GIF").into_owned()); }
+    let first = first_frame(bytes).ok_or_else(|| crate::trq!("GIF cannot be read").into_owned())?;
     let (w, h) = (first.width(), first.height());
     let thumb = if w.max(h) > THUMB_SIDE { image::DynamicImage::ImageRgba8(first).thumbnail(THUMB_SIDE, THUMB_SIDE) } else { image::DynamicImage::ImageRgba8(first) };
     let id = content_id(bytes);
@@ -161,9 +161,9 @@ mod tests {
     #[test]
     fn staged_copy_is_named_like_the_file() {
         let d = tmp("stage");
-        let f = star(&d, "Katze", &gif(4)).unwrap();
+        let f = star(&d, "Cat", &gif(4)).unwrap();
         let p = stage_copy(&f.to_gif()).unwrap();
-        assert_eq!(p.file_name().unwrap(), "Katze.gif");
+        assert_eq!(p.file_name().unwrap(), "Cat.gif");
         assert_eq!(std::fs::read(&p).unwrap(), std::fs::read(&f.media_url).unwrap());
         let _ = std::fs::remove_dir_all(p.parent().unwrap());
         let _ = std::fs::remove_dir_all(d);

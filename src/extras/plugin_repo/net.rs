@@ -25,15 +25,15 @@ impl Policy {
         match u.scheme() {
             "https" => Ok(()),
             "http" if self.allow_loopback_http && matches!(u.host_str(), Some("127.0.0.1") | Some("localhost")) => Ok(()),
-            s => Err(format!("nur HTTPS erlaubt (nicht {s}://)")),
+            s => Err(crate::trq!("only HTTPS allowed (not {{0}}://)", s)),
         }
     }
 }
 
 pub fn parse_url(s: &str, p: Policy) -> Result<Url, String> {
-    let u = Url::parse(s.trim()).map_err(|e| format!("ungültige Adresse: {e}"))?;
+    let u = Url::parse(s.trim()).map_err(|e| crate::trq!("invalid address: {{0}}", e))?;
     p.url_ok(&u)?;
-    if !u.username().is_empty() || u.password().is_some() { return Err("Adressen mit Zugangsdaten sind nicht erlaubt".into()); }
+    if !u.username().is_empty() || u.password().is_some() { return Err(crate::trq!("Addresses with credentials are not allowed").into_owned()); }
     Ok(u)
 }
 
@@ -67,32 +67,32 @@ fn get(url: &Url, headers: &[(&str, String)], p: Policy, timeout: Duration, mut 
         for (k, v) in headers { req = req.set(k, v); }
         let resp = match req.call() {
             Ok(r) => r,
-            Err(ureq::Error::Status(code, _)) => return Err(format!("Server antwortet mit HTTP {code}")),
-            Err(e) => return Err(format!("Verbindung fehlgeschlagen: {}", e.kind())),
+            Err(ureq::Error::Status(code, _)) => return Err(crate::trq!("The server answered with HTTP {{0}}", code)),
+            Err(e) => return Err(crate::trq!("Connection failed: {{0}}", e.kind())),
         };
         let st = resp.status();
         if (300..400).contains(&st) && st != 304 {
-            let loc = resp.header("location").ok_or("Weiterleitung ohne Ziel")?;
-            let next = cur.join(loc).map_err(|e| format!("ungültige Weiterleitung: {e}"))?;
+            let loc = resp.header("location").ok_or_else(|| crate::trq!("Redirect without a target").into_owned())?;
+            let next = cur.join(loc).map_err(|e| crate::trq!("invalid redirect: {{0}}", e))?;
             p.url_ok(&next)?;
-            if !redirect_ok(&origin, &next) { return Err(format!("Weiterleitung zu {} abgelehnt", next.host_str().unwrap_or("?"))); }
+            if !redirect_ok(&origin, &next) { return Err(crate::trq!("Redirect to {{0}} refused", next.host_str().unwrap_or("?"))); }
             cur = next;
             continue;
         }
         if st == 304 { return Ok(Got { status: 304, etag: None, last_modified: None, body: vec![], len: None }); }
         return sink(resp);
     }
-    Err("zu viele Weiterleitungen".into())
+    Err(crate::trq!("too many redirects").into_owned())
 }
 
 fn read_capped(r: impl Read, cap: u64, mut each: impl FnMut(&[u8]) -> Result<(), String>, progress: Option<&AtomicU64>) -> Result<u64, String> {
     let mut r = r.take(cap + 1);
     let (mut buf, mut total) = (vec![0u8; 64 * 1024], 0u64);
     loop {
-        let n = r.read(&mut buf).map_err(|e| format!("Übertragung abgebrochen: {e}"))?;
+        let n = r.read(&mut buf).map_err(|e| crate::trq!("Transfer interrupted: {{0}}", e))?;
         if n == 0 { return Ok(total); }
         total += n as u64;
-        if total > cap { return Err(format!("Datei größer als erlaubt ({} MB)", cap >> 20)); }
+        if total > cap { return Err(crate::trq!("File larger than allowed ({{0}} MB)", cap >> 20)); }
         each(&buf[..n])?;
         if let Some(pr) = progress { pr.store(total, Ordering::Relaxed); }
     }
@@ -132,8 +132,8 @@ pub fn fetch_index(url: &str, cache_dir: &Path, p: Policy) -> Result<String, Str
         read_capped(resp.into_reader(), INDEX_MAX, |b| { body.extend_from_slice(b); Ok(()) }, None)?;
         Ok(Got { status: 200, etag, last_modified: lm, body, len: None })
     })?;
-    if got.status == 304 { return cached.map(|c| c.body).ok_or_else(|| "304 ohne zwischengespeicherte Kopie".into()); }
-    let body = String::from_utf8(got.body).map_err(|_| "Index ist kein UTF-8".to_string())?;
+    if got.status == 304 { return cached.map(|c| c.body).ok_or_else(|| crate::trq!("304 without a cached copy").into_owned()); }
+    let body = String::from_utf8(got.body).map_err(|_| crate::trq!("The index is not UTF-8").into_owned())?;
     write_cache(cache_dir, url, &Cache { etag: got.etag, last_modified: got.last_modified, body: body.clone() });
     Ok(body)
 }
@@ -143,20 +143,20 @@ pub fn fetch_index(url: &str, cache_dir: &Path, p: Policy) -> Result<String, Str
 pub fn download(url: &Url, want: &FileRef, dest: &Path, p: Policy, progress: &AtomicU64, total: &AtomicU64) -> Result<(), String> {
     let cap = if want.size > 0 { want.size.min(BINARY_MAX) } else { BINARY_MAX };
     let res = (|| {
-        let mut f = std::fs::File::create(dest).map_err(|e| format!("Datei kann nicht angelegt werden: {e}"))?;
+        let mut f = std::fs::File::create(dest).map_err(|e| crate::trq!("The file cannot be created: {{0}}", e))?;
         let mut hasher = Sha256::new();
         get(url, &[], p, Duration::from_secs(300), |resp| {
             let len = resp.header("content-length").and_then(|v| v.parse::<u64>().ok());
-            if len.is_some_and(|l| l > cap) { return Err(format!("Datei größer als erlaubt ({} MB)", cap >> 20)); }
+            if len.is_some_and(|l| l > cap) { return Err(crate::trq!("File larger than allowed ({{0}} MB)", cap >> 20)); }
             total.store(len.unwrap_or(want.size), Ordering::Relaxed);
             let n = read_capped(resp.into_reader(), cap, |b| { hasher.update(b); f.write_all(b).map_err(|e| e.to_string()) }, Some(progress))?;
             Ok(Got { status: 200, etag: None, last_modified: None, body: vec![], len: Some(n) })
         }).and_then(|g| {
-            if g.status == 304 { return Err("unerwartete Antwort 304".into()); }
-            if want.size > 0 && g.len != Some(want.size) { return Err(format!("Größe stimmt nicht ({} statt {} Bytes)", g.len.unwrap_or(0), want.size)); }
+            if g.status == 304 { return Err(crate::trq!("unexpected answer 304").into_owned()); }
+            if want.size > 0 && g.len != Some(want.size) { return Err(crate::trq!("Size does not match ({{0}} instead of {{1}} bytes)", g.len.unwrap_or(0), want.size)); }
             f.sync_all().map_err(|e| e.to_string())?;
             let got = hex(&hasher.finalize());
-            if !got.eq_ignore_ascii_case(&want.sha256) { return Err("Prüfsumme (SHA-256) stimmt nicht mit dem Index überein; Datei verworfen".into()); }
+            if !got.eq_ignore_ascii_case(&want.sha256) { return Err(crate::trq!("Checksum (SHA-256) does not match the index; file discarded").into_owned()); }
             Ok(())
         })
     })();

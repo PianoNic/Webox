@@ -35,7 +35,7 @@ impl Secrets for OsSecrets {
             Type: CRED_TYPE_GENERIC, TargetName: windows::core::PWSTR(name.as_mut_ptr()), UserName: windows::core::PWSTR(user.as_mut_ptr()),
             CredentialBlobSize: blob.len() as u32, CredentialBlob: blob.as_mut_ptr(), Persist: CRED_PERSIST_LOCAL_MACHINE, ..Default::default()
         };
-        unsafe { CredWriteW(&c, 0) }.map_err(|e| format!("Anmeldeinformationsverwaltung: {e}"))
+        unsafe { CredWriteW(&c, 0) }.map_err(|e| crate::trq!("Credential Manager: {{0}}", e))
     }
     fn delete(&mut self, plugin: &str, id: &str) {
         use windows::Win32::Security::Credentials::{CredDeleteW, CRED_TYPE_GENERIC};
@@ -56,9 +56,9 @@ impl Secrets for OsSecrets {
         let label = format!("Webox: {}", target(plugin, id));
         let mut c = crate::system::restore_env(std::process::Command::new("secret-tool").args(["store", "--label", &label, "application", "webox", "plugin", plugin, "setting", id]))
             .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null())
-            .spawn().map_err(|_| "secret-tool nicht gefunden (libsecret-tools)".to_string())?;
+            .spawn().map_err(|_| crate::trq!("secret-tool not found (libsecret-tools)").into_owned())?;
         c.stdin.take().ok_or("secret-tool")?.write_all(value.as_bytes()).map_err(|e| e.to_string())?;
-        if c.wait().map_err(|e| e.to_string())?.success() { Ok(()) } else { Err("Schlüsselbund nicht erreichbar".into()) }
+        if c.wait().map_err(|e| e.to_string())?.success() { Ok(()) } else { Err(crate::trq!("Keyring not reachable").into_owned()) }
     }
     fn delete(&mut self, plugin: &str, id: &str) {
         let _ = crate::system::restore_env(std::process::Command::new("secret-tool").args(["clear", "application", "webox", "plugin", plugin, "setting", id]))
@@ -76,7 +76,7 @@ impl Secrets for OsSecrets {
 #[cfg(not(any(windows, unix)))]
 impl Secrets for OsSecrets {
     fn get(&self, _: &str, _: &str) -> Option<String> { None }
-    fn set(&mut self, _: &str, _: &str, _: &str) -> Result<(), String> { Err("kein Schlüsselbund".into()) }
+    fn set(&mut self, _: &str, _: &str, _: &str) -> Result<(), String> { Err(crate::trq!("no keyring").into_owned()) }
     fn delete(&mut self, _: &str, _: &str) {}
 }
 
@@ -86,7 +86,7 @@ pub struct MemSecrets { pub map: std::collections::HashMap<String, String>, pub 
 impl Secrets for MemSecrets {
     fn get(&self, plugin: &str, id: &str) -> Option<String> { self.map.get(&target(plugin, id)).cloned() }
     fn set(&mut self, plugin: &str, id: &str, value: &str) -> Result<(), String> {
-        if self.fail { return Err("kein Schlüsselbund".into()); }
+        if self.fail { return Err(crate::trq!("no keyring").into_owned()); }
         self.map.insert(target(plugin, id), value.into());
         Ok(())
     }

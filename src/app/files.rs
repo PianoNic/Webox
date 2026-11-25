@@ -1,7 +1,7 @@
 //! Files and attachments: the state the UI and the cloud thread share while files go up or come down.
 //!
-//! Uploads (composer "Datei anhängen", drag & drop, pasted images, screen captures) and downloads (file cards in messages, the
-//! "Inhalt" tab, the image viewer's "Speichern unter") run on worker threads of the cloud layer (`cloud/files/`). They report
+//! Uploads (composer "Attach a file", drag & drop, pasted images, screen captures) and downloads (file cards in messages, the
+//! "Content" tab, the image viewer's "Save as") run on worker threads of the cloud layer (`cloud/files/`). They report
 //! progress here; the UI reads it every frame and asks for a repaint through the stored `egui::Context`. Cancelling sets an
 //! `AtomicBool` the worker checks between chunks.
 //!
@@ -10,9 +10,9 @@
 //!   initialize answer can lower it (`fileUploadSizeLimit`).
 //! - Desktop uploads allowed: device policy `bfs-upload-allow-desktop`.
 //! - Blocked file types: decided by the service (policies `bfs-upload-block-unknown-file-type`, `bfs-upload-allow-file-type-enabled`);
-//!   a refused upload is reported as "Gesperrte Datei" / "Dieser Dateityp ist aufgrund der {{0}}-Richtlinie nicht zulässig."
+//!   a refused upload is reported as "Blocked file" / "This file type is not allowed because of {{0}} policy."
 //!   There is no client-side list.
-//! - Files per message: capped at `MAX_FILES` ("Pro Nachricht sind maximal %1 Dateien erlaubt").
+//! - Files per message: capped at `MAX_FILES`.
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -116,14 +116,14 @@ pub fn downloads() -> Vec<Download> { with(|s| s.downloads.clone()) }
 pub fn download_cancel(key: &str) { with(|s| if let Some(d) = s.downloads.iter_mut().find(|d| d.key == key) { d.cancel.store(true, Ordering::SeqCst); d.phase = Phase::Cancelled; }); repaint(); }
 
 // Native dialogs (own threads, results collected by the UI).
-/// The composer's "Datei anhängen": dialog title "Datei zum Hochladen auswählen", filters "Alle (*)" and "Bilder".
+/// The composer's "Attach a file": dialog title "Select a file to upload", filters "All (*)" and "Images".
 /// Several files may be chosen.
 pub fn pick_files_async(space: &str) {
     let space = space.to_string();
     std::thread::spawn(move || {
         let _rt = crate::system::enter_dbus_rt(); // the portal backend (ashpd / zbus) needs a tokio runtime context
-        let r = rfd::FileDialog::new().set_title("Datei zum Hochladen auswählen").add_filter("Alle (*)", &["*"])
-            .add_filter("Bilder", &["png", "jpg", "jpeg", "gif", "bmp", "webp"]).pick_files();
+        let r = rfd::FileDialog::new().set_title(crate::trq!("Select a file to upload")).add_filter(format!("{} (*)", crate::trq!("All")), &["*"])
+            .add_filter(crate::trq!("Images"), &["png", "jpg", "jpeg", "gif", "bmp", "webp"]).pick_files();
         if let Some(v) = r { with(|s| s.picks.push((space, v))); repaint(); }
     });
 }
@@ -132,19 +132,19 @@ pub fn push_picks(space: &str, paths: Vec<PathBuf>) { if !paths.is_empty() { wit
 pub fn take_picks(space: &str) -> Vec<PathBuf> {
     with(|s| { let mut out = vec![]; s.picks.retain(|(sp, v)| if sp == space { out.extend(v.iter().cloned()); false } else { true }); out })
 }
-/// "Speichern unter": a save dialog in the download folder, pre-filled with the name.
+/// "Save as": a save dialog in the download folder, pre-filled with the name.
 pub fn save_as_async(key: &str, name: &str, dir: &Path) {
     let (key, name, dir) = (key.to_string(), name.to_string(), dir.to_path_buf());
     std::thread::spawn(move || {
         let _rt = crate::system::enter_dbus_rt();
-        let r = rfd::FileDialog::new().set_title("Speichern unter").set_directory(&dir).set_file_name(&name).save_file();
+        let r = rfd::FileDialog::new().set_title(crate::trq!("Save as")).set_directory(&dir).set_file_name(&name).save_file();
         if let Some(p) = r { with(|s| s.saves.push((key, p))); repaint(); }
     });
 }
 pub fn take_saves() -> Vec<(String, PathBuf)> { with(|s| std::mem::take(&mut s.saves)) }
 
 // Helpers.
-/// Settings "Standardmäßiger Dateispeicherort" (`download_dir`), else the OS download folder (as the settings page shows it).
+/// Settings "Default file location" (`download_dir`), else the OS download folder (as the settings page shows it).
 pub fn download_dir(settings: &serde_json::Value) -> PathBuf {
     if let Some(d) = settings["download_dir"].as_str().filter(|d| !d.is_empty()) { return PathBuf::from(d); }
     crate::system::default_download_dir()
@@ -160,7 +160,7 @@ pub fn safe_name(name: &str) -> String {
     let base = name.rsplit(['/', '\\']).next().unwrap_or("");
     let s: String = base.chars().map(|c| if "<>:\"/\\|?*".contains(c) || c.is_control() || invisible_format(c) { '_' } else { c }).collect();
     let s = s.trim_start().trim_end_matches(|c: char| c == '.' || c.is_whitespace());
-    let s = if s.is_empty() { "Datei".into() } else if device_name(s) { format!("_{s}") } else { s.to_string() };
+    let s = if s.is_empty() { crate::trq!("File").into_owned() } else if device_name(s) { format!("_{s}") } else { s.to_string() };
     if s.len() <= MAX_NAME { return s; }
     // Too long: shorten the stem at a character boundary, the extension stays.
     let (stem, ext) = match s.rfind('.') { Some(i) if i > 0 && s.len() - i <= 32 => (&s[..i], &s[i..]), _ => (s.as_str(), "") };
@@ -211,7 +211,7 @@ pub fn mime_of(name: &str, head: &[u8]) -> String {
     }.into()
 }
 
-/// Types "Öffnen" starts with their default program: documents, pictures, sound, video, archives.
+/// Types "Open" starts with their default program: documents, pictures, sound, video, archives.
 const OPEN_DIRECT: &[&str] = &["pdf", "txt", "log", "csv", "md", "json", "xml", "png", "jpg", "jpeg", "gif", "webp", "bmp", "mp3", "wav", "m4a",
     "ogg", "flac", "mp4", "mov", "webm", "mkv", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "zip", "7z", "gz", "tar",
     "heic", "heif", "tif", "tiff", "avi", "wmv", "mpg", "mpeg", "aac", "opus", "ics", "vcf", "eml", "msg", "vsdx", "odg", "epub", "rar"];
@@ -308,7 +308,7 @@ fn current_uid() -> u32 {
     extern "C" { fn getuid() -> u32; }
     unsafe { getuid() }
 }
-/// "In Ordner anzeigen": the file's folder with the file selected.
+/// "Show in folder": the file's folder with the file selected.
 /// Windows: `SHOpenFolderAndSelectItems` (reuses an Explorer window that already shows the folder), on its own thread with COM
 /// initialised; if that fails, `explorer.exe /select,"<path>"`. Linux: org.freedesktop.FileManager1.ShowItems over D-Bus
 /// (zbus), else the folder via xdg-open.
@@ -427,7 +427,7 @@ mod tests {
     fn names_and_paths() {
         assert_eq!(safe_name("..\\..\\evil.exe"), "evil.exe");
         assert_eq!(safe_name("a:b?.txt"), "a_b_.txt");
-        assert_eq!(safe_name(""), "Datei");
+        assert_eq!(safe_name(""), crate::trq!("File"));
         let long = safe_name(&format!("{}.pdf", "ä".repeat(300)));
         assert!(long.len() <= 255 && long.ends_with("ä.pdf"), "{}", long.len());
         assert_eq!(safe_name(&"a".repeat(400)).len(), 255);
@@ -473,7 +473,7 @@ mod tests {
         assert_eq!(safe_name("evil.exe ."), "evil.exe");
         assert_eq!(safe_name("evil.exe . . "), "evil.exe");
         assert_eq!(safe_name("  bericht.pdf\u{a0}"), "bericht.pdf");
-        assert_eq!(safe_name("..."), "Datei");
+        assert_eq!(safe_name("..."), crate::trq!("File"));
         // bidi / zero-width characters
         assert_eq!(safe_name("evil\u{202E}fdp.exe"), "evil_fdp.exe");
         assert_eq!(safe_name("a\u{200B}b\u{FEFF}c\u{2066}d\u{061C}.txt"), "a_b_c_d_.txt");

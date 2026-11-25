@@ -1,5 +1,5 @@
 //! Sizes of the plugin's popup. Standard: the core picker's 652 x 406 rectangle with three columns. Compact (setting
-//! "Kompakte Größe"): the smaller popup of earlier Webox versions, 350 x 390 above the GIF button with a caret pointing at it,
+//! "Compact size"): the smaller popup of earlier Webox versions, 350 x 390 above the GIF button with a caret pointing at it,
 //! two 156 px columns with 6 px gaps and 76 px home tiles.
 use super::{FOOT_H, HEAD_H, PAD};
 use crate::ui::gif_picker::{col_width, COLS, GAP, GRID_PAD};

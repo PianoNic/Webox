@@ -1,5 +1,5 @@
-//! "Suche nach Tastenkombination öffnen" (Ctrl+/): a search popup listing every command with its key; picking one runs it.
-//! Drawn with the dialog look of `ui/menu/`. Strings: "Tastenkombinationen für die Suche" (placeholder), "Keine Ergebnisse".
+//! "Open keyboard shortcut search" (Ctrl+/): a search popup listing every command with its key; picking one runs it.
+//! Drawn with the dialog look of `ui/menu/`. Strings: "Search shortcuts" (placeholder), "No results".
 use super::table::Kind;
 use super::registry;
 use crate::ui::menu::{light, webex_dialog, Button};
@@ -57,13 +57,13 @@ impl App {
                     self.icons.paint(ui, "search-regular", Rect::from_center_size(pos2(fr.left() + 20.0, fr.center().y), Vec2::splat(16.0)), text2);
                     let mut fui = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(pos2(fr.left() + 36.0, fr.top()), pos2(fr.right() - 12.0, fr.bottom()))).layout(egui::Layout::left_to_right(egui::Align::Center)));
                     let r = fui.add(egui::TextEdit::singleline(&mut self.sc.popup.q).id(egui::Id::new("sc-search-field")).frame(false).margin(Vec2::ZERO).desired_width(f32::INFINITY)
-                        .hint_text(RichText::new("Tastenkombinationen für die Suche").color(dim)).font(FontId::proportional(15.0)).text_color(text));
+                        .hint_text(RichText::new(crate::trq!("Search shortcuts")).color(dim)).font(FontId::proportional(15.0)).text_color(text));
                     if first { r.request_focus(); }
                     if r.changed() { self.sc.popup.sel = 0; self.sc.popup.scroll_to = true; }
                     ui.add_space(8.0);
                     if items.is_empty() {
                         ui.add_space(8.0);
-                        ui.label(RichText::new("Keine Ergebnisse").size(14.0).color(text2));
+                        ui.label(RichText::new(crate::trq!("No results")).size(14.0).color(text2));
                         ui.add_space(8.0);
                         return;
                     }
@@ -98,10 +98,11 @@ impl App {
         } else if close { self.show_shortcuts = false; }
     }
 
-    /// Confirmation of the sign-out shortcut: "Möchten Sie sich wirklich abmelden?"; buttons "Abbrechen" / "Abmelden".
+    /// Confirmation of the sign-out shortcut: "Are you sure you want to sign out?"; buttons "Cancel" / "Sign out".
     pub(crate) fn shortcut_dialogs(&mut self, ctx: &egui::Context, t: &Th) {
         if !self.sc.sign_out_ask { return; }
-        match webex_dialog(ctx, t, "sc-sign-out", "Abmelden", "Möchten Sie sich wirklich abmelden?", None, &[Button::secondary("cancel", "Abbrechen"), Button::primary("ok", "Abmelden")]).as_deref() {
+        let (title, cancel) = (crate::trq!("Sign out"), crate::trq!("Cancel"));
+        match webex_dialog(ctx, t, "sc-sign-out", &title, &crate::trq!("Are you sure you want to sign out?"), None, &[Button::secondary("cancel", &cancel), Button::primary("ok", &title)]).as_deref() {
             Some("ok") => { self.sc.sign_out_ask = false; self.sign_out(); }
             Some(_) => self.sc.sign_out_ask = false,
             None => {}

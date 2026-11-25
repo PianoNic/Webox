@@ -23,15 +23,15 @@ const WAIT_MAX: u64 = 600;
 /// `ui.confirm {"text", "title"?, "ok"?, "cancel"?, "timeout"?}` -> `{"ok": bool}` (plus `"timeout": true` when nobody answered).
 /// Blocks the calling thread; refused on the UI thread (it would wait for itself).
 pub(super) fn ui_confirm(c: &Ctx, a: &Value) -> Value {
-    let Some(text) = a.get("text").and_then(Value::as_str) else { return json!({ "error": "text fehlt" }) };
-    if c.ui_thread == Some(std::thread::current().id()) { return json!({ "error": "ui.confirm wartet auf eine Antwort: nur aus einem eigenen Thread des Plugins aufrufen" }); }
+    let Some(text) = a.get("text").and_then(Value::as_str) else { return json!({ "error": "text missing" }) };
+    if c.ui_thread == Some(std::thread::current().id()) { return json!({ "error": "ui.confirm waits for an answer: call it only from a thread of the plugin's own" }); }
     let s = |k: &str, d: &str| a.get(k).and_then(Value::as_str).filter(|t| !t.trim().is_empty()).unwrap_or(d).to_string();
     let wait = Duration::from_secs(a.get("timeout").and_then(Value::as_u64).unwrap_or(WAIT).clamp(1, WAIT_MAX));
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let (tx, rx) = channel();
     lock(&c.confirms).push(Confirm { id, plugin: c.plugin.clone(), name: c.name.clone(), title: s("title", &c.name), text: text.to_string(),
-        ok: s("ok", "OK"), cancel: s("cancel", "Abbrechen"), answer: tx });
+        ok: s("ok", "OK"), cancel: s("cancel", &crate::trq!("Cancel")), answer: tx });
     post(c, |_| {}); // wakes the window to show it
     match rx.recv_timeout(wait) {
         Ok(ok) => json!({ "ok": ok }),

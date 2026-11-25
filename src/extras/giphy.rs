@@ -190,7 +190,7 @@ impl Debounce {
 pub fn sample_gifs() -> Vec<(Gif, Vec<u8>)> {
     use image::{codecs::gif::GifEncoder, Delay, Frame, Rgba, RgbaImage};
     let hs = [150u32, 112, 200, 130, 96, 170, 124, 188, 140, 104, 160, 118];
-    let titles = ["Daumen hoch", "Applaus", "Tanzen", "Kopfschütteln", "Lachen", "Wow", "Feiern", "Zwinkern", "Danke", "Mikrofon fallen lassen", "Kaffee", "Gute Nacht"];
+    let titles = ["Thumbs up", "Applause", "Dancing", "Head shake", "Laughing", "Wow", "Celebrate", "Wink", "Thank you", "Mic drop", "Coffee", "Good night"];
     hs.iter().enumerate().map(|(i, &h)| {
         let w = 200u32;
         let mut out = vec![];
@@ -259,16 +259,16 @@ mod tests {
     #[test]
     fn builds_urls() {
         assert_eq!(build_url(&Kind::Trending, "K3Y", "de", 30, 0), "https://api.giphy.com/v1/gifs/trending?api_key=K3Y&limit=30&offset=0");
-        let u = build_url(&Kind::Search("katze & hund ä".into()), "K3Y", "de", 30, 60);
-        assert_eq!(u, "https://api.giphy.com/v1/gifs/search?api_key=K3Y&q=katze%20%26%20hund%20%C3%A4&limit=30&offset=60&lang=de");
+        let u = build_url(&Kind::Search("cat & dog ä".into()), "K3Y", "de", 30, 60);
+        assert_eq!(u, "https://api.giphy.com/v1/gifs/search?api_key=K3Y&q=cat%20%26%20dog%20%C3%A4&limit=30&offset=60&lang=de");
         assert!(!u.contains("rating="), "no content filter");
     }
 
     #[test]
     fn sticker_urls() {
         assert_eq!(build_url(&Kind::StickerTrending, "K3Y", "de", 30, 0), "https://api.giphy.com/v1/stickers/trending?api_key=K3Y&limit=30&offset=0");
-        let u = build_url(&Kind::StickerSearch("hallo welt".into()), "K3Y", "de", 30, 30);
-        assert_eq!(u, "https://api.giphy.com/v1/stickers/search?api_key=K3Y&q=hallo%20welt&limit=30&offset=30&lang=de");
+        let u = build_url(&Kind::StickerSearch("hello world".into()), "K3Y", "de", 30, 30);
+        assert_eq!(u, "https://api.giphy.com/v1/stickers/search?api_key=K3Y&q=hello%20world&limit=30&offset=30&lang=de");
         assert!(Kind::StickerSearch("x".into()).is_sticker() && !Kind::Trending.is_sticker());
         assert_eq!(categories_url("K3Y"), "https://api.giphy.com/v1/gifs/categories?api_key=K3Y");
     }

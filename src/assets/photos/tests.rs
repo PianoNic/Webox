@@ -25,7 +25,7 @@ fn animated_gif_loops_through_frames() {
     assert_eq!(p.image_frame(&ctx, "g", 10.25).unwrap().0, first); // loops
 }
 
-/// Unfocused with "GIFs nur abspielen, wenn Webox das aktive Fenster ist" (default on), a repaint (mouse move) keeps the
+/// Unfocused with "Only play GIFs when Webox is the active window" (default on), a repaint (mouse move) keeps the
 /// frame; back in focus the GIF goes on from there.
 #[test]
 fn gif_stands_still_while_unfocused() {

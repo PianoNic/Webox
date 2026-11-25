@@ -37,14 +37,14 @@ pub struct RepoIndex {
 fn text(v: &Value, k: &str) -> Option<String> { v.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()).map(String::from) }
 
 pub fn parse(json: &str) -> Result<RepoIndex, String> {
-    let v: Value = serde_json::from_str(json).map_err(|e| format!("Index ist kein gültiges JSON: {e}"))?;
+    let v: Value = serde_json::from_str(json).map_err(|e| crate::trq!("The index is not valid JSON: {{0}}", e))?;
     let (mut idx, list) = match &v {
         Value::Array(a) => (RepoIndex::default(), a.clone()),
         Value::Object(_) => {
-            let list = v.get("plugins").and_then(Value::as_array).cloned().ok_or("Index ohne \"plugins\"-Liste")?;
+            let list = v.get("plugins").and_then(Value::as_array).cloned().ok_or_else(|| crate::trq!("Index without a \"plugins\" list").into_owned())?;
             (RepoIndex { name: text(&v, "name"), description: text(&v, "description"), homepage: text(&v, "homepage"), ..Default::default() }, list)
         }
-        _ => return Err("Index muss eine Liste oder ein Objekt sein".into()),
+        _ => return Err(crate::trq!("The index must be a list or an object").into_owned()),
     };
     let mut seen = std::collections::HashSet::new();
     for e in &list {
@@ -101,9 +101,9 @@ pub fn parse_contract(s: &str) -> Option<(u16, u16)> {
 /// Whether this Webox can load a plugin built for `contract` (major must match, minor may not be newer).
 pub fn check_contract(major: u16, minor: u16) -> Result<(), String> {
     if major != CONTRACT_MAJOR {
-        Err(format!("für Plugin-Schnittstelle {major}.{minor} gebaut, Webox hat {CONTRACT_MAJOR}.{CONTRACT_MINOR}"))
+        Err(crate::trq!("built for plugin interface {{0}}, Webox has {{1}}", format!("{major}.{minor}"), format!("{CONTRACT_MAJOR}.{CONTRACT_MINOR}")))
     } else if minor > CONTRACT_MINOR {
-        Err(format!("braucht Plugin-Schnittstelle {major}.{minor}, Webox hat {CONTRACT_MAJOR}.{CONTRACT_MINOR}; Webox aktualisieren"))
+        Err(crate::trq!("needs plugin interface {{0}}, Webox has {{1}}; update Webox", format!("{major}.{minor}"), format!("{CONTRACT_MAJOR}.{CONTRACT_MINOR}")))
     } else { Ok(()) }
 }
 
@@ -115,14 +115,14 @@ pub fn platform() -> String {
 
 /// The binary for this platform, or why the plugin can not be installed here.
 pub fn compatible<'a>(p: &'a IndexPlugin, webox_version: &str) -> Result<&'a FileRef, String> {
-    let (ma, mi) = parse_contract(&p.contract).ok_or("ungültige Schnittstellen-Version")?;
+    let (ma, mi) = parse_contract(&p.contract).ok_or_else(|| crate::trq!("invalid interface version").into_owned())?;
     check_contract(ma, mi)?;
     if let Some(min) = &p.min_webox {
         if let (Ok(min), Ok(have)) = (semver::Version::parse(min), semver::Version::parse(webox_version)) {
-            if have < min { return Err(format!("braucht Webox {min} oder neuer")); }
+            if have < min { return Err(crate::trq!("needs Webox {{0}} or newer", min)); }
         }
     }
-    p.files.get(&platform()).ok_or_else(|| format!("nicht für diese Plattform ({}) verfügbar", platform()))
+    p.files.get(&platform()).ok_or_else(|| crate::trq!("not available for this platform ({{0}})", platform()))
 }
 
 /// Whether version `a` is newer than `b` (semver; unparsable versions are never newer).

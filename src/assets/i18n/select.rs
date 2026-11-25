@@ -112,13 +112,33 @@ pub fn set_language(setting: &str) {
     GENERATION.fetch_add(1, Ordering::Relaxed);
 }
 
+/// The chain a plugin should try for its own translations (`i18n.strings`): the user's locale as `lang_REGION` (`de_CH`), the
+/// active code (`de`), its base language; duplicates left out.
+pub fn fallbacks() -> Vec<String> {
+    let (setting, code) = { let s = state().read().unwrap(); (s.setting.clone(), s.code) };
+    let tag = if setting == "system" { system_locale() } else { setting };
+    let t = tag.split(['.', '@']).next().unwrap_or("").replace('-', "_");
+    let mut parts = t.split('_').filter(|p| !p.is_empty());
+    let full = match (parts.next(), parts.next()) {
+        (Some(l), Some(r)) if r.len() == 2 => format!("{}_{}", l.to_ascii_lowercase(), r.to_ascii_uppercase()),
+        (Some(l), _) => l.to_ascii_lowercase(),
+        _ => String::new(),
+    };
+    let mut out: Vec<String> = vec![];
+    for c in [full.as_str(), code, code.split('_').next().unwrap_or(code)] {
+        if !c.is_empty() && !out.iter().any(|o| o == c) { out.push(c.to_string()); }
+    }
+    out
+}
+
 /// The pack code actually in effect (`en` when English / no pack).
 pub fn active_code() -> &'static str {
     state().read().unwrap().code
 }
 /// True while the source language (English) is active, i.e. `tr` is the identity.
 pub fn is_source_language() -> bool {
-    state().read().unwrap().catalog.is_none()
+    let s = state().read().unwrap();
+    s.catalog.is_none() && !super::overlay::has(s.code)
 }
 /// Incremented whenever the language changes; cache derived strings against it.
 pub fn generation() -> u64 {

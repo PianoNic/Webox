@@ -150,7 +150,7 @@ fn upload_blob(agent: &ureq::Agent, token: &str, space_url: &str, cdata: &[u8], 
     let limit = s["fileUploadSizeLimit"].as_u64().unwrap_or(shared::DEFAULT_LIMIT_MB) * 1024 * 1024;
     if size > limit {
         if let Some(u) = s["url"].as_str() { let _ = call(agent, token, "DELETE", u, None); }
-        return Err(TOO_LARGE.into());
+        return Err(crate::trq!(TOO_LARGE).into_owned());
     }
     let (up, fin) = (st(&s, "uploadUrl"), st(&s, "finishUploadUrl"));
     if up.is_empty() { return Err("Expected a uploadUrl response".into()); }
@@ -167,14 +167,14 @@ fn upload_blob(agent: &ureq::Agent, token: &str, space_url: &str, cdata: &[u8], 
 }
 
 const CANCELLED: &str = "cancelled";
-/// "File too large" = "Datei zu groß".
-const TOO_LARGE: &str = "Datei zu groß";
-/// The service refusing a file: blocked types come back as 4xx, reported as "Gesperrte Datei" (QObject "Blocked file").
+/// QObject "File too large", translated where it is reported.
+const TOO_LARGE: &str = "File too large";
+/// The service refusing a file: blocked types come back as 4xx, reported as QObject "Blocked file".
 fn refusal(code: u16, body: &str) -> String {
     let b = body.to_lowercase();
-    if code == 413 || b.contains("too large") || b.contains("size limit") { TOO_LARGE.into() }
-    else if (400..500).contains(&code) && (b.contains("block") || b.contains("extension") || b.contains("not allowed") || b.contains("type")) { "Gesperrte Datei".into() }
-    else if code == 0 { "Keine Verbindung".into() } else { format!("http {code}") }
+    if code == 413 || b.contains("too large") || b.contains("size limit") { crate::trq!(TOO_LARGE).into_owned() }
+    else if (400..500).contains(&code) && (b.contains("block") || b.contains("extension") || b.contains("not allowed") || b.contains("type")) { crate::trq!("Blocked file").into_owned() }
+    else if code == 0 { crate::trq!("No connection").into_owned() } else { format!("http {code}") }
 }
 
 /// Everything a `Req::SendFiles` carries.
@@ -241,7 +241,7 @@ impl Session {
     /// `path` (via `path.part`), then opens it / shows it in its folder when asked.
     pub(super) fn download_file(&mut self, key: &str, path: &Path, then: Then) -> Result<(), String> {
         let fail = |e: String| { shared::download_phase(key, Phase::Failed(e.clone())); e };
-        let d = desc(key).ok_or_else(|| fail("Datei nicht gefunden".into()))?;
+        let d = desc(key).ok_or_else(|| fail(crate::trq!("File not found").into_owned()))?;
         let cancel = shared::download(key).map(|x| x.cancel).unwrap_or_default();
         let kid = Some(st(&jose::header(&d.scr), "kid")).filter(|k| !k.is_empty()).unwrap_or(d.key_url.clone());
         let plain = self.key(&kid).and_then(|k| jose::decrypt_dir(&k, &d.scr)).map_err(fail)?;
@@ -262,7 +262,7 @@ impl Session {
     }
 }
 
-/// After a download: "Öffnen" / "In Ordner anzeigen".
+/// After a download: "Open" / "Show in folder".
 pub(crate) fn finish(path: &Path, then: Then) {
     match then { Then::Open => shared::open_file(path), Then::ShowInFolder => shared::show_in_folder(path), Then::Nothing | Then::Play => {} }
 }
@@ -272,9 +272,9 @@ fn upload_all(agent: &ureq::Agent, token: &str, r: &SendFiles, key: &[u8], key_u
     let (mut items, mut mimes) = (vec![], vec![]);
     for p in &r.files {
         if cancel.load(Ordering::SeqCst) { return Err(CANCELLED.into()); }
-        let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Datei".into());
-        let meta = std::fs::metadata(p).map_err(|_| format!("{name}: Datei nicht gefunden"))?;
-        if meta.len() > shared::limit_bytes() { return Err(TOO_LARGE.into()); }
+        let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| crate::trq!("File").into_owned());
+        let meta = std::fs::metadata(p).map_err(|_| format!("{name}: {}", crate::trq!("File not found")))?;
+        if meta.len() > shared::limit_bytes() { return Err(crate::trq!(TOO_LARGE).into_owned()); }
         let mut data = std::fs::read(p).map_err(|e| format!("{name}: {e}"))?;
         let size = data.len() as u64;
         let mime = shared::mime_of(&name, &data[..data.len().min(64)]);
@@ -339,7 +339,7 @@ fn fetch_to(agent: &ureq::Agent, token: &str, scr: &Value, key: &str, cancel: &A
         }
         shared::download_progress(key, got, total.max(got));
     }
-    if got == 0 { return Err("leere Datei".into()); }
+    if got == 0 { return Err(crate::trq!("empty file").into_owned()); }
     if let Some((g, tag)) = gcm { g.finish(&tag)?; }
     file.flush().map_err(|e| e.to_string())
 }

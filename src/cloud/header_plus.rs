@@ -1,6 +1,6 @@
-//! One-to-one spaces for "Neue Nachricht" (header + > "Nachricht senden") and "Zu Webex einladen".
-//! WRITE actions on the real account: they run only on the user's own click (send in the "Neue Nachricht" pane, "Einladung
-//! senden"); tests and --sample never reach the service.
+//! One-to-one spaces for "New message" (header + > "Send a message") and "Invite to Webex".
+//! WRITE actions on the real account: they run only on the user's own click (send in the "New message" pane, "Send
+//! invite"); tests and --sample never reach the service.
 //!
 //! Protocol:
 //! - Every participant becomes a uuid (my uuid first). With exactly two, the existing 1:1 is looked up first:
@@ -69,7 +69,7 @@ impl Session {
         if !who.contains('@') { return Err("unknown person".into()); }
         let (path, body) = users_request(who, create);
         let v = self.http("POST", &self.url("conversation", &path), Some(body))?;
-        uuid_from_users(&v, who).ok_or_else(|| "Diese Person konnte nicht gefunden werden.".to_string())
+        uuid_from_users(&v, who).ok_or_else(|| crate::trq!("This person couldn't be found.").into_owned())
     }
 
     /// The one-to-one space with `who`: the existing one, else a new one, then `text` in it.
@@ -102,7 +102,7 @@ impl Session {
     }
 }
 
-// Groups from "Neue Nachricht" (several recipients): the same activities / kmsMessage as the 1:1, every participant
+// Groups from "New message" (several recipients): the same activities / kmsMessage as the 1:1, every participant
 // added, no tag, plus `displayName` only when the user typed a name (encrypted with the new key).
 
 /// The body of POST conversation `/conversations` for a new group space with `others` (uuids) and an optional encrypted title.

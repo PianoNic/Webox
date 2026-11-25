@@ -1,5 +1,5 @@
 //! Message actions of the "···" / right-click menu that talk to the cloud: flag / unflag, the list of my flags,
-//! "Als ungelesen markieren" and a message with a quote ("Nachricht zitieren").
+//! "Mark as unread" and a message with a quote ("Quote message").
 //!
 //! Protocol:
 //!   * Flags: service `userApps`, create = POST `/flags` with `{"conversation-url": <activity.target.url>,
@@ -39,7 +39,7 @@ pub(crate) fn parse_flags(v: &Value) -> Vec<(String, String, String)> {
         }).collect()
 }
 
-/// The activity of "Als ungelesen markieren".
+/// The activity of "Mark as unread".
 pub(crate) fn unread_body(msg: &str) -> Value { json!({"verb": "unacknowledge", "object": {"id": msg, "objectType": "activity"}}) }
 
 /// What a quoted message shared, as the official client words it in the quote (MessageStringFormatter, sent in English
@@ -64,11 +64,11 @@ impl Shared {
     /// The same line in the UI's words.
     pub fn label(&self) -> String {
         match self {
-            Shared::File(n) => format!("Datei geteilt: {n}"),
-            Shared::Snapshot(n) => format!("Schnappschuss geteilt: {n}"),
-            Shared::Files(k) => format!("{k} Dateien geteilt"),
-            Shared::Recording(n) => format!("Aufzeichnung geteilt: {n}"),
-            Shared::Recap(n) => format!("Besprechungszusammenfassung geteilt: {n}"),
+            Shared::File(n) => crate::trq!("Shared a file: {{0}}", n),
+            Shared::Snapshot(n) => crate::trq!("Shared a snapshot: {{0}}", n),
+            Shared::Files(k) => crate::trq!("Shared {{0}} files", k),
+            Shared::Recording(n) => crate::trq!("Shared a recording: {{0}}", n),
+            Shared::Recap(n) => crate::trq!("Shared meeting recap: {{0}}", n),
         }
     }
     /// The file name it names (none for "Shared N files").
@@ -134,6 +134,9 @@ pub fn quote_preview_html(author: &str, quoted_html: &str, quoted_text: &str, sh
     quote_html(author, None, quoted_html, quoted_text, shared, &text_html(r, typed))
 }
 
+/// QObject: the message when flagging or unflagging fails.
+const FLAG_FAIL: &str = "Failed to change the flagged state of the item.";
+
 impl Session {
     /// A person id as the UI knows it (e-mail style or uuid) -> the uuid (same rule as activities.rs `person_uuid`).
     fn msg_uuid_of(&self, id: &str) -> Option<String> {
@@ -144,7 +147,7 @@ impl Session {
     fn user_apps(&self, path: &str) -> Result<String, String> {
         match self.svc.get("userApps") {
             Some(u) if !u.is_empty() => Ok(format!("{u}{path}")),
-            _ => Err("Markierungsstatus des Elements konnte nicht geändert werden.".into()), // QObject "Failed to change the flagged state of the item."
+            _ => Err(crate::trq!(FLAG_FAIL).into_owned()),
         }
     }
 
@@ -157,24 +160,24 @@ impl Session {
 
     /// Flag (`flag_url` empty) or unflag (PUT on `flag_url`) a message; answers with `Resp::Flagged`.
     pub(super) fn flag(&mut self, space: &str, msg: &str, on: bool, flag_url: &str) -> Result<(), String> {
-        const FAIL: &str = "Markierungsstatus des Elements konnte nicht geändert werden.";
+        let fail = crate::trq!(FLAG_FAIL).into_owned();
         if on {
             let body = flag_body(&self.url("conversation", &format!("/conversations/{space}")), &self.url("conversation", &format!("/activities/{msg}")));
             let r = self.http("POST", &self.user_apps("/flags")?, Some(body)).map_err(|e| {
-                dbg_conn(&format!("flag rejected: {}", e.split(" → ").nth(1).unwrap_or("").split_whitespace().next().unwrap_or(""))); FAIL.to_string()
+                dbg_conn(&format!("flag rejected: {}", e.split(" → ").nth(1).unwrap_or("").split_whitespace().next().unwrap_or(""))); fail.clone()
             })?;
             let _ = self.out.send(Resp::Flagged(space.into(), msg.into(), Some(st(&r, "url"))));
         } else {
-            if !flag_url.starts_with("https://") || !webex_host(flag_url) { return Err(FAIL.into()); }
-            self.http("PUT", flag_url, Some(unflag_body())).map_err(|_| FAIL.to_string())?;
+            if !flag_url.starts_with("https://") || !webex_host(flag_url) { return Err(fail); }
+            self.http("PUT", flag_url, Some(unflag_body())).map_err(|_| fail)?;
             let _ = self.out.send(Resp::Flagged(space.into(), msg.into(), None));
         }
         Ok(())
     }
 
-    /// "Als ungelesen markieren" (verb unacknowledge).
+    /// "Mark as unread" (verb unacknowledge).
     pub(super) fn mark_unread(&mut self, space: &str, msg: &str) -> Result<(), String> {
-        self.submit(space, unread_body(msg)).map_err(|_| "Kann nicht als ungelesen markiert werden".to_string()) // QObject "Unable to mark as unread"
+        self.submit(space, unread_body(msg)).map_err(|_| crate::trq!("Unable to mark as unread").into_owned())
     }
 
     /// A message (new or thread reply) that quotes another one.
@@ -238,16 +241,16 @@ mod tests {
         let m = msg("", &["IMG_0042.png"]);
         let names = shared_names(&m);
         assert_eq!(names, ["IMG_0042.png"]);
-        assert_eq!(quote_html("Lina", None, &m.html, &m.text, &names, "<p>schön</p>"),
-            "<blockquote class='messageQuote'>Lina<br/>Shared a file: IMG_0042.png</blockquote><p>schön</p>");
+        assert_eq!(quote_html("Lina", None, &m.html, &m.text, &names, "<p>nice</p>"),
+            "<blockquote class='messageQuote'>Lina<br/>Shared a file: IMG_0042.png</blockquote><p>nice</p>");
     }
 
     #[test]
     fn quote_of_a_file_drops_the_clip_line() {
-        let m = msg("📎 Bericht <Q3>.pdf", &[]);
+        let m = msg("📎 Report <Q3>.pdf", &[]);
         let names = shared_names(&m);
         assert_eq!(quote_html("Lina", None, "", &m.text, &names, ""),
-            "<blockquote class='messageQuote'>Lina<br/>Shared a file: Bericht &lt;Q3&gt;.pdf</blockquote>");
+            "<blockquote class='messageQuote'>Lina<br/>Shared a file: Report &lt;Q3&gt;.pdf</blockquote>");
     }
 
     #[test]
@@ -260,11 +263,11 @@ mod tests {
 
     #[test]
     fn quote_of_text_with_a_file_has_summary_then_text() {
-        let m = msg("Hier der Bericht\n📎 a.pdf", &[]);
+        let m = msg("Here is the report\n📎 a.pdf", &[]);
         let names = shared_names(&m);
-        assert_eq!(quote_html("Lina", None, "", &m.text, &names, ""), "<blockquote class='messageQuote'>Lina<br/>Shared a file: a.pdf<br/>Hier der Bericht</blockquote>");
+        assert_eq!(quote_html("Lina", None, "", &m.text, &names, ""), "<blockquote class='messageQuote'>Lina<br/>Shared a file: a.pdf<br/>Here is the report</blockquote>");
         // The rich text (object.content) never carries the file lines.
-        assert_eq!(quote_html("Lina", None, "<b>Bericht</b>", &m.text, &names, ""), "<blockquote class='messageQuote'>Lina<br/>Shared a file: a.pdf<br/><b>Bericht</b></blockquote>");
+        assert_eq!(quote_html("Lina", None, "<b>Report</b>", &m.text, &names, ""), "<blockquote class='messageQuote'>Lina<br/>Shared a file: a.pdf<br/><b>Report</b></blockquote>");
     }
 
     #[test]
@@ -273,8 +276,8 @@ mod tests {
             assert_eq!(Shared::parse(&s.line()), Some(s.clone()));
         }
         assert_eq!(Shared::parse("  Shared a file:  x.png "), Some(Shared::File("x.png".into())));
-        for no in ["Shared a file:", "Shared files", "Shared 1 files", "Shared abc files", "Datei geteilt: x", "shared a file: x"] { assert_eq!(Shared::parse(no), None, "{no}"); }
-        assert_eq!(Shared::File("x.png".into()).label(), "Datei geteilt: x.png");
-        assert_eq!(Shared::Files(2).label(), "2 Dateien geteilt");
+        for no in ["Shared a file:", "Shared files", "Shared 1 files", "Shared abc files", "Hat eine Datei freigegeben: x", "shared a file: x"] { assert_eq!(Shared::parse(no), None, "{no}"); }
+        assert_eq!(Shared::File("x.png".into()).label(), crate::trq!("Shared a file: {{0}}", "x.png"));
+        assert_eq!(Shared::Files(2).label(), crate::trq!("Shared {{0}} files", 2));
     }
 }

@@ -2,7 +2,7 @@
 //! decoder (all of them are plain 16-bit PCM) and the user's sound preferences (persisted in the settings JSON, keys `snd_*`).
 //!
 //! The call ringtone is a policy (`incoming-call-alert-sound_1`, default "Delight"), selectable among Delight / Sunrise /
-//! Beep; ringer volume 50 %; the ringer can play on all output devices or on one chosen "Klingeltöne und Warnungen" device;
+//! Beep; ringer volume 50 %; the ringer can play on all output devices or on one chosen "Ringtones and alerts" device;
 //! message notification sounds come from the "momentum_ringtones" group (Open, Tick), selectable separately for direct
 //! messages, spaces and favourite spaces. A declined call ends with BusyTone, a failed one with FastBusy.
 use crate::media::audio::{Lin, RATE};
@@ -79,7 +79,7 @@ pub fn file_path(id: &str) -> Option<&str> { id.strip_prefix(FILE_PREFIX) }
 pub fn decode_any(bytes: Vec<u8>, ext: Option<&str>) -> Result<Pcm, String> {
     if let Ok(p) = decode_wav(&bytes) { return Ok(p); }
     use symphonia::core::{audio::SampleBuffer, codecs::DecoderOptions, errors::Error, formats::FormatOptions, io::MediaSourceStream, meta::MetadataOptions, probe::Hint};
-    let bad = || "Diese Datei kann nicht abgespielt werden (erlaubt: WAV, MP3, OGG, FLAC).".to_string();
+    let bad = || crate::trq!("This file can't be played (allowed: WAV, MP3, OGG, FLAC).").into_owned();
     let mss = MediaSourceStream::new(Box::new(std::io::Cursor::new(bytes)), Default::default());
     let mut hint = Hint::new();
     if let Some(e) = ext { hint.with_extension(e); }
@@ -110,15 +110,15 @@ pub fn decode_any(bytes: Vec<u8>, ext: Option<&str>) -> Result<Pcm, String> {
 
 pub fn duration_secs(p: &Pcm) -> f32 { p.data.len() as f32 / p.channels.max(1) as f32 / p.rate.max(1) as f32 }
 
-/// Reads and checks a user's file: size <= 10 MB, and for ringtones (`max_secs`) at most 60 s. German error texts.
+/// Reads and checks a user's file: size <= 10 MB, and for ringtones (`max_secs`) at most 60 s. Translated error texts.
 pub fn decode_file(path: &std::path::Path, max_secs: Option<f32>) -> Result<Pcm, String> {
-    let meta = std::fs::metadata(path).map_err(|_| "Die Datei wurde nicht gefunden.".to_string())?;
-    if meta.len() > MAX_FILE_BYTES { return Err("Die Datei ist zu groß (höchstens 10 MB).".into()); }
+    let meta = std::fs::metadata(path).map_err(|_| crate::trq!("The file was not found.").into_owned())?;
+    if meta.len() > MAX_FILE_BYTES { return Err(crate::trq!("The file is too large (10 MB at most).").into_owned()); }
     let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase());
-    if !matches!(ext.as_deref(), Some("wav" | "mp3" | "ogg" | "flac")) { return Err("Nicht unterstütztes Format (erlaubt: WAV, MP3, OGG, FLAC).".into()); }
-    let bytes = std::fs::read(path).map_err(|_| "Die Datei kann nicht gelesen werden.".to_string())?;
+    if !matches!(ext.as_deref(), Some("wav" | "mp3" | "ogg" | "flac")) { return Err(crate::trq!("Unsupported format (allowed: WAV, MP3, OGG, FLAC).").into_owned()); }
+    let bytes = std::fs::read(path).map_err(|_| crate::trq!("The file can't be read.").into_owned())?;
     let p = decode_any(bytes, ext.as_deref())?;
-    if let Some(m) = max_secs { if duration_secs(&p) > m { return Err(format!("Der Klingelton darf höchstens {} Sekunden lang sein.", m as u32)); } }
+    if let Some(m) = max_secs { if duration_secs(&p) > m { return Err(crate::trq!("The ringtone can be {{0}} seconds long at most.", m as u32)); } }
     Ok(p)
 }
 
@@ -138,7 +138,7 @@ pub fn pcm(id: &str) -> Option<std::sync::Arc<Vec<i16>>> {
 pub fn valid_or(id: &str, default: &str) -> String {
     match file_path(id) { Some(p) if !std::path::Path::new(p).is_file() => default.to_string(), _ => id.to_string() }
 }
-/// The user's sound settings. Empty sound id = "Kein Ton".
+/// The user's sound settings. Empty sound id = "No sound".
 #[derive(Clone, Debug, PartialEq)]
 pub struct Prefs {
     pub ringtone: String, pub ringer_volume: f32, pub ring_all_devices: bool, pub call_sounds: bool,
@@ -249,13 +249,13 @@ mod tests {
     }
     #[test]
     fn custom_file_validation_and_fallback() {
-        assert!(decode_file(&fixture("nope.wav"), None).unwrap_err().contains("nicht gefunden"));
-        assert!(decode_file(&fixture("tone.ogg"), Some(0.1)).unwrap_err().contains("Sekunden"));
+        assert_eq!(decode_file(&fixture("nope.wav"), None).unwrap_err(), crate::trq!("The file was not found."));
+        assert_eq!(decode_file(&fixture("tone.ogg"), Some(0.1)).unwrap_err(), crate::trq!("The ringtone can be {{0}} seconds long at most.", 0));
         let dir = std::env::temp_dir().join("webox_snd_test"); let _ = std::fs::create_dir_all(&dir);
         let big = dir.join("big.wav"); std::fs::write(&big, vec![0u8; (MAX_FILE_BYTES + 1) as usize]).unwrap();
-        assert!(decode_file(&big, None).unwrap_err().contains("zu groß"));
+        assert_eq!(decode_file(&big, None).unwrap_err(), crate::trq!("The file is too large (10 MB at most)."));
         let txt = dir.join("a.txt"); std::fs::write(&txt, b"hi").unwrap();
-        assert!(decode_file(&txt, None).unwrap_err().contains("Format"));
+        assert_eq!(decode_file(&txt, None).unwrap_err(), crate::trq!("Unsupported format (allowed: WAV, MP3, OGG, FLAC)."));
         let _ = std::fs::remove_dir_all(&dir);
         let v = serde_json::json!({"snd_ringtone": "file:C:/does/not/exist.mp3", "snd_msg_dm": "file:C:/nope.ogg"});
         let p = Prefs::load(&v);

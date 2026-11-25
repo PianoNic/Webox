@@ -37,15 +37,15 @@ fn msg(id: &str, author: &str, text: &str, ms: i64) -> Message {
 
 /// What the window holds: three spaces (one hidden, one read-only), contacts and messages.
 fn window() -> (Vec<Space>, Vec<Person>, HashMap<String, Vec<Message>>) {
-    let mut team = space("s1", "Projekt Alpha", false);
+    let mut team = space("s1", "Project Alpha", false);
     team.participants = vec![person("Anna Berg", "anna@example.com", "active"), person("Ben Kurz", "ben@example.com", "dnd")];
     team.unread = true;
     let closed = Space { closed: true, ..space("s2", "Anna Berg", true) };
-    let hidden = Space { hidden: true, ..space("s3", "Geheim", false) };
+    let hidden = Space { hidden: true, ..space("s3", "Secret", false) };
     let people = vec![person("Anna Berg", "anna@example.com", "inactive"), person("Cleo Roth", "cleo@example.com", "meeting")];
     let mut m = HashMap::new();
-    m.insert("s1".into(), vec![msg("m1", "Anna", "Release am Freitag?", 1000), Message { notice: "Ben ist beigetreten".into(), ..Default::default() },
-        msg("m2", "Ben", "Ja, Release steht", 3000)]);
+    m.insert("s1".into(), vec![msg("m1", "Anna", "Release on Friday?", 1000), Message { notice: "Ben joined".into(), ..Default::default() },
+        msg("m2", "Ben", "Yes, the release is on", 3000)]);
     m.insert("s2".into(), vec![msg("m3", "Anna", "release notes?", 2000)]);
     (vec![team, closed, hidden], people, m)
 }
@@ -83,14 +83,14 @@ fn spaces_people_history_and_search() {
     p.feed(&spaces, &people, &messages, true);
     // spaces.list: hidden ones left out, in the list's order, filtered by title, limited.
     assert_eq!(call(&p, "spaces.list", json!({})), json!({ "spaces": [
-        { "id": "s1", "title": "Projekt Alpha", "direct": false, "unread": true, "last": "17:05", "writable": true },
+        { "id": "s1", "title": "Project Alpha", "direct": false, "unread": true, "last": "17:05", "writable": true },
         { "id": "s2", "title": "Anna Berg", "direct": true, "unread": false, "last": "17:05", "writable": false }] }));
     assert_eq!(call(&p, "spaces.list", json!({ "query": "alpha" }))["spaces"].as_array().unwrap().len(), 1);
     assert_eq!(call(&p, "spaces.list", json!({ "limit": 1 }))["spaces"].as_array().unwrap().len(), 1);
-    assert_eq!(call(&p, "spaces.list", json!({ "query": "geheim" }))["spaces"], json!([]));
+    assert_eq!(call(&p, "spaces.list", json!({ "query": "secret" }))["spaces"], json!([]));
     // space.history 2: id, e-mail and the UTC date / time; system lines left out.
     assert_eq!(call(&p, "space.history", json!({ "space": "s1", "limit": 1 })), json!({ "messages": [
-        { "id": "m2", "author": "Ben", "email": "ben@example.com", "mine": false, "text": "Ja, Release steht", "date": "2026-11-24", "time": "09:00", "published_ms": 3000 }] }));
+        { "id": "m2", "author": "Ben", "email": "ben@example.com", "mine": false, "text": "Yes, the release is on", "date": "2026-11-24", "time": "09:00", "published_ms": 3000 }] }));
     // messages.search: case-insensitive, newest first, with the space; optionally in one space; limited.
     let r = call(&p, "messages.search", json!({ "query": "RELEASE" }));
     let ids: Vec<&str> = r["messages"].as_array().unwrap().iter().map(|m| m["id"].as_str().unwrap()).collect();
@@ -133,15 +133,15 @@ fn ui_confirm_waits_for_the_answer_and_never_blocks_the_ui_thread() {
     let ask = |j: Value| std::thread::spawn(move || call_in(c, "ui.confirm", j));
     let shown = |p: &super::Plugins| { let t0 = Instant::now(); loop { if let Some(q) = p.confirm_shown() { return q; } assert!(t0.elapsed() < Duration::from_secs(5)); std::thread::yield_now(); } };
     // Confirmed in the dialog.
-    let t = ask(json!({ "title": "Senden?", "text": "Claude möchte an Projekt Alpha senden: Hallo", "ok": "Senden", "cancel": "Ablehnen" }));
+    let t = ask(json!({ "title": "Send?", "text": "Claude wants to send to Project Alpha: Hello", "ok": "Send", "cancel": "Decline" }));
     let (id, title, text, ok, cancel) = shown(&p);
-    assert_eq!((title.as_str(), text.as_str(), ok.as_str(), cancel.as_str()), ("Senden?", "Reader: Claude möchte an Projekt Alpha senden: Hallo", "Senden", "Ablehnen"));
+    assert_eq!((title.as_str(), text.as_str(), ok.as_str(), cancel.as_str()), ("Send?", "Reader: Claude wants to send to Project Alpha: Hello", "Send", "Decline"));
     p.confirm_answer(id, true);
     assert_eq!(t.join().unwrap(), json!({ "ok": true }));
     // Refused; defaults for the labels.
     let t = ask(json!({ "text": "x" }));
     let (id, title, _, ok, cancel) = shown(&p);
-    assert_eq!((title.as_str(), ok.as_str(), cancel.as_str()), ("Reader", "OK", "Abbrechen"));
+    assert_eq!((title.as_str(), ok.as_str(), cancel.as_str()), ("Reader", "OK", &*crate::trq!("Cancel")));
     p.confirm_answer(id, false);
     assert_eq!(t.join().unwrap(), json!({ "ok": false }));
     // Nobody answers: no after the timeout, and the dialog goes.

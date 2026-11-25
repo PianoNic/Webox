@@ -12,13 +12,13 @@
 //!
 //! Settings keys (in settings.json; the settings page writes them, everything defaults as stated):
 //! * `notif_desktop` bool, default true - desktop (toast) notifications for messages
-//! * `notif_mentions_only` bool, default false - only direct messages and @mentions to me (the settings page sets notif_desktop=false for "Aus")
-//!   "Alle Nachrichten (Standard)" / "Direktnachrichten und @Erwähnungen an mich" / "Aus"
-//! * `notif_preview` bool, default true - "Nachrichtenvorschau anzeigen"; off shows "Neue Nachricht" instead of the text
-//! * `notif_taskbar_flash` bool, default true - "Benachrichtigungen in der Taskleiste" (flashing taskbar button + unread overlay badge)
+//! * `notif_mentions_only` bool, default false - only direct messages and @mentions to me (the settings page sets notif_desktop=false for "Off")
+//!   "All messages (default)" / "Direct messages and @mentions to me" / "Off"
+//! * `notif_preview` bool, default true - "Show Message Previews"; off shows "New message" instead of the text
+//! * `notif_taskbar_flash` bool, default true - "Taskbar notifications" (flashing taskbar button + unread overlay badge)
 //! * `meeting_toast_enabled` bool, default true, `meeting_toast_minutes` 5 (default) | 1 | 0 - meeting reminder
 //! * `close_to_tray` bool, default true - the window's X hides the app to the tray (it keeps running there) instead of quitting
-//! * Presence "Nicht stören" (`App::me.status == "DoNotDisturb"`) silences every toast and the flashing.
+//! * Presence "Do not disturb" (`App::me.status == "DoNotDisturb"`) silences every toast and the flashing.
 use crate::*;
 use super::tray;
 use egui::text::{LayoutJob, TextFormat, TextWrapping};
@@ -50,7 +50,7 @@ const MENU_TITLE: &str = "Webox tray menu";
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) enum Kind { Message, Mention, MeetingReminder, MessageReminder, CallSummary, Recording, Whiteboard, Info, MissedCall }
 
-/// `Toast::space` of a missed-call toast: clicking it opens the "Anrufe" tab instead of a space.
+/// `Toast::space` of a missed-call toast: clicking it opens the "Calling" tab instead of a space.
 pub(crate) const OPEN_CALLS: &str = "webox:calls";
 
 /// Colour of the highlighted lead-in of a preview (`wx-incomingMessageToast-replyLabel` / `-fileLabel`, `message-bodyText-mention-self-text`).
@@ -60,7 +60,7 @@ pub(crate) enum Tone { Reply, File, Mention }
 #[derive(Clone)]
 pub(crate) struct Toast {
     id: u64, kind: Kind,
-    /// Small line above the title (e.g. "Meeting-Erinnerung").
+    /// Small line above the title (e.g. "Meeting reminder").
     kicker: String, title: String, lead: Option<(String, Tone)>, body: String,
     /// (name, photo key) of the avatar; none = the kind's icon.
     avatar: Option<(String, String)>,
@@ -103,7 +103,7 @@ pub(crate) struct Hub {
     t0: Option<Instant>, toasts: Vec<Toast>, next: u64, last: f64, out: Vec<Out>,
     /// Main window state (updated every frame).
     focused: bool, minimized: bool,
-    /// The user quit on purpose (tray "Verlassen", Strg+Q, --screenshot): the X must not hide to the tray then.
+    /// The user quit on purpose (tray "Exit", Ctrl+Q, --screenshot): the X must not hide to the tray then.
     pub(crate) quitting: bool,
     tray: Option<tray::Tray>, tray_tried: bool, menu: Option<TrayMenu>,
     hwnd: Option<isize>, placed: Option<(i32, i32, i32, i32)>, measured: f32,

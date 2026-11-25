@@ -1,5 +1,5 @@
 //! AppKit pieces of the app: the menu-bar status item (the tray: icon, unread tooltip, the tray menu), the Dock badge, the
-//! app's menu bar (Webox / Bearbeiten / Fenster) and "the app became active again" (a Dock click while hidden in the menu bar).
+//! app's menu bar (Webox / Edit / Window) and "the app became active again" (a Dock click while hidden in the menu bar).
 //! Everything here runs on the main thread (eframe's `update`); one `Target` object receives every menu action and the
 //! notification, and queues what happened for the app (`take_status`, `take_menu`), waking the window.
 #![allow(unused_unsafe)] // objc2 marks some of these calls safe, others not
@@ -55,7 +55,7 @@ pub fn inject(raw: &mut eframe::egui::RawInput) {
     }
 }
 
-/// Tag of the status menu's "Webox anzeigen" row.
+/// Tag of the status menu's "Show Webox" row.
 const SHOW_TAG: isize = -1;
 
 define_class!(
@@ -152,32 +152,32 @@ pub fn install_main_menu(ctx: &eframe::egui::Context) {
     unsafe {
         let app = NSApplication::sharedApplication(mtm);
         let bar = NSMenu::new(mtm);
-        let hide_others = item(mtm, "Andere ausblenden", Some(sel!(hideOtherApplications:)), "h", 0, None);
+        let hide_others = item(mtm, &crate::trq!("Hide Others"), Some(sel!(hideOtherApplications:)), "h", 0, None);
         hide_others.setKeyEquivalentModifierMask(NSEventModifierFlags::Command | NSEventModifierFlags::Option);
         submenu(mtm, &bar, "Webox", &[
-            item(mtm, "Über Webox", Some(sel!(appCmd:)), "", 0, t),
+            item(mtm, &crate::trq!("About Webox"), Some(sel!(appCmd:)), "", 0, t),
             NSMenuItem::separatorItem(mtm),
-            item(mtm, "Einstellungen …", Some(sel!(appCmd:)), ",", 1, t),
+            item(mtm, &format!("{} …", crate::tr!("ApplicationMenuController", "Settings")), Some(sel!(appCmd:)), ",", 1, t),
             NSMenuItem::separatorItem(mtm),
-            item(mtm, "Webox ausblenden", Some(sel!(hide:)), "h", 0, None),
+            item(mtm, &crate::trq!("Hide Webox"), Some(sel!(hide:)), "h", 0, None),
             hide_others,
-            item(mtm, "Alle einblenden", Some(sel!(unhideAllApplications:)), "", 0, None),
+            item(mtm, &crate::trq!("Show All"), Some(sel!(unhideAllApplications:)), "", 0, None),
             NSMenuItem::separatorItem(mtm),
-            item(mtm, "Webox beenden", Some(sel!(appCmd:)), "q", 2, t),
+            item(mtm, &crate::trq!("Quit Webox"), Some(sel!(appCmd:)), "q", 2, t),
         ]);
-        let redo = item(mtm, "Wiederholen", Some(sel!(editCmd:)), "z", 11, t);
+        let redo = item(mtm, &crate::trq!("Redo"), Some(sel!(editCmd:)), "z", 11, t);
         redo.setKeyEquivalentModifierMask(NSEventModifierFlags::Command | NSEventModifierFlags::Shift);
-        submenu(mtm, &bar, "Bearbeiten", &[
-            item(mtm, "Widerrufen", Some(sel!(editCmd:)), "z", 10, t), redo, NSMenuItem::separatorItem(mtm),
-            item(mtm, "Ausschneiden", Some(sel!(editCmd:)), "x", 12, t), item(mtm, "Kopieren", Some(sel!(editCmd:)), "c", 13, t),
-            item(mtm, "Einsetzen", Some(sel!(editCmd:)), "v", 14, t), item(mtm, "Alles auswählen", Some(sel!(editCmd:)), "a", 15, t),
+        submenu(mtm, &bar, &crate::trq!("Edit"), &[
+            item(mtm, &crate::trq!("Undo"), Some(sel!(editCmd:)), "z", 10, t), redo, NSMenuItem::separatorItem(mtm),
+            item(mtm, &crate::trq!("Cut"), Some(sel!(editCmd:)), "x", 12, t), item(mtm, &crate::trq!("Copy"), Some(sel!(editCmd:)), "c", 13, t),
+            item(mtm, &crate::trq!("Paste"), Some(sel!(editCmd:)), "v", 14, t), item(mtm, &crate::trq!("Select All"), Some(sel!(editCmd:)), "a", 15, t),
         ]);
-        let window = submenu(mtm, &bar, "Fenster", &[
-            item(mtm, "Schließen", Some(sel!(appCmd:)), "w", 3, t),
-            item(mtm, "Im Dock ablegen", Some(sel!(appCmd:)), "m", 4, t),
-            item(mtm, "Zoomen", Some(sel!(appCmd:)), "", 5, t),
+        let window = submenu(mtm, &bar, &crate::trq!("Window"), &[
+            item(mtm, &crate::trq!("Close"), Some(sel!(appCmd:)), "w", 3, t),
+            item(mtm, &crate::trq!("Minimize"), Some(sel!(appCmd:)), "m", 4, t),
+            item(mtm, &crate::trq!("Zoom"), Some(sel!(appCmd:)), "", 5, t),
             NSMenuItem::separatorItem(mtm),
-            item(mtm, "Alle nach vorne bringen", Some(sel!(arrangeInFront:)), "", 0, None),
+            item(mtm, &crate::trq!("Bring All to Front"), Some(sel!(arrangeInFront:)), "", 0, None),
         ]);
         app.setMainMenu(Some(&bar));
         app.setWindowsMenu(Some(&window));
@@ -199,7 +199,7 @@ fn image(rgba: Vec<u8>, px: u32, pt: f64) -> Option<Retained<NSImage>> {
 }
 
 /// The menu-bar status item: the app icon (with the red dot while something is unread), the unread count as tooltip and the
-/// tray menu, "Webox anzeigen" first.
+/// tray menu, "Show Webox" first.
 pub struct StatusItem { item: Retained<NSStatusItem>, rows: Option<Vec<MenuRow>>, unread: Option<usize> }
 
 impl StatusItem {
@@ -234,7 +234,7 @@ impl StatusItem {
         unsafe {
             let m = NSMenu::new(mtm);
             m.setAutoenablesItems(false);
-            m.addItem(&item(mtm, "Webox anzeigen", Some(sel!(statusRow:)), "", SHOW_TAG, Some(&t)));
+            m.addItem(&item(mtm, &crate::trq!("Show Webox"), Some(sel!(statusRow:)), "", SHOW_TAG, Some(&t)));
             m.addItem(&NSMenuItem::separatorItem(mtm));
             for (i, r) in rows.iter().enumerate() {
                 if r.sep { m.addItem(&NSMenuItem::separatorItem(mtm)); continue; }

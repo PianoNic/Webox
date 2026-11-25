@@ -10,9 +10,9 @@ impl App {
         let composer = egui::Id::new("composer-edit"); // ui/conversation.rs
         match id {
             "OpenHelpCenter" => system::open(LEARN_MORE_URL),
-            "ToggleAssistantPanel" => self.toast("Cisco AI Assistant: nicht verfügbar", now), // placeholder: Webox has no assistant panel
+            "ToggleAssistantPanel" => self.toast(format!("Cisco AI Assistant: {}", crate::trq!("unavailable")), now), // placeholder: Webox has no assistant panel
             "SearchInConversation" => { self.set_tab(Tab::Messaging); self.focus_search = true }
-            "SignOut" => if self.client.is_some() { self.sc.sign_out_ask = true } else { self.toast("Sie sind nicht angemeldet.", now) },
+            "SignOut" => if self.client.is_some() { self.sc.sign_out_ask = true } else { self.toast(crate::trq!("You are not signed in."), now) },
             "ShowAll" => { self.set_tab(Tab::Messaging); self.list_tab = ListTab::All; self.filter = Filter::None }
             // The open list jumps to its newest message (ui/messages/jump_button.rs).
             "JumpToBottom" => if self.selected.is_some() { self.conv_tab = ConvTab::Messages; crate::ui::messages::request_jump_to_bottom(ctx) },
@@ -27,11 +27,11 @@ impl App {
             "NewReplyButton" => ctx.memory_mut(|m| m.request_focus(composer)),
             "FocusMainConversation" => ctx.memory_mut(|m| if let Some(f) = m.focused() { m.surrender_focus(f) }),
             "AnswerCall" | "DeclineCall" | "EndCall" | "ToggleAudioMute" => self.call_command(id),
-            // Strg+Umschalt+D / Strg+Umschalt+Z: the share picker / stop sharing (what the call window's share button does)
+            // Ctrl+Shift+D / Ctrl+Shift+Z: the share picker / stop sharing (what the call window's share button does)
             "ShareContent" | "StopSharing" => if self.call_cmd_applies(id, ctx) { self.share_button(now) },
-            // Alt+Eingabe (F11 in the call window as well): the call window in full screen, or back
+            // Alt+Enter (F11 in the call window as well): the call window in full screen, or back
             "FullScreen" => if self.call_cmd_applies(id, ctx) { self.call.win.full_toggle = true },
-            // "Home": the landing screen of Settings > Allgemein > Zielbildschirm (there is no separate home tab).
+            // "Home": the landing screen of Settings > General > start screen (there is no separate home tab).
             "OpenHome" => self.set_tab(match self.settings["home"].as_str() { Some("Meetings") => Tab::Meetings, Some("Calling") => Tab::Calling, Some("Contacts") => Tab::Contacts, _ => Tab::Messaging }),
             "OpenDiagnostics" => crate::ui::menu::menu_open(ctx, crate::ui::app_dialogs::HEALTH), // the health checker is the diagnostics window
             "Minimize" | "Hide" => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
@@ -40,8 +40,8 @@ impl App {
             "ShowLinks" => if let Some(s) = self.selected.clone() { self.conv_tab = ConvTab::Content; crate::ui::space_tabs::set_content(ctx, &s, 1) },
             "SpaceSettings" | "ViewSpaceSettings" => if self.selected.is_some() && self.tab == Tab::Messaging { crate::ui::menu::menu_open(ctx, "gear") },
             "AddGif" => if self.selected.is_some() { self.gif_picker_toggle(ctx) },
-            // Strg+Umschalt+X: shows / hides the calling dock window (ui/call_win/dock.rs); without separate call windows the
-            // calling features are on the "Anrufe" page.
+            // Ctrl+Shift+X: shows / hides the calling dock window (ui/call_win/dock.rs); without separate call windows the
+            // calling features are on the "Calling" page.
             "ShowHideCallingDock" => if !self.toggle_calling_dock(ctx) { self.set_tab(Tab::Calling) },
             "CreateWhiteboard" => self.set_tab(Tab::Whiteboards),
             "OpenDialpad" => { self.set_tab(Tab::Calling); let mut s = self.pst(ctx); s.dial_open = true; self.set_pst(ctx, s); }

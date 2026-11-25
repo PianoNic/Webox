@@ -1,14 +1,14 @@
 //! Keyboard shortcut system (`keyboardShortcuts.json`, Windows column `qt`).
 //!
 //! * `Combo`: a Qt key string ("Ctrl+Shift+N", "Alt+LeftArrow", "PgUp", "Ctrl++") <-> an egui key event.
-//! * `registry()`: every command of the JSON with its German description and handler (`table.rs`).
+//! * `registry()`: every command of the JSON with its description (translated) and handler (`table.rs`).
 //! * `State`: the user's overrides (settings JSON `shortcuts`), the resolved bindings and the UI state.
 //! * `App::shortcuts_frame`: per-frame dispatch.
-//! * `popup.rs`: "Suche nach Tastenkombination öffnen" (Ctrl+/). `commands.rs`: the commands implemented here.
+//! * `popup.rs`: "Open keyboard shortcut search" (Ctrl+/). `commands.rs`: the commands implemented here.
 //! * `global.rs`: global hotkeys (Windows RegisterHotKey on a message-loop thread; `global_linux.rs`, `global_macos.rs`).
 //! The settings page lives in `ui/settings_shortcuts.rs`.
 use crate::*;
-use std::sync::OnceLock;
+use std::sync::Mutex;
 use table::Kind;
 
 mod commands;
@@ -23,7 +23,7 @@ pub(crate) mod global;
 pub(crate) mod popup;
 pub(crate) mod table;
 #[cfg(target_os = "macos")]
-mod keys_macos; // ⇧⌘N instead of Strg+Umschalt+N
+mod keys_macos; // ⇧⌘N instead of Ctrl+Shift+N
 
 /// The shortcut table: the Webex `keyboardShortcuts.json` when it is in `assets/cisco/`, else the Webox
 /// table with the same commands, keys and flags (`assets/keyboard-shortcuts.json`, without the descriptions).
@@ -73,12 +73,14 @@ fn key_name(k: Key) -> String {
     if let Some(i) = FKEYS.iter().position(|x| *x == k) { return format!("F{}", i + 1); }
     NAMED.iter().find(|(_, x)| *x == k).map_or_else(|| format!("{k:?}"), |(n, _)| n.to_string())
 }
-/// German key names as Qt prints them (QKeySequence::NativeText on a German system).
-fn key_name_de(k: Key) -> String {
+/// Key names as Qt prints them (QKeySequence::NativeText on an English system). Only PgUp / PgDn go through the language
+/// pack: its other key-like sources ("Space", "Home", "Delete" ...) are translated as words, not as keys.
+fn key_name_shown(k: Key) -> String {
     match k {
-        Key::Enter => "Eingabe".into(), Key::Space => "Leertaste".into(), Key::Backspace => "Rücktaste".into(), Key::Delete => "Entf".into(),
-        Key::Insert => "Einfg".into(), Key::Home => "Pos1".into(), Key::End => "Ende".into(), Key::PageUp => "Bild↑".into(), Key::PageDown => "Bild↓".into(),
-        Key::ArrowLeft => "Links".into(), Key::ArrowRight => "Rechts".into(), Key::ArrowUp => "Auf".into(), Key::ArrowDown => "Ab".into(),
+        Key::Enter => "Enter".into(), Key::Space => "Space".into(), Key::Backspace => "Backspace".into(), Key::Delete => "Del".into(),
+        Key::Insert => "Ins".into(), Key::Home => "Home".into(), Key::End => "End".into(),
+        Key::PageUp => crate::trq!("PgUp").into_owned(), Key::PageDown => crate::trq!("PgDn").into_owned(),
+        Key::ArrowLeft => "Left".into(), Key::ArrowRight => "Right".into(), Key::ArrowUp => "Up".into(), Key::ArrowDown => "Down".into(),
         _ => key_name(k),
     }
 }
@@ -104,12 +106,15 @@ impl Combo {
     pub(crate) fn qt(&self) -> String {
         format!("{}{}{}{}", if self.ctrl { "Ctrl+" } else { "" }, if self.alt { "Alt+" } else { "" }, if self.shift { "Shift+" } else { "" }, key_name(self.key))
     }
-    /// How it is shown in German: "Strg+Umschalt+N" (macOS: "⇧⌘N").
+    /// How it is shown: "Ctrl+Shift+N", modifiers from the language pack (macOS: "⇧⌘N").
     pub(crate) fn display(&self) -> String {
         #[cfg(target_os = "macos")]
         { keys_macos::display(self) }
         #[cfg(not(target_os = "macos"))]
-        { format!("{}{}{}{}", if self.ctrl { "Strg+" } else { "" }, if self.alt { "Alt+" } else { "" }, if self.shift { "Umschalt+" } else { "" }, key_name_de(self.key)) }
+        {
+            let m = |on: bool, name: &str| if on { format!("{}+", crate::trq!(name)) } else { String::new() };
+            format!("{}{}{}{}", m(self.ctrl, "Ctrl"), m(self.alt, "Alt"), m(self.shift, "Shift"), key_name_shown(self.key))
+        }
     }
     pub(crate) fn from_event(key: Key, m: &Modifiers) -> Combo { Combo { ctrl: m.ctrl || m.command, alt: m.alt, shift: m.shift, key } }
     #[cfg(test)]
@@ -127,7 +132,7 @@ impl Combo {
     pub(crate) fn plain_modifier_free(&self) -> bool { !self.ctrl && !self.alt }
 }
 
-/// A fixed shortcut text of a menu or tooltip as this platform writes it ("Strg+Umschalt+P"; macOS "⇧⌘P").
+/// A fixed shortcut text of a menu or tooltip as this platform writes it ("Ctrl+Shift+P"; macOS "⇧⌘P").
 pub(crate) fn native_hint(s: &str) -> String {
     #[cfg(target_os = "macos")]
     { keys_macos::hint(s) }
@@ -148,9 +153,9 @@ pub(crate) fn take_key(events: &mut Vec<egui::Event>, pos: usize) {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) enum Group { General, Messaging, Calling, Formatting, Developer }
 impl Group {
-    /// The page's section titles ("Allgemein" / "Nachrichten" / "Formatierung" / "Meetings und Anrufe").
-    pub(crate) fn title(self) -> &'static str {
-        match self { Group::General => "Allgemein", Group::Messaging => "Nachrichten", Group::Calling => "Meetings und Anrufe", Group::Formatting => "Formatierung", Group::Developer => "Entwickler" }
+    /// The page's section titles ("General" / "Messaging" / "Meetings & Calls" / "Formatting"), translated.
+    pub(crate) fn title(self) -> std::borrow::Cow<'static, str> {
+        crate::trq!(match self { Group::General => "General", Group::Messaging => "Messaging", Group::Calling => "Meetings & Calls", Group::Formatting => "Formatting", Group::Developer => "Developer" })
     }
     /// The sections shown on the settings page (Developer stays hidden).
     pub(crate) const SHOWN: [Group; 4] = [Group::General, Group::Messaging, Group::Calling, Group::Formatting];
@@ -171,9 +176,15 @@ impl Command {
 pub(crate) struct Registry { pub cmds: Vec<Command>, by_id: HashMap<&'static str, usize> }
 impl Registry { pub(crate) fn index(&self, id: &str) -> Option<usize> { self.by_id.get(id).copied() } }
 
+/// The registry with its labels in the active language; rebuilt (the old one is leaked, a few KB) when the language changes.
 pub(crate) fn registry() -> &'static Registry {
-    static R: OnceLock<Registry> = OnceLock::new();
-    R.get_or_init(|| build_registry(json()))
+    static R: Mutex<Option<(u64, &'static Registry)>> = Mutex::new(None);
+    let g = crate::i18n::generation();
+    let mut r = R.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((at, reg)) = *r { if at == g { return reg; } }
+    let reg: &'static Registry = Box::leak(Box::new(build_registry(json())));
+    *r = Some((g, reg));
+    reg
 }
 fn leak(s: &str) -> &'static str { Box::leak(s.to_string().into_boxed_str()) }
 fn build_registry(json: &str) -> Registry {
@@ -184,7 +195,7 @@ fn build_registry(json: &str) -> Registry {
         for s in g["shortcuts"].as_array().into_iter().flatten() {
             let id = leak(s["command"].as_str().unwrap_or(""));
             let qt = s["keyCombination"]["qt"].as_str().unwrap_or("");
-            let (label, kind) = table::spec(id).unwrap_or((id, Kind::Stub));
+            let (label, kind) = table::spec(id).map(|(l, k)| (leak(&crate::trq!(l)), k)).unwrap_or((id, Kind::Stub));
             cmds.push(Command { id, group, customizable: s["isCustomizable"].as_bool().unwrap_or(false),
                 default_global: s["isGlobal"].as_bool().unwrap_or(false), can_be_global: s["canBeGlobal"].as_bool().unwrap_or(false),
                 default: Combo::parse(qt), label, kind });
@@ -203,7 +214,7 @@ pub(crate) struct Ov { pub key: Option<Option<Combo>>, pub global: Option<bool> 
 #[derive(Clone, Copy, Default, PartialEq, Debug)]
 pub(crate) struct Resolved {
     pub key: Option<Combo>, pub global: bool, pub custom: bool,
-    /// The command's own default is taken by this other command (a custom binding): the command is disabled ("Standardtastenkombinationen werden bereits verwendet").
+    /// The command's own default is taken by this other command (a custom binding): the command is disabled ("Default Shortcut in Use").
     pub default_taken_by: Option<usize>,
 }
 
@@ -243,19 +254,20 @@ pub(crate) fn find_conflict(cmds: &[Command], res: &[Resolved], idx: usize, comb
 pub(crate) fn conflict_message(cmds: &[Command], c: &Conflict, combo: Combo, resetting: bool) -> String {
     let (k, who) = (combo.display(), cmds[c.other].label);
     match (c.fate, resetting) {
-        (Fate::Locked, _) => format!("{k} wird von {who} verwendet und kann nicht geändert werden."),
-        (Fate::Disable, false) => format!("{k} wird von {who} verwendet. Wenn Sie fortfahren möchten, wird die Tastenkombination für {who} deaktiviert."),
-        (Fate::ResetTo(d), false) => format!("{k} wird von {who} verwendet. Wenn Sie fortfahren möchten, wird die Tastenkombination für {who} auf {} zurückgesetzt.", d.display()),
-        (Fate::Disable, true) => format!("{k} wird von {who} verwendet. Wenn Sie die Werte auf die Standardwerte zurücksetzen, wird die Tastenkombination für {who} deaktiviert."),
-        (Fate::ResetTo(d), true) => format!("{k} wird von {who} verwendet. Wenn Sie die Werte auf die Standardwerte zurücksetzen, wird die Tastenkombination für {who} auf {} zurückgesetzt.", d.display()),
+        (Fate::Locked, _) => crate::trq!("{{0}} is in use by {{1}} and can\u{2019}t be changed.", k, who),
+        (Fate::Disable, false) => crate::trq!("{{0}} is in use by {{1}}. If you choose to continue, the shortcut for {{1}} will be disabled.", k, who),
+        (Fate::ResetTo(d), false) => crate::trq!("{{0}} is in use by {{1}}. If you choose to continue, the shortcut for {{1}} will reset to {{2}}", k, who, d.display()),
+        (Fate::Disable, true) => crate::trq!("{{0}} is in use by {{1}}. If you reset to default, the shortcut for {{1}} will be disabled.", k, who),
+        (Fate::ResetTo(d), true) => crate::trq!("{{0}} is in use by {{1}}. If you reset to default, the shortcut for {{1}} will reset to {{2}}", k, who, d.display()),
     }
 }
-pub(crate) const CONFLICT_TITLE: &str = "Tastenkombination wird bereits verwendet"; // pack QObject
-pub(crate) const DEFAULT_TAKEN: &str = "Standardtastenkombinationen werden bereits verwendet"; // pack string
+/// Pack QObject sources (English): shown as `trq!(CONFLICT_TITLE)` / `trq!(DEFAULT_TAKEN)`.
+pub(crate) const CONFLICT_TITLE: &str = "Shortcut already in use";
+pub(crate) const DEFAULT_TAKEN: &str = "Default Shortcut in Use";
 /// Pack QObject "This is a new shortcut. It's default key combination {{0}} is already assigned to {{1}}. ..."
 pub(crate) fn default_taken_message(cmds: &[Command], idx: usize, by: usize) -> String {
     let k = cmds[idx].default.map(|d| d.display()).unwrap_or_default();
-    format!("Das ist eine neue Tastenkombination. Die standardmäßige Tastenkombination für {k} ist bereits {} zugewiesen. Um diese Tastenkombination zu verwenden, fügen Sie eine benutzerdefinierte Kombination hinzu.", cmds[by].label)
+    crate::trq!("This is a new shortcut. It\u{2019}s default key combination {{0}} is already assigned to {{1}}. To use this shortcut, add a custom combination.", k, cmds[by].label)
 }
 
 // State.

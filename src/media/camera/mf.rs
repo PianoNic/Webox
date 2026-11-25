@@ -1,5 +1,5 @@
 //! Windows cameras through Media Foundation: `MFEnumDeviceSources` (video capture sources) for the list, an
-//! `IMFSourceReader` in synchronous mode for frames. The native mode is chosen by `pick_mode` (Max. Kameraauflösung);
+//! `IMFSourceReader` in synchronous mode for frames. The native mode is chosen by `pick_mode` (Max camera resolution);
 //! uncompressed modes (NV12 / YUY2 / RGB32) are read as they are, MJPG is decoded to NV12 by the reader's decoder MFT,
 //! which may run on the GPU when "Hardware-Beschleunigung aktivieren" is on (`MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS`).
 //! Everything here runs on the preview's worker thread (COM MTA there).
@@ -124,7 +124,7 @@ pub fn open(dev: &CamDev, max_h: u32, hw: bool) -> Result<MfSource, Fail> {
         let mut k = 0;
         while let Ok(t) = reader.GetNativeMediaType(FIRST_VIDEO, k) { if let Some(m) = mode_of(&t) { natives.push((m, t)); } k += 1; }
         let modes: Vec<Mode> = natives.iter().map(|n| n.0).collect();
-        let mode = pick_mode(&modes, max_h).ok_or_else(|| Fail::Other(format!("{}: kein unterstütztes Videoformat", dev.name)))?;
+        let mode = pick_mode(&modes, max_h).ok_or_else(|| Fail::Other(format!("{}: {}", dev.name, crate::trq!("no supported video format"))))?;
         let native = &natives.iter().find(|n| n.0 == mode).ok_or(Fail::NoCamera)?.1;
         let mut s = MfSource { reader, src, act, mode, modes, name: dev.name.clone(), out: mode.pix, w: mode.w, h: mode.h, stride: 0, _init: init };
         s.reader.SetCurrentMediaType(FIRST_VIDEO, None, native).map_err(|e| fail(&e, &dev.name))?;

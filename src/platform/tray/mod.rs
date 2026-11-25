@@ -1,8 +1,8 @@
 //! System tray icon, taskbar flash / overlay badge and the Win32 plumbing of the toast windows - raw Windows API
 //! (`windows` crate: Shell_NotifyIconW, a hidden message window, FlashWindowEx, ITaskbarList3), no tray crates.
 //!
-//! The tooltip carries the unread count ("ungelesene Benachrichtigung(en)"), an unread icon variant is rendered at run time
-//! and the taskbar button flashes (setting "Benachrichtigungen in der Taskleiste").
+//! The tooltip carries the unread count ("unread notification(s)"), an unread icon variant is rendered at run time
+//! and the taskbar button flashes (setting "Taskbar notifications").
 //! The Win32 part is cfg(windows); Linux has native counterparts in `src/platform/linux/` (StatusNotifierItem tray, launcher badge,
 //! X11 window helpers); other platforms get no-op stubs.
 use std::path::Path;
@@ -11,7 +11,7 @@ use std::path::Path;
 /// frames), so animations check this to stop redrawing a window nobody sees.
 pub static HIDDEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Default of "Beim Schließen in den Infobereich minimieren". Off on Wayland: a window can't be hidden there, only minimized,
+/// Default of "Minimize to the system tray when closing". Off on Wayland: a window can't be hidden there, only minimized,
 /// so X / Alt+F4 would seem to do nothing. Who wants Webox to keep running there switches it on.
 pub fn close_to_tray_default() -> bool {
     #[cfg(target_os = "linux")]
@@ -104,9 +104,9 @@ pub fn badge_rgba(n: usize, size: u32) -> Vec<u8> {
     pixmap_to_rgba(&pm)
 }
 
-/// "N ungelesene Benachrichtigung(en)" as the German pack has it; the app name when nothing is unread.
+/// "N unread notification(s)" (pack strings); the app name when nothing is unread.
 pub fn tooltip(n: usize) -> String {
-    match n { 0 => "Webox".into(), 1 => "1 ungelesene Benachrichtigung".into(), n => format!("{n} ungelesene Benachrichtigungen") }
+    match n { 0 => "Webox".into(), 1 => format!("1 {}", crate::trq!("unread notification")), n => format!("{n} {}", crate::trq!("unread notifications")) }
 }
 
 #[cfg_attr(target_os = "macos", allow(dead_code))]

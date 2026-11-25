@@ -7,8 +7,8 @@ impl App {
     pub(crate) fn on_list_patch(&mut self, p: ListPatch) {
         let find = |app: &mut App, id: &str| app.spaces.iter().position(|s| s.id == id);
         match p {
-            // Read on another device of mine: the dot / bold row go, its notifications are withdrawn, the "Neue
-            // Nachrichten" line of the next opening sits after the new last-seen time (ui/messages/list.rs).
+            // Read on another device of mine: the dot / bold row go, its notifications are withdrawn, the "New
+            // messages" line of the next opening sits after the new last-seen time (ui/messages/list.rs).
             ListPatch::Read { space, last_seen, unread } => {
                 if let Some(i) = find(self, &space) {
                     let s = &mut self.spaces[i];

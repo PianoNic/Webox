@@ -4,7 +4,7 @@ use serde_json::Value;
 
 /// The latest published release (GitHub leaves drafts and pre-releases out of `releases/latest`).
 pub const LATEST_URL: &str = "https://api.github.com/repos/PianoNic/Webox/releases/latest";
-/// Where the releases are listed, for the "Versionshinweise" link when there is no release page in the answer.
+/// Where the releases are listed, for the "Release notes" link when there is no release page in the answer.
 pub const RELEASES_PAGE: &str = "https://github.com/PianoNic/Webox/releases";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -20,7 +20,7 @@ pub fn parse_version(tag: &str) -> Option<Version> {
 
 /// The release in a `releases/latest` answer. `None` for a draft, a pre-release or a tag that is not a version.
 pub fn parse(json: &str) -> Result<Option<Release>, String> {
-    let v: Value = serde_json::from_str(json).map_err(|e| format!("Antwort nicht lesbar: {e}"))?;
+    let v: Value = serde_json::from_str(json).map_err(|e| crate::trq!("Unreadable answer: {{0}}", e))?;
     if v["draft"].as_bool().unwrap_or(false) || v["prerelease"].as_bool().unwrap_or(false) { return Ok(None); }
     let tag = v["tag_name"].as_str().unwrap_or_default();
     let Some(version) = parse_version(tag).filter(|v| v.pre.is_empty()) else { return Ok(None) };

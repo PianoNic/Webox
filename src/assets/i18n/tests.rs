@@ -262,3 +262,28 @@ fn app_name_german_pack() {
     }
     set_language("en");
 }
+
+#[test]
+fn webox_overlay_translates_own_strings() {
+    let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // Works without the official packs: the overlay is Webox's own and always embedded.
+    set_language("de");
+    assert_eq!(tr("QObject", "Couldn't send the message"), "Nachricht konnte nicht gesendet werden");
+    assert_eq!(crate::trq!("Webex answered with error {{0}}.", 400), "Webex hat mit Fehler 400 geantwortet.");
+    assert!(!is_source_language());
+    assert_eq!(tr("X", "no translation here"), "no translation here");
+    set_language("de-CH"); // de_CH -> de
+    assert_eq!(tr("QObject", "Couldn't send the message"), "Nachricht konnte nicht gesendet werden");
+    set_language("en");
+    assert_eq!(tr("QObject", "Couldn't send the message"), "Couldn't send the message");
+    assert!(is_source_language());
+}
+
+#[test]
+fn webox_overlay_file_format() {
+    let mut t = HashMap::new();
+    overlay::parse("# comment\n\nHello\tHallo\r\nTwo\\tparts\tZwei\\nZeilen\nno tab here\n\tempty source\n", &mut t);
+    assert_eq!(t.get("Hello"), Some(&"Hallo"));
+    assert_eq!(t.get("Two\tparts"), Some(&"Zwei\nZeilen"));
+    assert_eq!(t.len(), 2);
+}

@@ -129,7 +129,7 @@ fn home_screen_tiles() {
 fn compact_size_setting_is_off_by_default_saved_and_overridable() {
     let d = tmp("compact");
     let mut p = Plugins::new(&d);
-    assert!(settings_schema().contains("Kompakte Größe") && settings_schema().contains("350 × 390"));
+    assert!(settings_schema().contains(&*crate::trq!("Compact size")) && settings_schema().contains("350 × 390"));
     assert!(!compact(&p, None), "default: the standard size");
     let i = p.list.iter().position(|e| e.key == KEY).unwrap();
     p.set_setting(i, COMPACT, serde_json::Value::Bool(true)).unwrap();

@@ -1,7 +1,7 @@
-//! Favourite GIFs / stickers of the GIF-Extras plugin (loaded only while the plugin is on; with it off the file is never read or
+//! Favourite GIFs / stickers of the GIF Extras plugin (loaded only while the plugin is on; with it off the file is never read or
 //! written): saved locally only (JSON file `giphy_favorites.json` in the app's settings folder,
 //! %APPDATA%\WebOx on Windows), newest first, no network sync. Entries keep the thumbnail and the shared file's URL and sizes so the
-//! "Favoriten" list works without asking Giphy again. Capped at `MAX` (oldest dropped). In `--sample` / screenshot runs the list lives
+//! "Favorites" list works without asking Giphy again. Capped at `MAX` (oldest dropped). In `--sample` / screenshot runs the list lives
 //! in memory only (`path = None`), so nothing is written.
 use crate::extras::giphy::Gif;
 use serde_json::{json, Value};

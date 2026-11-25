@@ -92,7 +92,7 @@ pub fn list() -> Vec<CamDev> {
 }
 
 /// The device list's note for a node Webox may not open.
-fn denied_name(path: &str) -> String { format!("Kein Zugriff auf {path}") }
+fn denied_name(path: &str) -> String { crate::trq!("No access to {{0}}", path) }
 
 struct Map { ptr:*mut libc::c_void, len: usize }
 impl Drop for Map {
@@ -118,7 +118,7 @@ pub fn open(dev: &CamDev, max_h: u32) -> Result<V4l2Source, Fail> {
     let fd = open_node(&path).map_err(|e| fail(e, &dev.name))?;
     let raw = fd.as_raw_fd();
     let modes = enum_modes(raw);
-    let mode = pick_mode(&modes, max_h).ok_or_else(|| Fail::Other(format!("{}: kein unterstütztes Videoformat", dev.name)))?;
+    let mode = pick_mode(&modes, max_h).ok_or_else(|| Fail::Other(format!("{}: {}", dev.name, crate::trq!("no supported video format"))))?;
     let mut f = p::format(p::fourcc_of(mode.pix), mode.w, mode.h);
     if mode.pix == super::Pix::Bgra { p::put_u32(&mut f, 16, p::fourcc(b"BGR4")); } // whichever 32-bit fourcc it listed
     ioctl(raw, p::S_FMT, &mut f).map_err(|e| fail(e, &dev.name))?;
@@ -128,7 +128,7 @@ pub fn open(dev: &CamDev, max_h: u32) -> Result<V4l2Source, Fail> {
     let mut rb = p::reqbufs(4);
     ioctl(raw, p::REQBUFS, &mut rb).map_err(|e| fail(e, &dev.name))?;
     let count = p::u32_at(&rb, 0).min(8);
-    if count == 0 { return Err(Fail::Other(format!("{}: keine Puffer", dev.name))); }
+    if count == 0 { return Err(Fail::Other(format!("{}: {}", dev.name, crate::trq!("no buffers")))); }
     let mut maps = vec![];
     for i in 0..count {
         let mut b = p::buffer(i);

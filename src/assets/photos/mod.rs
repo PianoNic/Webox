@@ -39,7 +39,7 @@ impl Decoder {
 }
 
 /// A sanity cap only; `MAX_ANIM_BYTES` is what normally limits a GIF.
-/// Setting "GIFs nur abspielen, wenn Webox das aktive Fenster ist" (`gifs_pause_unfocused`), mirrored once per frame (frame.rs).
+/// Setting "Only play GIFs when Webox is the active window" (`gifs_pause_unfocused`), mirrored once per frame (frame.rs).
 pub static GIFS_ONLY_FOCUSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
 pub const MAX_FRAMES: usize = 600;
@@ -394,7 +394,7 @@ impl Photos {
     }
 
     #[allow(dead_code)] // for the UI: "Vor 3 Stunden aktiv" under a contact's name
-    /// "Vor 3 Stunden aktiv"-style text for a last-active time; empty if unknown.
+    /// "Active 3 hours ago"-style text for a last-active time; empty if unknown.
     pub fn last_active_text(&self, key: &str, now_ms: i64) -> String {
         let Some(&ms) = self.last_active.get(key).filter(|m| **m > 0) else { return String::new() };
         let mins = ((now_ms - ms) / 60_000).max(0);

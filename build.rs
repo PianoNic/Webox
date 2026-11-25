@@ -1,6 +1,6 @@
 //! Embeds every icon in assets/icons (Momentum, MIT) and assets/cisco/icons (Webex client icons),
 //! every emoji in assets/emoji (Twemoji), all other files of assets/cisco/
-//! (docs/cisco-assets.md) and the optional secrets.toml, as sorted tables.
+//! (docs/cisco-assets.md), Webox's own translations (assets/i18n/webox) and the optional secrets.toml, as sorted tables.
 use std::{env, fs, path::{Path, PathBuf}};
 
 /// Brand logos that the general name rules below would miss.
@@ -89,6 +89,27 @@ fn secrets(out: &mut String) {
     }
 }
 
+/// Webox's own translations, `assets/i18n/webox/<code>/*.tsv` (src/assets/i18n/overlay.rs): `(code, text)` per file.
+fn webox_i18n(out: &mut String) {
+    let root = manifest_dir().join("assets/i18n/webox");
+    let mut files: Vec<(String, PathBuf)> = vec![];
+    if root.exists() {
+        println!("cargo:rerun-if-changed=assets/i18n/webox");
+        for lang in fs::read_dir(&root).into_iter().flatten().flatten().filter(|e| e.path().is_dir()) {
+            let code = lang.file_name().to_string_lossy().to_string();
+            for f in fs::read_dir(lang.path()).into_iter().flatten().flatten() {
+                if f.path().extension().is_some_and(|x| x == "tsv") { files.push((code.clone(), f.path())); }
+            }
+        }
+    }
+    files.sort();
+    out.push_str("pub static WEBOX_I18N: &[(&str, &str)] = &[\n");
+    for (code, p) in files {
+        out.push_str(&format!("    ({code:?}, include_str!({:?})),\n", p.display().to_string()));
+    }
+    out.push_str("];\n");
+}
+
 fn main() {
     let mut out = String::new();
     table(&["assets/icons", "assets/cisco/icons"], "ICON_TABLE", &mut out);
@@ -100,4 +121,7 @@ fn main() {
     let mut sec = String::new();
     secrets(&mut sec);
     fs::write(Path::new(&env::var("OUT_DIR").unwrap()).join("secrets.rs"), sec).unwrap();
+    let mut wi = String::new();
+    webox_i18n(&mut wi);
+    fs::write(Path::new(&env::var("OUT_DIR").unwrap()).join("webox_i18n.rs"), wi).unwrap();
 }

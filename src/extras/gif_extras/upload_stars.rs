@@ -1,6 +1,6 @@
 //! Star chip for uploaded GIFs (the Giphy ones have theirs in `stars.rs`): in the chat on hover and in the image viewer's toolbar.
-//! Starring keeps the GIF's decrypted bytes on this computer (`upload_favs`) and lists it in the plugin popup's "Favoriten"; picking
-//! it there stages a copy as a normal attachment. Part of the GIF-Extras plugin: only reached through the GIF picker's hook while
+//! Starring keeps the GIF's decrypted bytes on this computer (`upload_favs`) and lists it in the plugin popup's "Favorites"; picking
+//! it there stages a copy as a normal attachment. Part of the GIF Extras plugin: only reached through the GIF picker's hook while
 //! the plugin is on.
 use super::{upload_favs, Plugin};
 use crate::cloud::Attachment;
@@ -36,7 +36,7 @@ fn upload_gif_id(app: &App, a: &Attachment) -> Option<String> {
     id
 }
 
-fn tip(fav: bool) -> &'static str { if fav { "Aus Favoriten entfernen" } else { "Zu Favoriten hinzufügen" } }
+fn tip(fav: bool) -> std::borrow::Cow<'static, str> { if fav { crate::tr!("AppPickerGridViewDelegate", "Remove from favorites") } else { crate::trq!("Add to favorites") } }
 
 impl Plugin {
     /// Some(starred?) for an uploaded GIF that can be kept, None otherwise.
@@ -53,7 +53,7 @@ impl Plugin {
         let Some(bytes) = upload_gif_bytes(app, a) else { return };
         match upload_favs::star(&dir, &a.name, &bytes) {
             Ok(f) => self.favs(app).insert(f),
-            Err(e) => app.toast(format!("Zu Favoriten hinzufügen: {e}"), now),
+            Err(e) => app.toast(format!("{}: {e}", crate::trq!("Add to favorites")), now),
         }
     }
 

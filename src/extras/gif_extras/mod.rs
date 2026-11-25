@@ -1,8 +1,8 @@
-//! "GIF-Extras": a built-in, first-party Webox plugin. Listed on Settings > Plugins with a "Built-in" badge, off by default,
+//! "GIF Extras": a built-in, first-party Webox plugin. Listed on Settings > Plugins with a "Built-in" badge, off by default,
 //! the switch saved in plugins.json and read every frame (live). While it is on:
-//! - the GIF button opens the extended popup (`picker.rs`): tabs "GIFs | Sticker | Emojis", a home screen of tiles ("Favoriten",
-//!   "Angesagte GIFs" / "Angesagte Sticker", Giphy's categories), stickers, favourites with a star on every tile; the setting
-//!   "Kompakte Größe" (off by default) gives it the smaller 350 x 390 size of earlier versions (`picker/layout.rs`);
+//! - the GIF button opens the extended popup (`picker.rs`): tabs "GIFs | Stickers | Emojis", a home screen of tiles ("Favorites",
+//!   "Trending GIFs" / "Trending stickers", Giphy's categories), stickers, favourites with a star on every tile; the setting
+//!   "Compact size" (off by default) gives it the smaller 350 x 390 size of earlier versions (`picker/layout.rs`);
 //! - Giphy GIFs in the chat and in the image viewer get a star chip that saves them to the favourites (`stars.rs`); uploaded GIFs get the
 //!   same star, which keeps the GIF on this computer (`upload_stars.rs`, `upload_favs.rs`: gif-favorites/, entries of kind "upload").
 //!
@@ -26,9 +26,9 @@ mod tests;
 
 /// Key in the plugin list / plugins.json.
 pub const KEY: &str = "builtin.gif-extras";
-pub const NAME: &str = "GIF-Extras";
+pub const NAME: &str = "GIF Extras";
 pub const VERSION: &str = "1.0.0";
-pub const DESCRIPTION: &str = "Sticker, Kategorien und Favoriten für die GIF-Auswahl. GIFs im Chat lassen sich mit einem Stern merken.";
+pub const DESCRIPTION: &str = "Stickers, categories and favorites for the GIF picker. Star a GIF in the chat to keep it.";
 
 /// The plugin object: the extended popup's state and the favourites (loaded on first use).
 #[derive(Default)]
@@ -51,15 +51,15 @@ pub(crate) fn register() { ext::register(KEY, Box::new(Plugin::default())); }
 /// Settings > Plugins like any other plugin's. Read live with `app.plugins.setting_bool(KEY, ..)`.
 pub fn settings_schema() -> String {
     collabhost_plugin_api::Schema::new()
-        .section("GIF-Auswahl", "")
-        .toggle(COMPACT, "Kompakte Größe", "Die kleinere GIF-Auswahl (350 × 390) wie in früheren Webox-Versionen.", false)
-        .toggle(SEND_INSTANTLY, "Send GIFs on click", "A picked GIF is sent at once instead of being added to the message.", false)
-        .section("Favoriten-Sterne", "Ein Stern speichert ein GIF in den Favoriten der erweiterten GIF-Auswahl.")
-        .toggle("stars_chat", "Stern an GIFs im Chat", "Erscheint oben rechts auf einem GIF, solange der Mauszeiger darüber steht.", true)
-        .toggle("stars_viewer", "Stern in der Bildansicht", "Ein Stern-Knopf neben den Knöpfen der Bildansicht.", true)
-        .toggle("stars_uploads", "Auch hochgeladene GIFs", "Hochgeladene GIFs mit Stern werden auf diesem Computer behalten (Ordner gif-favorites).", true)
-        .section("Speicherort", "")
-        .button("open_folder", "Favoriten-Ordner öffnen", "Der Ordner mit den behaltenen hochgeladenen GIFs.")
+        .section(&crate::trq!("GIF picker"), "")
+        .toggle(COMPACT, &crate::trq!("Compact size"), &crate::trq!("The smaller GIF picker (350 × 390) of earlier Webox versions."), false)
+        .toggle(SEND_INSTANTLY, &crate::trq!("Send GIFs on click"), &crate::trq!("A picked GIF is sent at once instead of being added to the message."), false)
+        .section(&crate::trq!("Favorite stars"), &crate::trq!("A star saves a GIF to the favorites of the extended GIF picker."))
+        .toggle("stars_chat", &crate::trq!("Star on GIFs in the chat"), &crate::trq!("Appears in the top right corner of a GIF while the mouse pointer is over it."), true)
+        .toggle("stars_viewer", &crate::trq!("Star in the image viewer"), &crate::trq!("A star button next to the image viewer's buttons."), true)
+        .toggle("stars_uploads", &crate::trq!("Uploaded GIFs too"), &crate::trq!("Starred uploaded GIFs are kept on this computer (folder gif-favorites)."), true)
+        .section(&crate::trq!("Storage location"), "")
+        .button("open_folder", &crate::trq!("Open favorites folder"), &crate::trq!("The folder with the kept uploaded GIFs."))
         .to_json()
 }
 

@@ -75,12 +75,12 @@ fn field(v: &Value) -> Option<Field> {
 impl Schema {
     /// Reads a schema. Fails on a broken document; single bad fields are skipped (`skipped`).
     pub fn parse(json: &str) -> Result<Schema, String> {
-        let v: Value = serde_json::from_str(json).map_err(|e| format!("Einstellungen sind kein gültiges JSON: {e}"))?;
-        if !v.is_object() { return Err("Einstellungen müssen ein JSON-Objekt sein".into()); }
+        let v: Value = serde_json::from_str(json).map_err(|e| crate::trq!("Settings are not valid JSON: {{0}}", e))?;
+        if !v.is_object() { return Err(crate::trq!("Settings must be a JSON object").into_owned()); }
         let secs: Vec<Value> = match (v.get("sections").and_then(Value::as_array), v.get("fields").and_then(Value::as_array)) {
             (Some(s), _) => s.clone(),
             (None, Some(f)) => vec![serde_json::json!({ "fields": f })],
-            _ => return Err("Einstellungen ohne \"sections\" oder \"fields\"".into()),
+            _ => return Err(crate::trq!("Settings without \"sections\" or \"fields\"").into_owned()),
         };
         let mut out = Schema::default();
         let mut ids = std::collections::HashSet::new();
@@ -105,41 +105,41 @@ impl Schema {
 
     /// Checks a new value for `id`; returns it normalised (numbers as f64, text as is).
     pub fn validate(&self, id: &str, v: &Value) -> Result<Value, String> {
-        let f = self.field(id).ok_or_else(|| format!("unbekannte Einstellung '{id}'"))?;
+        let f = self.field(id).ok_or_else(|| crate::trq!("unknown setting '{{0}}'", id))?;
         match &f.kind {
-            Kind::Bool { .. } => v.as_bool().map(Value::Bool).ok_or_else(|| "muss ein- oder ausgeschaltet sein".into()),
+            Kind::Bool { .. } => v.as_bool().map(Value::Bool).ok_or_else(|| crate::trq!("must be on or off").into_owned()),
             Kind::Text { multiline, .. } => {
-                let t = v.as_str().ok_or("muss ein Text sein")?;
+                let t = v.as_str().ok_or_else(|| crate::trq!("must be text").into_owned())?;
                 let max = if *multiline { MULTILINE_MAX } else { TEXT_MAX };
-                if !multiline && t.contains(['\n', '\r']) { return Err("darf keinen Zeilenumbruch enthalten".into()); }
-                if t.chars().count() > max { return Err(format!("höchstens {max} Zeichen")); }
+                if !multiline && t.contains(['\n', '\r']) { return Err(crate::trq!("must not contain a line break").into_owned()); }
+                if t.chars().count() > max { return Err(crate::trq!("at most {{0}} characters", max)); }
                 Ok(Value::String(t.to_string()))
             }
             Kind::Secret => {
-                let t = v.as_str().ok_or("muss ein Text sein")?;
-                if t.chars().count() > SECRET_MAX { return Err(format!("höchstens {SECRET_MAX} Zeichen")); }
+                let t = v.as_str().ok_or_else(|| crate::trq!("must be text").into_owned())?;
+                if t.chars().count() > SECRET_MAX { return Err(crate::trq!("at most {{0}} characters", SECRET_MAX)); }
                 Ok(Value::String(t.to_string()))
             }
             Kind::Number { min, max, step, .. } => {
-                let x = v.as_f64().filter(|x| x.is_finite()).ok_or("muss eine Zahl sein")?;
-                if x < *min || x > *max { return Err(format!("muss zwischen {} und {} liegen", fmt_num(*min), fmt_num(*max))); }
+                let x = v.as_f64().filter(|x| x.is_finite()).ok_or_else(|| crate::trq!("must be a number").into_owned())?;
+                if x < *min || x > *max { return Err(crate::trq!("must be between {{0}} and {{1}}", fmt_num(*min), fmt_num(*max))); }
                 if *step > 0.0 {
                     let k = (x - min) / step;
-                    if (k - k.round()).abs() > 1e-6 { return Err(format!("muss in Schritten von {} sein", fmt_num(*step))); }
+                    if (k - k.round()).abs() > 1e-6 { return Err(crate::trq!("must be in steps of {{0}}", fmt_num(*step))); }
                 }
                 Ok(serde_json::json!(x))
             }
             Kind::Choice { options, .. } => {
-                let t = v.as_str().ok_or("muss eine der Optionen sein")?;
-                if options.iter().any(|o| o.0 == t) { Ok(Value::String(t.into())) } else { Err("muss eine der Optionen sein".into()) }
+                let t = v.as_str().ok_or_else(|| crate::trq!("must be one of the options").into_owned())?;
+                if options.iter().any(|o| o.0 == t) { Ok(Value::String(t.into())) } else { Err(crate::trq!("must be one of the options").into_owned()) }
             }
             Kind::File { .. } => {
-                let t = v.as_str().ok_or("muss ein Dateipfad sein")?;
-                if t.contains(['\n', '\r']) { return Err("darf keinen Zeilenumbruch enthalten".into()); }
-                if t.chars().count() > PATH_MAX { return Err(format!("höchstens {PATH_MAX} Zeichen")); }
+                let t = v.as_str().ok_or_else(|| crate::trq!("must be a file path").into_owned())?;
+                if t.contains(['\n', '\r']) { return Err(crate::trq!("must not contain a line break").into_owned()); }
+                if t.chars().count() > PATH_MAX { return Err(crate::trq!("at most {{0}} characters", PATH_MAX)); }
                 Ok(Value::String(t.to_string()))
             }
-            Kind::Button => Err("eine Schaltfläche hat keinen Wert".into()),
+            Kind::Button => Err(crate::trq!("a button has no value").into_owned()),
         }
     }
 
@@ -168,7 +168,7 @@ pub fn default_of(k: &Kind) -> Value {
     }
 }
 
-/// 2 -> "2", 0.25 -> "0.25" (German decimal comma).
+/// 2 -> "2", 0.25 -> "0.25".
 pub fn fmt_num(x: f64) -> String {
-    if x.fract() == 0.0 && x.abs() < 1e15 { format!("{}", x as i64) } else { format!("{x}").replace('.', ",") }
+    if x.fract() == 0.0 && x.abs() < 1e15 { format!("{}", x as i64) } else { format!("{x}") }
 }

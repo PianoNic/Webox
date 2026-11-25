@@ -1,0 +1,348 @@
+# Webox's own German translations for strings outside src/ui (src/assets/i18n/overlay.rs).
+# Format: English source<TAB>German, matched exactly. Strings the official Webex packs carry are not listed here.
+
+# Sending and activities
+Couldn't send the reaction	Reaktion konnte nicht gesendet werden
+Couldn't delete the message or reaction	Nachricht oder Reaktion konnte nicht gelöscht werden
+Couldn't send the message	Nachricht konnte nicht gesendet werden
+Couldn't change the favorite	Favorit konnte nicht geändert werden
+Couldn't hide the space	Bereich konnte nicht ausgeblendet werden
+Couldn't rename the space	Bereich konnte nicht umbenannt werden
+Couldn't add the person	Person konnte nicht hinzugefügt werden
+Couldn't leave the space	Bereich konnte nicht verlassen werden
+Couldn't complete the action	Aktion konnte nicht ausgeführt werden
+This GIF address isn't allowed	GIF-Adresse nicht erlaubt
+Couldn't send the GIF	GIF konnte nicht gesendet werden
+Reaction not found	Reaktion nicht gefunden
+
+# Error reports
+Webex is busy right now. Please try again in a moment.	Webex ist gerade ausgelastet. Bitte gleich noch einmal versuchen.
+Not found.	Nicht gefunden.
+Webex answered with error {{0}}.	Webex hat mit Fehler {{0}} geantwortet.
+No connection to Webex.	Keine Verbindung zu Webex.
+
+# Call controls
+This person is no longer in the call.	Diese Person ist nicht (mehr) im Anruf.
+This person hasn't joined the call yet.	Diese Person ist noch nicht im Anruf.
+Raising a hand is only available in group calls.	Handheben gibt es nur in Gruppenanrufen.
+Only hosts can lower other people's hands.	Nur Gastgeber können die Hand anderer senken.
+Only hosts can remove people.	Nur Gastgeber können Personen entfernen.
+This person is already in the call.	Diese Person ist bereits im Anruf.
+Only hosts can end the call for everyone.	Nur Gastgeber können den Anruf für alle beenden.
+Mute failed	Stummschalten fehlgeschlagen
+Unmute failed	Stummschaltung aufheben fehlgeschlagen
+Raising the hand failed	Hand heben fehlgeschlagen
+Lowering the hand failed	Hand senken fehlgeschlagen
+Removing failed	Entfernen fehlgeschlagen
+Inviting failed	Einladen fehlgeschlagen
+Ending for everyone failed	Beenden für alle fehlgeschlagen
+Invalid call address.	Ungültige Anruf-Adresse.
+
+# Calls
+You were muted and can't unmute yourself.	Du wurdest stummgeschaltet und kannst die Stummschaltung nicht selbst aufheben.
+Unmute failed: {{0}}	Stummschaltung aufheben fehlgeschlagen: {{0}}
+Couldn't report mute to Webex: {{0}}	Stummschalten konnte nicht an Webex gemeldet werden: {{0}}
+Couldn't report unmute to Webex: {{0}}	Stummschaltung aufheben konnte nicht an Webex gemeldet werden: {{0}}
+Keypad tone failed: {{0}}	Tastenton fehlgeschlagen: {{0}}
+A call is already in progress.	Es läuft bereits ein Anruf.
+Please wait a moment before calling again.	Bitte kurz warten, bevor erneut angerufen wird.
+This device isn't registered yet.	Dieses Gerät ist noch nicht registriert.
+Call failed: {{0}}	Anruf fehlgeschlagen: {{0}}
+Answering failed: {{0}}	Annehmen fehlgeschlagen: {{0}}
+Test guard active: no space meetings.	Testschutz aktiv: keine Bereichs-Meetings.
+Meetings are only available in group spaces.	Meetings gibt es nur in Gruppenbereichen.
+No meeting address is known for this space.	Für diesen Bereich ist keine Meeting-Adresse bekannt.
+Joining the meeting failed: {{0}}	Meeting beitreten fehlgeschlagen: {{0}}
+Call: unexpected answer (keys: {{0}})	Anruf: unerwartete Antwort (keys: {{0}})
+Invalid media address.	Keine gültige Medien-Adresse.
+The media server rejected the video connection: {{0}}	Der Medienserver hat die Videoverbindung abgelehnt: {{0}}
+Media negotiation failed: the media server's answer wasn't accepted.	Medienaushandlung fehlgeschlagen: die Antwort des Medienservers wurde nicht angenommen.
+The media server rejected the video connection (ROAP error).	Der Medienserver hat die Videoverbindung abgelehnt (ROAP-Fehler).
+Hanging up failed: {{0}}	Auflegen fehlgeschlagen: {{0}}
+
+# GIF extras
+Send GIFs on click	GIFs beim Anklicken sofort senden
+A picked GIF is sent at once instead of being added to the message.	Ein ausgewählter GIF wird sofort gesendet, statt der Nachricht hinzugefügt zu werden.
+
+# Calls: sharing, media and video
+Can't share: someone else is sharing right now.	Freigabe nicht möglich: Gerade gibt jemand anderes Inhalte frei.
+Sharing not allowed: your organization's policy doesn't allow sharing in this call.	Freigabe nicht erlaubt: Die Richtlinie deiner Organisation verbietet das Freigeben in diesem Anruf.
+Can't share: Webex doesn't know this call's sharing channel (anymore).	Freigabe nicht möglich: Webex kennt den Freigabe-Kanal dieses Anrufs nicht (mehr).
+The share request to Webex failed: {{0}}	Freigabe-Anfrage an Webex fehlgeschlagen: {{0}}
+Screen sharing is only possible once the call is connected.	Bildschirmfreigabe ist erst möglich, wenn der Anruf verbunden ist.
+Can't share: this call offers no sharing channel (no 'content' in Locus).	Freigabe nicht möglich: Dieser Anruf bietet keinen Freigabe-Kanal an (kein „content“ in Locus).
+Can't share: the media connection is still being negotiated. Please try again in a moment.	Freigabe nicht möglich: Die Medienverbindung wird gerade noch ausgehandelt. Bitte gleich nochmals versuchen.
+Screen sharing is only possible in a call.	Bildschirmfreigabe ist nur in einem Anruf möglich.
+Can't share: invalid sharing address.	Freigabe nicht möglich: ungültige Freigabe-Adresse.
+Stopping the share failed: {{0}}	Freigabe beenden fehlgeschlagen: {{0}}
+Sharing failed: no picture data is being sent to the media server.	Freigabe fehlgeschlagen: Es werden keine Bilddaten an den Medienserver gesendet.
+Screen capture failed: {{0}}	Bildschirmaufnahme fehlgeschlagen: {{0}}
+Sharing cancelled: nothing was picked to share, or the source is gone.	Freigabe abgebrochen: Es wurde nichts zum Freigeben gewählt, oder die Quelle ist nicht mehr da.
+Sharing stopped: the shared source is no longer available.	Die Freigabe wurde beendet: Die freigegebene Quelle ist nicht mehr verfügbar.
+Screen capture doesn't start (timeout).	Bildschirmaufnahme startet nicht (Zeitüberschreitung).
+Sharing failed: the media server didn't answer the sharing connection.	Freigabe fehlgeschlagen: Der Medienserver hat auf die Freigabe-Verbindung nicht geantwortet.
+Sharing failed: {{0}}	Freigabe fehlgeschlagen: {{0}}
+No call.	Kein Anruf.
+Couldn't create the media line ({{0}}).	Die Medienleitung ließ sich nicht anlegen ({{0}}).
+The other side's share can't be shown: {{0}}	Die Freigabe deines Gegenübers kann nicht angezeigt werden: {{0}}
+{{0}}'s share can't be shown: {{1}}	Die Freigabe von {{0}} kann nicht angezeigt werden: {{1}}
+Your share stopped: someone else is sharing now.	Deine Freigabe wurde beendet: Jetzt gibt jemand anderes frei.
+Webex stopped your share.	Deine Freigabe wurde von Webex beendet.
+The media server didn't answer the video connection.	Der Medienserver hat auf die Videoverbindung nicht geantwortet.
+{{0}} is sharing the screen, but no picture arrives.	{{0}} gibt den Bildschirm frei, aber es kommt kein Bild an.
+The other side is sharing the screen, but no picture arrives.	Dein Gegenüber gibt den Bildschirm frei, aber es kommt kein Bild an.
+Only Webex addresses (email) can be called.	Angerufen werden können nur Webex-Adressen (E-Mail).
+Test guard active: calls only to the allowed address.	Testschutz aktiv: Anrufe nur an die freigegebene Adresse.
+No answer from the media server to the connection request (ROAP). The call may have no sound.	Keine Antwort des Medienservers auf die Verbindungsanfrage (ROAP). Der Anruf hat möglicherweise keinen Ton.
+Audio connection failed (ICE/DTLS). The call has no sound.	Audioverbindung fehlgeschlagen (ICE/DTLS). Der Anruf hat keinen Ton.
+No audio connection to the media server (ICE/DTLS doesn't connect). Check the network or firewall.	Keine Audioverbindung zum Medienserver (ICE/DTLS kommt nicht zustande). Netzwerk oder Firewall prüfen.
+Connected, but no sound arrives (no audio data from the media server).	Verbunden, aber es kommt kein Ton an (keine Audiodaten vom Medienserver).
+Video not possible: no camera found.	Video nicht möglich: Keine Kamera gefunden.
+Video not possible: the camera {{0}} is used by another application.	Video nicht möglich: Die Kamera {{0}} wird von einer anderen Anwendung verwendet.
+Video not possible: no access to the camera. Please allow access in the system settings.	Video nicht möglich: Kein Zugriff auf die Kamera. Bitte den Zugriff in den Systemeinstellungen erlauben.
+Video stopped: the camera {{0}} is no longer connected.	Video beendet: Die Kamera {{0}} ist nicht mehr angeschlossen.
+Video stopped: the camera delivers no picture.	Video beendet: Die Kamera liefert kein Bild.
+Video not possible: the camera doesn't start ({{0}}).	Video nicht möglich: Die Kamera lässt sich nicht starten ({{0}}).
+Video not possible: {{0}}	Video nicht möglich: {{0}}
+Couldn't report video off to Webex: {{0}}	Video aus konnte nicht an Webex gemeldet werden: {{0}}
+Couldn't report video on to Webex: {{0}}	Video an konnte nicht an Webex gemeldet werden: {{0}}
+
+# Cloud
+Call history isn't reachable	Anrufprotokoll nicht erreichbar
+No personal room found.	Kein persönlicher Raum gefunden.
+This person couldn't be found.	Diese Person konnte nicht gefunden werden.
+No media connection.	Keine Medienverbindung.
+File not found	Datei nicht gefunden
+empty file	leere Datei
+
+# Files
+Images	Bilder
+
+# Platform and media: updater, notifications, tray, devices
+No audio devices found	Keine Audiogeräte gefunden
+Format {{0}} is not supported	Format {{0}} wird nicht unterstützt
+This file can't be played (allowed: WAV, MP3, OGG, FLAC).	Diese Datei kann nicht abgespielt werden (erlaubt: WAV, MP3, OGG, FLAC).
+The file was not found.	Die Datei wurde nicht gefunden.
+The file is too large (10 MB at most).	Die Datei ist zu groß (höchstens 10 MB).
+Unsupported format (allowed: WAV, MP3, OGG, FLAC).	Nicht unterstütztes Format (erlaubt: WAV, MP3, OGG, FLAC).
+The file can't be read.	Die Datei kann nicht gelesen werden.
+The ringtone can be {{0}} seconds long at most.	Der Klingelton darf höchstens {{0}} Sekunden lang sein.
+Size outside 16x16 to 3840x2160	Größe ausserhalb 16x16 bis 3840x2160
+The video can't be opened	Video lässt sich nicht öffnen
+File not found: {{0}}	Datei nicht gefunden: {{0}}
+{{0}} open files at most	höchstens {{0}} offene Dateien
+Size {{0}}x{{1}} expected	Grösse {{0}}x{{1}} erwartet
+Buffer too small	Puffer zu klein
+no supported video format	kein unterstütztes Videoformat
+No access to {{0}}	Kein Zugriff auf {{0}}
+no buffers	keine Puffer
+Screen sharing is not available: xdg-desktop-portal is missing (or offers no screen capture)	Bildschirmfreigabe nicht verfügbar: xdg-desktop-portal fehlt (oder bietet keine Bildschirmaufnahme)
+Screen sharing is not allowed: allow Webox under System Settings > Privacy & Security > Screen & System Audio Recording, then restart Webox.	Bildschirmfreigabe nicht erlaubt: Erlauben Sie Webox unter Systemeinstellungen > Datenschutz & Sicherheit > Bildschirm- & Systemaudioaufnahme und starten Sie Webox danach neu.
+no screen content (screen recording not allowed?)	keine Bildschirminhalte (Bildschirmaufnahme nicht erlaubt?)
+The screen is gone	Der Bildschirm ist nicht mehr da
+The window is gone	Das Fenster ist nicht mehr da
+no answer	keine Antwort
+no video track	keine Bildspur
+no picture in the file	kein Bild in der Datei
+mentioned you	hat Sie erwähnt
+{{0}} mentioned you	{{0}} hat Sie erwähnt
+Starts now	Startet jetzt
+Starts in 1 minute	Startet in 1 Minute
+Starts in {{0}} minutes	Startet in {{0}} Minuten
+Snooze	Schlummern
+Unreadable answer: {{0}}	Antwort nicht lesbar: {{0}}
+Program file not found: {{0}}	Programmdatei nicht gefunden: {{0}}
+The program folder is read-only. Install the new version with the setup from the release page.	Der Programmordner ist schreibgeschützt. Installieren Sie die neue Version mit dem Setup von der Release-Seite.
+This version has no download for this system.	Für dieses System gibt es in dieser Version keinen Download.
+This version has no checksum; update canceled.	Die Prüfsumme fehlt in dieser Version; Update abgebrochen.
+The checksum can't be read; update canceled.	Die Prüfsumme ist nicht lesbar; Update abgebrochen.
+No update during a call.	Während eines Anrufs wird nicht aktualisiert.
+Restart failed: {{0}}	Neustart fehlgeschlagen: {{0}}
+No version has been published yet.	Es wurde noch keine Version veröffentlicht.
+GitHub counted too many requests. Try again in an hour.	GitHub hat zu viele Anfragen gezählt. Versuchen Sie es in einer Stunde erneut.
+No connection to GitHub. Check your internet connection.	Keine Verbindung zu GitHub. Prüfen Sie Ihre Internetverbindung.
+GitHub answers with HTTP {{0}}.	GitHub antwortet mit HTTP {{0}}.
+Address outside GitHub refused	Adresse außerhalb von GitHub abgelehnt
+Redirect outside GitHub refused	Weiterleitung außerhalb von GitHub abgelehnt
+Download larger than allowed	Download größer als erlaubt
+The file can't be created: {{0}}	Datei kann nicht angelegt werden: {{0}}
+Writing failed: {{0}}	Schreiben fehlgeschlagen: {{0}}
+Download incomplete ({{0}} of {{1}} bytes)	Download unvollständig ({{0}} von {{1}} Bytes)
+Archive damaged	Archiv beschädigt
+{{0}} is larger than allowed	{{0}} ist größer als erlaubt
+Compression method {{0}} is not supported	Packverfahren {{0}} wird nicht unterstützt
+File not readable: {{0}}	Datei nicht lesbar: {{0}}
+Checksum (SHA-256) does not match; update discarded	Prüfsumme (SHA-256) stimmt nicht; Update verworfen
+Download not readable: {{0}}	Download nicht lesbar: {{0}}
+The program file can't be renamed: {{0}}	Programmdatei lässt sich nicht umbenennen: {{0}}
+The new version does not start: {{0}}	Neue Version startet nicht: {{0}}
+The new version does not answer	Neue Version antwortet nicht
+The new version reports "{{0}}" instead of {{1}}	Neue Version meldet „{{0}}“ statt {{1}}
+The new version can't be stored: {{0}}	Neue Version kann nicht abgelegt werden: {{0}}
+The old backup can't be deleted: {{0}}	Alte Sicherung lässt sich nicht löschen: {{0}}
+The new version can't be put in place: {{0}}	Neue Version lässt sich nicht einsetzen: {{0}}
+The new version can't be put in place ({{0}}), restoring failed: {{1}}	Neue Version lässt sich nicht einsetzen ({{0}}), Wiederherstellung fehlgeschlagen: {{1}}
+No backup there	Keine Sicherung vorhanden
+Restoring failed: {{0}}	Wiederherstellung fehlgeschlagen: {{0}}
+{{0}} failed ({{1}})	{{0}} fehlgeschlagen ({{1}})
+Webox.app can't be renamed: {{0}}	Webox.app lässt sich nicht umbenennen: {{0}}
+Webox is not running from Webox.app: please install the app from the release page.	Webox läuft nicht aus Webox.app: bitte die App von der Release-Seite installieren.
+The folder {{0}} is read-only. Download the new version from the release page.	Der Ordner {{0}} ist schreibgeschützt. Laden Sie die neue Version von der Release-Seite.
+This version has no download for macOS.	Für macOS gibt es in dieser Version keinen Download.
+Unpacking	Entpacken
+Signature check	Signaturprüfung
+no app bundle	kein App-Bundle
+Autostart is managed by Home Manager (programs.webox.autostart)	Autostart wird von Home Manager verwaltet (programs.webox.autostart)
+Keychain not reachable (error {{0}})	Schlüsselbund nicht erreichbar (Fehler {{0}})
+no home folder	kein Benutzerordner
+Hide Others	Andere ausblenden
+About Webox	Über Webox
+Hide Webox	Webox ausblenden
+Show All	Alle einblenden
+Quit Webox	Webox beenden
+Window	Fenster
+Bring All to Front	Alle nach vorne bringen
+Show Webox	Webox anzeigen
+
+# Keyboard shortcuts
+Advanced search	Erweiterte Suche
+Show notifications	Benachrichtigungen anzeigen
+Show favorites	Favoriten anzeigen
+Show flags	Markierungen anzeigen
+Show drafts	Entwürfe anzeigen
+Previous space	Vorheriger Bereich
+Next space	Nächster Bereich
+Open space settings	Bereichseinstellungen öffnen
+Scroll to new messages	Zu den neuen Nachrichten scrollen
+Call selected person	Ausgewählte Person anrufen
+New reply	Neue Antwort
+Jump to bottom	Zum Ende springen
+Answer with a message	Mit Nachricht antworten
+Show or hide the calling dock	Anruf-Dock aktivieren oder deaktivieren
+Switch "Smart Audio" mode	"Smart Audio"-Modus wechseln
+Turn on clean mode when sharing	Sauberen Modus bei Freigabe aktivieren
+Open or close the chat panel	Chat-Bereich öffnen oder schließen
+Don't read out chat notifications in the meeting	Chat-Benachrichtigungen im Meeting nicht vorlesen
+Show or hide names in videos	Namen in Videos anzeigen oder ausblenden
+Show or hide closed captions	Untertitel anzeigen oder ausblenden
+Previous slide	Vorherige Folie
+Next slide	Nächste Folie
+Send reaction 1	Reaktion 1 senden
+Send reaction 2	Reaktion 2 senden
+Send reaction 3	Reaktion 3 senden
+Send reaction 4	Reaktion 4 senden
+Send reaction 5	Reaktion 5 senden
+Add a new line	Neue Zeile hinzufügen
+Show spelling and grammar	Rechtschreibung und Grammatik anzeigen
+Page down	Eine Seite nach unten
+Page up	Eine Seite nach oben
+Show theme dashboard	Theme-Dashboard anzeigen
+Show developer tools	Entwicklertools anzeigen
+Reload QML	QML erneut laden
+Show debug window	Debug-Fenster anzeigen
+Copy service catalogue	Service-Katalog kopieren
+You are not signed in.	Sie sind nicht angemeldet.
+Are you sure you want to sign out?	Möchten Sie sich wirklich abmelden?
+Developer	Entwickler
+
+# Extras: GIF Extras, plugin host, plugin repositories, plugin settings
+Stickers	Sticker
+Search stickers	Nach Stickern suchen
+Search GIFs	Nach GIFs suchen
+Clear entry	Eintrag löschen
+Trending stickers	Angesagte Sticker
+Trending GIFs	Angesagte GIFs
+Unable to search GIFs	Suchen nach GIFs nicht möglich
+GIFs aren't working right now. Please try again later.	GIFs funktionieren zurzeit nicht, bitte versuchen Sie es später noch einmal.
+No favorites yet	Noch keine Favoriten
+Star stickers to save them here.	Markieren Sie Sticker mit dem Stern, um sie hier zu speichern.
+Star GIFs to save them here.	Markieren Sie GIFs mit dem Stern, um sie hier zu speichern.
+We couldn't find a GIF for that. Try again with more general keywords.	Wir konnten hierfür kein GIF finden. Versuchen Sie es mit allgemeineren Schlüsselwörtern erneut.
+View Giphy terms	Giphy-Geschäftsbedingungen anzeigen
+View terms	Bedingungen anzeigen
+The file no longer exists	Die Datei ist nicht mehr vorhanden
+GIF picker	GIF-Auswahl
+Compact size	Kompakte Größe
+The smaller GIF picker (350 × 390) of earlier Webox versions.	Die kleinere GIF-Auswahl (350 × 390) wie in früheren Webox-Versionen.
+Favorite stars	Favoriten-Sterne
+A star saves a GIF to the favorites of the extended GIF picker.	Ein Stern speichert ein GIF in den Favoriten der erweiterten GIF-Auswahl.
+Star on GIFs in the chat	Stern an GIFs im Chat
+Appears in the top right corner of a GIF while the mouse pointer is over it.	Erscheint oben rechts auf einem GIF, solange der Mauszeiger darüber steht.
+Star in the image viewer	Stern in der Bildansicht
+A star button next to the image viewer's buttons.	Ein Stern-Knopf neben den Knöpfen der Bildansicht.
+Uploaded GIFs too	Auch hochgeladene GIFs
+Starred uploaded GIFs are kept on this computer (folder gif-favorites).	Hochgeladene GIFs mit Stern werden auf diesem Computer behalten (Ordner gif-favorites).
+Storage location	Speicherort
+Open favorites folder	Favoriten-Ordner öffnen
+The folder with the kept uploaded GIFs.	Der Ordner mit den behaltenen hochgeladenen GIFs.
+GIF too large	GIF zu groß
+Not a GIF	kein GIF
+GIF cannot be read	GIF nicht lesbar
+Settings are not valid JSON: {{0}}	Einstellungen sind kein gültiges JSON: {{0}}
+Settings must be a JSON object	Einstellungen müssen ein JSON-Objekt sein
+Settings without "sections" or "fields"	Einstellungen ohne "sections" oder "fields"
+unknown setting '{{0}}'	unbekannte Einstellung '{{0}}'
+must be on or off	muss ein- oder ausgeschaltet sein
+must be text	muss ein Text sein
+must not contain a line break	darf keinen Zeilenumbruch enthalten
+at most {{0}} characters	höchstens {{0}} Zeichen
+must be a number	muss eine Zahl sein
+must be between {{0}} and {{1}}	muss zwischen {{0}} und {{1}} liegen
+must be in steps of {{0}}	muss in Schritten von {{0}} sein
+must be one of the options	muss eine der Optionen sein
+must be a file path	muss ein Dateipfad sein
+a button has no value	eine Schaltfläche hat keinen Wert
+Credential Manager: {{0}}	Anmeldeinformationsverwaltung: {{0}}
+secret-tool not found (libsecret-tools)	secret-tool nicht gefunden (libsecret-tools)
+Keyring not reachable	Schlüsselbund nicht erreichbar
+no keyring	kein Schlüsselbund
+no plugin	kein Plugin
+this plugin has no settings	dieses Plugin hat keine Einstellungen
+blocked: side-loading protection is on (policy {{0}}); only plugins next to Webox are loaded	blockiert: Schutz vor Side-Loading ist aktiv (Richtlinie {{0}}); nur Plugins neben Webox werden geladen
+not a Webox plugin (collabhost_plugin missing)	kein Webox-Plugin (collabhost_plugin fehlt)
+built for a different plugin interface	für eine andere Plugin-Schnittstelle gebaut
+incomplete function table	unvollständige Funktionstabelle
+the plugin created no instance	Plugin hat keine Instanz angelegt
+Checksum (SHA-256) does not match; not installed	Prüfsumme (SHA-256) stimmt nicht; nicht installiert
+the new version cannot be loaded: {{0}}	neue Version lässt sich nicht laden: {{0}}
+not installed	nicht installiert
+The address must point to the index file (ending in .json, e.g. index.min.json)	Die Adresse muss auf die Index-Datei zeigen (endet auf .json, z. B. index.min.json)
+This repository is already in the list	Dieses Repository ist schon eingetragen
+No plugins are installed in sample mode	Im Beispielmodus werden keine Plugins installiert
+already downloading	wird schon heruntergeladen
+unexpected file name '{{0}}'	unerwarteter Dateiname '{{0}}'
+The index is not valid JSON: {{0}}	Index ist kein gültiges JSON: {{0}}
+Index without a "plugins" list	Index ohne "plugins"-Liste
+The index must be a list or an object	Index muss eine Liste oder ein Objekt sein
+built for plugin interface {{0}}, Webox has {{1}}	für Plugin-Schnittstelle {{0}} gebaut, Webox hat {{1}}
+needs plugin interface {{0}}, Webox has {{1}}; update Webox	braucht Plugin-Schnittstelle {{0}}, Webox hat {{1}}; Webox aktualisieren
+invalid interface version	ungültige Schnittstellen-Version
+needs Webox {{0}} or newer	braucht Webox {{0}} oder neuer
+not available for this platform ({{0}})	nicht für diese Plattform ({{0}}) verfügbar
+only HTTPS allowed (not {{0}}://)	nur HTTPS erlaubt (nicht {{0}}://)
+invalid address: {{0}}	ungültige Adresse: {{0}}
+Addresses with credentials are not allowed	Adressen mit Zugangsdaten sind nicht erlaubt
+The server answered with HTTP {{0}}	Server antwortet mit HTTP {{0}}
+Connection failed: {{0}}	Verbindung fehlgeschlagen: {{0}}
+Redirect without a target	Weiterleitung ohne Ziel
+invalid redirect: {{0}}	ungültige Weiterleitung: {{0}}
+Redirect to {{0}} refused	Weiterleitung zu {{0}} abgelehnt
+too many redirects	zu viele Weiterleitungen
+Transfer interrupted: {{0}}	Übertragung abgebrochen: {{0}}
+File larger than allowed ({{0}} MB)	Datei größer als erlaubt ({{0}} MB)
+304 without a cached copy	304 ohne zwischengespeicherte Kopie
+The index is not UTF-8	Index ist kein UTF-8
+The file cannot be created: {{0}}	Datei kann nicht angelegt werden: {{0}}
+unexpected answer 304	unerwartete Antwort 304
+Size does not match ({{0}} instead of {{1}} bytes)	Größe stimmt nicht ({{0}} statt {{1}} Bytes)
+Checksum (SHA-256) does not match the index; file discarded	Prüfsumme (SHA-256) stimmt nicht mit dem Index überein; Datei verworfen
+invalid entry in installed.json	ungültiger Eintrag in installed.json
+The file was changed after installation (SHA-256 does not match); not loaded	Datei wurde nach der Installation verändert (SHA-256 stimmt nicht); nicht geladen
+File missing: {{0}}	Datei fehlt: {{0}}
+invalid package ID	ungültige Paket-ID
+invalid package details	ungültige Paketangaben
+no staging folder	kein Staging-Ordner
+The staging file is not where it was expected	Staging-Datei liegt nicht am erwarteten Ort
+the old version cannot be moved: {{0}}	alte Version kann nicht verschoben werden: {{0}}
+Installation failed: {{0}}	Installation fehlgeschlagen: {{0}}
+The folder cannot be deleted: {{0}}	Ordner kann nicht gelöscht werden: {{0}}

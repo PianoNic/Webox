@@ -11,10 +11,10 @@ fn entry(name: &str, pkg: &str, version: &str, contract: &str, desc: &str, autho
 
 pub fn fill(r: &mut Repos) {
     let here = index::platform();
-    let official = format!(r#"{{"name":"Webox Plugins","description":"Offizielle Plugins","plugins":[{},{},{},{}]}}"#,
+    let official = format!(r#"{{"name":"Webox Plugins","description":"Official plugins","plugins":[{},{},{},{}]}}"#,
         entry("Slash Commands", "dev.webox.plugins.slash-commands", "1.4.0", "1.4", "Adds /shrug, /tableflip and /count, and turns :) into a smiley.", "Webox examples", &here),
         entry("Pride Theme", "dev.webox.plugins.pride-theme", "1.4.0", "1.4", "Rainbow accents across Webox, in the colours of the Pride flag.", "Webox examples", &here),
-        entry("Focus Timer", "dev.webox.plugins.focus-timer", "0.3.0", "1.1", "Sets your status to Bitte nicht stören for a pomodoro and back.", "Webox", &here),
+        entry("Focus Timer", "dev.webox.plugins.focus-timer", "0.3.0", "1.1", "Sets your status to Do not disturb for a pomodoro and back.", "Webox", &here),
         entry("Markdown Tables", "dev.webox.plugins.md-tables", "2.0.0", "2.0", "Renders pipe tables in messages.", "Webox", &here));
     let user = format!(r#"[{},{}]"#,
         entry("Quick Replies", "com.example.quick-replies", "1.2.0", "1.0", "Saved replies on /qr.", "Alex Example", &here),

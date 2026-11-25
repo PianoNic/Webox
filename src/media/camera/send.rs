@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Caps { pub w: u32, pub h: u32, pub fps: u32, pub bitrate: u32 }
 
-/// The caps for "Max. Kameraauflösung" `max_h` (0 = Auto) on a machine with `cores` logical cores: 720p / 30 fps, lower on
+/// The caps for "Max camera resolution" `max_h` (0 = Auto) on a machine with `cores` logical cores: 720p / 30 fps, lower on
 /// weak machines (fewer than 4 cores: 360p / 15 fps). Never above 720p: the server transcodes a 1:1 call anyway.
 pub fn caps(max_h: u32, cores: usize) -> Caps {
     let weak = cores < 4;

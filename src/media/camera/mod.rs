@@ -49,7 +49,7 @@ impl Pix {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Mode { pub pix: Pix, pub w: u32, pub h: u32, pub fps: f32 }
 
-/// "Max. Kameraauflösung": the largest mode not taller than `max_h` (Auto = 1080), preferring at least 15 fps (webcams often
+/// "Max camera resolution": the largest mode not taller than `max_h` (Auto = 1080), preferring at least 15 fps (webcams often
 /// offer 1080p uncompressed at only 5 fps but 30 fps as MJPG), then the larger frame, then the higher rate (up to 30),
 /// then the cheaper format. Falls back to the smallest mode if every mode is taller.
 pub fn pick_mode(modes: &[Mode], max_h: u32) -> Option<Mode> {
@@ -61,7 +61,7 @@ pub fn pick_mode(modes: &[Mode], max_h: u32) -> Option<Mode> {
     }).copied()
 }
 
-/// Heights offered under "Max. Kameraauflösung" (the pack only has "Auto ({{0}}P)"). Only heights the camera reaches are
+/// Heights offered under "Max camera resolution" (the pack only has "Auto ({{0}}P)"). Only heights the camera reaches are
 /// offered.
 pub const HEIGHTS: [u32; 4] = [1080, 720, 540, 360];
 pub fn offered_heights(modes: &[Mode]) -> Vec<u32> {
@@ -131,7 +131,7 @@ pub struct Look {
     pub fill: bool,
     /// "Belichtung anpassen": automatic exposure gain toward a mid-grey average.
     pub lighting: bool,
-    /// "Helligkeit, Kontrast und Sättigung anpassen": the three sliders, 0..100 (50 = unchanged).
+    /// "Customize brightness, contrast, and saturation": the three sliders, 0..100 (50 = unchanged).
     pub bcs: Option<[f32; 3]>,
     /// "Aussehen auffrischen" level 0..100.
     pub touch_up: Option<f32>,
@@ -275,7 +275,7 @@ pub enum State { Opening, Running { mode: Mode, modes: Vec<Mode>, name: String }
 /// A live device source.
 pub trait Source {
     fn mode(&self) -> Mode;
-    /// Every mode the device offers (the "Max. Kameraauflösung" list is built from it).
+    /// Every mode the device offers (the "Max camera resolution" list is built from it).
     fn modes(&self) -> Vec<Mode>;
     fn name(&self) -> String;
     /// The next frame (blocks up to about one frame time); `Ok(None)` = no frame this time.

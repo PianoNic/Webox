@@ -57,7 +57,7 @@ pub fn set(on: bool) -> Result<(), String> {
         }
         // fall through to the LaunchAgent
     }
-    let f = agent_file().ok_or("kein Benutzerordner")?;
+    let f = agent_file().ok_or_else(|| crate::trq!("no home folder").into_owned())?;
     if !on { let _ = std::fs::remove_file(&f); return Ok(()); }
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     if let Some(d) = f.parent() { std::fs::create_dir_all(d).map_err(|e| e.to_string())?; }

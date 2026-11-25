@@ -33,19 +33,21 @@ fn alpha(c: Color32, a: f32) -> Color32 {
     let p = |v: u8| (v as f32 * a).round().clamp(0.0, 255.0) as u8;
     Color32::from_rgba_premultiplied(p(c.r()), p(c.g()), p(c.b()), (a * 255.0).round().clamp(0.0, 255.0) as u8)
 }
-/// MomentumDark ("Standard Dunkel").
+/// MomentumDark ("Default Dark").
 #[allow(dead_code)]
 fn dark() -> Th { Th::of(ThemeId::Dark) }
-/// MomentumDefault ("Hell").
+/// MomentumDefault ("Light").
 #[allow(dead_code)]
 fn light() -> Th { Th::of(ThemeId::Light) }
 fn rgba(v: u32) -> Option<Color32> { (v != 0).then(|| alpha(Color32::from_rgb((v >> 24) as u8, (v >> 16) as u8, (v >> 8) as u8), (v as u8) as f32 / 255.0)) }
 
+/// The presence line: official strings, translated (`&'static`: the active catalog lives for the whole run).
 fn presence_text(s: &str) -> &'static str {
-    match s {
-        "active" => "Verfügbar", "inactive" => "Abwesend", "DoNotDisturb" => "Bitte nicht stören", "meeting" => "In einem Meeting",
-        "call" => "In einem Anruf", "presenting" => "Präsentation", "OutOfOffice" => "Abwesend", _ => "",
-    }
+    let en = match s {
+        "active" => "Available", "inactive" => "Away", "DoNotDisturb" => "Do not disturb", "meeting" => "In a meeting",
+        "call" => "In a call", "presenting" => "Presenting", "OutOfOffice" => "Out of Office", _ => return "",
+    };
+    i18n::lookup_any(en).unwrap_or(en)
 }
 
 // Team colours: (avatar background, subtitle text) per team. The text is the theme's

@@ -13,7 +13,7 @@ use std::collections::{HashMap, HashSet};
 /// `Message::deleted`: how a kept deleted message is drawn.
 pub const STYLE_TEXT: u8 = 1;
 pub const STYLE_OVERLAY: u8 = 2;
-/// Kept, but drawn like any message (no red, no "(gelöscht)", pictures in colour): a plugin switched its highlight off.
+/// Kept, but drawn like any message (no red, no "(deleted)", pictures in colour): a plugin switched its highlight off.
 pub const STYLE_PLAIN: u8 = 3;
 
 /// Kinds of the spans in `Message::history` / `Message::current` (plugin-given rich lines).
@@ -62,7 +62,7 @@ pub(super) struct Edit {
     pub history: Vec<Vec<Span>>,
     /// The current text with its added parts (diff view); empty = drawn as usual.
     pub current: Vec<Span>,
-    /// false: the earlier texts are not drawn in the message, only "(bearbeitet)" (a click opens what the plugin shows).
+    /// false: the earlier texts are not drawn in the message, only "(edited)" (a click opens what the plugin shows).
     pub inline: bool,
 }
 impl Edit {
@@ -250,9 +250,9 @@ mod tests {
 
     #[test]
     fn spans_parse_strings_lists_and_objects() {
-        assert_eq!(spans(&json!("alt"), SPAN_OLD), [("alt".to_string(), SPAN_OLD)]);
-        let v = json!([{ "text": "Hallo " }, { "text": "Welt", "kind": "removed" }, { "text": "Leute", "kind": "added" }, { "text": "" }, { "text": "!", "kind": "x" }, { "kind": "added" }]);
-        assert_eq!(spans(&v, SPAN_OLD), [("Hallo ".into(), SPAN_PLAIN), ("Welt".into(), SPAN_REMOVED), ("Leute".into(), SPAN_ADDED), ("!".into(), SPAN_PLAIN)]);
+        assert_eq!(spans(&json!("old"), SPAN_OLD), [("old".to_string(), SPAN_OLD)]);
+        let v = json!([{ "text": "Hello " }, { "text": "world", "kind": "removed" }, { "text": "everyone", "kind": "added" }, { "text": "" }, { "text": "!", "kind": "x" }, { "kind": "added" }]);
+        assert_eq!(spans(&v, SPAN_OLD), [("Hello ".into(), SPAN_PLAIN), ("world".into(), SPAN_REMOVED), ("everyone".into(), SPAN_ADDED), ("!".into(), SPAN_PLAIN)]);
         assert_eq!(spans(&json!({ "spans": [{ "text": "a" }, { "text": "b" }] }), SPAN_OLD), [("ab".to_string(), SPAN_PLAIN)], "neighbours of one kind merge");
         assert!(spans(&json!(3), SPAN_OLD).is_empty());
     }
@@ -261,13 +261,13 @@ mod tests {
     fn an_edit_with_inline_off_keeps_only_the_tag() {
         let mut k = Kept::default();
         k.set_edit("m1", &json!({ "history": [], "inline": false }));
-        k.set_edit("m2", &json!({ "history": ["alt"], "current": [{ "text": "neu", "kind": "added" }] }));
+        k.set_edit("m2", &json!({ "history": ["old"], "current": [{ "text": "new", "kind": "added" }] }));
         k.set_edit("m3", &json!({ "history": [] }));
-        let mut l = vec![Message { id: "m1".into(), text: "a".into(), ..Default::default() }, Message { id: "m2".into(), text: "neu".into(), ..Default::default() },
+        let mut l = vec![Message { id: "m1".into(), text: "a".into(), ..Default::default() }, Message { id: "m2".into(), text: "new".into(), ..Default::default() },
             Message { id: "m3".into(), text: "c".into(), ..Default::default() }];
         k.apply("s", &mut l);
         assert!(l[0].history.is_empty() && l[0].edit_tag);
-        assert_eq!((l[1].history.clone(), l[1].current.clone(), l[1].edit_tag), (vec![vec![("alt".to_string(), SPAN_OLD)]], vec![("neu".to_string(), SPAN_ADDED)], true));
+        assert_eq!((l[1].history.clone(), l[1].current.clone(), l[1].edit_tag), (vec![vec![("old".to_string(), SPAN_OLD)]], vec![("new".to_string(), SPAN_ADDED)], true));
         assert!(!l[2].edit_tag, "nothing to attach");
         k.strip(&mut l);
         assert!(l.iter().all(|m| m.history.is_empty() && m.current.is_empty() && !m.edit_tag));
@@ -276,11 +276,11 @@ mod tests {
     #[test]
     fn a_deleted_message_is_drawn_as_its_look_says() {
         let mut k = Kept::default();
-        let m = Message { id: "m1".into(), text: "Bild\n📎 a.pdf".into(), published_ms: 10, images: vec![Default::default()], files: vec![Default::default()], ..Default::default() };
+        let m = Message { id: "m1".into(), text: "Picture\n📎 a.pdf".into(), published_ms: 10, images: vec![Default::default()], files: vec![Default::default()], ..Default::default() };
         k.keep_deleted("s", m.clone(), DeletedLook::of(&json!({ "style": "plain", "collapsed": true, "attachments": false })));
         let mut l = vec![Message { id: "m0".into(), published_ms: 5, ..Default::default() }];
         k.apply("s", &mut l);
-        assert_eq!((l[1].deleted, l[1].collapsed, l[1].text.as_str(), l[1].images.len(), l[1].files.len()), (STYLE_PLAIN, true, "Bild", 0, 0));
+        assert_eq!((l[1].deleted, l[1].collapsed, l[1].text.as_str(), l[1].images.len(), l[1].files.len()), (STYLE_PLAIN, true, "Picture", 0, 0));
         // Kept again with its attachments: the full copy comes back.
         k.keep_deleted("s", m, DeletedLook::default());
         let mut l = vec![Message { id: "m0".into(), published_ms: 5, ..Default::default() }];

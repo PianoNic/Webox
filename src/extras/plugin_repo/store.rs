@@ -63,12 +63,12 @@ pub fn sha256_file(p: &Path) -> Result<String, String> {
 
 /// The file of an installed plugin, after checking it still has the pinned hash (a changed file is never loaded).
 pub fn verify(root: &Path, i: &Installed) -> Result<PathBuf, String> {
-    if !ok(i) { return Err("ungültiger Eintrag in installed.json".into()); }
+    if !ok(i) { return Err(crate::trq!("invalid entry in installed.json").into_owned()); }
     let p = path_of(root, i);
     match sha256_file(&p) {
         Ok(h) if h.eq_ignore_ascii_case(&i.sha256) => Ok(p),
-        Ok(_) => Err("Datei wurde nach der Installation verändert (SHA-256 stimmt nicht); nicht geladen".into()),
-        Err(e) => Err(format!("Datei fehlt: {e}")),
+        Ok(_) => Err(crate::trq!("The file was changed after installation (SHA-256 does not match); not loaded").into_owned()),
+        Err(e) => Err(crate::trq!("File missing: {{0}}", e)),
     }
 }
 
@@ -76,7 +76,7 @@ fn stamp() -> u128 { std::time::SystemTime::now().duration_since(std::time::UNIX
 
 /// A fresh staging folder for a download of `pkg`.
 pub fn stage_dir(root: &Path, pkg: &str) -> Result<PathBuf, String> {
-    if !valid_pkg(pkg) { return Err("ungültige Paket-ID".into()); }
+    if !valid_pkg(pkg) { return Err(crate::trq!("invalid package ID").into_owned()); }
     let d = root.join(pkg).join(format!(".staging-{}", stamp()));
     std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
     Ok(d)
@@ -87,20 +87,20 @@ pub struct Commit { pub path: PathBuf, backup: Option<PathBuf> }
 
 /// Renames the staging folder holding `staged` to `<root>/<pkg>/<version>`.
 pub fn commit(root: &Path, staged: &Path, i: &Installed) -> Result<Commit, String> {
-    if !ok(i) { return Err("ungültige Paketangaben".into()); }
-    let stage = staged.parent().ok_or("kein Staging-Ordner")?;
+    if !ok(i) { return Err(crate::trq!("invalid package details").into_owned()); }
+    let stage = staged.parent().ok_or_else(|| crate::trq!("no staging folder").into_owned())?;
     if staged.file_name().and_then(|n| n.to_str()) != Some(i.file.as_str()) || stage.parent() != Some(&root.join(&i.pkg)) {
-        return Err("Staging-Datei liegt nicht am erwarteten Ort".into());
+        return Err(crate::trq!("The staging file is not where it was expected").into_owned());
     }
     let target = root.join(&i.pkg).join(&i.version);
     let backup = if target.exists() {
         let b = root.join(&i.pkg).join(format!(".old-{}", stamp()));
-        std::fs::rename(&target, &b).map_err(|e| format!("alte Version kann nicht verschoben werden: {e}"))?;
+        std::fs::rename(&target, &b).map_err(|e| crate::trq!("the old version cannot be moved: {{0}}", e))?;
         Some(b)
     } else { None };
     if let Err(e) = std::fs::rename(stage, &target) {
         if let Some(b) = &backup { let _ = std::fs::rename(b, &target); }
-        return Err(format!("Installation fehlgeschlagen: {e}"));
+        return Err(crate::trq!("Installation failed: {{0}}", e));
     }
     Ok(Commit { path: target.join(&i.file), backup })
 }
@@ -125,11 +125,11 @@ pub fn finish(root: &Path, i: &Installed, old: Option<&Installed>, c: Commit) ->
 
 /// Deletes a package and its installed.json entry.
 pub fn remove(root: &Path, pkg: &str) -> Result<(), String> {
-    if !valid_pkg(pkg) { return Err("ungültige Paket-ID".into()); }
+    if !valid_pkg(pkg) { return Err(crate::trq!("invalid package ID").into_owned()); }
     let list: Vec<Installed> = read(root).into_iter().filter(|x| x.pkg != pkg).collect();
     write(root, &list)?;
     let d = root.join(pkg);
-    if d.exists() { std::fs::remove_dir_all(&d).map_err(|e| format!("Ordner kann nicht gelöscht werden: {e}"))?; }
+    if d.exists() { std::fs::remove_dir_all(&d).map_err(|e| crate::trq!("The folder cannot be deleted: {{0}}", e))?; }
     Ok(())
 }
 

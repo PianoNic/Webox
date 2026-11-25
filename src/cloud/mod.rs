@@ -60,7 +60,7 @@ pub struct Space {
     pub id: String, pub title: String, pub direct: bool, pub team: String, pub last: String,
     pub unread: bool, pub favorite: bool, pub public: bool, pub key_url: String, pub participants: Vec<Person>,
     pub kms_resource: String, pub hidden: bool,
-    /// ISO time of the last activity I have seen in this space (conversation `lastSeenActivityDate`); the "Neue Nachrichten" line sits after it.
+    /// ISO time of the last activity I have seen in this space (conversation `lastSeenActivityDate`); the "New messages" line sits after it.
     pub last_seen: String,
     /// Read-only state "conversation closed by policy" ("This conversation is closed" + "This space is no longer active
     /// because communication between certain groups is prohibited by policy." + "Check for updates"): no composer, banner
@@ -71,7 +71,7 @@ pub struct Space {
     pub announcement: bool,
     /// The space's meeting (locus) url, `locusUrl` of the conversation; empty until the space ever had a meeting.
     pub locus_url: String,
-    /// A meeting runs in this group space right now (its locus is active with someone joined): the header shows "Beitreten".
+    /// A meeting runs in this group space right now (its locus is active with someone joined): the header shows "Join".
     pub meeting: bool,
 }
 #[derive(Clone, Debug, Default)]
@@ -86,7 +86,7 @@ pub struct Message {
     pub images: Vec<Attachment>,
     /// Link-preview cards shown above the text; `image_key` is a key for `App::image`/`image_frame`.
     pub previews: Vec<LinkPreview>,
-    /// Non-empty: a centred system line instead of a message (e.g. "Jonas Weber war nicht erreichbar."); `time` is appended.
+    /// Non-empty: a centred system line instead of a message (e.g. "Jonas Weber was unavailable."); `time` is appended.
     pub notice: String,
     /// The message's rich text as sent (`object.content`, decrypted HTML: <a href>, <br>, <b>, <i>, <code>, lists, quotes,
     /// mentions). This is drawn, not the plain `text` (which has lost line breaks and keeps `%20` decoded).
@@ -110,7 +110,7 @@ pub struct Message {
     /// Non-zero: a deleted message a plugin keeps showing (`message.deleted`, extras/plugins/kept.rs): 1 = red text,
     /// 2 = red overlay, 3 = no highlight. Local only.
     pub deleted: u8,
-    /// A kept deleted message the plugin asked to fold: the list shows "N gelöschte Nachrichten" for a run of them, a click
+    /// A kept deleted message the plugin asked to fold: the list shows "N deleted messages" for a run of them, a click
     /// unfolds them. Local only.
     pub collapsed: bool,
     /// Earlier texts of an edited message, oldest first, that a plugin attached (`message.edited`), each as spans (text,
@@ -139,7 +139,7 @@ pub struct Attachment { pub name: String, pub mime: String, pub size: u64, pub k
 /// A shared Giphy GIF: the plain CDN URL (decrypted `scr.loc`), the Giphy id parsed from it and the title (the share's file name).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Giphy { pub id: String, pub url: String, pub title: String }
-/// Who has read a space up to which message ("Gesehen von"). `person` is the participant id (as in `Person.id`) when it could
+/// Who has read a space up to which message ("Seen by"). `person` is the participant id (as in `Person.id`) when it could
 /// be resolved, else the actor's own id; `email` is lower-case. `activity` is the id of the last message that person
 /// acknowledged, `time` its publish time (ISO) of the acknowledgement.
 #[allow(dead_code)] // read by the message view for "Gesehen von"
@@ -194,7 +194,7 @@ pub enum Req {
     // The one-to-one space with `who` (uuid / Person.id / e-mail): existing one or a new one, then
     // `text` in it; `invite` = an unknown e-mail address gets a Webex account (shouldCreateUsers). WRITE, user click only.
     Direct { who: String, text: String, invite: bool },
-    // A group space from "Neue Nachricht" (several recipients, optional name), then `text`. WRITE, user click only.
+    // A group space from "New message" (several recipients, optional name), then `text`. WRITE, user click only.
     Group { title: Option<String>, who: Vec<String>, text: String },
     // People search in the directory (read-only); answered with `Resp::Directory`.
     DirectorySearch(String),
@@ -222,7 +222,7 @@ pub enum Req {
     Flag { space: String, msg: String, on: bool, flag_url: String },
     /// Load my flags (GET userApps /flags?state=flagged) -> `Resp::Flags`. Read-only.
     Flags,
-    /// "Als ungelesen markieren" from a message (verb "unacknowledge"). WRITE.
+    /// "Mark as unread" from a message (verb "unacknowledge"). WRITE.
     MarkUnread { space: String, msg: String },
     /// A message that quotes another one (`<blockquote class='messageQuote'>`), new or as a thread reply (`parent`). WRITE.
     PostQuote { space: String, text: String, markdown: bool, mentions: Vec<crate::richtext::MentionRef>, quoted_html: String, quoted_text: String,
@@ -235,7 +235,7 @@ pub enum Req {
     DeleteCalls(Vec<(String, i64)>),
     /// Read the calendar's meetings (calendar service calendarEvents).
     Calendar,
-    /// WRITE: schedule a meeting (scheduler dialog's "Ansetzen").
+    /// WRITE: schedule a meeting (scheduler dialog's "Schedule").
     Schedule(meetcall::ScheduleReq),
     /// Read the user's personal-room link ("Meeting starten").
     PersonalRoom,

@@ -1,4 +1,4 @@
-//! macOS, once per frame: the app menu (Webox / Bearbeiten / Fenster) and its commands, the toasts as Notification Center
+//! macOS, once per frame: the app menu (Webox / Edit / Window) and its commands, the toasts as Notification Center
 //! banners (`platform::macos::notifications`: under Webox's own name inside Webox.app, osascript without a bundle) and what the
 //! user did with them (a click opens the space, a button acts like the toast's button). The banner of an incoming call
 //! (Annehmen / Ablehnen) is `ui/call_note_macos.rs`. `WEBOX_NATIVE_TOASTS=0` keeps the app's own toast window instead.

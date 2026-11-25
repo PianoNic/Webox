@@ -1,10 +1,10 @@
-//! Microphone noise removal (Smart Audio > Mikrofonaudio), 48 kHz mono in 10 ms frames.
+//! Microphone noise removal (Smart audio > Microphone audio), 48 kHz mono in 10 ms frames.
 //!
-//! - `Auto` ("Automatisch"): RNNoise (`nnnoiseless`). Low delay, almost no CPU.
-//! - `Voice` ("Nur Stimme"): DeepFilterNet 3 (libDF + tract) without an attenuation limit, plus its post filter. Loaded on
+//! - `Auto` ("Auto"): RNNoise (`nnnoiseless`). Low delay, almost no CPU.
+//! - `Voice` ("Voice only"): DeepFilterNet 3 (libDF + tract) without an attenuation limit, plus its post filter. Loaded on
 //!   first use on a `deepfilter` thread; RNNoise with a voice gate covers until it is ready, and for the rest of the
 //!   session if it fails to load, misses a frame deadline or uses more than 70 % of real time.
-//! - `Off` ("Aus") and `All` ("Alle Geräusche"): the signal passes unchanged.
+//! - `Off` ("Off") and `All` ("All sounds"): the signal passes unchanged.
 use df::tract::{DfParams, DfTract, ReduceMask, RuntimeParams};
 use nnnoiseless::DenoiseState;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
