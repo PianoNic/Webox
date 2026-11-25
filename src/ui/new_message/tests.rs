@@ -14,7 +14,7 @@ fn dropdown_sections_and_empty_states() {
     assert_eq!(l.iter().filter(|x| matches!(x, Line::Empty(_))).count(), 2);
     assert_eq!(ring_index(&l, None), Some(3)); // the last empty block
     assert!(!lines("self", &people, &spaces, &me).contains(&Line::Person(0)));
-    assert_eq!(lines("allg", &people, &spaces, &me)[3], Line::Space(0));
+    assert_eq!(lines("gener", &people, &spaces, &me)[3], Line::Space(0));
 }
 
 #[test]

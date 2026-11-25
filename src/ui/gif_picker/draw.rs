@@ -135,7 +135,7 @@ impl App {
             self.icons.paint(ui, "search-regular", Rect::from_center_size(lay.icon.center(), Vec2::splat(16.0)), pal.text2);
             if iresp.clicked() { st.focus = true; }
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(lay.field.shrink2(Vec2::new(6.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-            let r = c.add(egui::TextEdit::singleline(&mut st.query).id(search_id).hint_text(RichText::new(crate::ui::widgets::tr("Search for GIFs")).color(pal.text2).size(14.0)).text_color(pal.text)
+            let r = c.add(egui::TextEdit::singleline(&mut st.query).id(search_id).hint_text(RichText::new(crate::ui::widgets::tr("Search GIFs")).color(pal.text2).size(14.0)).text_color(pal.text)
                 .frame(false).margin(Vec2::ZERO).font(FontId::proportional(14.0)).desired_width(lay.field.width() - 12.0));
             if st.focus { r.request_focus(); st.focus = false; }
             if r.changed() { let q = st.query.clone(); st.debounce.set(&q, now); }
@@ -155,9 +155,9 @@ impl App {
                 ui.put(Rect::from_center_size(centre, Vec2::splat(28.0)), egui::Spinner::new().size(28.0).color(pal.text2));
             } else if n == 0 && st.error.is_some() {
                 // Connection error: 15 px title, 13 px inputText-secondary text.
-                let g1 = p.layout_no_wrap(crate::ui::widgets::tr("Can't search for GIFs").into(), FontId::proportional(15.0), pal.text);
+                let g1 = p.layout_no_wrap(crate::ui::widgets::tr("Unable to search GIFs").into(), FontId::proportional(15.0), pal.text);
                 p.galley(pos2(centre.x - g1.size().x / 2.0, centre.y - 24.0), g1, pal.text);
-                let g2 = p.layout(crate::ui::widgets::tr("GIFs aren't working right now, please try again later.").into(), FontId::proportional(13.0), pal.text2, grid.width() - 80.0);
+                let g2 = p.layout(crate::ui::widgets::tr("GIFs aren't working right now. Please try again later.").into(), FontId::proportional(13.0), pal.text2, grid.width() - 80.0);
                 p.galley(pos2(centre.x - g2.size().x / 2.0, centre.y + 2.0), g2, pal.text2);
             } else if n == 0 && !st.loading {
                 // No results: search_gif.png, "No results" (15 px), hint (13 px wx-subheading-text).
@@ -221,7 +221,7 @@ impl App {
             if lresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
             p.hline(lr.x_range(), lr.bottom() - 1.0, Stroke::new(1.0_f32, pal.link));
             p.galley(lr.min, lg, pal.link);
-            if lresp.on_hover_text(crate::ui::widgets::tr("View the Giphy terms and conditions")).clicked() { open_terms = true; }
+            if lresp.on_hover_text(crate::ui::widgets::tr("View Giphy terms")).clicked() { open_terms = true; }
         });
 
         if open_terms { system::open(giphy::TERMS_URL); }

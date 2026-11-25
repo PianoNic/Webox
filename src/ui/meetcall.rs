@@ -296,6 +296,7 @@ mod tests {
         if !crate::assets::cisco_assets::embedded() { return; } // needs the translation packs (docs/cisco-assets.md)
         crate::i18n::set_language("de");
         let m = crate::trq!("We had a problem getting your latest Personal Room information from your {{APP_NAME}} site.");
+        crate::i18n::set_language("en"); // back to the English source so tests running alongside are not switched to German
         assert!(m.starts_with("Beim Abrufen der aktuellen Informationen zu Ihrem persönlichen Raum"), "{m}");
     }
     #[test]

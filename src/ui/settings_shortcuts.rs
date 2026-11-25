@@ -87,7 +87,7 @@ impl App {
             let (r, resp) = ui.allocate_exact_size(Vec2::new(w, HEAD_H), Sense::click());
             if resp.hovered() { ui.painter().rect_filled(r, 8.0, alpha(base, 0.07)); ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
             self.icons.paint(ui, if open { "arrow-down-optical_12" } else { "arrow-right-optical_10" }, Rect::from_center_size(pos2(r.left() + 20.0, r.center().y), Vec2::splat(12.0)), text);
-            ui.painter().text(pos2(r.left() + 36.0, r.center().y), egui::Align2::LEFT_CENTER, tr(g.title()), semibold(14.5), text);
+            ui.painter().text(pos2(r.left() + 36.0, r.center().y), egui::Align2::LEFT_CENTER, g.title(), semibold(14.5), text);
             if resp.clicked() && q.is_empty() { todo.push(Do::Group(gi)); }
             if !open { continue; }
             for i in rows { shown += 1; self.sc_row(ui, t, i, w, [text, text2, dim, base], now, &mut todo); }
@@ -230,7 +230,7 @@ impl App {
         if let Some(by) = r.default_taken_by {
             let wr = Rect::from_center_size(pos2(left_limit - 12.0, row.center().y), Vec2::splat(20.0));
             self.icons.paint(ui, "warning-regular", Rect::from_center_size(wr.center(), Vec2::splat(16.0)), t.star);
-            ui.interact(wr, egui::Id::new(("sc-warn", i)), Sense::hover()).on_hover_text(format!("{}\n{}", tr(DEFAULT_TAKEN), default_taken_message(&reg.cmds, i, by)));
+            ui.interact(wr, egui::Id::new(("sc-warn", i)), Sense::hover()).on_hover_text(format!("{}\n{}", crate::trq!(DEFAULT_TAKEN), default_taken_message(&reg.cmds, i, by)));
             left_limit = wr.left() - 4.0;
         }
         // Title.
@@ -272,7 +272,7 @@ impl App {
                 let resetting = matches!(d, Dlg::Reset { .. });
                 let msg = conflict_message(&reg.cmds, &c, combo, resetting);
                 let buttons = if c.fate == shortcuts::Fate::Locked { vec![Button::primary("cancel", "OK")] } else { vec![Button::secondary("cancel", tr("Cancel")), Button::primary("ok", tr("Continue"))] };
-                match webex_dialog(ctx, t, "sc-conflict", tr(CONFLICT_TITLE), &msg, None, &buttons).as_deref() {
+                match webex_dialog(ctx, t, "sc-conflict", &crate::trq!(CONFLICT_TITLE), &msg, None, &buttons).as_deref() {
                     Some("ok") => {
                         if resetting { self.sc_reset(idx, Some(c)); } else { self.sc_assign(idx, Some(combo), Some(c)); self.sc.page.applied = Some((idx, now)); }
                         self.sc.page.edit = None;

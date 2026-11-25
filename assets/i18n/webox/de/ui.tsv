@@ -39,7 +39,6 @@
 _Italic_	_Kursiv_
 ``` HTML\n<h1>Hello world! </h1>\n```	``` HTML\n<h1>Hallo Welt! </h1>\n```
 ``` Language (optional)\nCODEBLOCK\n```	``` Sprache (optional)\nCODEBLOCK\n```
-A call is already in progress.	Es läuft bereits ein Anruf.
 A message can have at most %1 files	Pro Nachricht sind maximal %1 Dateien erlaubt
 About Webox	Info über Webox
 Accessibility settings are reset to the default.	Die Zugriffseinstellungen werden auf den Standardwert zurückgesetzt.
@@ -86,7 +85,6 @@ Call pickup	Anrufübernahme
 Call sounds (ringtone, ringback, call end)	Töne bei Anrufen (Klingelton, Freizeichen, Anrufende)
 Camera resolution, brightness, contrast	Kameraauflösung, Helligkeit, Kontrast
 Can't be loaded: %1	Kann nicht geladen werden: %1
-Can't search for GIFs	Suchen nach GIFs nicht möglich
 Can't talk right now.	Kann gerade nicht sprechen.
 Check for updates automatically	Automatisch nach Updates suchen
 Check now	Jetzt prüfen
@@ -96,7 +94,6 @@ Choose microphone	Mikrofon wählen
 Choose speaker	Lautsprecher wählen
 Choose where your incoming call notifications are prioritized.	Wählen Sie aus, wo Ihre Benachrichtigungen für eingehende Anrufe priorisiert werden.
 Clear Do not disturb	„Bitte nicht stören“ löschen
-Clear entry	Eintrag löschen
 Clear quiet hours	Ruhige Stunden löschen
 Clear search	Suche löschen
 Click to rotate the video by 90 degrees	Einmal klicken, um die Videoansicht um 90 Grad zu drehen
@@ -158,7 +155,6 @@ Floating mini window for a call or meeting	Unverankertes Minifenster für Anruf 
 Folder for downloaded files	Ordner für heruntergeladene Dateien
 Food & Drink	Essen & Trinken
 From repository: %1	Aus Repository: %1
-GIFs aren't working right now, please try again later.	GIFs funktionieren zurzeit nicht, bitte versuchen Sie es später noch einmal.
 Hang up	Auflegen
 Headsets and accessories	Headsets und Zubehör
 Hello, recycling star! Nothing in the trash today. When you delete voicemails, you will find them here.	Hallo Recycling-Star! Heute ist nichts im Papierkorb. Wenn Sie Sprachnachrichten löschen, finden Sie sie hier.
@@ -324,10 +320,8 @@ Screen capture cancelled.	Screenshot abgebrochen.
 Screen capture failed.	Screenshot fehlgeschlagen.
 Screen capture not possible: access denied.	Screenshot nicht möglich: Zugriff verweigert.
 Screen capture not possible: the desktop offers no screenshot service (xdg-desktop-portal).	Screenshot nicht möglich: Der Desktop bietet keinen Screenshot-Dienst (xdg-desktop-portal).
-Screen sharing is only possible once the call is connected.	Bildschirmfreigabe ist erst möglich, wenn der Anruf verbunden ist.
 Search for a room or device	Nach einem Raum oder Gerät suchen
 Search for devices	Nach Geräten suchen
-Search for GIFs	Nach GIFs suchen
 Search for new team members	Nach neuen Teammitgliedern suchen
 Search for people, spaces and devices	Nach Personen, Bereichen und Geräten suchen
 Search or dial a number	Nummer suchen oder wählen
@@ -336,7 +330,6 @@ Select a meeting	Wählen Sie ein Meeting aus
 Select a team from the list or create a new one.	Wählen Sie ein Team aus der Liste aus oder erstellen Sie ein neues.
 Select a voicemail from the list.	Wählen Sie eine Sprachnachricht aus der Liste aus.
 Self view in meetings	Selbstansicht in Meetings
-Send GIFs right away when clicked (otherwise add them as an attachment)	GIFs beim Anklicken sofort senden (sonst als Anhang hinzufügen)
 Send single emoji large	Einzelne Emojis groß senden
 Sending GIFs is not available yet	GIF senden ist noch nicht verfügbar
 Set Do not disturb for	„Bitte nicht stören“ einrichten für
@@ -428,13 +421,9 @@ Use the standard call notification	Standard-Anrufbenachrichtigung verwenden
 Version %1 is available	Version %1 ist verfügbar
 Version %1 is installed	Version %1 ist installiert
 Video enhancements	Videoverbesserungen
-Video not possible: no camera found.	Video nicht möglich: Keine Kamera gefunden.
-View terms	Bedingungen anzeigen
-View the Giphy terms and conditions	Giphy-Geschäftsbedingungen anzeigen
 Voice only	Nur Stimme
 Voicemail, Plugins & Themes, About Webox, Show labels	Voicemail, Plugins & Themes, Info über Webox, Beschriftungen anzeigen
 We can't find a matching emoji. Try something else, there are plenty to choose from.	Wir finden kein passendes Emoji. Versuche es mit etwas anderem, es gibt eine große Auswahl.
-We couldn't find a GIF for that. Try again with more general keywords.	Wir konnten hierfür kein GIF finden. Versuchen Sie es mit allgemeineren Schlüsselwörtern erneut.
 Webox - Call	Webox - Anruf
 Webox - Calling dock	Webox - Anruf-Dock
 Webox - Incoming call	Webox - Eingehender Anruf
@@ -443,7 +432,6 @@ What you see first when {{APP_NAME}} opens	Was beim Öffnen von {{APP_NAME}} zue
 When this computer is used for calls:	Wenn dieser Computer für Anrufe verwendet wird:
 Which scheduler do you want to use to schedule meetings?	Welche Funktion zum Ansetzen möchten Sie zum Ansetzen von Meetings verwenden?
 Whiteboards aren't available in this version	Whiteboards sind in dieser Version nicht verfügbar
-Window	Fenster
 Window settings	Fenstereinstellungen
 You are looking at sample data.	Sie sehen Beispieldaten.
 You can't add screen captures to this message.	Sie können keine Screenshots zu dieser Nachricht hinzufügen.

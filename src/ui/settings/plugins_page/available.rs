@@ -127,8 +127,10 @@ impl App {
 fn repo_status(st: &crate::extras::plugin_repo::RepoState) -> String {
     if st.loading { return tr("Loading...").into(); }
     if let Some(e) = &st.error {
-        // "Server antwortet mit HTTP 404" (the error text of net.rs) reads better as what it means for the person
-        let e = match e.strip_prefix("Server antwortet mit HTTP ") { Some(code) => crate::trq!("Repository not reachable (HTTP %1)", code), None => crate::trq!("Error: {{0}}", e) };
+        // "The server answered with HTTP 404" (the error text of net.rs, translated) reads better as what it means for the person
+        let tpl = crate::trq!("The server answered with HTTP {{0}}");
+        let code = tpl.split_once("{{0}}").and_then(|(pre, post)| e.strip_prefix(pre)?.strip_suffix(post));
+        let e = match code { Some(code) => crate::trq!("Repository not reachable (HTTP %1)", code), None => crate::trq!("Error: {{0}}", e) };
         return format!("{e}{}", if st.index.is_some() { tr(" - showing the last loaded list") } else { "" });
     }
     match &st.index {
@@ -143,9 +145,9 @@ mod tests {
     use crate::extras::plugin_repo::RepoState;
     #[test]
     fn friendly_repo_status() {
-        let st = RepoState { url: "https://example.com/i.json".into(), error: Some("Server antwortet mit HTTP 404".into()), ..Default::default() };
+        let st = RepoState { url: "https://example.com/i.json".into(), error: Some(crate::trq!("The server answered with HTTP {{0}}", 404)), ..Default::default() };
         assert_eq!(super::repo_status(&st), crate::trq!("Repository not reachable (HTTP %1)", 404));
-        let st = RepoState { error: Some("Verbindung fehlgeschlagen: Dns".into()), ..Default::default() };
-        assert_eq!(super::repo_status(&st), crate::trq!("Error: {{0}}", "Verbindung fehlgeschlagen: Dns"));
+        let st = RepoState { error: Some("Connection failed: Dns".into()), ..Default::default() };
+        assert_eq!(super::repo_status(&st), crate::trq!("Error: {{0}}", "Connection failed: Dns"));
     }
 }
