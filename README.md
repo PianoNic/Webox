@@ -3,7 +3,7 @@
 </p>
 <p align="center">
   <strong>Webox</strong><br/>
-  A fast, native Webex desktop client for Windows and Linux, written in Rust.
+  A fast, native Webex desktop client for Windows, macOS and Linux.
 </p>
 <p align="center">
   <a href="https://github.com/PianoNic/Webox"><img src="https://badgetrack.pianonic.ch/badge?tag=webox&label=visits&color=07C1F5&style=flat" alt="visits" /></a>
@@ -24,14 +24,14 @@ The official Webex app is a big Qt and Chromium bundle. Webox is one small Rust 
   <img src="assets/branding/screenshot.png" width="800" alt="Webox showing a space with messages" />
 </p>
 
-## Features
+## Why Webox?
 
-- 💬 **Messaging**: spaces, threads, reactions, mentions, edits and rich text, end-to-end encrypted like the official app
-- 📎 **Files, emoji and GIFs**: inline images, link previews, emoji and GIF pickers
-- 📞 **Calls and meetings**: 1:1 calls, screen share, upcoming meetings
-- 🔔 **Notifications**: toasts, tray badge, do-not-disturb, the official keyboard shortcuts
-- 🌍 **34 languages**, from the official app's translations
-- 🧩 **Plugins**: a native plugin API with installable plugin repositories ([docs](docs/plugins.md))
+- 🪶 **Light**: starts in a moment and stays quiet in the background, one small native app instead of a browser bundle
+- 🔑 **Your normal Webex account**: same spaces, messages, calls and meetings, nothing to set up on the server
+- 💻 **Windows, macOS and Linux**: including Wayland and Nix, where the official app falls short
+- 🎥 **Calls the way you know them**: audio and video calls, screen sharing, joining space meetings
+- 🎨 **Make it yours**: hide, show and reorder buttons and menus, themes, compact mode
+- 🧩 **Plugins**: keep deleted and edited messages, auto-reply, video backgrounds and filters, GIF favourites, and more ([write your own](docs/plugins.md))
 
 ## Get started
 
