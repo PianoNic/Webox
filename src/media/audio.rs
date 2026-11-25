@@ -286,14 +286,13 @@ impl Engine {
         std::thread::spawn(move || {
             use std::sync::mpsc::RecvTimeoutError;
             let mut streams: Vec<cpal::Stream> = vec![];
-            // The devices of the running streams, to reopen them when one fails (Linux; Windows keeps its old behaviour).
+            // The devices of the running streams, to reopen them when one fails (a headset unplugged, the default changed).
             let mut last: Option<(Option<String>, Option<String>)> = None;
             loop {
                 let cmd = match rx.recv_timeout(std::time::Duration::from_secs(2)) {
                     Ok(c) => c,
                     Err(RecvTimeoutError::Disconnected) => break,
                     Err(RecvTimeoutError::Timeout) => {
-                        if !cfg!(target_os = "linux") { continue; }
                         let Some((i, o)) = last.clone() else { continue };
                         if !io2.failed.swap(false, Ordering::Relaxed) { continue; }
                         streams.clear();

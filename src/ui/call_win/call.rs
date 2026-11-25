@@ -393,7 +393,7 @@ impl App {
                     .on_hover_text("Tastenfeld").clicked() { self.call.mc.keypad = !kp_on; }
                 // Share ("Freigeben"): the picker, then the share runs in the call (cloud/locus/share.rs); again = stop.
                 let (sharing, pending) = (self.call.sharing, self.call.share_pending);
-                let tip = if sharing { "Freigabe beenden" } else if pending { "Freigabe wird gestartet…" } else { "Inhalte freigeben" };
+                let tip = if sharing { "Freigabe beenden" } else if pending { "Freigabe wird gestartet… (klicken zum Abbrechen)" } else { "Inhalte freigeben" };
                 if round_at(&mut bu, &mut self.icons, "bar-share", pos2(x0 + 20.0 + 144.0, y), 40.0, "share-screen-regular", if sharing { t.green } else if pending { t.accent } else { t.selected }, Color32::WHITE, t.focus)
                     .on_hover_text(tip).clicked() { share = true; }
                 // Participants panel, raise hand (group calls).
