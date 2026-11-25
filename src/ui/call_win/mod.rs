@@ -63,6 +63,8 @@ pub(crate) struct WinState {
     pub sample_done: bool, rounded: u8, save_t: f64,
     /// "Anrufstatistik" panel (stats.rs); a full-screen toggle asked for (title bar button, Alt+Eingabe; full_screen.rs).
     pub(crate) stats: stats::StatsUi, pub(crate) full_toggle: bool,
+    /// The participants panel (`roster.rs`).
+    pub roster: roster::RosterUi,
 }
 
 fn rect_setting(s: &serde_json::Value, key: &str) -> Option<[f32; 4]> {
@@ -85,3 +87,4 @@ pub(crate) use call::fit_size;
 mod dock;
 mod full_screen;
 mod stats;
+mod roster;

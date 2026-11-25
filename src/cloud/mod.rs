@@ -271,6 +271,8 @@ pub enum Resp {
     CallShare(bool),
     /// Mute in the call changed: the other side's microphone, ours as Locus has it, ours here.
     CallMute(locus::MuteInfo),
+    /// The call's participants for the roster (sent when it changes).
+    CallRoster(locus::controls::Roster),
     /// The other side shares its screen (their name), or stopped (None). The pictures: `share_rx::latest`.
     RemoteShare(Option<String>),
     /// Directory people for a search query (query, people, last batch).
