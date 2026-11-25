@@ -37,7 +37,7 @@ impl App {
         true
     }
 
-    /// `WEBOX_SAMPLE_CALL=incoming|ringing|connected|dock|share` (offline `--sample` only: needs no signed-in client): shows the
+    /// `WEBOX_SAMPLE_CALL=incoming|ringing|connected|dock|share|roster` (offline `--sample` only: needs no signed-in client): shows the
     /// call windows with made-up data. No sound, no microphone, nothing is sent, nothing is saved.
     pub(crate) fn sample_call_hook(&mut self, _ctx: &egui::Context, now: f64) {
         if self.call.win.sample_done || self.client.is_some() { return; }
@@ -49,6 +49,8 @@ impl App {
             // the other side shares its screen (a made-up picture): the stage layout
             "share" => { self.preview_call("connected", now); self.call.remote_share = Some("Max Muster".into()); cloud::share_rx::show_sample(1280, 720); }
             "incoming" | "ringing" | "connected" => self.preview_call(&k, now),
+            // a group call with the participants panel open (made-up people)
+            "roster" => { self.preview_call("connected", now); self.call.roster = super::roster::sample_roster(); self.call.win.roster.open = true; }
             _ => {}
         }
     }
@@ -68,8 +70,9 @@ impl App {
         {
             let w = &mut self.call.win;
             if !incoming { w.toast_closed = None; w.toast_pos = None; w.toast_hwnd = None; }
-            if v.is_none() { w.call_b = None; w.dock_suppress = false; w.call_saved = None; }
+            if v.is_none() { w.call_b = None; w.dock_suppress = false; w.call_saved = None; w.roster = Default::default(); }
         }
+        if v.is_none() { self.call.roster = Default::default(); }
         if let Some(v) = &v {
             if incoming {
                 act = self.incoming_toast_window(ctx, t, now, v);
@@ -262,6 +265,12 @@ impl App {
             if cl { if v.ended { a.dismiss = true } else { a.hang = true } } // closing the call window ends the call
             // Content: interstitial (ringing screen for 1:1 calls) or the in-call view.
             let body = Rect::from_min_max(bar.left_bottom(), full.right_bottom() - Vec2::new(right_extra - BAR_SIDE, 0.0));
+            // The participants panel takes the right side while open.
+            let body = if connected && !v.ended && self.call.win.roster.open && body.width() > super::roster::PANEL_W + 200.0 {
+                let panel = Rect::from_min_max(pos2(body.right() - super::roster::PANEL_W, body.top()), pos2(body.right(), full.bottom() - BAR_H - BAR_GAP));
+                self.roster_panel(ui, vctx, t, panel, now);
+                Rect::from_min_max(body.min, pos2(panel.left(), body.bottom()))
+            } else { body };
             // The other side shares: their screen is the stage, the person moves to a strip on the right (the official
             // MeetingView: share on the left stage, film strip at least 160 + 8 wide, a 32 high share bar).
             let stage = connected && !v.ended && self.call.remote_share.is_some();
@@ -325,6 +334,9 @@ impl App {
                 let tip = if sharing { "Freigabe beenden" } else if pending { "Freigabe wird gestartet…" } else { "Inhalte freigeben" };
                 if round_at(&mut bu, &mut self.icons, "bar-share", pos2(br.left() + 16.0 + 20.0 + 144.0, y), 40.0, "share-screen-regular", if sharing { t.green } else if pending { t.accent } else { t.selected }, Color32::WHITE, t.focus)
                     .on_hover_text(tip).clicked() { share = true; }
+                // Participants panel, raise hand (group calls).
+                self.roster_button(&mut bu, t, pos2(br.left() + 16.0 + 20.0 + 192.0, y));
+                self.hand_button(&mut bu, t, pos2(br.left() + 16.0 + 20.0 + 240.0, y), now);
                 // Red pill on the right (left / right margin 16).
                 let pill = Rect::from_min_max(pos2(br.right() - 16.0 - 132.0, y - 20.0), pos2(br.right() - 16.0, y + 20.0));
                 let pr = bu.interact(pill, bu.id().with("bar-end"), Sense::click());

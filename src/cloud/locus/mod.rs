@@ -154,6 +154,8 @@ pub struct CallEvent { pub state: CallState, pub name: String, pub email: String
 pub enum CallReq { Dial(String, audio::Choice), Answer(audio::Choice), HangUp, Mute(bool), Devices(audio::Choice), SmartMic(audio::SmartMic), #[allow(dead_code)] Audit, Cleanup,
     // keypad tones during a connected call
     Dtmf(String),
+    /// A roster control (mute / remove someone, raise hand, invite, end for all); see `controls.rs`.
+    Control(controls::Ctl),
     /// Start sharing the picked screen / window (`Some`), or stop (`None`); see `share.rs`.
     Share(Option<share::ShareReq>),
     /// "Treffen" / "Beitreten" in a group space (its id): join the space's meeting, or start it (session.rs `join_space`).
@@ -178,7 +180,9 @@ impl Party {
 pub struct LocusView { pub url: String, pub kind: String, pub active: bool, pub self_id: String, pub self_state: String, pub self_url: String, pub self_devices: Vec<(String, String)>, pub others: Vec<Party>,
     /// Our audio as the locus has it: muted by someone else (host / moderator), whether we may unmute ourselves, and
     /// whether we were asked to unmute (`self.controls.audio.{muted, disallowUnmute, requestedToUnmute}`).
-    pub mute: SelfMute }
+    pub mute: SelfMute,
+    /// Everyone in the call for the participants panel (`controls::roster`).
+    pub roster: controls::Roster }
 
 /// Our own mute state from the locus (`self.controls.audio`).
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -225,6 +229,8 @@ pub fn local_mute_body(device: Value, correlation_id: &str, media_id: &str, audi
 /// `PATCH {self.url}/controls` body that unmutes us after someone else muted us (allowed unless `disallowUnmute`).
 pub fn unmute_controls_body() -> Value { json!({"audio": {"muted": false}}) }
 
+fn self_id_of(l: &Value) -> String { st(&l["self"], "id") }
+
 /// Reads a locus object (the `locus` of a join answer, a full GET, or a mercury `locus.difference` payload).
 pub fn parse_locus(l: &Value, my_email: &str) -> LocusView {
     let full = &l["fullState"];
@@ -243,6 +249,7 @@ pub fn parse_locus(l: &Value, my_email: &str) -> LocusView {
         self_id, self_state: st(&l["self"], "state"), self_url: st(&l["self"], "url"), others,
         self_devices: l["self"]["devices"].as_array().into_iter().flatten().map(|d| (st(d, "url"), st(d, "state"))).collect(),
         mute: self_mute(&l["self"]),
+        roster: controls::roster(l, &self_id_of(l), my_email),
     }
 }
 
@@ -341,6 +348,8 @@ struct Active {
     mute_info: Option<MuteInfo>,
     /// A group space's meeting (the space id): stays up while others come and go (session.rs `group_state`).
     space: Option<String>,
+    /// The roster last sent to the UI.
+    roster_sent: Option<controls::Roster>,
 }
 
 impl Active {
@@ -348,7 +357,7 @@ impl Active {
         Active { url, self_id, self_url, media_id: String::new(), correlation_id: String::new(), outgoing, name, email, last: None, answered: outgoing,
             media: None, roap_seq: 0, roap_done: false, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None,
             locus: Value::Null, joined_at: None, media_up_at: None, offer_at: None, share: None,
-            lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false, mute_info: None, space: None }
+            lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false, mute_info: None, space: None, roster_sent: None }
     }
 }
 
@@ -417,5 +426,6 @@ pub fn remote_roap(r: &Value) -> Option<(String, u32, Option<String>)> {
 #[cfg(test)]
 mod tests;
 
+pub mod controls;
 mod session;
 pub mod share;
