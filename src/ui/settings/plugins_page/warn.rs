@@ -3,7 +3,7 @@
 use super::{kit, PUi};
 use crate::*;
 
-pub(super) const NATIVE_CODE: &str = "Plugins sind nativer Code. Sie laufen in Webox mit denselben Rechten wie Webox selbst und haben vollen Zugriff auf Ihr Konto und Ihre angemeldete Sitzung: Nachrichten, Bereiche, Kontakte und Anmeldedaten. Installieren Sie nur Plugins aus Quellen, denen Sie vertrauen.";
+pub(super) const NATIVE_CODE: &str = "Plugins are native code. They run inside Webox with the same rights as Webox itself and have full access to your account and your signed-in session: messages, spaces, contacts and credentials. Only install plugins from sources you trust.";
 
 impl App {
     /// The warning before a repository is added: it can ship any native code (the official one is built in and never asks).
@@ -12,18 +12,18 @@ impl App {
         let mut answer = None;
         let m = egui::Modal::new(egui::Id::new("plugin-repo-warning")).frame(egui::Frame::popup(&ctx.style()).fill(t.card).corner_radius(12.0).inner_margin(20)).show(ctx, |ui| {
             ui.set_width(440.0);
-            ui.label(RichText::new("Repository hinzufügen?").font(semibold(18.0)).color(t.text1));
+            ui.label(RichText::new(tr("Add repository?")).font(semibold(18.0)).color(t.text1));
             ui.add_space(8.0);
             kit::text_block(ui, &url, kit::SECOND, t.text2, 0.0);
             ui.add_space(8.0);
-            kit::text_block(ui, "Dieses Repository ist nicht das offizielle Webox-Repository. Wer es betreibt, kann beliebige Plugins anbieten.", kit::BODY, t.tk("listitem-textmissed"), 0.0);
+            kit::text_block(ui, tr("This repository is not the official Webox repository. Whoever runs it can offer any plugins."), kit::BODY, t.tk("listitem-textmissed"), 0.0);
             ui.add_space(8.0);
-            kit::text_block(ui, NATIVE_CODE, kit::BODY, t.text1, 0.0);
+            kit::text_block(ui, tr(NATIVE_CODE), kit::BODY, t.text1, 0.0);
             ui.add_space(16.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if kit::pill(ui, t, "Hinzufügen", true, true).clicked() { answer = Some(true); }
+                if kit::pill(ui, t, tr("Add"), true, true).clicked() { answer = Some(true); }
                 ui.add_space(8.0);
-                if kit::pill(ui, t, "Abbrechen", true, true).clicked() { answer = Some(false); }
+                if kit::pill(ui, t, tr("Cancel"), true, true).clicked() { answer = Some(false); }
             });
         });
         if m.should_close() && answer.is_none() { answer = Some(false); }
@@ -42,22 +42,22 @@ impl App {
         let mut answer = None;
         let m = egui::Modal::new(egui::Id::new("plugin-install-warning")).frame(egui::Frame::popup(&ctx.style()).fill(t.card).corner_radius(12.0).inner_margin(20)).show(ctx, |ui| {
             ui.set_width(440.0);
-            ui.label(RichText::new(format!("{} v{} installieren?", a.plugin.name, a.plugin.version)).font(semibold(18.0)).color(t.text1));
+            ui.label(RichText::new(crate::trq!("Install %1 v%2?", a.plugin.name, a.plugin.version)).font(semibold(18.0)).color(t.text1));
             ui.add_space(8.0);
-            kit::text_block(ui, NATIVE_CODE, kit::BODY, t.text1, 0.0);
+            kit::text_block(ui, tr(NATIVE_CODE), kit::BODY, t.text1, 0.0);
             if !a.official {
                 ui.add_space(8.0);
-                kit::text_block(ui, &format!("Dieses Plugin kommt nicht aus dem offiziellen Webox-Repository, sondern aus „{}“:", a.repo_title), kit::BODY, t.tk("listitem-textmissed"), 0.0);
+                kit::text_block(ui, &crate::trq!("This plugin is not from the official Webox repository but from \u{201c}%1\u{201d}:", a.repo_title), kit::BODY, t.tk("listitem-textmissed"), 0.0);
                 kit::text_block(ui, &a.repo, kit::SECOND, t.text2, 0.0);
             }
             ui.add_space(8.0);
-            let authors = if a.plugin.authors.is_empty() { "unbekannt".to_string() } else { a.plugin.authors.join(", ") };
-            kit::text_block(ui, &format!("Autor: {authors} · Paket: {}", a.plugin.pkg), kit::SECOND, t.text2, 0.0);
+            let authors = if a.plugin.authors.is_empty() { tr("unknown").to_string() } else { a.plugin.authors.join(", ") };
+            kit::text_block(ui, &crate::trq!("Author: %1 · Package: %2", authors, a.plugin.pkg), kit::SECOND, t.text2, 0.0);
             ui.add_space(16.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if kit::pill(ui, t, "Installieren", true, true).clicked() { answer = Some(true); }
+                if kit::pill(ui, t, tr("Install"), true, true).clicked() { answer = Some(true); }
                 ui.add_space(8.0);
-                if kit::pill(ui, t, "Abbrechen", true, true).clicked() { answer = Some(false); }
+                if kit::pill(ui, t, tr("Cancel"), true, true).clicked() { answer = Some(false); }
             });
         });
         if m.should_close() && answer.is_none() { answer = Some(false); }

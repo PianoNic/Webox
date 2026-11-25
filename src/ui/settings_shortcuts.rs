@@ -1,6 +1,6 @@
-//! Settings > "Tastenkombinationen": search field, sections with one row per command (title, key label, Global checkbox,
+//! Settings > "Keyboard shortcuts": search field, sections with one row per command (title, key label, Global checkbox,
 //! "…" menu), key capture and the conflict dialogs. Colour tokens `shortcutinput-*`, `listitem-background`,
-//! `label-secondary-text`, `separator-primary`; German strings from the pack. Key label 28 high, 4 px inner margin, 8 px radius.
+//! `label-secondary-text`, `separator-primary`; English pack sources, translated with `tr`. Key label 28 high, 4 px inner margin, 8 px radius.
 use crate::shortcuts::{self, conflict_message, default_taken_message, find_conflict, registry, Combo, Conflict, Group, CONFLICT_TITLE, DEFAULT_TAKEN};
 use crate::ui::menu::{light, menu_is_open, menu_open, webex_dialog, webex_menu, Align, Button, Item, Side};
 use crate::*;
@@ -28,9 +28,9 @@ enum Look { Inactive, Reassign, Available, Unavailable }
 const ROW_H: f32 = 40.0; // title height + 10, pill 28 + margins
 const HEAD_H: f32 = 36.0; // section header height
 const ACTIONS_W: f32 = 64.0; // actions column 60 + right margin 4
-const INFO: &str = concat!("Mit \"Global\" können Sie ", crate::app_name!(), "-Tastenkombinationen verwenden, wenn die App minimiert ist oder im Hintergrund ausgeführt wird. Deaktivierte Tastenkombinationen können nicht global festgelegt werden.");
-const NO_GLOBAL: &str = "Diese Tastenkombination kann nicht als \"Global\" festgelegt werden.";
-const HINT: &str = "Geben Sie mithilfe der Tastatur eine neue Kombination ein.";
+const INFO: &str = "Global lets you use Webex shortcuts when the app is minimized or in the background. Disabled shortcuts cannot be made global.";
+const NO_GLOBAL: &str = "This shortcut can't be made global";
+const HINT: &str = "Type a new key combination on your keyboard.";
 
 impl App {
     pub(crate) fn shortcuts_page(&mut self, ui: &mut egui::Ui, t: &Th) {
@@ -57,20 +57,20 @@ impl App {
         self.icons.paint(ui, "search-regular", Rect::from_center_size(pos2(fr.left() + 20.0, fr.center().y), Vec2::splat(16.0)), text2);
         let mut fui = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(pos2(fr.left() + 36.0, fr.top()), pos2(fr.right() - 12.0, fr.bottom()))).layout(egui::Layout::left_to_right(egui::Align::Center)));
         fui.add(egui::TextEdit::singleline(&mut self.sc.page.q).id(egui::Id::new("sc-page-search")).frame(false).margin(Vec2::ZERO).desired_width(f32::INFINITY)
-            .hint_text(RichText::new("Tastenkombinationen für die Suche").color(dim)).font(FontId::proportional(14.0)).text_color(text));
+            .hint_text(RichText::new(tr("Search shortcuts")).color(dim)).font(FontId::proportional(14.0)).text_color(text));
         ui.add_space(12.0);
 
         // Column headers.
         let (hr, _) = ui.allocate_exact_size(Vec2::new(w, 24.0), Sense::hover());
         let hp = ui.painter();
-        hp.text(pos2(hr.left() + 8.0, hr.center().y), egui::Align2::LEFT_CENTER, "Beschreibung", FontId::proportional(13.0), text2);
+        hp.text(pos2(hr.left() + 8.0, hr.center().y), egui::Align2::LEFT_CENTER, tr("Description"), FontId::proportional(13.0), text2);
         let col_r = hr.right() - ACTIONS_W - 16.0;
-        hp.text(pos2(col_r, hr.center().y), egui::Align2::RIGHT_CENTER, "Tastenkombination", FontId::proportional(13.0), text2);
+        hp.text(pos2(col_r, hr.center().y), egui::Align2::RIGHT_CENTER, tr("Shortcut"), FontId::proportional(13.0), text2);
         let gx = hr.right() - ACTIONS_W + 10.0;
         hp.text(pos2(gx, hr.center().y), egui::Align2::CENTER_CENTER, "Global", FontId::proportional(13.0), text2);
         let ir = Rect::from_center_size(pos2(gx + 38.0, hr.center().y), Vec2::splat(18.0));
         self.icons.paint(ui, "info_16", ir, text2);
-        ui.interact(ir, egui::Id::new("sc-global-info"), Sense::hover()).on_hover_text(INFO);
+        ui.interact(ir, egui::Id::new("sc-global-info"), Sense::hover()).on_hover_text(crate::tr!("SettingsKeyboardShortcutsPage", INFO).to_string());
         ui.painter().hline(hr.x_range(), hr.bottom() + 1.0, Stroke::new(1.0_f32, sep));
         ui.add_space(6.0);
 
@@ -80,14 +80,14 @@ impl App {
         for (gi, g) in Group::SHOWN.iter().enumerate() {
             let rows: Vec<usize> = reg.cmds.iter().enumerate().filter(|(i, c)| c.group == *g && c.listed() && (q.is_empty() || {
                 let key = self.sc.res.get(*i).and_then(|r| r.key).map(|k| k.display()).unwrap_or_default();
-                c.label.to_lowercase().contains(&q) || key.to_lowercase().contains(&q) })).map(|(i, _)| i).collect();
+                tr(c.label).to_lowercase().contains(&q) || key.to_lowercase().contains(&q) })).map(|(i, _)| i).collect();
             if rows.is_empty() { continue; }
             let open = !q.is_empty() || !self.sc.page.collapsed.contains(&gi);
             // Section header: chevron + title, click toggles.
             let (r, resp) = ui.allocate_exact_size(Vec2::new(w, HEAD_H), Sense::click());
             if resp.hovered() { ui.painter().rect_filled(r, 8.0, alpha(base, 0.07)); ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
             self.icons.paint(ui, if open { "arrow-down-optical_12" } else { "arrow-right-optical_10" }, Rect::from_center_size(pos2(r.left() + 20.0, r.center().y), Vec2::splat(12.0)), text);
-            ui.painter().text(pos2(r.left() + 36.0, r.center().y), egui::Align2::LEFT_CENTER, g.title(), semibold(14.5), text);
+            ui.painter().text(pos2(r.left() + 36.0, r.center().y), egui::Align2::LEFT_CENTER, tr(g.title()), semibold(14.5), text);
             if resp.clicked() && q.is_empty() { todo.push(Do::Group(gi)); }
             if !open { continue; }
             for i in rows { shown += 1; self.sc_row(ui, t, i, w, [text, text2, dim, base], now, &mut todo); }
@@ -99,27 +99,27 @@ impl App {
                 let (ar, _) = ui.allocate_exact_size(Vec2::new(70.0, 70.0), Sense::hover());
                 self.icons.art(ui, "desert-open-results-192-cobalt-lime", ar);
                 ui.add_space(16.0);
-                ui.add(egui::Label::new(RichText::new("Es wurden keine Tastenkombinationen gefunden, die Ihren Suchkriterien entsprechen.").color(text2).size(14.0)).wrap());
+                ui.add(egui::Label::new(RichText::new(tr("We can’t find any shortcuts that match your search.")).color(text2).size(14.0)).wrap());
             });
         }
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             ui.add_space(12.0);
             let mut on = self.settings[shortcuts::GLOBAL_KEY].as_bool().unwrap_or(false);
-            if crate::ui::settings::kit::check(ui, &mut self.icons, t, "Globale Tastenkombinationen systemweit registrieren", &mut on, true, false) {
+            if crate::ui::settings::kit::check(ui, &mut self.icons, t, tr("Register global shortcuts system-wide"), &mut on, true, false) {
                 self.settings[shortcuts::GLOBAL_KEY] = serde_json::json!(on);
                 if self.shot.is_none() { system::save_settings(&self.cfg, &self.settings); }
             }
-            ui.label(RichText::new("Belegt die Tasten auch in anderen Programmen").color(text2).size(12.5));
+            ui.label(RichText::new(tr("Takes the keys in other programs too")).color(text2).size(12.5));
         }
         // Reset button.
         ui.add_space(16.0);
-        let tw = ui.fonts(|f| f.layout_no_wrap("Auf Standard zurücksetzen".into(), semibold(14.0), text).size().x);
+        let tw = ui.fonts(|f| f.layout_no_wrap(tr("Reset to default").into(), semibold(14.0), text).size().x);
         let (br, bresp) = ui.allocate_exact_size(Vec2::new(tw + 40.0, 32.0), Sense::click());
         if bresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
         ui.painter().rect_filled(br, 16.0, if bresp.hovered() { alpha(base, 0.12) } else { Color32::TRANSPARENT });
         ui.painter().rect_stroke(br, 16.0, Stroke::new(1.0_f32, alpha(base, 0.3)), egui::StrokeKind::Inside);
-        ui.painter().text(br.center(), egui::Align2::CENTER_CENTER, "Auf Standard zurücksetzen", semibold(14.0), text);
+        ui.painter().text(br.center(), egui::Align2::CENTER_CENTER, tr("Reset to default"), semibold(14.0), text);
         if bresp.clicked() { todo.push(Do::ResetAll); }
         ui.add_space(16.0);
 
@@ -128,9 +128,9 @@ impl App {
             let c = &reg.cmds[i];
             let key = self.sc.res[i].key;
             let items = [
-                Item::new("edit", "Bearbeiten").enabled(c.customizable).entry(),
-                Item::new("remove", "Entfernen").enabled(c.customizable && key.is_some()).entry(),
-                Item::new("reset", "Auf Standard zurücksetzen").enabled(c.customizable && self.sc.res[i].custom).entry(),
+                Item::new("edit", tr("Edit")).enabled(c.customizable).entry(),
+                Item::new("remove", tr("Remove")).enabled(c.customizable && key.is_some()).entry(),
+                Item::new("reset", tr("Reset to default")).enabled(c.customizable && self.sc.res[i].custom).entry(),
             ];
             let k = format!("sc-more-{i}");
             match webex_menu(&ctx, &mut self.icons, t, &k, anchor, Side::Below, Align::Right, false, &items).as_deref() {
@@ -156,7 +156,7 @@ impl App {
         if self.sc.page.edit.is_some() || self.sc.page.applied.is_some() { ctx.request_repaint_after(std::time::Duration::from_millis(100)); }
     }
 
-    /// One shortcut row: title, [warning], key label or "+ Tastenkombination hinzufügen", Global checkbox, "…".
+    /// One shortcut row: title, [warning], key label or "+ Add shortcut", Global checkbox, "…".
     fn sc_row(&mut self, ui: &mut egui::Ui, t: &Th, i: usize, w: f32, pal: [Color32; 4], now: f64, todo: &mut Vec<Do>) {
         let [text, text2, dim, base] = pal;
         let ctx = ui.ctx().clone();
@@ -186,7 +186,7 @@ impl App {
             if r.global { ui.painter().rect_filled(cb, 4.0, if can { kc.checked_bg.pick(&cresp) } else { kc.checked_bg.normal }); self.icons.paint(ui, "check-bold", Rect::from_center_size(cb.center(), Vec2::splat(12.0)), kc.checked_icon); }
             else { ui.painter().rect_stroke(cb, 4.0, Stroke::new(1.5_f32, if can && cresp.hovered() { text } else { col }), egui::StrokeKind::Inside); }
             if can && cresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
-            if !c.can_be_global { cresp.on_hover_text(NO_GLOBAL); } else if can && cresp.clicked() { todo.push(Do::Global(i, !r.global)); }
+            if !c.can_be_global { cresp.on_hover_text(tr(NO_GLOBAL)); } else if can && cresp.clicked() { todo.push(Do::Global(i, !r.global)); }
         }
         // Key label.
         let right = actions.left() - 16.0;
@@ -211,11 +211,11 @@ impl App {
             if presp.clicked() { todo.push(Do::Edit(i)); }
             // A press anywhere else leaves the edit mode (focus loss).
             if editing && self.sc.page.dlg.is_none() && ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !pr.contains(p))) { self.sc.page.edit = None; }
-            if editing { presp.on_hover_text(HINT); }
+            if editing { presp.on_hover_text(tr(HINT)); }
             left_limit = pr.left() - 8.0;
         } else if c.customizable {
-            // Pill button, secondary XS, left icon plus-bold: "Tastenkombination hinzufügen".
-            let label = "Tastenkombination hinzufügen";
+            // Pill button, secondary XS, left icon plus-bold: "Add shortcut".
+            let label = tr("Add shortcut");
             let tw = ui.fonts(|f| f.layout_no_wrap(label.into(), semibold(13.0), text).size().x);
             let pr = Rect::from_min_size(pos2(right - (tw + 16.0 + 18.0 + 8.0), row.center().y - 12.0), Vec2::new(tw + 42.0, 24.0));
             let presp = ui.interact(pr, egui::Id::new(("sc-add", i)), Sense::click());
@@ -230,12 +230,12 @@ impl App {
         if let Some(by) = r.default_taken_by {
             let wr = Rect::from_center_size(pos2(left_limit - 12.0, row.center().y), Vec2::splat(20.0));
             self.icons.paint(ui, "warning-regular", Rect::from_center_size(wr.center(), Vec2::splat(16.0)), t.star);
-            ui.interact(wr, egui::Id::new(("sc-warn", i)), Sense::hover()).on_hover_text(format!("{DEFAULT_TAKEN}\n{}", default_taken_message(&reg.cmds, i, by)));
+            ui.interact(wr, egui::Id::new(("sc-warn", i)), Sense::hover()).on_hover_text(format!("{}\n{}", tr(DEFAULT_TAKEN), default_taken_message(&reg.cmds, i, by)));
             left_limit = wr.left() - 4.0;
         }
         // Title.
         let tcol = if c.customizable || r.key.is_none() { text } else { text };
-        crate::ui::chrome::fit_text(ui.painter(), row.left() + 12.0, row.center().y, c.label, FontId::proportional(14.5), tcol, (left_limit - row.left() - 24.0).max(40.0));
+        crate::ui::chrome::fit_text(ui.painter(), row.left() + 12.0, row.center().y, tr(c.label), FontId::proportional(14.5), tcol, (left_limit - row.left() - 24.0).max(40.0));
         let _ = text2;
     }
 
@@ -271,8 +271,8 @@ impl App {
                 let (idx, combo, c) = (*idx, *combo, *c);
                 let resetting = matches!(d, Dlg::Reset { .. });
                 let msg = conflict_message(&reg.cmds, &c, combo, resetting);
-                let buttons = if c.fate == shortcuts::Fate::Locked { vec![Button::primary("cancel", "OK")] } else { vec![Button::secondary("cancel", "Abbrechen"), Button::primary("ok", "Fortfahren")] };
-                match webex_dialog(ctx, t, "sc-conflict", CONFLICT_TITLE, &msg, None, &buttons).as_deref() {
+                let buttons = if c.fate == shortcuts::Fate::Locked { vec![Button::primary("cancel", "OK")] } else { vec![Button::secondary("cancel", tr("Cancel")), Button::primary("ok", tr("Continue"))] };
+                match webex_dialog(ctx, t, "sc-conflict", tr(CONFLICT_TITLE), &msg, None, &buttons).as_deref() {
                     Some("ok") => {
                         if resetting { self.sc_reset(idx, Some(c)); } else { self.sc_assign(idx, Some(combo), Some(c)); self.sc.page.applied = Some((idx, now)); }
                         self.sc.page.edit = None;
@@ -281,10 +281,10 @@ impl App {
                     None => keep = true,
                 }
             }
-            Dlg::ResetAll => match webex_dialog(ctx, t, "sc-reset-all", "Alle Tastenkombinationen auf die standardmäßigen Werte zurücksetzen?",
-                "Ersetzen Sie alle Ihre angepassten Tastenkombinationen durch die Standardtastenkombinationen.", None,
-                &[Button::secondary("cancel", "Abbrechen"), Button::primary("ok", "Zurücksetzen")]).as_deref() {
-                Some("ok") => { self.sc_reset_all(); self.toast("Tastenkombinationen werden auf die Standardeinstellungen zurückgesetzt.", now); }
+            Dlg::ResetAll => match webex_dialog(ctx, t, "sc-reset-all", tr("Reset all shortcuts to default?"),
+                tr("Replace all your customized keyboard shortcuts with the default shortcuts."), None,
+                &[Button::secondary("cancel", tr("Cancel")), Button::primary("ok", tr("Reset"))]).as_deref() {
+                Some("ok") => { self.sc_reset_all(); self.toast(tr("Shortcuts are reset to their defaults."), now); }
                 Some(_) => {}
                 None => keep = true,
             },

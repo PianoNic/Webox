@@ -1,10 +1,10 @@
 //! Settings that act app-wide, applied once per frame (`appwide_frame`, hook in frame.rs) or asked by the code
 //! that needs them (`quiet_now`). The settings pages only store the values (settings JSON); this file makes them take effect:
-//! * `show_presence` (Allgemein / Privatsphäre "Verfügbarkeit und Status anzeigen"): off hides every presence badge and line, and
+//! * `show_presence` (General / Privacy "Show availability and status"): off hides every presence badge and line, and
 //!   a change is sent as the user feature toggle `user-presence-enabled`.
-//! * `msg_font_size` (Barrierefreiheit > Schriftgröße): the message text scale (ui/messages/ JobBuilder).
-//! * `home` (Allgemein > Zielbildschirm): the page shown at start.
-//! * `quiet_hours` / `quiet_day` / `quiet_start` / `quiet_end` (Benachrichtigungen > Ruhezeiten): no toasts and no message sounds
+//! * `msg_font_size` (Accessibility > Font size): the message text scale (ui/messages/ JobBuilder).
+//! * `home` (General > Landing screen): the page shown at start.
+//! * `quiet_hours` / `quiet_day` / `quiet_start` / `quiet_end` (Notifications > Quiet hours): no toasts and no message sounds
 //!   inside the window. The page has one day row: the hours apply on that weekday (and run past midnight into the next day
 //!   when the end is before the start).
 //! * the custom status' end: an expired status is removed from the settings.
@@ -37,7 +37,7 @@ impl App {
         let shown = self.settings["show_presence"] != false;
         super::widgets::PRESENCE_SHOWN.store(shown, Ordering::Relaxed);
         super::widgets::MSG_SCALE.store(self.msg_font_scale().to_bits(), Ordering::Relaxed);
-        // A change of "Verfügbarkeit und Status anzeigen" goes to the service (only a change the user made: the first value is the baseline).
+        // A change of "Show availability and status" goes to the service (only a change the user made: the first value is the baseline).
         let kid = egui::Id::new("appwide-presence-shown");
         let last: Option<bool> = ctx.data(|d| d.get_temp(kid));
         if last.is_some_and(|l| l != shown) {

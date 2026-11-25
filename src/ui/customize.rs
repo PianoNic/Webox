@@ -1,13 +1,13 @@
-//! Settings > Oberfläche anpassen: which UI elements are shown and, for the rail and the composer toolbar, in which order.
+//! Settings > Customize the interface: which UI elements are shown and, for the rail and the composer toolbar, in which order.
 //!
 //! Each area is a [`Group`] stored under its own settings key, e.g.
 //! `"ui_rail": { "hidden": ["calling"], "order": ["contacts", "messaging", ...] }`. A missing key is today's look, so
-//! "Zurücksetzen" just removes it. Hiding is presentation only: shortcuts keep working, hidden rail entries move into the
+//! "Reset" just removes it. Hiding is presentation only: shortcuts keep working, hidden rail entries move into the
 //! rail's "…" menu, and the rail's settings gear and "…" button are never hidden together (Settings stays reachable).
 //! The layout code calls [`shown`] / [`visible`] every frame: map lookups and a scan of a short array, no allocation.
 use serde_json::{json, Value};
 
-/// One element: its id in the settings JSON, the label and icon of the official app, and whether it keeps its place
+/// One element: its id in the settings JSON, the English label (translated with `tr` when drawn) and icon of the official app, and whether it keeps its place
 /// (the rail's bottom entries) instead of taking part in the order.
 pub(crate) struct El { pub id: &'static str, pub label: &'static str, pub icon: &'static str, pub fixed: bool }
 const fn el(id: &'static str, label: &'static str, icon: &'static str) -> El { El { id, label, icon, fixed: false } }
@@ -19,34 +19,34 @@ pub(crate) struct Group { pub key: &'static str, pub title: &'static str, pub de
 /// Most elements a group may have (the order is kept in a fixed array).
 pub(crate) const MAX: usize = 16;
 
-pub(crate) const RAIL: Group = Group { key: "ui_rail", title: "App-Seitenleiste", orderable: true,
-    desc: "Registerkarten ein- und ausblenden und mit den Pfeilen anordnen. Ausgeblendete Registerkarten finden Sie im Menü „Weitere“; ihre Tastenkombinationen funktionieren weiterhin.",
-    els: &[el("messaging", "Nachrichten", "chat-filled"), el("meetings", "Meetings", "calendar-month-filled"), el("calling", "Anrufe", "handset-filled"),
-        el("separator", "Trennlinie", "horizontal-line-regular"), el("whiteboards", "Whiteboards", "whiteboard-content-filled"), el("contacts", "Kontakte", "contacts-filled"),
-        el("teams", "Teams", "webex-teams-filled"), el("more", "Weitere", "more-regular"),
-        pinned("help", "Hilfe", "help-circle-filled"), pinned("settings", "Einstellungen", "settings-filled")] };
-pub(crate) const MORE: Group = Group { key: "ui_more", title: "Menü „Weitere“", orderable: false,
-    desc: "Einträge im Menü „Weitere“ der App-Seitenleiste.",
-    els: &[el("voicemail", "Voicemail", "voicemail-regular"), el("plugins", "Plugins & Themes", "apps-regular"), el("about", "Info über Webox", "info-circle-regular"),
-        el("labels", "Beschriftungen anzeigen (Alt+Umschalt+Q)", "application-panel-regular")] };
-pub(crate) const COMPOSER: Group = Group { key: "ui_composer", title: "Symbolleiste des Nachrichtenfelds", orderable: true,
-    desc: "Schaltflächen unter dem Nachrichtenfeld. Die Tastenkombinationen (Strg+O, Alt+Umschalt+M, Strg+Umschalt+Leertaste) funktionieren auch ohne Schaltfläche.",
-    els: &[el("attach", "Datei anhängen", "attachment_16_em"), el("screenshot", "Screenshot", "screenshot_16_em"), el("markdown", "Markdown", "markdown_16_em"),
-        el("emoji", "Emoticons und Symbole", "emoticons_16_em"), el("gif", "GIFs hinzufügen", "gif_16"), el("mention", "@Erwähnungen", "mention_16_em"),
-        el("ai", "KI-Assistent", "sparkle-bold")] };
-pub(crate) const HEADER: Group = Group { key: "ui_header", title: "Kopfzeile", orderable: false,
-    desc: "Schaltflächen oben im Fenster. Die Suche öffnet sich auch mit Strg+F.",
-    els: &[el("search", "Suchen, treffen und anrufen", "search-regular"), el("plus", "Eine Unterhaltung starten", "plus-regular"),
-        el("device", "Mit einem Gerät verbinden", "device-connection-regular"), el("ai", "KI-Assistent", "sparkle-regular")] };
-pub(crate) const SPACE_TABS: Group = Group { key: "ui_space_tabs", title: "Registerkarten im Bereich", orderable: false,
-    desc: "Registerkarten neben „Nachrichten“ oben in einem Bereich.",
-    els: &[el("people", "Personen / Profil", "people-regular"), el("content", "Inhalt", "document-regular"), el("meetings", "Meetings", "meetings-regular"), el("apps", "+Apps", "apps-regular")] };
-pub(crate) const MSG_BAR: Group = Group { key: "ui_msg_bar", title: "Nachrichtenaktionen", orderable: false,
-    desc: "Die Leiste über einer Nachricht, wenn Sie mit der Maus darauf zeigen. „Weitere Aktionen“ (···) bleibt immer da und enthält die übrigen Aktionen.",
-    els: &[el("quick", "Schnelle Reaktionen (Daumen hoch, Grinsendes Gesicht, Erhobene Hände)", "reactions-regular"), el("react", "Reaktion hinzufügen", "reactions_12"), el("edit", "Bearbeiten", "edit_12"),
-        el("reply", "Im Thread antworten", "reply_12"), el("forward", "Weiterleiten", "forward-message_12")] };
-pub(crate) const LIST: Group = Group { key: "ui_list", title: "Bereichsliste", orderable: false, desc: "",
-    els: &[el("recommended", "Empfohlene Nachrichten", "chat-regular")] };
+pub(crate) const RAIL: Group = Group { key: "ui_rail", title: "App sidebar", orderable: true,
+    desc: "Show or hide tabs and order them with the arrows. Hidden tabs are in the More menu; their shortcuts keep working.",
+    els: &[el("messaging", "Messaging", "chat-filled"), el("meetings", "Meetings", "calendar-month-filled"), el("calling", "Calling", "handset-filled"),
+        el("separator", "Divider", "horizontal-line-regular"), el("whiteboards", "Whiteboards", "whiteboard-content-filled"), el("contacts", "Contacts", "contacts-filled"),
+        el("teams", "Teams", "webex-teams-filled"), el("more", "More", "more-regular"),
+        pinned("help", "Help", "help-circle-filled"), pinned("settings", "Settings", "settings-filled")] };
+pub(crate) const MORE: Group = Group { key: "ui_more", title: "More menu", orderable: false,
+    desc: "Entries in the More menu of the app sidebar.",
+    els: &[el("voicemail", "Voicemail", "voicemail-regular"), el("plugins", "Plugins & Themes", "apps-regular"), el("about", "About Webox", "info-circle-regular"),
+        el("labels", "Show labels (Alt+Shift+Q)", "application-panel-regular")] };
+pub(crate) const COMPOSER: Group = Group { key: "ui_composer", title: "Message box toolbar", orderable: true,
+    desc: "Buttons under the message box. The shortcuts (Ctrl+O, Alt+Shift+M, Ctrl+Shift+Space) work without the buttons too.",
+    els: &[el("attach", "Attach a file", "attachment_16_em"), el("screenshot", "Screen Capture", "screenshot_16_em"), el("markdown", "Markdown", "markdown_16_em"),
+        el("emoji", "Emoji and symbols", "emoticons_16_em"), el("gif", "Add GIFs", "gif_16"), el("mention", "@Mentions", "mention_16_em"),
+        el("ai", "AI Assistant", "sparkle-bold")] };
+pub(crate) const HEADER: Group = Group { key: "ui_header", title: "Top bar", orderable: false,
+    desc: "Buttons at the top of the window. Search also opens with Ctrl+F.",
+    els: &[el("search", "Search, meet, and call", "search-regular"), el("plus", "Start a conversation", "plus-regular"),
+        el("device", "Connect to a device", "device-connection-regular"), el("ai", "AI Assistant", "sparkle-regular")] };
+pub(crate) const SPACE_TABS: Group = Group { key: "ui_space_tabs", title: "Space tabs", orderable: false,
+    desc: "The tabs next to Messages at the top of a space.",
+    els: &[el("people", "People / Profile", "people-regular"), el("content", "Content", "document-regular"), el("meetings", "Meetings", "meetings-regular"), el("apps", "+Apps", "apps-regular")] };
+pub(crate) const MSG_BAR: Group = Group { key: "ui_msg_bar", title: "Message actions", orderable: false,
+    desc: "The bar above a message when you point at it. More actions (···) always stays and holds the other actions.",
+    els: &[el("quick", "Quick reactions (thumbs up, grinning face, raised hands)", "reactions-regular"), el("react", "Add reaction", "reactions_12"), el("edit", "Edit", "edit_12"),
+        el("reply", "Reply to thread", "reply_12"), el("forward", "Forward", "forward-message_12")] };
+pub(crate) const LIST: Group = Group { key: "ui_list", title: "Space list", orderable: false, desc: "",
+    els: &[el("recommended", "Recommended messages", "chat-regular")] };
 
 /// All groups in page order.
 pub(crate) const GROUPS: [&Group; 7] = [&RAIL, &MORE, &COMPOSER, &HEADER, &SPACE_TABS, &MSG_BAR, &LIST];
@@ -113,7 +113,7 @@ pub(crate) fn visible(s: &Value, g: &'static Group) -> impl Iterator<Item = &'st
     (0..n).map(move |k| &g.els[o[k] as usize])
 }
 
-/// The rail entries the "…" menu offers instead: every hidden tab, Hilfe and Einstellungen.
+/// The rail entries the "…" menu offers instead: every hidden tab, Help and Settings.
 pub(crate) fn rail_overflow(s: &Value) -> impl Iterator<Item = &'static El> + '_ {
     RAIL.els.iter().filter(move |e| !matches!(e.id, "separator" | "more") && !shown(s, &RAIL, e.id))
 }
@@ -134,10 +134,10 @@ pub(crate) fn is_default(s: &Value, g: &Group) -> bool {
     g.els.iter().all(|e| !hidden_raw(s, g, e.id)) && o[..n].windows(2).all(|w| w[0] < w[1])
 }
 
-/// "Zurücksetzen": the group's defaults again.
+/// "Reset": the group's defaults again.
 pub(crate) fn reset(s: &mut Value, g: &Group) { if let Some(o) = s.as_object_mut() { o.remove(g.key); } }
 
-/// The rail checkboxes of the former "App-Seitenleiste" page (`sb_*: false`) become hidden rail entries.
+/// The rail checkboxes of the former "App sidebar" page (`sb_*: false`) become hidden rail entries.
 pub(crate) fn migrate_legacy(s: &mut Value) {
     for (old, id) in [("sb_messaging", "messaging"), ("sb_meetings", "meetings"), ("sb_calling", "calling"), ("sb_whiteboards", "whiteboards"), ("sb_contacts", "contacts")] {
         let Some(v) = s.as_object_mut().and_then(|o| o.remove(old)) else { continue };
@@ -146,7 +146,7 @@ pub(crate) fn migrate_legacy(s: &mut Value) {
 }
 
 impl crate::App {
-    /// Whether element `id` of group `g` is drawn (Settings > Oberfläche anpassen).
+    /// Whether element `id` of group `g` is drawn (Settings > Customize the interface).
     pub(crate) fn ui_shown(&self, g: &Group, id: &str) -> bool { shown(&self.settings, g, id) }
 }
 

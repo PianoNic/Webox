@@ -3,7 +3,7 @@
 //! replaced by two rounded gradient cards (4 px gap) - the settings navigation on the left, the page on the right. Rail gear icon /
 //! Ctrl+, switch to it; Esc (or any rail item) leaves it and the previous tab / space comes back (history back).
 //! Navigation: rows 36 high, spacing 2, radius 4, 20 px icon, bold chevron for parents; page: header with the title, body
-//! margins 16 / 32, footer "Auf Standard zurücksetzen" where the page has a reset.
+//! margins 16 / 32, footer "Reset to default" where the page has a reset.
 //! Search: a 32 high field, results popup radius 12, 500 ms debounce, rows with text / description / path.
 //! Screenshot env: `WEBOX_SHOT_SETTINGS=<page>` (general, audio, smartaudio, video, share, notifications, messages, calls, notifmeetings,
 //! appearance, accessibility, shortcuts, privacy, messaging, meetings, join, layout, lobby, calling, dock, block, devices, accessories, customize (or sidebar)),
@@ -31,7 +31,7 @@ struct SUi { page: Page, open: Vec<Page>, search: String, edited: f64, applied: 
 impl Default for SUi { fn default() -> SUi { SUi { page: Page::General, open: vec![], search: String::new(), edited: 0.0, applied: String::new(), hi: 0 } } }
 
 impl App {
-    /// Message-font scale of Barrierefreiheit > Schriftgröße (1.0 = Regulär). Used by the message list for body text.
+    /// Message-font scale of Accessibility > Font size (1.0 = Regular). Used by the message list for body text.
     #[allow(dead_code)]
     pub(crate) fn msg_font_scale(&self) -> f32 { msg_font_scale_of(self.settings["msg_font_size"].as_str().unwrap_or("regular")) }
 
@@ -49,7 +49,7 @@ impl App {
     /// Whether a light theme is active.
     #[allow(dead_code)]
     pub(crate) fn light_mode(&self, ctx: &egui::Context) -> bool { !self.theme_id(ctx).is_dark() }
-    /// The theme of call windows / call toasts: "Immer dunkles Thema verwenden" (`always_dark_calls`) keeps them on the dark
+    /// The theme of call windows / call toasts: "Always use dark theme" (`always_dark_calls`) keeps them on the dark
     /// variant of the selected theme.
     pub(crate) fn call_theme(&self, ctx: &egui::Context) -> Th {
         let id = self.theme_id(ctx);
@@ -112,7 +112,7 @@ impl App {
             if !icon.is_empty() { self.icons.paint(ui, icon, Rect::from_center_size(pos2(x0 + 10.0, r.center().y), Vec2::splat(20.0)), t.text1); }
             let tx = x0 + if icon.is_empty() { 0.0 } else { 28.0 };
             let col = if sel || depth == 0 { t.text1 } else { t.text2 };
-            crate::ui::chrome::fit_text(ui.painter(), tx, r.center().y, title, if sel { semibold(14.0) } else { FontId::proportional(14.0) }, col, r.right() - tx - 30.0);
+            crate::ui::chrome::fit_text(ui.painter(), tx, r.center().y, tr(title), if sel { semibold(14.0) } else { FontId::proportional(14.0) }, col, r.right() - tx - 30.0);
             if nav::has_children(p) { self.icons.paint(ui, if s.open.contains(&p) { "arrow-down-bold" } else { "arrow-right-bold" }, Rect::from_center_size(pos2(r.right() - 16.0, r.center().y), Vec2::splat(16.0)), col); }
             if resp.clicked() {
                 s.page = p;
@@ -186,7 +186,7 @@ impl App {
         self.icons.paint(ui, "search-regular", Rect::from_center_size(sf.left_center() + Vec2::new(16.0, 0.0), Vec2::splat(16.0)), t.text2);
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(sf.min + Vec2::new(32.0, 0.0), sf.max - Vec2::new(28.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
         
-        let r = c.add(egui::TextEdit::singleline(&mut s.search).id(id).frame(false).margin(Vec2::ZERO).font(FontId::proportional(14.0)).hint_text(RichText::new(SEARCH_HINT).color(t.text2).size(14.0)).desired_width(sf.width() - 60.0));
+        let r = c.add(egui::TextEdit::singleline(&mut s.search).id(id).frame(false).margin(Vec2::ZERO).font(FontId::proportional(14.0)).hint_text(RichText::new(tr(SEARCH_HINT)).color(t.text2).size(14.0)).desired_width(sf.width() - 60.0));
         if r.changed() { s.edited = now; }
         if r.has_focus() && ui.input(|i| i.key_pressed(Key::Enter)) { s.applied = s.search.clone(); }
         if r.has_focus() && ui.input(|i| i.key_pressed(Key::Escape)) { s.search.clear(); s.applied.clear(); }
@@ -201,10 +201,10 @@ impl App {
         if s.applied.is_empty() || s.applied != s.search { return; }
         // The fixed index plus every plugin's own settings (from their schemas; a hit opens that plugin's page).
         let mut res: Vec<(Page, String, String, String, Option<String>)> = nav::search(&s.applied).into_iter()
-            .map(|(p, l, d)| (p, l.to_string(), d.to_string(), format!("Einstellungen › {}", nav::title(p)), None)).collect();
+            .map(|(p, l, d)| (p, l.to_string(), d.to_string(), format!("{} › {}", tr("Settings"), nav::title(p)), None)).collect();
         res.extend(self.plugins.search_settings(&s.applied).into_iter().map(|h| {
             let d = if h.description.is_empty() { h.plugin.clone() } else { h.description };
-            (Page::Plugins, h.label, d, format!("Einstellungen › Plugins › {}", h.plugin), Some(h.key))
+            (Page::Plugins, h.label, d, format!("{} › {} › {}", tr("Settings"), tr("Plugins"), h.plugin), Some(h.key))
         }));
         let row_h = 60.0;
         let h = if res.is_empty() { 80.0 } else { (res.len() as f32 * row_h + 20.0).min(300.0) };
@@ -214,7 +214,7 @@ impl App {
             ui.painter().rect_filled(pop, 12.0, k.popup_bg);
             ui.painter().rect_stroke(pop, 12.0, Stroke::new(1.0_f32, k.border), egui::StrokeKind::Inside);
             ui.allocate_rect(pop, Sense::hover());
-            if res.is_empty() { ui.painter().text(pop.center(), egui::Align2::CENTER_CENTER, "Keine übereinstimmenden Einstellungen gefunden", FontId::proportional(14.0), t.text1); return; }
+            if res.is_empty() { ui.painter().text(pop.center(), egui::Align2::CENTER_CENTER, tr("No matching settings found"), FontId::proportional(14.0), t.text1); return; }
             let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(pop.shrink(8.0)));
             crate::ui::widgets::vscroll().id_salt("settings-search-scroll").auto_shrink([false, false]).show(&mut inner, |ui| {
                 for (i, (p, label, desc, path, key)) in res.iter().enumerate() {
@@ -238,15 +238,15 @@ impl App {
     pub(crate) fn settings_page(&mut self, _ui: &mut egui::Ui, _t: &Th, _now: f64) {} // drawn by settings_tab (frame.rs)
 }
 
-const SEARCH_HINT: &str = "Einstellungen durchsuchen"; // the pack only has "Sucheinstellungen"
+const SEARCH_HINT: &str = "Search the settings"; // Webox wording: the pack's "Search settings" reads "Sucheinstellungen" in German
 
-/// Anrufe > Anruf-Dock > "Anruf-Dock aktivieren" (bool, default true).
+/// Calling > Calling dock > "Turn on the calling dock" (bool, default true).
 pub(crate) const DOCK_ENABLED: &str = "calling_dock";
-/// Anrufe > Anruf-Dock > "Anruf-Dock im Vordergrund beibehalten" (bool, default false); also the dock's pin button.
+/// Calling > Calling dock > "Keep the calling dock in front" (bool, default false); also the dock's pin button.
 pub(crate) const DOCK_KEEP_IN_FRONT: &str = "dock_keep_in_front";
-/// Allgemein > Multitasking: the dock opens by itself while no Webox window is in front (bool, default false).
+/// General > Multitasking: the dock opens by itself while no Webox window is in front (bool, default false).
 pub(crate) const DOCK_AUTO_COVERED: &str = "dock_auto_covered";
-/// Unix ms of the last look at the "Anrufe" tab: missed calls after it make the rail badge (calls_page).
+/// Unix ms of the last look at the "Calling" tab: missed calls after it make the rail badge (calls_page).
 pub(crate) const CALLS_SEEN_MS: &str = "calls_seen_ms";
 
 /// One-time fixes of stored settings, run on load. Returns true when something changed (then the file is written back).

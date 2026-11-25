@@ -4,7 +4,7 @@
 //! "Vorschau" band at the bottom on `overlayFade-secondary-background-normal`, secondary semibold text; the round rotate
 //! button (S, overlay style, `rotate-content-bold`) 8 px from the top-right corner; bottom margin 8). When the camera can't
 //! run, the same box shows the error panel (warning-regular 40, header title, secondary text, optional secondary pill).
-//! Sections: Kamera (camera combo, the option checkboxes, "Max. Kameraauflösung" row with more-info button and a combo of
+//! Sections: Camera (camera combo, the option checkboxes, "Max camera resolution" row with more-info button and a combo of
 //! min. width 180), Videoverbesserungen (touch up + level row, correct my lighting, customize brightness / contrast /
 //! saturation with 120 px label rows of 32), Selbstansicht in Meetings (radio group + 110 x 75 illustration, separator,
 //! checkbox), Erweiterte Videoeinstellungen.
@@ -24,12 +24,12 @@ pub(crate) const PREVIEW: Vec2 = Vec2::new(424.0, 240.0);
 /// Gap below the pinned preview (pt).
 pub(crate) const PINNED_GAP: f32 = 8.0;
 
-const MIRROR_INFO: &str = "Diese Einstellung wirkt sich nur darauf aus, wie Sie Ihr eigenes Video sehen. Wenn der Hintergrund Ihnen spiegelverkehrt vorkommt, keine Sorge, alle anderen sehen ihn normal.";
-const RES_INFO: &str = "Festen Sie die maximal bevorzugte Auflösung fest, die von der Kamera verwendet werden kann. Die tatsächlich übertragene Auflösung kann durch die Webex-Administrationseinstellungen, die verfügbare Bandbreite, die Leistungsfähigkeit der Kamera und andere Faktoren eingeschränkt sein.";
-const TOUCH_INFO: &str = "Wenden Sie einen glättenden Effekt und einen weicheren Fokus auf Ihr Video an, um ein besseres Erscheinungsbild zu erhalten.";
-const LIGHT_INFO: &str = "Achten Sie darauf, dass Sie bei jeder Beleuchtung, auch bei schwachem Licht oder hellem Hintergrund, gut sichtbar sind.";
+const MIRROR_INFO: &str = "This setting only affects how you see your own video. If your background appears reversed to you, others see it normally.";
+const RES_INFO: &str = "Sets the maximum preferred resolution that can be used by the camera. The actual resolution transmitted may be limited by the {{APP_NAME}} administration settings, available bandwidth, camera capability, and other factors.";
+const TOUCH_INFO: &str = "Add a smoothing effect and softer focus to your video for a more polished look.";
+const LIGHT_INFO: &str = "Make sure you're clearly visible in any lighting, including low light or bright backgrounds.";
 /// Name of the synthetic camera of --sample runs (never a real device).
-const SAMPLE_CAM: &str = "Testkamera";
+const SAMPLE_CAM: &str = "Test camera";
 
 /// Camera state of the page (kept in `CallUi`; the preview stops one frame after the page is no longer drawn).
 #[derive(Default)]
@@ -54,19 +54,19 @@ impl CamUi {
 /// An enhancement value 0..100 (older Webox builds stored 0..1).
 fn pct(v: &serde_json::Value) -> f32 { v.as_f64().map_or(50.0, |x| if x <= 1.0 { x * 100.0 } else { x }) as f32 }
 
-/// The error panel's title, text and whether it offers "Systemeinstellungen öffnen" (pack strings, QObject).
+/// The error panel's title, text and whether it offers "Open system settings" (pack strings, QObject).
 fn fail_text(f: &Fail) -> (String, String, bool) {
     match f {
-        Fail::NoCamera => ("Keine Kamera gefunden".into(), "Stellen Sie sicher, dass Ihre Kamera an Ihren Computer angeschlossen ist.".into(), false),
-        Fail::InUse(n) => ("Ihre Kamera kann nicht gestartet werden".into(), format!("Stellen Sie sicher, dass Ihr Kameragerät {n} derzeit nicht von einer anderen Anwendung verwendet wird."), false),
+        Fail::NoCamera => (tr("No camera found").into(), tr("Please ensure that your camera is connected to your computer.").into(), false),
+        Fail::InUse(n) => (tr("Can't start your camera").into(), crate::trq!("Make sure that your camera device <b>{{0}}</b> isn't currently being used by another application.", n).replace("<b>", "").replace("</b>", ""), false),
         #[cfg(target_os = "linux")]
-        Fail::Denied => ("Kein Zugriff auf die Kamera".into(), "Kein Zugriff auf die Kamera (/dev/video*). Ist dein Benutzer in der Gruppe „video“?".into(), false),
+        Fail::Denied => (tr("No access to the camera").into(), tr("No access to the camera (/dev/video*). Is your user in the video group?").into(), false),
         #[cfg(not(target_os = "linux"))]
-        Fail::Denied => ("Webex den Zugriff auf Ihre Kamera erlauben".into(), "Erlauben Sie in Ihren Systemeinstellungen den Zugriff auf Ihre Kamera, damit andere Sie in Meetings sehen können.".into(), cfg!(windows)),
-        Fail::Unplugged(n) => ("Ihre Kamera ist nicht angeschlossen".into(), format!("Stellen Sie sicher, dass Ihr Kameragerät {n} verbunden ist und funktioniert."), false),
+        Fail::Denied => (crate::trq!("Allow {{APP_NAME}} to access your camera").into(), tr("Allow access to your camera in your system settings so others can see you in meetings.").into(), cfg!(windows)),
+        Fail::Unplugged(n) => (tr("Your camera is unplugged").into(), crate::trq!("Make sure that your camera device {{0}} is connected and working.", n), false),
         // invented (clone text): opened, but no frame for 5 s
-        Fail::NoPicture => ("Kein Bild von der Kamera".into(), "Die Kamera liefert kein Bild. Möglicherweise wird sie von einer anderen App verwendet, oder der Kamerazugriff ist in den Datenschutzeinstellungen deaktiviert.".into(), cfg!(windows)),
-        Fail::Other(_) => ("Ihre Kamera kann nicht gestartet werden".into(), "Stellen Sie sicher, dass Ihr Kameragerät funktioniert.".into(), false),
+        Fail::NoPicture => (tr("No picture from the camera").into(), tr("The camera delivers no picture. Another app may be using it, or camera access is turned off in the privacy settings.").into(), cfg!(windows)),
+        Fail::Other(_) => (tr("Can't start your camera").into(), tr("Make sure that your camera device is working.").into(), false),
     }
 }
 
@@ -164,15 +164,15 @@ impl App {
                 if let Some(id) = tex { egui::Image::from_texture(egui::load::SizedTexture::new(id, r.size())).corner_radius(8).paint_at(ui, r); }
                 // invented (clone text): frames arrive but have been black for more than 2 s
                 if self.call.cam.preview.as_ref().is_some_and(|p| p.dark()) {
-                    ui.painter().text(r.center() - Vec2::new(0.0, 14.0), egui::Align2::CENTER_CENTER, "Kein Bild – ist die Kameraabdeckung geschlossen?", FontId::proportional(kit::BODY), Color32::WHITE);
+                    ui.painter().text(r.center() - Vec2::new(0.0, 14.0), egui::Align2::CENTER_CENTER, tr("No picture – is the camera cover closed?"), FontId::proportional(kit::BODY), Color32::WHITE);
                 }
                 let band = Rect::from_min_max(pos2(r.left(), r.bottom() - 28.0), r.max);
                 ui.painter().rect_filled(band, egui::CornerRadius { nw: 0, ne: 0, sw: 8, se: 8 }, Color32::from_black_alpha(128));
-                ui.painter().text(band.center(), egui::Align2::CENTER_CENTER, "Vorschau", semibold(kit::SECOND), Color32::WHITE);
+                ui.painter().text(band.center(), egui::Align2::CENTER_CENTER, tr("Preview"), semibold(kit::SECOND), Color32::WHITE);
                 // rotate button (rotateButtonVisible: shown while the camera runs)
                 if matches!(state, State::Running { .. }) {
                     let br = Rect::from_center_size(pos2(r.right() - 8.0 - 14.0, r.top() + 8.0 + 14.0), Vec2::splat(28.0));
-                    let b = ui.interact(br, egui::Id::new("camera-rotate"), Sense::click()).on_hover_text("Einmal klicken, um die Videoansicht um 90 Grad zu drehen");
+                    let b = ui.interact(br, egui::Id::new("camera-rotate"), Sense::click()).on_hover_text(tr("Click to rotate the video by 90 degrees"));
                     ui.painter().circle_filled(br.center(), 14.0, Color32::from_black_alpha(if b.is_pointer_button_down_on() { 200 } else if b.hovered() { 166 } else { 128 }));
                     self.icons.paint(ui, "rotate-content-bold", Rect::from_center_size(br.center(), Vec2::splat(16.0)), Color32::WHITE);
                     if b.clicked() { let r = (look.rotation + 1) % 4; self.sset("camera_rotation", json!(r)); }
@@ -203,7 +203,7 @@ impl App {
         ui.painter().galley(pos2(r.center().x - xw / 2.0, y), xg.clone(), t.text1);
         y += xg.size().y.max(20.0) + 12.0;
         if action {
-            let label = "Systemeinstellungen öffnen";
+            let label = tr("Open system settings");
             let bw = ui.fonts(|fo| fo.layout_no_wrap(label.into(), semibold(kit::BODY), t.text1).size().x) + 32.0;
             let br = Rect::from_min_size(pos2(r.center().x - bw / 2.0, y), Vec2::new(bw, 32.0));
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(br));
@@ -229,10 +229,10 @@ impl App {
     }
 
     pub(super) fn page_video(&mut self, ui: &mut egui::Ui, t: &Th) {
-        section(ui, t, "Kamera", "", true, |ui| {
+        section(ui, t, tr("Camera"), "", true, |ui| {
             let devs = self.call.cam.devs.clone();
             let sel = self.cam_selected();
-            let names: Vec<String> = if devs.is_empty() { vec!["Keine Kameras gefunden".into()] } else { devs.iter().map(|d| d.name.clone()).collect() };
+            let names: Vec<String> = if devs.is_empty() { vec![tr("No cameras found").into()] } else { devs.iter().map(|d| d.name.clone()).collect() };
             let cur = sel.and_then(|s| devs.iter().position(|d| d.id == s.id)).unwrap_or(0);
             let w = ui.available_width();
             ui.add_enabled_ui(!devs.is_empty(), |ui| {
@@ -240,12 +240,12 @@ impl App {
             });
             ui.add_space(8.0);
             let mut m = self.sb("camera_mirror", true);
-            if kit::check_more(ui, &mut self.icons, t, "Meine Videovorschau spiegeln", &mut m, MIRROR_INFO) { self.sset("camera_mirror", json!(m)); }
+            if kit::check_more(ui, &mut self.icons, t, tr("Mirror my video preview"), &mut m, tr(MIRROR_INFO)) { self.sset("camera_mirror", json!(m)); }
             ui.add_space(4.0);
-            self.pcheck(ui, t, "camera_zoom_fit", true, "Auf optimale Darstellung zoomen");
-            self.pcheck(ui, t, "camera_hw_accel", true, "Hardware-Beschleunigung aktivieren");
+            self.pcheck(ui, t, "camera_zoom_fit", true, tr("Zoom to fit"));
+            self.pcheck(ui, t, "camera_hw_accel", true, tr("Enable hardware acceleration"));
             ui.add_space(4.0);
-            // Max. Kameraauflösung: Auto shows the camera's own best height ("Auto ({{0}}P)"); the list holds what it reaches
+            // Max camera resolution: Auto shows the camera's own best height ("Auto ({{0}}P)"); the list holds what it reaches
             let modes = match self.call.cam.preview.as_ref().map(|p| p.state()) { Some(State::Running { modes, .. }) => modes, _ => vec![] };
             let heights = if modes.is_empty() { camera::HEIGHTS.to_vec() } else { camera::offered_heights(&modes) };
             let auto = if modes.is_empty() { 1080 } else { camera::auto_height(&modes) };
@@ -255,38 +255,38 @@ impl App {
             let cur = opts.iter().position(|o| o.0 == cur_v).unwrap_or(0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                ui.label(RichText::new("Max. Kameraauflösung").size(kit::BODY).color(t.text1));
-                kit::more_info(ui, &mut self.icons, t, RES_INFO);
+                ui.label(RichText::new(tr("Max camera resolution")).size(kit::BODY).color(t.text1));
+                kit::more_info(ui, &mut self.icons, t, &crate::trq!(RES_INFO));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let labels: Vec<String> = opts.iter().map(|o| o.1.clone()).collect();
                     if let Some(i) = kit::combo(ui, &mut self.icons, t, "camera_resolution", 180.0, &labels, cur) { let v = opts[i].0.clone(); self.sset("camera_resolution", json!(v)); }
                 });
             });
         });
-        section(ui, t, "Videoverbesserungen", "", false, |ui| {
+        section(ui, t, tr("Video enhancements"), "", false, |ui| {
             let mut tu = self.sb("video_touch_up", false);
-            if kit::check_more(ui, &mut self.icons, t, "Aussehen auffrischen", &mut tu, TOUCH_INFO) { self.sset("video_touch_up", json!(tu)); }
-            if tu { ui.add_space(4.0); self.adjust_row(ui, t, "video_touch_up_level", "Ebene", 32.0); }
+            if kit::check_more(ui, &mut self.icons, t, tr("Touch up my look"), &mut tu, tr(TOUCH_INFO)) { self.sset("video_touch_up", json!(tu)); }
+            if tu { ui.add_space(4.0); self.adjust_row(ui, t, "video_touch_up_level", tr("Level"), 32.0); }
             ui.add_space(4.0);
             let mut li = self.sb("video_lighting", false);
-            if kit::check_more(ui, &mut self.icons, t, "Belichtung anpassen", &mut li, LIGHT_INFO) { self.sset("video_lighting", json!(li)); }
+            if kit::check_more(ui, &mut self.icons, t, tr("Correct my lighting"), &mut li, tr(LIGHT_INFO)) { self.sset("video_lighting", json!(li)); }
             ui.add_space(4.0);
-            if self.pcheck(ui, t, "video_bcs", false, "Helligkeit, Kontrast und Sättigung anpassen") || self.sb("video_bcs", false) {
+            if self.pcheck(ui, t, "video_bcs", false, tr("Customize brightness, contrast, and saturation")) || self.sb("video_bcs", false) {
                 if self.sb("video_bcs", false) {
-                    self.adjust_row(ui, t, "video_brightness", "Helligkeit", 0.0);
-                    self.adjust_row(ui, t, "video_contrast", "Kontrast", 0.0);
-                    self.adjust_row(ui, t, "video_saturation", "Farbsättigung", 0.0);
+                    self.adjust_row(ui, t, "video_brightness", tr("Brightness"), 0.0);
+                    self.adjust_row(ui, t, "video_contrast", tr("Contrast"), 0.0);
+                    self.adjust_row(ui, t, "video_saturation", tr("Color saturation"), 0.0);
                 }
             }
         });
-        section(ui, t, "Selbstansicht in Meetings", "Ihre Selbstansicht ist Ihre eigene Videoansicht. Wenn Ihr Video ausgeschaltet ist, ist Ihre Selbstansicht die Ansicht, die andere anstelle Ihres Videos sehen, z. B. Ihr Profilbild oder Ihren Anzeigenamen. Diese Optionen steuern nur Ihre Anzeige Ihrer Selbstansicht und nicht, was andere sehen.", false, |ui| {
+        section(ui, t, tr("Self view in meetings"), tr("Your self view is your own video. When your video is off, your self view shows what others see instead of your video, such as your profile picture or display name. These options only change how you see your self view, not what others see."), false, |ui| {
             let cur = self.ss("selfview", "others");
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = 15.0;
                 let w = ui.available_width() - 110.0 - 15.0;
                 ui.allocate_ui(Vec2::new(w, 80.0), |ui| {
                     ui.vertical(|ui| {
-                        for (v, l) in [("others", "Mit anderen anzeigen"), ("floating", "In einem unverankerten Fenster anzeigen"), ("hidden", "Selbstansicht ausblenden")] {
+                        for (v, l) in [("others", tr("Show with others")), ("floating", tr("Show in floating window")), ("hidden", tr("Hide self view"))] {
                             if kit::radio(ui, t, l, cur == v, "") { self.sset("selfview", json!(v)); }
                             ui.add_space(4.0);
                         }
@@ -304,10 +304,10 @@ impl App {
             let (sr, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 1.0), Sense::hover());
             ui.painter().hline(sr.x_range(), sr.center().y, Stroke::new(1.0_f32, t.sep));
             ui.add_space(8.0);
-            self.pcheck(ui, t, "selfview_only_video_on", false, "Nur anzeigen, wenn mein Video aktiviert ist");
+            self.pcheck(ui, t, "selfview_only_video_on", false, tr("Show only when my video is on"));
         });
-        section(ui, t, "Erweiterte Videoeinstellungen", "", false, |ui| {
-            self.pcheck(ui, t, "video_gpu_bg", true, "GPU-Beschleunigung für virtuellen Hintergrund aktivieren");
+        section(ui, t, tr("Advanced video settings"), "", false, |ui| {
+            self.pcheck(ui, t, "video_gpu_bg", true, tr("Enable GPU acceleration for the virtual background"));
             if cfg!(windows) {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Videoaufnahme").size(kit::BODY).color(t.text1));
@@ -333,10 +333,10 @@ mod tests {
 
     #[test]
     fn every_failure_has_a_message() {
-        for f in [Fail::NoCamera, Fail::InUse("Kamera A".into()), Fail::Denied, Fail::Unplugged("Kamera B".into()), Fail::Other("x".into())] {
+        for f in [Fail::NoCamera, Fail::InUse("Camera A".into()), Fail::Denied, Fail::Unplugged("Camera B".into()), Fail::Other("x".into())] {
             let (title, text, _) = fail_text(&f);
             assert!(!title.is_empty() && !text.is_empty());
         }
-        assert!(fail_text(&Fail::InUse("Kamera A".into())).1.contains("Kamera A"));
+        assert!(fail_text(&Fail::InUse("Camera A".into())).1.contains("Camera A"));
     }
 }
