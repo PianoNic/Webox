@@ -14,6 +14,8 @@
 //! * At run time a full pack of any locale is picked up when present and overlays the embedded
 //!   one: `$WEBOX_I18N_DIR` or `%LOCALAPPDATA%\CiscoSparkLauncher\dynamic_dependencies\translations`,
 //!   file `spark-windows-client.<code>.qm` (Qt .qm, parsed by [`parse_qm`]).
+//! * `assets/i18n/webox/<code>/*.tsv` - Webox's own translations of strings the packs lack (`overlay.rs`), embedded;
+//!   consulted after the pack.
 //! * `scripts/i18n/find_qm_context.py "<english>"` (`-s` substring, `-c <context>`, `--lang xx`) prints
 //!   contexts + translations straight from the packs. `scripts/i18n/gen_i18n.py` regenerates `assets/cisco/i18n`.
 //!
@@ -204,10 +206,11 @@ fn catalog_for(code: &str) -> Option<&'static Catalog> {
 
 // Lookup API.
 
-/// Translation from the active catalog (static lifetime), `None` when English / untranslated.
+/// Translation from the active catalog (static lifetime), else from Webox's own translations ([`overlay`]),
+/// `None` when English / untranslated.
 pub fn lookup(context: &str, source: &str) -> Option<&'static str> {
     let s = state().read().unwrap();
-    s.catalog?.get(context, source)
+    s.catalog.and_then(|c| c.get(context, source)).or_else(|| overlay::get(s.code, source))
 }
 /// Like [`lookup`] with the `QObject`/any-context fallback only (no context given).
 pub fn lookup_any(source: &str) -> Option<&'static str> {
@@ -332,3 +335,4 @@ pub(crate) use format::*;
 mod naming;
 #[allow(unused_imports)]
 pub(crate) use naming::*;
+mod overlay;

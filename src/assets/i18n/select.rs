@@ -118,7 +118,8 @@ pub fn active_code() -> &'static str {
 }
 /// True while the source language (English) is active, i.e. `tr` is the identity.
 pub fn is_source_language() -> bool {
-    state().read().unwrap().catalog.is_none()
+    let s = state().read().unwrap();
+    s.catalog.is_none() && !super::overlay::has(s.code)
 }
 /// Incremented whenever the language changes; cache derived strings against it.
 pub fn generation() -> u64 {
