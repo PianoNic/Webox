@@ -34,11 +34,11 @@ The official Webex app is a big Qt and Chromium bundle. Webox is one small Rust 
 
 ## Get started
 
-- <img src="assets/branding/platforms/windows.svg" width="16" height="16" alt="Windows" /> **Windows**: run the installer from the [latest release](https://github.com/PianoNic/Webox/releases).
-- <img src="assets/branding/platforms/linux.svg" width="16" height="16" alt="Linux" /> **Linux**: unpack `webox-<version>-linux-x86_64.tar.gz` and run `install.sh` ([libraries](docs/LINUX.md)).
-- <img src="assets/branding/platforms/macos.svg" width="16" height="16" alt="macOS" /> **macOS** (Apple Silicon and Intel): unzip `webox-<version>-macos-universal.zip`, move `Webox.app` to Applications, right-click → Open the first time ([details](docs/MACOS.md)).
-- <img src="assets/branding/platforms/nixos.svg" width="16" height="16" alt="Nix" /> **Nix**: `nix run github:PianoNic/Webox` ([modules](docs/INSTALL-NIX.md)).
-- <img src="assets/branding/platforms/source.svg" width="16" height="16" alt="Source" /> **From source**: [developer setup](docs/dev-setup.md).
+- <img src="assets/branding/platforms/windows.svg" width="16" height="16" alt="Windows" />&nbsp;&nbsp;**Windows**: run the installer from the [latest release](https://github.com/PianoNic/Webox/releases).
+- <img src="assets/branding/platforms/linux.svg" width="16" height="16" alt="Linux" />&nbsp;&nbsp;**Linux**: unpack `webox-<version>-linux-x86_64.tar.gz` and run `install.sh` ([libraries](docs/LINUX.md)).
+- <img src="assets/branding/platforms/macos.svg" width="16" height="16" alt="macOS" />&nbsp;&nbsp;**macOS**: unzip and move `Webox.app` to Applications ([details](docs/MACOS.md)).
+- <img src="assets/branding/platforms/nixos.svg" width="16" height="16" alt="Nix" />&nbsp;&nbsp;**Nix**: `nix run github:PianoNic/Webox` ([modules](docs/INSTALL-NIX.md)).
+- <img src="assets/branding/platforms/source.svg" width="16" height="16" alt="Source" />&nbsp;&nbsp;**From source**: [developer setup](docs/dev-setup.md).
 
 ## License
 
