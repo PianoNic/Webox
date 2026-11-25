@@ -141,16 +141,15 @@ pub fn debug_log_enabled() -> bool {
     *ON.get_or_init(|| std::env::var("WEBOX_DEBUG_LOG").is_ok_and(|v| v == "1"))
 }
 
-/// Connection diagnostics → `%APPDATA%/WebOx/connect-debug.log`, only when `WEBOX_DEBUG_LOG=1` (off by default).
-/// Each line starts with the UTC time of day (hh:mm:ss.mmm).
+/// Connection diagnostics → `connect-debug.log` in the settings folder (`%APPDATA%\WebOx`, `~/.config/webox`,
+/// `~/Library/Application Support/WebOx`), only when `WEBOX_DEBUG_LOG=1` (off by default). Each line starts with the
+/// UTC time of day (hh:mm:ss.mmm).
 pub fn dbg_conn(s: &str) {
     if !debug_log_enabled() { return; }
     use std::io::Write;
-    if let Ok(d) = std::env::var("APPDATA") {
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(std::path::Path::new(&d).join("WebOx").join("connect-debug.log")) {
-            let ms = keepalive_now().rem_euclid(86_400_000);
-            let _ = writeln!(f, "{:02}:{:02}:{:02}.{:03} {s}", ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, ms % 1000);
-        }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(crate::system::config_dir().join("connect-debug.log")) {
+        let ms = keepalive_now().rem_euclid(86_400_000);
+        let _ = writeln!(f, "{:02}:{:02}:{:02}.{:03} {s}", ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, ms % 1000);
     }
 }
 
