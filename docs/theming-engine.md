@@ -541,7 +541,8 @@ images/*.png|svg         assets for views
 ```
 
 - **Data-only packages** need no native code, which makes them the safe default for themes. They are installed from a
-  repository entry with `"kind": "ui"` and a single `"any"` file (the zip). This is an additive index field: older Webox
+  repository entry with `"kind": "theme"` and a single `"any"` file (the zip) (see decision 2 and
+  [data-api.md](data-api.md) section 0). This is an additive index field: older Webox
   versions skip entries without a platform file. SHA-256 pinning, the size cap and the redirect rules stay as in
   `plugin_repo`.
 - **Native plugins** can ship the same folder next to their library (`<pkg>/<version>/ui/`). They can also register
@@ -668,7 +669,7 @@ the user patch, with the stored keys unchanged.
 rail's horizontal and server-bar modes, the chat header bar, composer toolbar positions and button styles. Each variant
 gets parity shots of its own (new baselines) and runs in the behaviour suite.
 
-**Phase 7: packages, validation, lint and hot reload (6–8 d).** Manifest, loader, repository `kind: "ui"`, the legacy
+**Phase 7: packages, validation, lint and hot reload (6–8 d).** Manifest, loader, repository `kind: "theme"`, the legacy
 adapter, the user-ordered patch list, `--lint-ui`, the error UI, the dev watcher, the Settings > Layout picker and the
 `docs/plugins.md` reference sections (one per component contract).
 
@@ -891,6 +892,16 @@ What this shows for **behaviour and coherence**:
 
 ---
 
+## Data API
+
+What a theme can **show** and **do** is designed in [data-api.md](data-api.md): the inventory of Webex data Webox has,
+the versioned data model (`webox-data/1`), declarative bindings with queries, templates and virtualised lists, the
+`data.*` host methods for native plugins, the action catalogue with permission tiers, the scope and grant model for
+themes, the rules for images in themes, and the first theme built on all of it ("Night Chat", a server-bar layout). Its
+phases D0–D7 run alongside P1, P3, P7 and P8 here.
+
+---
+
 ## 10. Risks and open questions
 
 **Risks**
@@ -931,7 +942,7 @@ What this shows for **behaviour and coherence**:
 ## Decisions on the open questions (2026-11-25)
 
 1. **File format:** JSON. `serde_json` is already a dependency; TOML would add one for no gain at runtime. Plugin authors may write TOML and convert at build time if they like.
-2. **Layouts are data-only packages.** Native plugins may compute themes (palette, accents) but cannot ship a layout tree from code. Data is easy to validate, lint and hot-reload.
+2. **Themes are data-only packages; plugins are native.** A theme (tokens, fonts, icons, images, layouts, widget templates, data bindings) contains no code, has no network or file access, installs without the native-code warning, and reads only the data scopes it declares and the user grants. A plugin is native code for behaviour, keeps full access and the warning, and may compute themes (palette, accents) or ship a theme part, which goes through the same theme engine; it cannot ship a layout tree from code. Settings gets separate **Themes** and **Plugins** tabs, and repository entries carry `kind: "theme" | "plugin"`. Details: [data-api.md](data-api.md) section 0.
 3. **Settings:** a layout can place the settings page and choose its navigation style, but not restructure the pages themselves (first version).
 4. **Call window and dock layouts are chosen separately** from the main layout, with the main layout's package as the default when it provides them.
 5. **Per-space layouts: no** (not until someone needs them).
