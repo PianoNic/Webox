@@ -19,10 +19,16 @@ impl Session {
 
     /// A request to a Webex service. A 401 renews the bearer once and replays the request once. The key-service token is
     /// renewed with the sign-in (`renew_token`), not here.
-    pub(super) fn http(&self, method: &str, url: &str, body: Option<Value>) -> Result<Value, String> {
-        match self.http_once(method, url, body.clone(), None) {
+    pub(super) fn http(&self, method: &str, url: &str, body: Option<Value>) -> Result<Value, String> { self.http_with(method, url, body, false) }
+
+    /// A call's signalling (ROAP answers / OKs, mute, leave, decline): sent even while its host is in a 429 / 503 wait.
+    /// The wait only holds back polling; a held-back ROAP OK drops the media, a held-back leave keeps us "in the call".
+    pub(super) fn http_signal(&self, method: &str, url: &str, body: Option<Value>) -> Result<Value, String> { self.http_with(method, url, body, true) }
+
+    fn http_with(&self, method: &str, url: &str, body: Option<Value>, urgent: bool) -> Result<Value, String> {
+        match self.http_once(method, url, body.clone(), None, urgent) {
             Err(e) if http_status(&e) == Some(401) && !url.contains("/kms/messages") => match force_refresh(&self.token) {
-                Some(t) => { dbg_conn("http 401: bearer renewed, replaying once"); self.http_once(method, url, body, Some(&t)) }
+                Some(t) => { dbg_conn("http 401: bearer renewed, replaying once"); self.http_once(method, url, body, Some(&t), urgent) }
                 None => Err(e),
             },
             r => r,
@@ -30,12 +36,12 @@ impl Session {
     }
 
     /// One request. A host that answered 429 / 503 gets nothing until its wait is over (`backoff.rs`): the request then fails
-    /// at once with "… → 429 …", like the throttled answer.
-    pub(super) fn http_once(&self, method: &str, url: &str, body: Option<Value>, bearer: Option<&str>) -> Result<Value, String> {
+    /// at once with "… → 429 …", like the throttled answer. `urgent` (call signalling) is sent anyway.
+    fn http_once(&self, method: &str, url: &str, body: Option<Value>, bearer: Option<&str>, urgent: bool) -> Result<Value, String> {
         // Defence in depth: the bearer never leaves Webex, whatever URL an answer or a live event handed us.
         if !bearer_host(url) { return Err(format!("{method} refused: {} is not a Webex host", url_host(url, &["https", "http"]).unwrap_or_else(|| "?".into()))); }
         let host = backoff::host_of(url).to_string();
-        if let Some(w) = backoff::BACKOFF.wait(&host, Instant::now()) { return Err(format!("{method} {url} → 429 (waiting {} s more)", w.as_secs() + 1)); }
+        if let Some(w) = backoff::BACKOFF.wait(&host, Instant::now()).filter(|_| !urgent) { return Err(format!("{method} {url} → 429 (waiting {} s more)", w.as_secs() + 1)); }
         let tok = bearer.unwrap_or(if url.contains("/kms/messages") { &self.kms_token } else { &self.token });
         // TrackingID `CLIENT_<uuid>`; the same native User-Agent as the idbroker calls; `cisco-device-url` on every service
         // request once the device is registered (all services but idbroker/oauth/saml).

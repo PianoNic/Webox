@@ -362,3 +362,48 @@ fn live_call() {
     }
     if !hung && rang_at.is_some() { c.req(Req::Call(CallReq::HangUp)); std::thread::sleep(Duration::from_secs(2)); }
 }
+
+#[test]
+fn peer_devices_gone_only_while_still_joined() {
+    // every device LEFT but the participant JOINED: the grace case (the call waits before it ends)
+    let mut l = locus("JOINED", "JOINED", true);
+    l["participants"][1]["devices"] = json!([{"state": "LEFT", "url": "d1"}]);
+    assert!(peer_devices_gone(&parse_locus(&l, "me@example.com")));
+    // one device still JOINED (moved to another device): not gone, and the call stays connected
+    l["participants"][1]["devices"] = json!([{"state": "LEFT", "url": "d1"}, {"state": "JOINED", "url": "d2"}]);
+    let v = parse_locus(&l, "me@example.com");
+    assert!(!peer_devices_gone(&v));
+    assert_eq!(call_state(&v, true), Some(CallState::Connected));
+    // the participant itself LEFT: a real hang-up, ended at once
+    let v = parse_locus(&locus("JOINED", "LEFT", true), "me@example.com");
+    assert!(!peer_devices_gone(&v));
+    assert_eq!(call_state(&v, true), Some(CallState::Ended("left".into())));
+}
+
+#[test]
+fn reasons_are_enum_values_only() {
+    let mut l = locus("LEFT", "JOINED", true);
+    l["self"]["reason"] = json!("MEDIA_INACTIVITY");
+    l["participants"][1]["reason"] = json!("MOVED peer@example.com");
+    let r = reasons(&l);
+    assert!(r.contains("state=ACTIVE") && r.contains("self_reason=MEDIA_INACTIVITY"), "{r}");
+    assert!(!r.contains('@') && !r.contains("example"), "{r}");
+}
+
+#[test]
+fn roap_error_carries_its_type() {
+    let v: Value = serde_json::from_str(&roap_local_sdp("ERROR", None, 3, false)).unwrap();
+    assert_eq!(v["roapMessage"]["messageType"], "ERROR");
+    assert_eq!(v["roapMessage"]["errorType"], "FAILED");
+    assert_eq!(v["roapMessage"]["seq"], 3);
+    assert!(v["roapMessage"]["sdps"].is_null() && v["roapMessage"]["tieBreaker"].is_null());
+}
+
+#[test]
+fn media_drop_after_it_was_up_is_no_stall() {
+    let t0 = Instant::now();
+    // media was up once, ICE now recovering: no "no connection" notice (`ice_tick` restarts ICE instead)
+    assert!(media_stall(t0 + Duration::from_secs(60), None, Some(t0), Some(t0), 500, Some(MediaState::Connecting)).is_none());
+    // but a failed peer connection is still reported
+    assert!(media_stall(t0 + Duration::from_secs(60), None, Some(t0), Some(t0), 500, Some(MediaState::Failed)).is_some());
+}

@@ -34,6 +34,7 @@ use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
 use webrtc::media::Sample;
 use webrtc::peer_connection::configuration::RTCConfiguration;
+use webrtc::peer_connection::offer_answer_options::RTCOfferOptions;
 use webrtc::peer_connection::peer_connection_state::RTCPeerConnectionState;
 use webrtc::peer_connection::sdp::session_description::RTCSessionDescription;
 use webrtc::peer_connection::RTCPeerConnection;
@@ -83,6 +84,8 @@ pub struct Media {
     /// The share's and the camera's sending side, once `add_lines` ran.
     share: std::sync::Mutex<Option<VideoTx>>,
     camera: std::sync::Mutex<Option<VideoTx>>,
+    /// The server answered the video lines (`apply_lines_answer`); cleared by `lines_unnegotiated`.
+    lines_negotiated: AtomicBool,
     /// Counters for the call statistics (`stats`).
     live: Arc<super::media_stats::Live>,
 }
@@ -111,12 +114,13 @@ fn opus_cap() -> RTCRtpCodecCapability {
 /// The H.264 payload type we offer (the share's lines; an answer keeps the offer's numbers).
 pub const SLIDES_PT: u8 = 102;
 
-/// What `media::share` sends: H.264 Constrained Baseline, packetization-mode 1 (the content stream of a share).
+/// What `media::share` sends: H.264 Constrained Baseline, packetization-mode 1 (the content stream of a share), level 4.0
+/// (the share's presets go up to 1920 x 1080, more than level 3.1 allows).
 fn h264_cap() -> RTCRtpCodecCapability {
     use webrtc::rtp_transceiver::RTCPFeedback;
     let fb = |t: &str, p: &str| RTCPFeedback { typ: t.to_owned(), parameter: p.to_owned() };
     RTCRtpCodecCapability { mime_type: MIME_TYPE_H264.to_owned(), clock_rate: 90000, channels: 0,
-        sdp_fmtp_line: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f".to_owned(),
+        sdp_fmtp_line: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e028".to_owned(),
         rtcp_feedback: vec![fb("nack", ""), fb("nack", "pli"), fb("ccm", "fir")] }
 }
 
@@ -218,6 +222,8 @@ pub fn route_ip(host: &str) -> Option<IpAddr> {
 /// Needs the tokio runtime (the ICE socket is registered with it).
 fn settings(net: Net, seen_video: Arc<SeenSsrc>) -> Result<SettingEngine, String> {
     let mut s = SettingEngine::default();
+    // a short network gap only disconnects (and recovers); Failed, the media gone for good, after a minute without checks
+    s.set_ice_timeouts(Some(Duration::from_secs(5)), Some(Duration::from_secs(60)), Some(Duration::from_secs(1)));
     s.set_ice_multicast_dns_mode(MulticastDnsMode::Disabled); // the default binds 0.0.0.0:5353; Webex never sends mDNS names
     let keep: Option<IpAddr> = match net {
         Net::Route(ip) => ip,
@@ -255,20 +261,22 @@ async fn receive_video(track: Arc<webrtc::track::track_remote::TrackRemote>, slo
     let dec = super::share_rx::Decode::start_into(slot, what, decoded);
     let mut sb = SampleBuilder::new(128, H264Packet::default(), 90_000);
     let (mut last_pli, mut last_seq): (Option<Instant>, Option<u16>) = (None, None);
+    let (mut errs, mut own) = (ReadErrs::default(), 0u32);
     while !stop.load(Ordering::Relaxed) {
         let now = Instant::now();
         if super::share_rx::pli_due(dec.keyframe.load(Ordering::SeqCst), dec.decoded.load(Ordering::Relaxed) > 0, last_pli, now) {
             let pc = pc.lock().ok().and_then(|p| p.as_ref().and_then(|w| w.upgrade()));
             if let Some(pc) = pc {
-                let _ = pc.write_rtcp(&[Box::new(PictureLossIndication { sender_ssrc: 0, media_ssrc: ssrc })]).await;
+                if own == 0 { own = own_ssrc(&pc).await; }
+                let _ = pc.write_rtcp(&[Box::new(PictureLossIndication { sender_ssrc: own, media_ssrc: ssrc })]).await;
             }
             dec.keyframe.store(false, Ordering::SeqCst);
             last_pli = Some(now);
         }
         let pkt = match tokio::time::timeout(Duration::from_millis(250), track.read_rtp()).await {
             Err(_) => continue, // nothing for a while: the PLI above may be due again
-            Ok(Err(_)) => break,
-            Ok(Ok((pkt, _))) => pkt,
+            Ok(Err(e)) => if errs.note("share", &e).await { break } else { continue },
+            Ok(Ok((pkt, _))) => { errs.ok(); pkt }
         };
         rx_video.fetch_add(1, Ordering::Relaxed);
         live.rx(kind, &pkt.header, pkt.payload.len(), super::media_stats::VIDEO_CLOCK);
@@ -301,6 +309,42 @@ async fn video_line(pc: &RTCPeerConnection, id: &str, stream: &str, live: Arc<su
         }
     });
     Ok(VideoTx { track, keyframe, live })
+}
+
+/// A read error that means the track is gone for good (receiver stopped, buffer closed), not one bad packet.
+fn read_closed(e: &webrtc::Error) -> bool {
+    use webrtc::{interceptor::Error as I, srtp::Error as S, util::Error as U, Error as E};
+    let closed = |u: &U| matches!(u, U::ErrBufferClosed);
+    match e {
+        E::ErrClosedPipe | E::ErrRTPReceiverNil | E::ErrRTPReceiverWithSSRCTrackStreamNotFound | E::ErrConnectionClosed | E::Interceptor(I::ErrIoEOF) => true,
+        E::Util(u) | E::Interceptor(I::Util(u)) | E::Srtp(S::Util(u)) | E::Interceptor(I::Srtp(S::Util(u))) => closed(u),
+        _ => false,
+    }
+}
+
+/// The read errors of one receive loop: a bad packet (e.g. a payload type we don't decode, telephone-event or comfort
+/// noise) is skipped, each kind logged once; a run of errors slows the loop down instead of spinning.
+#[derive(Default)]
+struct ReadErrs { kinds: Vec<String>, row: u32 }
+impl ReadErrs {
+    /// True when the track is closed and the loop should end.
+    async fn note(&mut self, what: &str, e: &webrtc::Error) -> bool {
+        if read_closed(e) { return true; }
+        let k = e.to_string();
+        if self.kinds.len() < 16 && !self.kinds.contains(&k) { dbg_conn(&format!("call: {what}: packet skipped ({k})")); self.kinds.push(k); }
+        self.row += 1;
+        if self.row >= 8 { tokio::time::sleep(Duration::from_millis(10)).await; }
+        false
+    }
+    fn ok(&mut self) { self.row = 0; }
+}
+
+/// The SSRC one of our senders sends from (the sender SSRC of our RTCP feedback; 0 when none is known yet).
+async fn own_ssrc(pc: &RTCPeerConnection) -> u32 {
+    for s in pc.get_senders().await {
+        if let Some(e) = s.get_parameters().await.encodings.first().filter(|e| e.ssrc != 0) { return e.ssrc; }
+    }
+    0
 }
 
 /// `call: ice …` log lines with the time since the peer was made.
@@ -371,17 +415,24 @@ impl Media {
                         }
                         dbg_conn(&format!("call: audio track from the far end (ssrc {})", if rx_ssrc.load(Ordering::Relaxed) == 0 { "first" } else { "changed" }));
                         rx_ssrc.store(track.ssrc(), Ordering::Relaxed);
-                        let Ok(mut dec) = ropus::Decoder::new(audio::RATE, ropus::Channels::Mono) else { return };
-                        let mut pcm = vec![0i16; 5760];
+                        let new_dec = || ropus::Decoder::new(audio::RATE, ropus::Channels::Mono);
+                        let Ok(mut dec) = new_dec() else { return };
+                        let (mut pcm, mut errs) = (vec![0i16; 5760], ReadErrs::default());
                         while !stop.load(Ordering::Relaxed) {
-                            let Ok((pkt, _)) = track.read_rtp().await else { break };
+                            // a packet webrtc-rs can't read (e.g. an unknown payload type) is skipped; only a closed track ends audio
+                            let pkt = match track.read_rtp().await { Ok((p, _)) => { errs.ok(); p } Err(e) => if errs.note("audio", &e).await { break } else { continue } };
                             if rxp.fetch_add(1, Ordering::Relaxed) == 0 { dbg_conn("call: first RTP packet received"); }
                             live.rx(super::media_stats::AUDIO, &pkt.header, pkt.payload.len(), super::media_stats::AUDIO_CLOCK);
                             if pkt.payload.is_empty() { continue; }
-                            if let Ok(n) = dec.decode(&pkt.payload, &mut pcm, ropus::DecodeMode::Normal) {
-                                io.play(&pcm[..n]);
-                                // Keep latency low: if more than 400 ms queued, drop down to 100 ms.
-                                if let Ok(mut q) = io.to_play.lock() { if q.len() > 19_200 { let drop = q.len() - 4_800; q.drain(..drop); } }
+                            // a broken packet must not end the call's audio: a decoder that panicked is made anew
+                            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| dec.decode(&pkt.payload, &mut pcm, ropus::DecodeMode::Normal))) {
+                                Ok(Ok(n)) => {
+                                    io.play(&pcm[..n]);
+                                    // Keep latency low: if more than 400 ms queued, drop down to 100 ms.
+                                    if let Ok(mut q) = io.to_play.lock() { if q.len() > 19_200 { let drop = q.len() - 4_800; q.drain(..drop); } }
+                                }
+                                Ok(Err(_)) => {}
+                                Err(_) => { dbg_conn("call: opus decoder panicked, made anew"); let Ok(d) = new_dec() else { break }; dec = d; }
                             }
                         }
                     });
@@ -391,7 +442,7 @@ impl Media {
             })?
         };
         let me = Media { rt, pc, state, muted, rx_packets, tx_frames, stop, v6, rx_ssrc, rx_video, rx_main, decoded_share, decoded_main, rx_slides_ssrc, rx_main_ssrc, seen_video,
-            expect: Arc::new(AtomicU8::new(0)), share: std::sync::Mutex::new(None), camera: std::sync::Mutex::new(None), live };
+            expect: Arc::new(AtomicU8::new(0)), share: std::sync::Mutex::new(None), camera: std::sync::Mutex::new(None), lines_negotiated: AtomicBool::new(false), live };
         me.start_sender(io)?;
         Ok(me)
     }
@@ -426,15 +477,51 @@ impl Media {
     }
 
     /// Creates the local offer and waits until ICE gathering is complete (ROAP carries all candidates in the SDP).
-    pub fn offer(&self) -> Result<String, String> {
+    pub fn offer(&self) -> Result<String, String> { self.local_offer(None, true) }
+
+    /// A new local offer set as our description; `gather` fails it when ICE gathering doesn't complete in 5 s.
+    fn local_offer(&self, opts: Option<RTCOfferOptions>, gather: bool) -> Result<String, String> {
         let pc = self.pc.clone();
         self.rt.block_on(async move {
-            let offer = pc.create_offer(None).await.map_err(|e| e.to_string())?;
+            let offer = pc.create_offer(opts).await.map_err(|e| e.to_string())?;
             let mut done = pc.gathering_complete_promise().await;
             pc.set_local_description(offer).await.map_err(|e| e.to_string())?;
-            tokio::time::timeout(Duration::from_secs(5), done.recv()).await.map_err(|_| "ICE gathering timed out".to_string())?;
+            let r = tokio::time::timeout(Duration::from_secs(5), done.recv()).await;
+            if gather { r.map_err(|_| "ICE gathering timed out".to_string())?; }
             Ok(pc.local_description().await.ok_or("no local description")?.sdp)
         })
+    }
+
+    /// The SDP of an offer in the official layout once the share's lines exist: labelled with `a=content`, `audio/slides`
+    /// offered inactive (no computer audio is shared).
+    fn share_layout(sdp: String) -> String {
+        let sdp = label_content(&sdp);
+        match section_of_kind(&sdp, "audio", 2) { Some(i) => with_direction(&sdp, i, "inactive"), None => sdp }
+    }
+
+    /// An OFFER with new ICE credentials on the same session (the media path broke: Disconnected / Failed), with all
+    /// candidates gathered anew. Its ANSWER goes to `apply_any_answer`.
+    pub fn ice_restart_offer(&self) -> Result<String, String> {
+        let sdp = self.local_offer(Some(RTCOfferOptions { ice_restart: true, ..Default::default() }), true)?;
+        // the restart gathers again; the promise may have seen the first gathering's Complete: wait for the new candidates
+        let pc = self.pc.clone();
+        let sdp = self.rt.block_on(async move {
+            let t0 = Instant::now();
+            loop {
+                let now = pc.local_description().await.map(|d| d.sdp).unwrap_or_default();
+                let done = pc.ice_gathering_state() == webrtc::ice_transport::ice_gathering_state::RTCIceGatheringState::Complete;
+                if (done && now.contains("a=candidate:")) || t0.elapsed() > Duration::from_secs(5) { break if now.is_empty() { sdp } else { now }; }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        });
+        if !sdp.contains("a=candidate:") { return Err("ICE gathering timed out".into()); }
+        Ok(if self.has_lines() { Self::share_layout(sdp) } else { sdp })
+    }
+
+    /// The ANSWER to `ice_restart_offer` (or any offer of ours): `apply_lines_answer` once the video lines exist, else
+    /// `apply_answer`.
+    pub fn apply_any_answer(&self, sdp: String) -> Result<(), String> {
+        if self.has_lines() { self.apply_lines_answer(sdp) } else { self.apply_answer(sdp) }
     }
 
     pub fn apply_answer(&self, sdp: String) -> Result<(), String> { self.apply_answer_with(sdp, &system_lookup) }
@@ -451,17 +538,30 @@ impl Media {
     }
 
     /// For a remote OFFER (the server renegotiating, and the loopback test): returns our ANSWER SDP.
-    pub fn answer(&self, offer_sdp: String) -> Result<String, String> {
+    /// A server OFFER gets the answer path's clean-up: our mids where it has none, and once the share's lines exist the
+    /// `share_answer_sdp` SSRC rules (and the answer in the official layout, like our own offers).
+    pub fn answer(&self, offer_sdp: String) -> Result<String, String> { self.answer_with(offer_sdp, &system_lookup) }
+
+    fn answer_with(&self, offer_sdp: String, lookup: &dyn Fn(&str) -> Vec<IpAddr>) -> Result<String, String> {
         let pc = self.pc.clone();
-        let offer_sdp = usable(&offer_sdp, self.v6, &system_lookup, "");
-        self.rt.block_on(async move {
+        let local = self.rt.block_on(pc.local_description()).map(|d| d.sdp).unwrap_or_default();
+        let (mids, share) = (mids_of(&local), self.has_lines());
+        let offer_sdp = usable(&offer_sdp, self.v6, lookup, mids.first().map_or("", |s| s.as_str()));
+        let offer_sdp = if share {
+            let (slides, main) = self.undeclared_video();
+            let sdp = share_answer_sdp(&offer_sdp, &mids, self.rx_ssrc.load(Ordering::Relaxed), slides, main);
+            // as in apply_lines_answer: our recvonly `audio/slides` must not be paused by an inactive line
+            match section_of_kind(&local, "audio", 2) { Some(i) => with_direction(&sdp, i, "sendonly"), None => sdp }
+        } else { offer_sdp };
+        let sdp = self.rt.block_on(async move {
             pc.set_remote_description(RTCSessionDescription::offer(offer_sdp.clone()).map_err(|e| e.to_string())?).await.map_err(|e| with_line(e.to_string(), &offer_sdp))?;
             let ans = pc.create_answer(None).await.map_err(|e| e.to_string())?;
             let mut done = pc.gathering_complete_promise().await;
             pc.set_local_description(ans).await.map_err(|e| e.to_string())?;
             tokio::time::timeout(Duration::from_secs(5), done.recv()).await.map_err(|_| "ICE gathering timed out".to_string())?;
-            Ok(pc.local_description().await.ok_or("no local description")?.sdp)
-        })
+            Ok::<_, String>(pc.local_description().await.ok_or("no local description")?.sdp)
+        })?;
+        Ok(if share { Self::share_layout(sdp) } else { sdp })
     }
 
     /// The video lines exist already (camera and share, either way, need no new negotiation).
@@ -508,17 +608,25 @@ impl Media {
 
     /// A new OFFER of the lines we have (the share's included), for one more ROAP round on the same session.
     pub fn reoffer(&self) -> Result<String, String> {
+        // gathered for the first offer already
+        Ok(Self::share_layout(self.local_offer(None, false)?))
+    }
+
+    /// The video lines exist and the server answered them (a share / camera can be fed now).
+    pub fn lines_negotiated(&self) -> bool { self.has_lines() && self.lines_negotiated.load(Ordering::SeqCst) }
+
+    /// The video lines need a new ROAP round (their negotiation failed or timed out).
+    pub fn lines_unnegotiated(&self) { self.lines_negotiated.store(false, Ordering::SeqCst); }
+
+    /// RTP packets really sent on the share's line (`get_stats`; 0 without share lines). Blocks like `stats`.
+    pub fn share_tx_packets(&self) -> u64 {
+        if !self.has_lines() { return 0; }
         let pc = self.pc.clone();
-        let sdp = self.rt.block_on(async move {
-            let offer = pc.create_offer(None).await.map_err(|e| e.to_string())?;
-            let mut done = pc.gathering_complete_promise().await;
-            pc.set_local_description(offer).await.map_err(|e| e.to_string())?;
-            let _ = tokio::time::timeout(Duration::from_secs(5), done.recv()).await; // gathered for the first offer already
-            Ok::<_, String>(pc.local_description().await.ok_or("no local description")?.sdp)
-        })?;
-        let sdp = label_content(&sdp);
-        // the official layout offers `audio/slides` inactive (no computer audio is shared)
-        Ok(match section_of_kind(&sdp, "audio", 2) { Some(i) => with_direction(&sdp, i, "inactive"), None => sdp })
+        let report = self.rt.block_on(async move { pc.get_stats().await });
+        report.reports.values().map(|r| match r {
+            webrtc::stats::StatsReportType::OutboundRTP(o) if o.track_identifier == super::media_stats::SHARE_TRACK => o.packets_sent,
+            _ => 0,
+        }).sum()
     }
 
     /// SSRCs H.264 arrives from on the wire that webrtc-rs doesn't take (not declared), for the lines the far end sends
@@ -550,23 +658,32 @@ impl Media {
         let sdp = match section_of_kind(&local, "audio", 2) { Some(i) => with_direction(&sdp, i, "sendonly"), None => sdp };
         let desc = RTCSessionDescription::answer(sdp.clone()).map_err(|e| e.to_string())?;
         let r = self.rt.block_on(async move { pc.set_remote_description(desc).await.map_err(|e| e.to_string()) });
+        if r.is_ok() && self.has_lines() { self.lines_negotiated.store(true, Ordering::SeqCst); }
         r.map_err(|e| with_line(e, &sdp))
     }
 
     /// Sends the share's pictures on the content line until the feed is stopped or the stream ends. The far end's
-    /// key frame requests reach the encoder.
+    /// key frame requests reach the encoder. What the capture queued before the feed started is dropped and the feed
+    /// starts on a fresh key frame (pictures before it are skipped; one is asked for again every 500 ms meanwhile).
     pub fn feed_share(&self, stream: Arc<std::sync::Mutex<crate::media::share::ShareStream>>) -> Result<ShareFeed, String> {
         let tx = self.share.lock().ok().and_then(|s| s.clone()).ok_or("Die Freigabe-Medienleitung fehlt.")?;
+        if let Ok(s) = stream.lock() { let _ = s.drain(); s.request_keyframe(); }
         let (stop, sent) = (Arc::new(AtomicBool::new(false)), Arc::new(AtomicU64::new(0)));
         let (s2, n, rt) = (stop.clone(), sent.clone(), self.rt.handle().clone());
         let thread = std::thread::Builder::new().name("webox-share-feed".into()).spawn(move || {
-            let mut last_pts: Option<u64> = None;
+            let (mut last_pts, mut started, mut asked): (Option<u64>, bool, Instant) = (None, false, Instant::now());
             while !s2.load(Ordering::SeqCst) {
                 // the lock is held only to take what is queued (the call thread reads the stream's status meanwhile)
                 let aus = match stream.lock() {
                     Ok(s) => {
                         if tx.keyframe.swap(false, Ordering::SeqCst) { s.request_keyframe(); }
-                        let aus = s.drain();
+                        let mut aus = s.drain();
+                        if !started {
+                            match aus.iter().position(|a| a.keyframe) {
+                                Some(i) => { aus.drain(..i); started = true; }
+                                None => { aus.clear(); if asked.elapsed() >= Duration::from_millis(500) { s.request_keyframe(); asked = Instant::now(); } }
+                            }
+                        }
                         if !aus.is_empty() { if let crate::media::share::Status::Running { width, height, .. } = s.status() { tx.live.share_sent(width, height, n.load(Ordering::Relaxed) + aus.len() as u64); } }
                         aus
                     }
@@ -751,9 +868,17 @@ mod tests {
         assert_eq!(lines.iter().filter(|l| l.0 == "video").count(), 2, "{offer}");
         assert_eq!(lines.iter().filter(|l| l.1 == "slides").count(), 2, "{lines:?}");
         assert!(offer.contains("H264/90000") && offer.split("m=").last().is_some_and(|m| m.contains("a=sendrecv")), "slides line sendrecv: {offer}");
+        assert!(offer.contains("profile-level-id=42e028"), "level 4.0 for 1080p: {offer}");
+        assert!(!a.lines_negotiated(), "not answered yet");
         let b_answer = b.answer(offer).unwrap();
         a.apply_lines_answer_with(b_answer, &stub).unwrap();
-        assert!(a.has_lines());
+        assert!(a.has_lines() && a.lines_negotiated());
+        a.lines_unnegotiated();
+        assert!(!a.lines_negotiated());
+        let again = a.reoffer().unwrap();
+        assert_eq!(again.matches("m=").count(), 4, "the same lines offered again: {again}");
+        a.apply_any_answer(b.answer(again).unwrap()).unwrap();
+        assert!(a.lines_negotiated(), "answered again");
 
         // pictures (an access unit of made-up NAL units: the packetizer only splits on start codes)
         let tx = a.share.lock().unwrap().clone().unwrap();
@@ -771,6 +896,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         assert!(b.rx_video.load(Ordering::Relaxed) >= 20, "B received the share: {} video packets", b.rx_video.load(Ordering::Relaxed));
+        assert!(a.share_tx_packets() >= 20, "sent on the share's line: {}", a.share_tx_packets());
         assert!(rx(&a) >= before + 40, "audio still reaches A after the renegotiation: {} -> {}", before, rx(&a));
         a.close();
         b.close();
@@ -934,6 +1060,49 @@ mod tests {
         assert_eq!(s.tx[SHARE].packets + s.rx[SHARE].packets, 0, "no share");
         a.close();
         b.close();
+    }
+
+    /// An ICE restart in a running call (new credentials, candidates gathered again, the far end answers): audio keeps
+    /// flowing on the same session. 127.0.0.1 only.
+    #[test]
+    fn ice_restart_keeps_audio() {
+        let (io1, io2) = (Arc::new(Io::default()), Arc::new(Io::default()));
+        let a = Media::new(io1.clone(), None, Net::Loopback).unwrap();
+        let b = Media::new(io2.clone(), None, Net::Loopback).unwrap();
+        let first = a.offer().unwrap();
+        a.apply_any_answer(b.answer(first.clone()).unwrap()).unwrap();
+        let tone = audio::tone(440.0, 30000, 0.5);
+        let mut fed = 0;
+        let rx = |m: &Media| m.rx_packets.load(Ordering::Relaxed);
+        let mut run = |until: &dyn Fn() -> bool| {
+            let t0 = std::time::Instant::now();
+            while t0.elapsed() < Duration::from_secs(30) && !until() {
+                for io in [&io1, &io2] { if io.captured.lock().unwrap().len() < 4800 && fed + FRAME <= tone.len() { io.captured.lock().unwrap().extend(tone[fed..fed + FRAME].iter()); } }
+                fed = if fed + 2 * FRAME > tone.len() { 0 } else { fed + FRAME };
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+        run(&|| rx(&b) > 40);
+        assert!(rx(&b) > 40, "audio before the restart: {}", rx(&b));
+        let offer = a.ice_restart_offer().unwrap();
+        let ufrag = |s: &str| s.lines().find_map(|l| l.strip_prefix("a=ice-ufrag:")).map(str::to_string);
+        assert_ne!(ufrag(&offer), ufrag(&first), "new ICE credentials");
+        assert!(offer.contains("a=candidate:"), "{offer}");
+        a.apply_any_answer(b.answer(offer).unwrap()).unwrap();
+        let before = rx(&b);
+        run(&|| rx(&b) > before + 40 && a.state() == MediaState::Connected);
+        assert_eq!(a.state(), MediaState::Connected);
+        assert!(rx(&b) > before + 40, "audio after the restart: {} -> {}", before, rx(&b));
+        a.close();
+        b.close();
+    }
+
+    #[test]
+    fn only_a_closed_track_ends_a_receive_loop() {
+        use webrtc::{interceptor::Error as I, util::Error as U, Error as E};
+        for e in [E::ErrClosedPipe, E::ErrRTPReceiverNil, E::Util(U::ErrBufferClosed), E::Interceptor(I::Util(U::ErrBufferClosed))] { assert!(read_closed(&e), "{e}"); }
+        // a payload type without a codec (telephone-event 101, comfort noise 13), a bad packet
+        for e in [E::ErrCodecNotFound, E::Interceptor(I::ErrShortBuffer), E::Util(U::ErrTimeout)] { assert!(!read_closed(&e), "{e}"); }
     }
 
     #[test]

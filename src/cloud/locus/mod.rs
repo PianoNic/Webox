@@ -323,6 +323,25 @@ fn describe(v: &LocusView) -> String {
     format!("locus kind={} active={} self={} others={}", v.kind, v.active, v.self_state, others.join(","))
 }
 
+/// Why the locus is in its state, for the log: `fullState.state`, our own `self.reason` and the other participants'
+/// `reason`s (enum values such as MEDIA_INACTIVITY, FORCED, MOVED, ENDED; never names). Tells a server-side drop apart
+/// from the other side leaving.
+pub fn reasons(l: &Value) -> String {
+    let clean = |v: &Value| v.as_str().unwrap_or("").chars().take_while(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || *c == '_').take(32).collect::<String>();
+    let self_id = st(&l["self"], "id");
+    let others: Vec<String> = l["participants"].as_array().into_iter().flatten()
+        .filter(|p| st(p, "id") != self_id).map(|p| clean(&p["reason"])).filter(|r| !r.is_empty()).collect();
+    format!("state={} self_reason={} reasons={}", clean(&l["fullState"]["state"]), clean(&l["self"]["reason"]), others.join(","))
+}
+
+/// The other side looks gone only because every one of their devices shows LEFT, while they are still JOINED. That
+/// happens in passing (the call moves to another of their devices, their client rejoins after a network blip, a delta
+/// lists the old device first), so the call ends only when it is still so after `DEVICES_GONE_GRACE`.
+pub fn peer_devices_gone(v: &LocusView) -> bool {
+    !v.others.is_empty() && v.others.iter().all(|p| p.state == "JOINED" && p.left())
+}
+pub const DEVICES_GONE_GRACE: Duration = Duration::from_secs(8);
+
 /// Error text without anything that looks like an address (logs and toasts never carry personal values).
 fn scrub(e: &str) -> String {
     e.split_whitespace().map(|w| if w.contains('@') { "<addr>" } else { w }).collect::<Vec<_>>().join(" ").chars().take(180).collect()
@@ -351,6 +370,8 @@ struct Active {
     /// The far end shares (its name), since when, and whether the lines were negotiated once more to declare the SSRC
     /// its share really arrives from (`share_rx_tick`).
     remote_share: Option<String>, remote_since: Option<Instant>, rx_reoffered: bool, rx_warned: bool,
+    /// The lines were offered once for the far end's current share (`share_rx_tick` doesn't keep trying).
+    rx_lines_tried: bool,
     /// The mute state last sent to the UI.
     mute_info: Option<MuteInfo>,
     /// A group space's meeting (the space id): stays up while others come and go (session.rs `group_state`).
@@ -359,6 +380,11 @@ struct Active {
     roster_sent: Option<controls::Roster>,
     /// Camera video of this call, both ways (`video.rs`).
     video: video::CallVideo,
+    /// Since when the other side shows only LEFT devices while still JOINED (`peer_devices_gone`).
+    gone_since: Option<Instant>,
+    /// ICE recovery: since when the media is not connected after having been up, and when the last ICE restart OFFER
+    /// went out (`ice_tick`).
+    media_down_at: Option<Instant>, ice_restart_at: Option<Instant>,
 }
 
 impl Active {
@@ -366,8 +392,8 @@ impl Active {
         Active { url, self_id, self_url, media_id: String::new(), correlation_id: String::new(), outgoing, name, email, last: None, answered: outgoing,
             media: None, roap_seq: 0, roap_done: false, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None,
             locus: Value::Null, joined_at: None, media_up_at: None, offer_at: None, share: None,
-            lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false, mute_info: None, space: None, roster_sent: None,
-            video: Default::default() }
+            lines_seq: None, lines_at: None, remote_share: None, remote_since: None, rx_reoffered: false, rx_warned: false, rx_lines_tried: false, mute_info: None, space: None, roster_sent: None,
+            video: Default::default(), gone_since: None, media_down_at: None, ice_restart_at: None }
     }
 }
 
@@ -376,6 +402,9 @@ impl Active {
 pub const MEDIA_TIMEOUT: Duration = Duration::from_secs(15);
 /// Media is up but not one RTP packet came from the server.
 pub const RTP_TIMEOUT: Duration = Duration::from_secs(8);
+/// Media that was up and is down this long gets an ICE restart (`ice_tick`), repeated at most this often.
+pub const ICE_RESTART_AFTER: Duration = Duration::from_secs(4);
+pub const ICE_RESTART_EVERY: Duration = Duration::from_secs(15);
 /// Our ROAP OFFER got no ANSWER.
 pub const ROAP_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -384,7 +413,8 @@ pub fn media_stall(now: Instant, offer_at: Option<Instant>, joined_at: Option<In
     let over = |t: Option<Instant>, d: Duration| t.is_some_and(|t| now.saturating_duration_since(t) >= d);
     if over(offer_at, ROAP_TIMEOUT) { return Some("Keine Antwort des Medienservers auf die Verbindungsanfrage (ROAP). Der Anruf hat möglicherweise keinen Ton."); }
     if media == Some(MediaState::Failed) { return Some("Audioverbindung fehlgeschlagen (ICE/DTLS). Der Anruf hat keinen Ton."); }
-    if media != Some(MediaState::Connected) && over(joined_at, MEDIA_TIMEOUT) { return Some("Keine Audioverbindung zum Medienserver (ICE/DTLS kommt nicht zustande). Netzwerk oder Firewall prüfen."); }
+    // only before the media was ever up: a later drop is ICE recovering (`ice_tick`), not "no connection"
+    if media != Some(MediaState::Connected) && media_up_at.is_none() && over(joined_at, MEDIA_TIMEOUT) { return Some("Keine Audioverbindung zum Medienserver (ICE/DTLS kommt nicht zustande). Netzwerk oder Firewall prüfen."); }
     if media == Some(MediaState::Connected) && rx == 0 && over(media_up_at, RTP_TIMEOUT) { return Some("Verbunden, aber es kommt kein Ton an (keine Audiodaten vom Medienserver)."); }
     None
 }
@@ -396,6 +426,8 @@ pub struct Calls {
     /// The camera the user wants on in the call (`CallReq::Video`); kept from before the call is placed / answered, and
     /// for the whole call. None = camera off.
     video_want: Option<crate::media::camera::PreviewKey>,
+    /// A tick is waiting in the job queue (the ticker sends no second one).
+    tick_queued: Arc<AtomicBool>,
 }
 
 /// The ROAP v2 message envelope Locus expects in `localMedias[].localSdp` (JSON string), camera off.
@@ -406,6 +438,8 @@ pub fn roap_local_sdp_av(message_type: &str, sdp: Option<&str>, seq: u32, muted:
     let mut m = json!({"messageType": message_type, "version": "2", "seq": seq});
     if let Some(s) = sdp { m["sdps"] = json!([s]); }
     if message_type == "OFFER" { m["tieBreaker"] = json!(4294967294u64); }
+    // our answer to a server OFFER failed (webex-js-sdk sends the same): the server may offer again
+    if message_type == "ERROR" { m["errorType"] = json!("FAILED"); }
     json!({"roapMessage": m, "audioMuted": muted, "videoMuted": video_muted}).to_string()
 }
 

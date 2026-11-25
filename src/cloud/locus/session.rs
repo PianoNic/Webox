@@ -38,7 +38,7 @@ impl Session {
                 self.mute_sync(None);
                 return Err("Du wurdest stummgeschaltet und kannst die Stummschaltung nicht selbst aufheben.".into());
             }
-            let r = self.http("PATCH", &format!("{self_url}/controls"), Some(unmute_controls_body()));
+            let r = self.http_signal("PATCH", &format!("{self_url}/controls"), Some(unmute_controls_body()));
             dbg_conn(&format!("call: unmute after being muted by others -> {}", if r.is_ok() { "ok" } else { "failed" }));
             if let Err(e) = r {
                 self.mute_local(true);
@@ -46,7 +46,7 @@ impl Session {
                 return Err(format!("Stummschaltung aufheben fehlgeschlagen: {}", scrub(&e)));
             }
         }
-        let r = self.http("PUT", &format!("{self_url}/media"), Some(local_mute_body(self.device_body(), &corr, &media_id, m, self.video_muted())));
+        let r = self.http_signal("PUT", &format!("{self_url}/media"), Some(local_mute_body(self.device_body(), &corr, &media_id, m, self.video_muted())));
         dbg_conn(&format!("call: {} sent to locus -> {}", if m { "mute" } else { "unmute" }, if r.is_ok() { "ok" } else { "failed" }));
         self.mute_sync(None);
         r.map(|_| ()).map_err(|e| format!("{} konnte nicht an Webex gemeldet werden: {}", if m { "Stummschalten" } else { "Stummschaltung aufheben" }, scrub(&e)))
@@ -107,9 +107,15 @@ impl Session {
         self.calls.live.store(false, Ordering::SeqCst); // stop an older ticker
         let live = Arc::new(AtomicBool::new(true));
         self.calls.live = live.clone();
+        // At most one tick waits in the job queue: a stalled request must not pile up ticks that each read the locus
+        // and hold back ROAP answers and the hang-up behind them.
+        let queued = self.calls.tick_queued.clone();
+        queued.store(false, Ordering::SeqCst);
         std::thread::spawn(move || while live.load(Ordering::SeqCst) {
             std::thread::sleep(TICK);
-            if live.load(Ordering::SeqCst) && tx.send(Job::Locus(json!({"tick": true}))).is_err() { break; }
+            if !live.load(Ordering::SeqCst) { break; }
+            if queued.swap(true, Ordering::SeqCst) { continue; }
+            if tx.send(Job::Locus(json!({"tick": true}))).is_err() { break; }
         });
     }
 
@@ -271,7 +277,7 @@ impl Session {
         if media_id.is_empty() { return Err("no media id".into()); } // like the original client: no ROAP message without it
         let body = json!({"device": self.device_body(), "correlationId": corr, "clientMediaPreferences": {"preferTranscoding": true},
             "localMedias": [{"localSdp": roap_local_sdp_av(message_type, sdp, seq, self.calls.muted, self.video_muted()), "mediaId": media_id}]});
-        self.http("PUT", &format!("{url}/media"), Some(body)).map(|_| ())
+        self.http_signal("PUT", &format!("{url}/media"), Some(body)).map(|_| ())
     }
 
     /// A ROAP message from the server (mercury event or inline in a response).
@@ -289,7 +295,7 @@ impl Session {
                 }
                 if done || seq != ours { dbg_conn(&format!("call: ANSWER seq={seq} does not match our OFFER seq={ours}, ignored")); return; }
                 let (Some(sdp), Some(m)) = (sdp, c.media.as_ref()) else { dbg_conn("call: ANSWER without SDP or media"); return };
-                let r = if share_seq == Some(seq) { m.apply_lines_answer(sdp) } else { m.apply_answer(sdp) };
+                let r = if share_seq == Some(seq) { m.apply_lines_answer(sdp) } else { m.apply_any_answer(sdp) };
                 match r {
                     Ok(()) => {
                         if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; c.offer_at = None; c.lines_seq = None; c.lines_at = None; }
@@ -301,9 +307,14 @@ impl Session {
                         dbg_conn(&format!("call: bad answer: {}", scrub(&e)));
                         if share_seq == Some(seq) {
                             if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; c.lines_seq = None; c.lines_at = None; }
+                            if let Some(m) = self.calls.cur.as_ref().and_then(|c| c.media.as_ref()) { m.lines_unnegotiated(); }
                             self.lines_failed(&format!("Der Medienserver hat die Videoverbindung abgelehnt: {}", scrub(&e)));
                         }
-                        else { self.media_trouble("Medienaushandlung fehlgeschlagen: die Antwort des Medienservers wurde nicht angenommen."); }
+                        else {
+                            // the round is over either way: a later OFFER (ICE restart) may go out
+                            if let Some(c) = self.calls.cur.as_mut() { (c.roap_done, c.offer_at) = (true, None); }
+                            self.media_trouble("Medienaushandlung fehlgeschlagen: die Antwort des Medienservers wurde nicht angenommen.");
+                        }
                     }
                 }
             }
@@ -316,7 +327,12 @@ impl Session {
                         let r = self.send_roap("ANSWER", Some(&a), seq);
                         dbg_conn(&format!("call: roap ANSWER sent -> {}", if r.is_ok() { "ok" } else { "failed" }));
                     }
-                    Err(e) => dbg_conn(&format!("call: answer failed: {}", scrub(&e))),
+                    Err(e) => {
+                        // No reply at all leaves Locus waiting and can drop the media leg: a ROAP ERROR lets it retry.
+                        dbg_conn(&format!("call: answer failed: {}", scrub(&e)));
+                        let r = self.send_roap("ERROR", None, seq);
+                        dbg_conn(&format!("call: roap ERROR sent -> {}", if r.is_ok() { "ok" } else { "failed" }));
+                    }
                 }
             }
             // like the original client: an error report (glare, sequence) is logged, the call stays
@@ -325,7 +341,11 @@ impl Session {
                 let share_offer = self.calls.cur.as_ref().is_some_and(|c| c.lines_seq == Some(seq) && !c.roap_done);
                 if share_offer {
                     if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; c.offer_at = None; c.lines_seq = None; c.lines_at = None; }
+                    if let Some(m) = self.calls.cur.as_ref().and_then(|c| c.media.as_ref()) { m.lines_unnegotiated(); }
                     self.lines_failed("Der Medienserver hat die Videoverbindung abgelehnt (ROAP-Fehler).");
+                } else if let Some(c) = self.calls.cur.as_mut().filter(|c| !c.roap_done && c.roap_seq == seq) {
+                    // our own OFFER (an ICE restart) refused: the next one may go out
+                    (c.roap_done, c.offer_at) = (true, None);
                 }
             }
             _ => {} // OK, TURN_DISCOVERY_RESPONSE, SHUTDOWN: nothing to do
@@ -340,6 +360,33 @@ impl Session {
         let _ = self.out.send(Resp::Error(why.into()));
     }
 
+    /// Every tick: media that was up and dropped (Wi-Fi roam, VPN, sleep) gets an ICE restart through a ROAP OFFER once
+    /// it stays down for `ICE_RESTART_AFTER`, again every `ICE_RESTART_EVERY` while it does. Without it the peer
+    /// connection is failed for good and Locus drops us for media inactivity.
+    pub(super) fn ice_tick(&mut self) {
+        let now = Instant::now();
+        let Some(c) = self.calls.cur.as_mut() else { return };
+        let Some(m) = c.media.as_ref().filter(|_| c.answered && c.media_up_at.is_some()) else { return };
+        if m.state() == MediaState::Connected {
+            if c.media_down_at.take().is_some() { dbg_conn("call: media up again"); }
+            c.ice_restart_at = None;
+            return;
+        }
+        let down = *c.media_down_at.get_or_insert(now);
+        if now.saturating_duration_since(down) < ICE_RESTART_AFTER || !c.roap_done || c.lines_seq.is_some() { return; }
+        if c.ice_restart_at.is_some_and(|t| now.saturating_duration_since(t) < ICE_RESTART_EVERY) { return; }
+        c.ice_restart_at = Some(now);
+        let sdp = match m.ice_restart_offer() {
+            Ok(s) => s,
+            Err(e) => { dbg_conn(&format!("call: ice restart offer failed: {}", scrub(&e))); return }
+        };
+        let seq = c.roap_seq + 1;
+        (c.roap_seq, c.roap_done, c.offer_at) = (seq, false, Some(now));
+        let r = self.send_roap("OFFER", Some(&sdp), seq);
+        dbg_conn(&format!("call: media down {} s, ice restart OFFER seq={seq} -> {}", now.saturating_duration_since(down).as_secs(), if r.is_ok() { "ok" } else { "failed" }));
+        if r.is_err() { if let Some(c) = self.calls.cur.as_mut() { (c.roap_done, c.offer_at) = (true, None); } }
+    }
+
     /// Cancel (outgoing) / leave (connected) / decline (incoming, not answered).
     pub(super) fn hang_up(&mut self) -> Result<(), String> {
         let Some(c) = self.calls.cur.as_ref() else { return Ok(()) };
@@ -349,10 +396,10 @@ impl Session {
         // token): the other side must never keep hearing us. The request error is still shown.
         self.end_call(if incoming_pending { "declined" } else { "left" });
         let send = |s: &Self| if incoming_pending {
-            s.http("PUT", &format!("{url}/participant/decline"), Some(json!({"device": s.device_body()})))
+            s.http_signal("PUT", &format!("{url}/participant/decline"), Some(json!({"device": s.device_body()})))
         } else {
             let leave = json!({"device": s.device_body(), "usingResource": null, "correlationId": jose::uuid()});
-            s.http("PUT", &format!("{url}/participant/{id}/leave"), Some(leave))
+            s.http_signal("PUT", &format!("{url}/participant/{id}/leave"), Some(leave))
         };
         let mut r = send(self);
         // A lost leave keeps us "in the call" on the other side's screen: one more try unless Locus said the
@@ -381,12 +428,25 @@ impl Session {
         let rx = c.media.as_ref().map_or(0, |m| m.rx_packets.load(Ordering::Relaxed));
         let state = if c.space.is_some() { group_state(v) } else { call_state(v, outgoing || answered) };
         let Some(mut s) = state else { return Ok(()) };
+        // The other side shows only LEFT devices but is still JOINED: in passing far more often than not. Keep the call,
+        // re-read the locus, and end only when it is still so after the grace time.
+        if c.space.is_none() && matches!(s, CallState::Ended(_)) && v.active && v.self_state == "JOINED" && peer_devices_gone(v) {
+            let since = *c.gone_since.get_or_insert(now);
+            if now.saturating_duration_since(since) < DEVICES_GONE_GRACE {
+                if since == now { dbg_conn("call: the other side's devices all show LEFT while still joined, waiting before ending"); }
+                c.stale = true;
+                return Ok(());
+            }
+            dbg_conn("call: the other side's devices stayed LEFT, ending");
+        } else if !matches!(s, CallState::Ended(_)) { c.gone_since = None; }
         if s == CallState::Connected { c.joined_at.get_or_insert(now); }
         if media == Some(MediaState::Connected) { c.media_up_at.get_or_insert(now); }
         let stall = if answered { media_stall(now, c.offer_at, c.joined_at, c.media_up_at, rx, media) } else { None };
+        let recovering = c.media_up_at.is_some() && media != Some(MediaState::Failed);
         if let Some(why) = stall { self.media_trouble(why); }
-        // "Verbunden" only with the peer connection up (ICE + DTLS); before that "Verbindung wird hergestellt…"
-        if s == CallState::Connected && media != Some(MediaState::Connected) { s = CallState::Connecting; }
+        // "Verbunden" only with the peer connection up (ICE + DTLS); before that "Verbindung wird hergestellt…". A call
+        // whose media was up stays "Verbunden" while ICE recovers from a blip (`ice_tick`).
+        if s == CallState::Connected && media != Some(MediaState::Connected) && !recovering { s = CallState::Connecting; }
         if let CallState::Ended(w) = &s { self.end_call(w); } else { self.emit(s); }
         Ok(())
     }
@@ -404,7 +464,7 @@ impl Session {
             return Ok(());
         }
         let (tick, now) = (d["tick"].as_bool() == Some(true), Instant::now());
-        if tick { self.share_tick(); self.share_rx_tick(); self.video_tick(); }
+        if tick { self.calls.tick_queued.store(false, Ordering::SeqCst); self.share_tick(); self.share_rx_tick(); self.video_tick(); self.ice_tick(); }
         // any locus event with its state: a group space's meeting starting / ending shows on the space
         else if full_locus(d).is_some() { self.space_meeting_locus(locus_of(d), &locus_url_of(d)); }
         let (url, carried) = match self.calls.cur.as_mut() {
@@ -453,6 +513,9 @@ impl Session {
         let (l, how) = match carried {
             Some(l) => (l, "event"),
             None => {
+                // marked read before the request: a failing GET (stalled network, 30 s timeout) waits for the next
+                // poll instead of being retried on every tick
+                if let Some(c) = self.calls.cur.as_mut() { c.read_at = Some(now); }
                 let r = self.http("GET", &url, None)?;
                 if let Some(c) = self.calls.cur.as_mut() { c.read_at = Some(now); c.stale = false; }
                 (locus_of(&r).clone(), "read")
@@ -467,7 +530,7 @@ impl Session {
         }
         let v = parse_locus(&l, &self.my_email);
         let v = LocusView { url: if v.url.is_empty() { url.clone() } else { v.url }, ..v };
-        dbg_conn(&format!("call: {how} {} seq={seq} {}", d["eventType"].as_str().filter(|_| how == "event").unwrap_or(""), describe(&v)));
+        dbg_conn(&format!("call: {how} {} seq={seq} {} {}", d["eventType"].as_str().filter(|_| how == "event").unwrap_or(""), describe(&v), reasons(&l)));
         if let Some(c) = self.calls.cur.as_mut() {
             c.view = Some(v.clone());
             self.share_locus(&l);

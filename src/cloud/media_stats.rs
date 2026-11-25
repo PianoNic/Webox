@@ -160,7 +160,7 @@ impl Live {
     }
 }
 
-/// The id of the share's sending track (`Media::add_share`).
+/// The id of the share's sending track (`Media::add_lines`).
 pub const SHARE_TRACK: &str = "slides";
 
 /// The middle 32 bits of the NTP time (what a receiver report's LSR echoes).

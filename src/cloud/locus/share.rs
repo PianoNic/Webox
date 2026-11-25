@@ -151,6 +151,10 @@ impl Session {
             }
             (Phase::Capturing, Status::Starting) if age > CAPTURE_START => self.share_failed("Bildschirmaufnahme startet nicht (Zeitüberschreitung)."),
             (Phase::Negotiating, _) if age > ROAP_TIMEOUT => self.share_failed("Freigabe fehlgeschlagen: Der Medienserver hat auf die Freigabe-Verbindung nicht geantwortet."),
+            // `write_sample` succeeds even when nothing goes out: the share sender's real packet count decides
+            (Phase::Sharing, _) if age > TX_CHECK && age < TX_CHECK + Duration::from_secs(2)
+                && self.calls.cur.as_ref().and_then(|c| c.media.as_ref()).is_some_and(|m| m.share_tx_packets() == 0) =>
+                self.share_failed("Freigabe fehlgeschlagen: Es werden keine Bilddaten an den Medienserver gesendet."),
             (Phase::Sharing, _) if !granted && age > FLOOR_GRANT => {
                 dbg_conn("call: share: floor GRANTED not seen in the locus, sharing on (like the official client)");
                 if let Some(s) = self.calls.cur.as_mut().and_then(|c| c.share.as_mut()) { s.granted = true; }
@@ -162,7 +166,7 @@ impl Session {
     /// The capture runs: the share's lines (negotiated once per call, for sending and receiving), then the floor.
     fn share_negotiate(&mut self) {
         let Some(c) = self.calls.cur.as_mut() else { return };
-        let ready = c.media.as_ref().is_some_and(|m| m.has_lines()) && c.lines_seq.is_none();
+        let ready = c.media.as_ref().is_some_and(|m| m.lines_negotiated()) && c.lines_seq.is_none();
         if let Some(s) = c.share.as_mut() { s.phase = Phase::Negotiating; s.since = Instant::now(); }
         if ready { return self.share_answered(); }
         if c.lines_seq.is_some() { return; } // a negotiation for the far end's share / the camera runs: `lines_ready` goes on
@@ -175,13 +179,15 @@ impl Session {
     pub(super) fn negotiate_lines(&mut self, again: bool) -> Result<(), String> {
         let Some(c) = self.calls.cur.as_mut() else { return Err("Kein Anruf.".into()) };
         let Some(m) = c.media.as_ref() else { return Err("Keine Medienverbindung.".into()) };
-        let sdp = if again { m.reoffer() } else { m.add_lines() }
+        // lines that exist but whose round failed are offered again, not added twice
+        let sdp = if again || m.has_lines() { m.reoffer() } else { m.add_lines() }
             .map_err(|e| format!("Die Medienleitung ließ sich nicht anlegen ({}).", scrub(&e)))?;
         let seq = c.roap_seq + 1;
         (c.roap_seq, c.roap_done, c.lines_seq, c.lines_at) = (seq, false, Some(seq), Some(Instant::now()));
         dbg_conn(&format!("call: lines: roap OFFER seq={seq} ({}) {}", if again { "again" } else { "video lines" }, crate::cloud::sdp::summary(&sdp)));
         if let Err(e) = self.send_roap("OFFER", Some(&sdp), seq) {
             if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; c.lines_seq = None; c.lines_at = None; }
+            if let Some(m) = self.calls.cur.as_ref().and_then(|c| c.media.as_ref()) { m.lines_unnegotiated(); }
             return Err(format!("Webex hat die Medienanfrage abgelehnt ({}).", scrub(&e)));
         }
         Ok(())
@@ -259,11 +265,16 @@ impl Session {
                 let shown = [name, c.name.clone()].into_iter().find(|n| !n.is_empty()).unwrap_or_default();
                 dbg_conn("call: share: the far end shares, receiving");
                 crate::cloud::share_rx::clear();
-                (c.remote_share, c.remote_since, c.rx_reoffered, c.rx_warned) = (Some(shown.clone()), Some(Instant::now()), false, false);
+                (c.remote_share, c.remote_since, c.rx_reoffered, c.rx_warned, c.rx_lines_tried) = (Some(shown.clone()), Some(Instant::now()), false, false, false);
                 let _ = self.out.send(Resp::RemoteShare(Some(shown)));
-                if let Some(m) = c.media.as_ref() { m.expect.fetch_or(crate::cloud::media::EXPECT_SHARE, Ordering::Relaxed); }
-                let need = c.media.as_ref().is_some_and(|m| !m.has_lines()) && c.lines_seq.is_none();
-                if need { if let Err(e) = self.negotiate_lines(false) { self.lines_failed(&e); } }
+                if let Some(m) = c.media.as_ref() {
+                    m.expect.fetch_or(crate::cloud::media::EXPECT_SHARE, Ordering::Relaxed);
+                    // counted per share: a second share from a new SSRC is declared like the first (`undeclared_video`)
+                    m.rx_video.store(0, Ordering::Relaxed);
+                }
+                // not while another ROAP round runs (the call's first one included): `share_rx_tick` catches up
+                let need = c.media.as_ref().is_some_and(|m| !m.lines_negotiated()) && c.lines_seq.is_none() && c.roap_done;
+                if need { c.rx_lines_tried = true; if let Err(e) = self.negotiate_lines(false) { self.lines_failed(&e); } }
             }
             (None, true) => {
                 dbg_conn("call: share: the far end's share released");
@@ -282,11 +293,20 @@ impl Session {
         let Some(c) = self.calls.cur.as_mut() else { return };
         if c.lines_at.is_some_and(|t| t.elapsed() > ROAP_TIMEOUT) {
             (c.lines_seq, c.lines_at, c.roap_done) = (None, None, true);
+            if let Some(m) = c.media.as_ref() { m.lines_unnegotiated(); }
             return self.lines_failed("Der Medienserver hat auf die Videoverbindung nicht geantwortet.");
         }
         let Some(since) = c.remote_since.filter(|_| c.remote_share.is_some()) else { return };
         let Some(m) = c.media.as_ref() else { return };
-        let (seen, rx, ready) = (m.undeclared_video().0.is_some(), m.rx_video.load(Ordering::Relaxed), m.has_lines() && c.lines_seq.is_none() && c.roap_done);
+        let (seen, rx, idle) = (m.undeclared_video().0.is_some(), m.rx_video.load(Ordering::Relaxed), c.lines_seq.is_none() && c.roap_done);
+        // the far end shares but the lines never got negotiated (a ROAP round ran when it started): once now
+        if idle && !c.rx_lines_tried && !m.lines_negotiated() && c.share.is_none() {
+            c.rx_lines_tried = true;
+            dbg_conn("call: share: negotiating the lines for the far end's share");
+            if let Err(e) = self.negotiate_lines(false) { self.lines_failed(&e); }
+            return;
+        }
+        let ready = idle && m.lines_negotiated();
         if ready && !c.rx_reoffered && seen && rx == 0 && since.elapsed() > RX_SSRC_WAIT {
             c.rx_reoffered = true;
             dbg_conn("call: share: the far end's share arrives from an undeclared SSRC, negotiating again");
@@ -302,6 +322,8 @@ impl Session {
     }
 }
 
+/// A running share whose sender has put out no packet after this long failed.
+const TX_CHECK: Duration = Duration::from_secs(6);
 /// How long the far end's share / camera may arrive undecoded from an SSRC we didn't declare before the lines are offered
 /// again.
 pub(super) const RX_SSRC_WAIT: Duration = Duration::from_secs(3);

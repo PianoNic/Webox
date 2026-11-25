@@ -223,7 +223,8 @@ impl App {
     /// The call window's share button: opens the screen / window picker, or stops our share.
     pub(crate) fn share_button(&mut self, now: f64) {
         if self.call.sharing { if let Some(c) = &self.client { c.req(Req::Call(CallReq::Share(None))); } self.call.sharing = false; return; }
-        if self.call.share_pending { return; }
+        // still starting (the portal dialog, the negotiation): a second press cancels it
+        if self.call.share_pending { if let Some(c) = &self.client { c.req(Req::Call(CallReq::Share(None))); } self.call.share_pending = false; return; }
         if let Some(why) = crate::media::share::unavailable() { self.toast(why, now); return; }
         super::share_picker::open();
     }
