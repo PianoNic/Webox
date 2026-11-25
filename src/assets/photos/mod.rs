@@ -194,6 +194,8 @@ pub struct Photos {
     /// Decrypted message images (by `Attachment.key`), decoded lazily like the photos.
     images: HashMap<String, Vec<u8>>,
     image_tex: HashMap<String, Option<Anim>>,
+    /// Greyscale copies (first frame) of images in deleted messages a plugin keeps, made once on first use.
+    gray_tex: HashMap<String, Option<egui::TextureHandle>>,
     /// Last-active time (Unix ms) by person id / my email, from the presence service.
     pub last_active: HashMap<String, i64>,
     /// (status end in Unix ms, custom / out-of-office text) by person id / my email, from `Resp::PresenceDetail`.
@@ -295,6 +297,21 @@ impl Photos {
 
     /// The frame to show at `now` (seconds, any monotonic clock such as egui's `input.time`); loops forever and honours the
     /// frame delays. Schedules the next repaint itself, so call it only for images that are on screen.
+    /// A greyscale copy of the image (its first frame), for a deleted message a plugin keeps; made once, decoded from the same
+    /// bytes. None while the bytes are missing or for a GIF whose canvas is too large (the same check as the normal decode).
+    pub fn image_gray(&mut self, ctx: &egui::Context, key: &str) -> Option<(egui::TextureId, [usize; 2])> {
+        if !self.gray_tex.contains_key(key) {
+            let bytes = self.images.get(key)?;
+            let gif_ok = image::guess_format(bytes).ok() != Some(image::ImageFormat::Gif) || gif_canvas_ok(bytes);
+            let tex = gif_ok.then(|| image::load_from_memory(bytes).ok()).flatten().map(|img| {
+                let img = if img.width().max(img.height()) > MAX_FRAME_SIDE { img.thumbnail(MAX_FRAME_SIDE, MAX_FRAME_SIDE) } else { img };
+                upload(ctx, format!("gray:{key}"), &image::DynamicImage::ImageLumaA8(img.to_luma_alpha8()).to_rgba8(), true)
+            });
+            self.gray_tex.insert(key.to_string(), tex);
+        }
+        self.gray_tex.get(key)?.as_ref().map(|t| (t.id(), t.size()))
+    }
+
     pub fn image_frame(&mut self, ctx: &egui::Context, key: &str, now: f64) -> Option<(egui::TextureId, [usize; 2])> {
         let a = self.anim(ctx, key)?;
         if a.frames.len() < 2 || a.total <= 0.0 { return Some((a.frames[0].0.id(), a.size)); }
@@ -458,6 +475,8 @@ impl crate::App {
     /// Call it with `ui.input(|i| i.time)` only for images that are visible.
     #[allow(dead_code)]
     pub(crate) fn image_frame(&mut self, ctx: &egui::Context, key: &str, now_secs: f64) -> Option<(egui::TextureId, [usize; 2])> { self.photos.image_frame(ctx, key, now_secs) }
+    /// A greyscale copy of a message image (deleted messages a plugin keeps).
+    pub(crate) fn image_gray(&mut self, ctx: &egui::Context, key: &str) -> Option<(egui::TextureId, [usize; 2])> { self.photos.image_gray(ctx, key) }
 
     /// The profile picture of a person (by `Person.id`, uuid or email) as an egui texture, if one was downloaded.
     pub(crate) fn photo(&mut self, ctx: &egui::Context, key: &str) -> Option<egui::TextureId> {

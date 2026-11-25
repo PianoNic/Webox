@@ -4,7 +4,8 @@ use super::*;
 impl App {
     /// One image attachment: max 320 wide / 320 high, aspect kept, 8 pt corners.
     /// Returns its height. Click opens the lightbox.
-    pub(super) fn image_block(&mut self, ui: &mut egui::Ui, c: &Mc, at: egui::Pos2, a: &Attachment, wrap: f32, salt: (&str, usize)) -> f32 {
+    /// `deleted`: the message was deleted and a plugin keeps it: the picture is grey, in colour while the pointer is on it.
+    pub(super) fn image_block(&mut self, ui: &mut egui::Ui, c: &Mc, at: egui::Pos2, a: &Attachment, wrap: f32, salt: (&str, usize), deleted: bool) -> f32 {
         // Only called for visible rows: image_frame animates (loops, honours delays, schedules its own repaint).
         let now = ui.input(|i| i.time);
         let tex = self.image_frame(ui.ctx(), &a.key, now);
@@ -13,6 +14,8 @@ impl App {
         let r = Rect::from_min_size(at, sz);
         // Ids carry the message id and the attachment's index (the same file can be shared twice, or in two messages).
         let wid = Id::new(("msg-img", salt.0, salt.1, &a.key, cur_seq(ui.ctx())));
+        // A kept deleted message: grey, in colour while the pointer is on the picture.
+        let tex = match tex { Some(t) if deleted && !ui.rect_contains_pointer(r) => Some(self.image_gray(ui.ctx(), &a.key).map_or(t, |g| (g.0, t.1))), t => t };
         match tex {
             Some((tid, _)) => round_image(ui.painter(), r, IMG_RADIUS, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), tid, Color32::WHITE),
             None => {

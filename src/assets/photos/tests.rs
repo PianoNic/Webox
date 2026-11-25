@@ -93,3 +93,15 @@ fn small_gif_keeps_every_frame() {
     assert_eq!(a.frames.len(), 100);
     assert!((a.total - 10.0).abs() < 1e-3);
 }
+
+#[test]
+fn deleted_images_get_a_grey_copy() {
+    let ctx = egui::Context::default();
+    let mut p = Photos::default();
+    p.add_images(vec![("g".into(), gif(&[[255, 0, 0, 255]]))]);
+    let (_, size) = p.image_gray(&ctx, "g").expect("grey copy");
+    assert_eq!(size, [4, 4]);
+    let (id2, _) = p.image_gray(&ctx, "g").unwrap();
+    assert_eq!(p.image_gray(&ctx, "g").unwrap().0, id2); // made once, then cached
+    assert!(p.image_gray(&ctx, "missing").is_none());
+}
