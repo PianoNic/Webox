@@ -45,9 +45,11 @@ impl App {
                     if o.close { st.open = false; st.ext = false; }
                 }
             }
-            let refocus = !st.open && st.staged.contains_key(space);
+            let picked = st.staged.contains_key(space);
+            let refocus = !st.open && picked;
             put(st);
-            if refocus { ctx.memory_mut(|m| m.request_focus(egui::Id::new("composer-edit"))); }
+            if picked && self.settings["gif_send_instantly"].as_bool().unwrap_or(false) { self.gif_send_staged(space, now); }
+            else if refocus { ctx.memory_mut(|m| m.request_focus(egui::Id::new("composer-edit"))); }
             return;
         }
 
@@ -237,6 +239,8 @@ impl App {
         if close { st.open = false; st.debounce.reset(); }
         let picked_gif = close && pick.is_some();
         put(st);
-        if picked_gif { ctx.memory_mut(|m| m.request_focus(egui::Id::new("composer-edit"))); }
+        // Setting "GIFs beim Anklicken sofort senden": the picked GIF goes out at once instead of waiting in the composer.
+        if picked_gif && self.settings["gif_send_instantly"].as_bool().unwrap_or(false) { self.gif_send_staged(space, now); }
+        else if picked_gif { ctx.memory_mut(|m| m.request_focus(egui::Id::new("composer-edit"))); }
     }
 }
