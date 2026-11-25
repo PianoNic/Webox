@@ -238,7 +238,8 @@ impl App {
         let boxr = Rect::from_min_max(origin + Vec2::new(box_left, 0.0), pos2(origin.x + box_left + box_w, row.bottom())).shrink2(Vec2::new(0.0, 0.5));
         // Hover: the row, its toolbar, or an open menu of it.
         let bar_key = Id::new(("msg-bar", id, &m.id));
-        let menu_open = menu::menu_is_open(ui.ctx(), &format!("msg-more-{}", m.id)) || menu::menu_is_open(ui.ctx(), &format!("msg-ctx-{}", m.id)) || react_picker_for(ui.ctx(), &m.id);
+        let (k_more, k_ctx) = (format!("msg-more-{}", m.id), ctx_menu::ctx_key(&m.id));
+        let menu_open = [&k_more, &k_ctx, &ctx_menu::remind_key(&k_more), &ctx_menu::remind_key(&k_ctx), &ctx_menu::react_key(&k_more), &ctx_menu::react_key(&k_ctx)].iter().any(|k| menu::menu_is_open(ui.ctx(), k)) || react_picker_for(ui.ctx(), &m.id);
         let prev_bar: Option<Rect> = ui.ctx().data(|d| d.get_temp(bar_key));
         // Layer-aware: nothing on top of the row (image viewer, dialog, menu, ...) may be hovering it; the row's own toolbar (its own
         // layer, above the row) keeps it hovered.
@@ -374,47 +375,18 @@ impl App {
                     // Ctrl+C (egui reports it as Event::Copy) copies the selection as plain text, emoji as characters.
                     if ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy))) && ctx.memory(|mm| mm.focused().is_none()) { ctx.copy_text(t.clone()); }
                 }
-                let k_link = Id::new(("msg-ctx-link", &m.id));
+                // Right click on the text: the row's menu (ctx_menu.rs) gets the text entries, and the link ones on a web link.
                 if resp.secondary_clicked() {
-                    let l = resp.interact_pointer_pos().and_then(|pp| link_at(g, &ct.links, pp - origin)).filter(|l| l != html::JUMP && !l.starts_with(html::MENTION));
-                    ctx.data_mut(|d| match l { Some(l) => d.insert_temp(k_link, l), None => d.remove::<String>(k_link) });
-                }
-                // Right-click menu (shared menu toolkit, ui/menu/): link actions, Kopieren (selection), Alles auswählen, then the
-                // message actions.
-                let k_menu = format!("msg-ctx-{}", m.id);
-                if resp.secondary_clicked() {
-                    if let Some(pp) = resp.interact_pointer_pos() { ctx.data_mut(|d| d.insert_temp(Id::new(("msg-ctx-at", &m.id)), pp)); }
-                    menu::menu_open(&ctx, &k_menu);
-                }
-                if menu::menu_is_open(&ctx, &k_menu) {
-                    let link = ctx.data(|d| d.get_temp::<String>(k_link));
-                    let at = ctx.data(|d| d.get_temp::<egui::Pos2>(Id::new(("msg-ctx-at", &m.id)))).unwrap_or(tr_.min);
-                    let mut items: Vec<menu::Entry> = Vec::new();
-                    let multi = msel(&ctx, id).multi; // while multi-selecting, the whole menu is the multi-selection entry
-                    if multi { items = self.message_entries(&ctx, id, m); } else {
-                        if link.is_some() {
-                            items.push(menu::Item::new("open-link", "Link öffnen").icon("browser-regular").entry());
-                            items.push(menu::Item::new("copy-link", "Link kopieren").icon("link-regular").entry());
-                            items.push(menu::Entry::Sep);
-                        }
-                        if selected.is_some() { items.push(menu::Item::new("copy", "Kopieren").icon("copy-regular").shortcut("Strg+C").entry()); }
-                        items.push(menu::Item::new("select-all", "Alles auswählen").icon("select-all-regular").shortcut("Strg+A").entry());
-                        items.push(menu::Entry::Sep);
-                        if m.deleted == 0 { items.extend(self.message_entries(&ctx, id, m)); } // a kept deleted message only copies
-                    }
-                    if let Some(a) = menu::webex_menu(&ctx, &mut self.icons, t, &k_menu, Rect::from_min_size(at, Vec2::ZERO), menu::Side::Below, menu::Align::Left, false, &items) {
-                        match a.as_str() {
-                            "copy" => if let Some(t) = &selected { ctx.copy_text(t.clone()); },
-                            "select-all" => ctx.data_mut(|d| d.insert_temp(k_sel, (m.id.clone(), 0usize, total))),
-                            _ => self.message_do(&ctx, id, m, &a, link.as_deref()),
-                        }
-                    }
+                    let link = resp.interact_pointer_pos().and_then(|pp| link_at(g, &ct.links, pp - origin)).filter(|l| l != html::JUMP && !l.starts_with(html::MENTION));
+                    ctx_menu::note_hit(&ctx, &m.id, ctx_menu::Hit::Text { link });
                 }
                 y += g.size().y;
             }
             if let Some(g) = &ct.tag { p.galley(pos2(tx, y), g.clone(), c.head); y += g.size().y; }
             if !m.reactions.is_empty() { self.reactions_row(ui, t, c, pos2(tx, y + 2.0), m); }
         }
+        // Right click anywhere on the row: the message menu, with the actions of the part under the pointer on top.
+        self.row_context_menu(ui, t, id, m, &ct, row);
         // A closed (read-only) chat has no reply / react / edit toolbar (ui/closed.rs).
         // Nor has a deleted message a plugin keeps: it is gone on the service.
         if hovered && !self.space_closed(id) && m.deleted == 0 { self.message_toolbar(ui, t, c, id, m, boxr, head, bar_key, ui.clip_rect().top()); }

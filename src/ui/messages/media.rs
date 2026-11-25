@@ -40,9 +40,27 @@ impl App {
         let resp = ui.interact(r, wid, Sense::click());
         if tex.is_some() && resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
         if resp.clicked() && tex.is_some() { ui.ctx().data_mut(|d| d.insert_temp(Id::new("lightbox"), a.key.clone())); }
+        if resp.secondary_clicked() { ctx_menu::note_hit(ui.ctx(), salt.0, ctx_menu::Hit::Image(a.clone())); } // the row's menu adds the picture's actions
         // Plugin hook (GIF-Extras, off by default): e.g. its favourite star on GIFs. Nothing is drawn here while the plugin is off.
         self.gif_ext_image_overlay(ui, r, a, salt, tex.is_some());
         sz.y
+    }
+
+    /// "Bild kopieren" / the viewer's "Kopieren": the picture onto the clipboard (the original file when it has arrived, else the
+    /// thumbnail).
+    pub(super) fn image_copy(&mut self, ctx: &egui::Context, key: &str) {
+        let bytes = self.photos.image_bytes(&format!("full:{key}")).or_else(|| self.photos.image_bytes(key)).map(|b| b.to_vec());
+        if let Some(img) = bytes.and_then(|b| image::load_from_memory(&b).ok()) {
+            let rgba = img.to_rgba8();
+            ctx.copy_image(egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], rgba.as_raw()));
+        }
+    }
+
+    /// "Speichern unter" for a picture: the original file, named as it was shared ("Bild.<ext>" when it has no name).
+    pub(super) fn image_save(&mut self, key: &str, a: Option<&Attachment>) {
+        let mut name = a.map(|a| a.name.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| "Bild".into());
+        if !name.contains('.') { name.push_str(match a.map_or("", |a| a.mime.as_str()) { "image/gif" => ".gif", "image/jpeg" => ".jpg", "image/webp" => ".webp", _ => ".png" }); }
+        self.file_save_as(key, &name);
     }
 
     // Full-resolution hooks: App::request_full_image / image_full_frame / release_full_image (photos.rs) fetch the full file on demand.
@@ -152,21 +170,9 @@ impl App {
             }
         });
         ctx.data_mut(|d| d.insert_temp(k_view, (zoom, pan)));
-        // Copy the picture (the original file when it has arrived, else the thumbnail) / save the original file.
         match lb_act {
-            Some("copy") => {
-                let bytes = self.photos.image_bytes(&format!("full:{key}")).or_else(|| self.photos.image_bytes(&key)).map(|b| b.to_vec());
-                if let Some(img) = bytes.and_then(|b| image::load_from_memory(&b).ok()) {
-                    let rgba = img.to_rgba8();
-                    ctx.copy_image(egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], rgba.as_raw()));
-                }
-            }
-            Some(_) => {
-                let a = msgs.iter().flat_map(|m| m.images.iter()).find(|a| a.key == key);
-                let mut name = a.map(|a| a.name.trim().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| "Bild".into());
-                if !name.contains('.') { name.push_str(match a.map_or("", |a| a.mime.as_str()) { "image/gif" => ".gif", "image/jpeg" => ".jpg", "image/webp" => ".webp", _ => ".png" }); }
-                self.file_save_as(&key, &name);
-            }
+            Some("copy") => self.image_copy(ctx, &key),
+            Some(_) => { let a = msgs.iter().flat_map(|m| m.images.iter()).find(|a| a.key == key).cloned(); self.image_save(&key, a.as_ref()); }
             None => {}
         }
         if let Some(n) = nav {
@@ -181,7 +187,7 @@ impl App {
     /// (once downloaded "In Ordner anzeigen"), right click = the file menu. While the file goes up (pending
     /// upload) or comes down, a progress bar runs along the card's bottom and the size line shows the percentage.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn file_chip(&mut self, ui: &mut egui::Ui, t: &Th, c: &Mc, r: Rect, name: &str, size: u64, salt: (&str, usize), key: Option<&str>) {
+    pub(super) fn file_chip(&mut self, ui: &mut egui::Ui, _t: &Th, c: &Mc, r: Rect, name: &str, size: u64, salt: (&str, usize), key: Option<&str>) {
         let sample_key = format!("sample-file:{}:{name}", salt.0);
         let key = key.map(String::from).or_else(|| self.client.is_none().then(|| sample_key.clone()));
         use crate::app::files::{self as af, Phase};
@@ -254,20 +260,10 @@ impl App {
             if bs.on_hover_text(tip).clicked() { act = Some(a); }
         }
         if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        let k_menu = format!("msg-file-menu-{}-{}", salt.0, salt.1);
-        if resp.secondary_clicked() {
-            if let Some(pp) = resp.interact_pointer_pos() { ui.ctx().data_mut(|d| d.insert_temp(Id::new(("msg-file-at", &k_menu)), pp)); }
-            menu::menu_open(ui.ctx(), &k_menu);
-        }
+        // Right click: the message's menu with the file's actions on top (ctx_menu.rs).
+        if resp.secondary_clicked() { ctx_menu::note_hit(ui.ctx(), salt.0, ctx_menu::Hit::File { key: key.clone(), name: name.to_string() }); }
         if act.is_none() && resp.clicked() { act = Some("file-open"); }
-        let resp = resp.on_hover_text(name);
-        if menu::menu_is_open(ui.ctx(), &k_menu) {
-            let at = ui.ctx().data(|d| d.get_temp::<egui::Pos2>(Id::new(("msg-file-at", &k_menu)))).unwrap_or(resp.rect.left_bottom());
-            let items = self.file_menu_entries(&key, false);
-            if let Some(a) = menu::webex_menu(ui.ctx(), &mut self.icons, t, &k_menu, Rect::from_min_size(at, Vec2::ZERO), menu::Side::Below, menu::Align::Left, false, &items) {
-                self.file_menu_do(&a, &key, name, now_s);
-            }
-        }
+        let _ = resp.on_hover_text(name);
         match act {
             Some("file-cancel") => crate::app::files::download_cancel(&key),
             Some(a) => { self.file_menu_do(a, &key, name, now_s); }
@@ -327,6 +323,7 @@ impl App {
         let clip = ui.painter().with_clip_rect(r.intersect(ui.clip_rect()));
         for (g, y) in [&title, &desc, &site].into_iter().zip(l.text_y) { clip.galley(pos2(r.left() + l.text_x, r.top() + y), g.clone(), c.white); }
         if resp.clicked() { open_web(&p.url); }
+        if resp.secondary_clicked() { ctx_menu::note_hit(ui.ctx(), salt.0, ctx_menu::Hit::Link(p.url.clone())); }
         resp.on_hover_text(&p.url);
         l.h
     }

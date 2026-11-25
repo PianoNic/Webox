@@ -91,6 +91,8 @@ plugin can check for something newer than its own contract and degrade when the 
 | `message.received` | `{"space", "id", "author", "text", "mine", "direct", "mentioned"}`: a message arrived live, once per message id, also your own (`mine`, from any client). `direct` = a 1:1 space, `mentioned` = it @-mentions you. Fired on the UI thread: return at once and do slow work on a thread of your own. | ignored |
 | `message.deleted` | `{"space", "space_name", "id", "author", "email", "text", "mine", "parent", "published_ms", "date", "time"}`: a message Webox had loaded was deleted (from any client), once per id. `text` is the last known plain text, `date` / `time` are UTC. UI thread. | `{"keep": true, "style": "text"\|"overlay"}` keeps it on screen, drawn as deleted; anything else: it goes as before |
 | `message.edited` | `{"space", "space_name", "id", "author", "mine", "old_text", "new_text"}`: a loaded message's text changed, once per id and new text. UI thread. | `{"history": ["...", ...]}`: earlier texts, oldest first, shown above the text; anything else: nothing shown |
+| `message.menu` | `{"space", "id", "deleted", "edited", "mine"}`: the menu of a message opens (a right click anywhere on it, or its "···" button), once per opening. `deleted`: a deleted message a plugin keeps; `edited`: edited according to the service, or showing earlier texts. UI thread: answer at once. | `{"items": [{"id", "label", "icon"?, "danger"?}]}` (or the bare list): entries Webox appends to the menu after a separator, at most 8 per plugin, labels at most 80 characters. `icon` is a Momentum icon name (`delete-regular`; an unknown name draws none), `danger` draws the entry in red. Anything else: nothing added. Without a subscribed plugin the menu is unchanged. |
+| `message.menu_action` | `{"space", "id", "item"}`: one of the plugin's own entries was picked (`item` = its `id`). Sent only to the plugin that offered it. UI thread. | ignored |
 
 Naming and versioning rules:
 
@@ -132,13 +134,17 @@ cloud/activities), so the events come right away there.
 
 The plugin decides by its answer. `{"keep": true, "style": "text"}` keeps a deleted message where it was written (the
 "gelöscht" row, which stands at the deletion time, goes), its text in the danger red with "(gelöscht)" below it; `"overlay"` keeps the text colour and lays a red wash
-over the message. Such a message has no toolbar and its menu only copies. `{"history": [...]}` on `message.edited` shows the
+over the message. Such a message has no toolbar, and its menu (right click) has only "Nachricht kopieren" (and the text or
+picture actions of what was clicked) plus the plugins' `message.menu` entries. `{"history": [...]}` on `message.edited` shows the
 earlier texts struck through in the secondary grey above the text, with "(bearbeitet)" below it. Without such a plugin
 Webox draws every list exactly as received.
 
 Kept messages are local: Webox keeps them in memory for as long as a plugin that listens to either event is switched on,
 and never sends them anywhere. To keep them across restarts the plugin stores the payloads itself (`host.set`) and gives
-them back with `message.keep` on start. The [Nachrichtenprotokoll](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/message-logger)
+them back with `message.keep` on start. To forget one message, an edit history or a space's log, the plugin drops it from its
+records and gives the rest again with `message.keep` and `"replace": true`: a deleted message no longer kept goes as Webox
+deletes any message (its "… gelöscht" row comes back), an edit history no longer given disappears. Its menu entries for this
+come from `message.menu`. The [Nachrichtenprotokoll](https://github.com/PianoNic/WeboxPlugins/tree/main/plugins/message-logger)
 plugin does this.
 
 ### Camera pictures

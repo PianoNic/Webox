@@ -167,5 +167,6 @@ use attachments::split_files;
 pub(crate) use video::poster as video_poster;
 use video::is_video;
 mod interact;
+mod ctx_menu;
 mod reactors;
 mod who_reacted;

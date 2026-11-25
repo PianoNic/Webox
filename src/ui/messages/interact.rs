@@ -223,21 +223,20 @@ impl App {
             if reply && button(self, ui, Some("reply_12"), None, "Im Thread antworten").clicked() { self.start_reply(m); }
             if fwd && button(self, ui, Some("forward-message_12"), None, "Weiterleiten").clicked() { self.forward_text = Some(m.text.clone()); }
             let more = button(self, ui, Some("more_12"), None, "Weitere Aktionen");
-            if more.clicked() { menu::menu_toggle(&ctx, &k_more); }
+            if more.clicked() {
+                menu::menu_toggle(&ctx, &k_more);
+                menu::menu_close(&ctx, &super::ctx_menu::remind_key(&k_more));
+                menu::menu_close(&ctx, &super::ctx_menu::react_key(&k_more));
+                if menu::menu_is_open(&ctx, &k_more) { self.message_menu_opened(&ctx, id, m, &k_more); }
+            }
             more_rect = more.rect;
             // Border: drawn last so the hover fills don't cover it.
             ui.painter().rect_stroke(bar.shrink(0.5), half, Stroke::new(1.0_f32, c.pill_border), StrokeKind::Inside);
         });
         // The "···" menu (shared menu toolkit): drawn every frame while open, anchored at the button.
-        if menu::menu_is_open(&ctx, &k_more) {
-            let mut items = self.message_entries(&ctx, id, m);
-            // With its button hidden, "Reaktion hinzufügen" moves into this menu.
-            if !react && !msel(&ctx, id).multi { items.insert(0, menu::Item::new("react", "Reaktion hinzufügen").icon("reactions-regular").entry()); }
-            match menu::webex_menu(&ctx, &mut self.icons, t, &k_more, more_rect, menu::Side::Below, menu::Align::Right, true, &items).as_deref() {
-                Some("react") => self.open_reaction_picker(&ctx, &m.id, more_rect),
-                Some(a) => self.message_do(&ctx, id, m, a, None),
-                None => {}
-            }
+        if [k_more.clone(), super::ctx_menu::remind_key(&k_more), super::ctx_menu::react_key(&k_more)].iter().any(|x| menu::menu_is_open(&ctx, x)) {
+            let items = self.message_entries(&ctx, id, m);
+            if let Some(a) = self.message_menu_show(&ctx, t, id, m, &k_more, more_rect, menu::Side::Below, menu::Align::Right, true, items, true) { self.message_do(&ctx, id, m, &a, None); }
         }
     }
 

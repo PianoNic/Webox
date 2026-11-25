@@ -119,6 +119,7 @@ fn custom_id() -> Id { Id::new("sched-custom") }
 impl App {
     pub(crate) fn msgx_load(&mut self) {
         self.msgx.sched = self.settings["scheduled_messages"].as_array().into_iter().flatten().filter_map(from_json).collect();
+        self.reminders_load();
     }
     fn sched_save(&mut self) {
         if self.shot.is_some() { return; }

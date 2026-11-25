@@ -36,6 +36,17 @@ pub(crate) fn inject(frame: u32, raw: &mut RawInput) {
             raw.events.push(Event::PointerButton { pos: p, button: PointerButton::Middle, pressed: false, modifiers: Default::default() });
         }
     }
+    // WEBOX_SHOT_RCLICK=frame:x,y[;...]: a right click there (press at that frame, release one frame later).
+    if let Ok(v) = std::env::var("WEBOX_SHOT_RCLICK") {
+        raw.focused = true;
+        for part in v.split(';') {
+            let Some((f, pos)) = part.split_once(':') else { continue };
+            let (Some(f), Some(p)) = (f.trim().parse::<u32>().ok(), parse_pos(pos)) else { continue };
+            if frame != f && frame != f + 1 { continue }
+            raw.events.push(Event::PointerMoved(p));
+            raw.events.push(Event::PointerButton { pos: p, button: PointerButton::Secondary, pressed: frame == f, modifiers: Default::default() });
+        }
+    }
     // WEBOX_SHOT_CLICK=frame:x,y[:ctrl|shift|ctrlshift|slow][;...]: a left click there, with those keys held, at that frame.
     // `slow` presses at that frame and releases 3 frames later (a real click spans frames: press and release are separate passes).
     if let Ok(v) = std::env::var("WEBOX_SHOT_CLICK") {

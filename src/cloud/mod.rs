@@ -120,7 +120,7 @@ pub struct LinkPreview { pub url: String, pub title: String, pub description: St
 /// An image attached to a message (shown inline). `key` is the cache key for `App::image(ctx, key)`; the
 /// bytes arrive later as `Resp::Images`. `width`/`height` are the thumbnail's pixel size (0 if unknown).
 #[allow(dead_code)] // read by the message view once it draws inline images
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Attachment { pub name: String, pub mime: String, pub size: u64, pub key: String, pub width: u32, pub height: u32,
     /// Set for a GIF shared from Giphy: where it lives on Giphy's CDN.
     pub giphy: Option<Giphy> }

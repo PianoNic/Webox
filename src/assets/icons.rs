@@ -46,6 +46,11 @@ pub fn set_art_ink(c: Color32) { ART_INK.store(u32::from_be_bytes(c.to_array()),
 fn art_ink() -> Color32 { let [r, g, b, a] = ART_INK.load(std::sync::atomic::Ordering::Relaxed).to_be_bytes(); Color32::from_rgba_premultiplied(r, g, b, a) }
 
 /// An icon by name: the Webex client icon when the build has it, else its Momentum fallback.
+/// The embedded icon's own name for `name` (icons are drawn by `&'static str`; a name from a plugin is a `String`).
+pub fn static_name(name: &str) -> Option<&'static str> {
+    ICON_TABLE.binary_search_by(|e| e.0.cmp(name)).ok().map(|i| ICON_TABLE[i].0)
+}
+
 fn lookup(name: &str) -> Option<&'static [u8]> {
     find(ICON_TABLE, name).or_else(|| FALLBACKS.iter().find(|f| f.0 == name).and_then(|f| find(ICON_TABLE, f.1)))
 }
