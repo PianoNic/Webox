@@ -18,6 +18,8 @@ const HOLD: u32 = 10;
 const REPEAT: u32 = 2;
 /// More than 1 s buffered means the output stopped taking audio: cut back to the target.
 const MAX_LEVEL: u64 = 50;
+/// RTP timestamp units (48 kHz) of one slot.
+const SLOT_TS: u32 = 960;
 /// A sequence jump this far (2 s) from the playout point is a restarted stream: start over.
 const RESET_JUMP: u64 = 100;
 
@@ -49,8 +51,10 @@ pub struct Jitter {
     next: Option<u64>,
     started: bool,
     lost_row: u32,
-    /// The last slot that played a real packet.
-    played: Option<u64>,
+    /// The last slot that played a real packet, and its RTP timestamp.
+    played: Option<(u64, u32)>,
+    /// RTP timestamps of the held packets.
+    stamps: BTreeMap<u64, u32>,
     /// Interarrival jitter in ms (RFC 3550 style), the last packet's transit and the first arrival.
     jitter: f64,
     transit: Option<f64>,
@@ -73,8 +77,13 @@ impl Jitter {
     /// The depth to hold, in slots: one slot plus three times the jitter, within 40..200 ms.
     pub fn target(&self) -> u64 { (((SLOT_MS + 3.0 * self.jitter) / SLOT_MS).ceil() as u64).clamp(MIN_TARGET, MAX_TARGET) }
 
-    /// Takes a packet that arrived at `at`; false when it is dropped (a duplicate, or its slot already played).
-    pub fn push(&mut self, seq: u16, payload: Vec<u8>, at: Instant) -> bool {
+    /// Takes a packet that arrived at `at`; false when it is dropped (a duplicate, or its slot already played). Its RTP
+    /// timestamp is taken as one slot per sequence number (no silent gap); `push_ts` with the real one.
+    #[cfg(test)]
+    pub fn push(&mut self, seq: u16, payload: Vec<u8>, at: Instant) -> bool { self.push_ts(seq, seq as u32 * SLOT_TS, payload, at) }
+
+    /// `push` with the packet's RTP timestamp `ts`.
+    pub fn push_ts(&mut self, seq: u16, ts: u32, payload: Vec<u8>, at: Instant) -> bool {
         let mut e = self.extend(seq);
         if let (Some(n), Some(t)) = (self.next, self.top) {
             if e + RESET_JUMP < n || e > t.max(n) + RESET_JUMP { *self = Jitter::default(); e = self.extend(seq); }
@@ -84,16 +93,20 @@ impl Jitter {
         if let Some(p) = self.transit.replace(transit) { self.jitter += ((transit - p).abs() - self.jitter) / 16.0; }
         let n = *self.next.get_or_insert(e);
         if e < n && !self.started { self.next = Some(e); }
-        // concealing with nothing buffered (a silent / DTX gap: the sender skipped packets, not numbers): the packet after
-        // the last one played resumes the stream here instead of counting as late
-        else if e < n && self.lost_row > 0 && self.pkts.is_empty() && self.played.is_none_or(|p| e > p) { self.next = Some(e); }
+        // concealing with nothing buffered, and the packet's timestamp is further on than its number says: the sender
+        // was silent (DTX: it skipped packets, not numbers), this one starts a new talkspurt here instead of counting as
+        // late. A merely late packet (timestamp one slot per number) stays late.
+        else if e < n && self.lost_row > 0 && self.pkts.is_empty()
+            && self.played.is_some_and(|(p, t)| e > p && ts.wrapping_sub(t) > SLOT_TS.wrapping_mul((e - p) as u32)) { self.next = Some(e); }
         else if e < n { return false; }
         if self.pkts.contains_key(&e) { return false; }
         self.pkts.insert(e, payload);
+        self.stamps.insert(e, ts);
         self.top = Some(self.top.map_or(e, |t| t.max(e)));
         if self.level() > MAX_LEVEL {
             let keep = self.top.unwrap_or(e) + 1 - self.target();
             self.pkts = self.pkts.split_off(&keep);
+            self.stamps = self.stamps.split_off(&keep);
             self.next = Some(keep);
         }
         true
@@ -108,7 +121,7 @@ impl Jitter {
             (self.started, self.high, self.low, self.lost_row) = (true, 0, 0, 0);
         }
         let play = match self.pkts.remove(&n) {
-            Some(p) => { (self.lost_row, self.played) = (0, Some(n)); Play::Packet(p) }
+            Some(p) => { (self.lost_row, self.played) = (0, self.stamps.remove(&n).map(|t| (n, t))); Play::Packet(p) }
             None => {
                 self.lost_row += 1;
                 if let Some(p) = self.pkts.get(&(n + 1)) { Play::Fec(p.clone()) }
@@ -201,15 +214,20 @@ mod tests {
 
     #[test]
     fn speech_after_a_short_silent_gap_is_not_dropped() {
-        // the sender skipped packets in silence (DTX): sequence numbers go on where they stopped
+        // the sender skipped packets in silence (DTX): sequence numbers go on where they stopped, the timestamp jumped
         let (mut j, t0) = fed(&[1, 2]);
         played(&mut j, 2);
         assert_eq!(played(&mut j, 2), [Play::Plc, Play::Plc]);
-        assert!(j.push(3, vec![3], t0 + Duration::from_millis(100)), "the next packet resumes the stream");
-        assert!(j.push(4, vec![4], t0 + Duration::from_millis(120)));
+        assert!(j.push_ts(3, 10 * SLOT_TS, vec![3], t0 + Duration::from_millis(200)), "a new talkspurt resumes the stream");
+        assert!(j.push_ts(4, 11 * SLOT_TS, vec![4], t0 + Duration::from_millis(220)));
         assert_eq!(played(&mut j, 2), [Play::Packet(vec![3]), Play::Packet(vec![4])]);
         // a packet older than what played stays late
-        assert!(!j.push(2, vec![2], t0 + Duration::from_millis(140)));
+        assert!(!j.push(2, vec![2], t0 + Duration::from_millis(240)));
+        // a merely late packet (its slot was concealed, timestamp one slot on) stays late too
+        let (mut j, t0) = fed(&[1, 2]);
+        played(&mut j, 2);
+        assert_eq!(played(&mut j, 2), [Play::Plc, Play::Plc]);
+        assert!(!j.push(3, vec![3], t0 + Duration::from_millis(100)), "its slot played already (concealed)");
     }
 
     #[test]

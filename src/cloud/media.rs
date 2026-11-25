@@ -465,7 +465,7 @@ impl Media {
                             if rxp.fetch_add(1, Ordering::Relaxed) == 0 { dbg_conn("call: first RTP packet received"); }
                             live.rx(super::media_stats::AUDIO, &pkt.header, pkt.payload.len(), super::media_stats::AUDIO_CLOCK);
                             if pkt.payload.is_empty() { continue; }
-                            if let Ok(mut j) = jb.lock() { j.push(pkt.header.sequence_number, pkt.payload.to_vec(), Instant::now()); }
+                            if let Ok(mut j) = jb.lock() { j.push_ts(pkt.header.sequence_number, pkt.header.timestamp, pkt.payload.to_vec(), Instant::now()); }
                         }
                         ended.store(true, Ordering::Relaxed);
                     });
