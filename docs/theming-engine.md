@@ -927,3 +927,15 @@ What this shows for **behaviour and coherence**:
    layouts ship, so that `ui.dispatch` can arrive early for existing plugins?
 8. What do we do with `Th` itself long-term? Keep it as the fast "roles" view, or replace it with `ResolvedTheme`
    accessors?
+
+## Decisions on the open questions (2026-11-25)
+
+1. **File format:** JSON. `serde_json` is already a dependency; TOML would add one for no gain at runtime. Plugin authors may write TOML and convert at build time if they like.
+2. **Layouts are data-only packages.** Native plugins may compute themes (palette, accents) but cannot ship a layout tree from code. Data is easy to validate, lint and hot-reload.
+3. **Settings:** a layout can place the settings page and choose its navigation style, but not restructure the pages themselves (first version).
+4. **Call window and dock layouts are chosen separately** from the main layout, with the main layout's package as the default when it provides them.
+5. **Per-space layouts: no** (not until someone needs them).
+6. **High contrast wins:** under Windows high contrast, plugin colours are ignored and the high-contrast mapping applies; layouts still apply.
+7. **Publish the action and state-key list early, from P3**, marked unstable until P7.
+8. **`Th` stays** as the fast resolved colour struct, filled once per theme change.
+
