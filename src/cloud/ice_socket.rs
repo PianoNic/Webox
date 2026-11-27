@@ -8,7 +8,9 @@
 //!
 //! It also notes the SSRCs that H.264 (the video lines' payload type) arrives from (`SeenSsrc`, the last two different
 //! ones: the far end's camera on `video/main` and its share on `video/slides`): the RTP header is not encrypted by SRTP,
-//! and with several m-lines webrtc-rs drops a stream whose SSRC the answer didn't declare.
+//! and with several m-lines webrtc-rs drops a stream whose SSRC the answer didn't declare. The same for Opus (the
+//! audio lines' payload type): the call offers all four m-lines from the start, so the server's audio is taken only once
+//! its SSRC is declared (`Media::redeclare`).
 use std::future::Future;
 use std::io::ErrorKind;
 use std::net::{IpAddr, SocketAddr};
@@ -21,11 +23,25 @@ use webrtc::util::{Conn, Error};
 
 type Fut<'a, T> = Pin<Box<dyn Future<Output = Result<T, Error>> + Send + 'a>>;
 
-pub struct IceSocket { sock: tokio::net::UdpSocket, video_ssrc: Arc<SeenSsrc>, video_pt: u8, errs: Errs }
+pub struct IceSocket { sock: tokio::net::UdpSocket, seen: Seen, errs: Errs }
+
+/// What the socket notes about arriving RTP: the SSRCs of the video lines' payload type and of the audio lines' (Opus).
+#[derive(Clone)]
+pub struct Seen { pub video: Arc<SeenSsrc>, pub video_pt: u8, pub audio: Arc<SeenSsrc>, pub audio_pt: u8 }
 
 /// The read errors in a row and when one was last logged (at most once a second).
 #[derive(Default)]
-struct Errs { row: AtomicU32, logged: std::sync::Mutex<Option<std::time::Instant>> }
+struct Errs { row: AtomicU32, logged: std::sync::Mutex<Option<std::time::Instant>>, since: std::sync::Mutex<Option<std::time::Instant>> }
+
+/// A read error is logged at most this often (the call log is always on).
+const ERR_LOG_EVERY: std::time::Duration = std::time::Duration::from_secs(10);
+/// Errors in a row for this long (the network is gone): the socket is read only once a second until a datagram arrives.
+const ERR_BACKOFF_AFTER: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// How long to wait before the next read after `row` errors in a row, for `for_` (10 ms after a few, 1 s after 30 s).
+pub fn err_pause(row: u32, for_: std::time::Duration) -> Option<std::time::Duration> {
+    if for_ >= ERR_BACKOFF_AFTER { Some(std::time::Duration::from_secs(1)) } else if row >= 5 { Some(std::time::Duration::from_millis(10)) } else { None }
+}
 
 /// The last two different SSRCs a payload type arrived from (0 = none). Two streams arriving interleaved leave both.
 #[derive(Debug, Default)]
@@ -44,14 +60,16 @@ impl SeenSsrc {
     }
     /// Anything seen at all.
     pub fn any(&self) -> bool { self.last.load(Ordering::Relaxed) != 0 }
+    /// The SSRC seen last (0 = none).
+    pub fn newest(&self) -> u32 { self.last.load(Ordering::Relaxed) }
 }
 
-/// A UDP mux on `ip` (an ephemeral port). Needs a running tokio runtime. RTP with payload type `video_pt` leaves its SSRC
-/// in `video_ssrc`.
-pub fn mux(ip: IpAddr, video_ssrc: Arc<SeenSsrc>, video_pt: u8) -> std::io::Result<UDPNetwork> {
+/// A UDP mux on `ip` (an ephemeral port; the unspecified address = every interface). Needs a running tokio runtime.
+/// RTP of the video and audio payload types leaves its SSRC in `seen`.
+pub fn mux(ip: IpAddr, seen: Seen) -> std::io::Result<UDPNetwork> {
     let s = std::net::UdpSocket::bind(SocketAddr::new(ip, 0))?;
     s.set_nonblocking(true)?;
-    let conn = IceSocket { sock: tokio::net::UdpSocket::from_std(s)?, video_ssrc, video_pt, errs: Errs::default() };
+    let conn = IceSocket { sock: tokio::net::UdpSocket::from_std(s)?, seen, errs: Errs::default() };
     Ok(UDPNetwork::Muxed(UDPMuxDefault::new(UDPMuxParams::new(conn))))
 }
 
@@ -70,18 +88,21 @@ pub fn rtp_ssrc(b: &[u8], pt: u8) -> Option<u32> {
 
 impl IceSocket {
     fn note(&self, b: &[u8]) {
-        self.errs.row.store(0, Ordering::Relaxed);
-        if let Some(s) = rtp_ssrc(b, self.video_pt) { self.video_ssrc.note(s); }
+        if self.errs.row.swap(0, Ordering::Relaxed) > 0 { if let Ok(mut s) = self.errs.since.lock() { *s = None; } }
+        if let Some(s) = rtp_ssrc(b, self.seen.video_pt) { self.seen.video.note(s); } else if let Some(s) = rtp_ssrc(b, self.seen.audio_pt) { self.seen.audio.note(s); }
     }
 
-    /// A read error that is read past: logged at most once a second (the kind only), and after a few in a row the next
-    /// read waits 10 ms so a socket that keeps failing doesn't spin.
+    /// A read error that is read past: logged at most every `ERR_LOG_EVERY` (the kind only); after a few in a row the next
+    /// read waits 10 ms so a socket that keeps failing doesn't spin, and after `ERR_BACKOFF_AFTER` of nothing but errors
+    /// (the network is gone) it waits 1 s. Reading never stops: webrtc-ice would never read the socket again, and the media
+    /// could not recover once the network is back.
     async fn skip(&self, e: &std::io::Error) {
         let row = self.errs.row.fetch_add(1, Ordering::Relaxed) + 1;
         let now = std::time::Instant::now();
-        let log = self.errs.logged.lock().map(|mut l| { let due = l.is_none_or(|t| now.duration_since(t).as_secs() >= 1); if due { *l = Some(now); } due }).unwrap_or(false);
-        if log { super::dbg_conn(&format!("call: ice socket read error skipped ({:?}, {} in a row)", e.kind(), row)); }
-        if row >= 5 { tokio::time::sleep(std::time::Duration::from_millis(10)).await; }
+        let since = self.errs.since.lock().map(|mut s| *s.get_or_insert(now)).unwrap_or(now);
+        let log = self.errs.logged.lock().map(|mut l| { let due = l.is_none_or(|t| now.duration_since(t) >= ERR_LOG_EVERY); if due { *l = Some(now); } due }).unwrap_or(false);
+        if log { super::dbg_conn(&format!("call: ice socket read error skipped ({:?}, {} in a row for {} s)", e.kind(), row, now.duration_since(since).as_secs())); }
+        if let Some(p) = err_pause(row, now.duration_since(since)) { tokio::time::sleep(p).await; }
     }
 }
 
@@ -134,6 +155,14 @@ mod tests {
         assert_eq!(s.candidates(&[9]), vec![7], "the stream webrtc-rs takes already is no candidate");
         s.note(5);
         assert_eq!(s.candidates(&[]), vec![5, 9]);
+    }
+
+    #[test]
+    fn read_errors_back_off_hard_after_30_s() {
+        use std::time::Duration as D;
+        assert_eq!(err_pause(1, D::from_secs(0)), None, "one error: read again at once");
+        assert_eq!(err_pause(5, D::from_secs(1)), Some(D::from_millis(10)), "a few in a row: no spinning");
+        assert_eq!(err_pause(5000, D::from_secs(30)), Some(D::from_secs(1)), "the network is gone: once a second");
     }
 
     #[test]

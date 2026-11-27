@@ -31,6 +31,8 @@ pub(crate) struct CallUi {
     /// Camera video in the call (ours and the other side's), as the cloud thread reports it (`Resp::CallVideo`). The
     /// pictures: `cloud::video_rx::{remote, self_view}`; on / off / switch: `CallReq::Video`.
     pub(crate) video: cloud::locus::video::VideoInfo,
+    /// The call's media is down for a while (`Resp::CallReconnecting`): "Reconnecting…" instead of "Connected".
+    pub(crate) reconnecting: bool,
     // Separate-window state, offline sample mode (no sound, no microphone), toast's ring switch.
     pub(crate) win: super::call_win::WinState, pub(crate) sample: bool, pub(crate) ring_muted: bool,
     /// Plays ringtone / ringback / test tones (its own streams, on the ringtone or speaker device).
@@ -430,7 +432,7 @@ impl App {
         let secs = if state == CallState::Connected { (now - since).max(0.0) as u64 } else { 0 };
         let photo = self.photo_for(ctx, "", &email);
         ctx.request_repaint_after(std::time::Duration::from_millis(if menu_is_open(ctx, "call-devices") { 60 } else { 200 }));
-        Some(CallView { state, name, email, secs, ended, photo })
+        Some(CallView { state, name, email, secs, ended, photo, reconnecting: self.call.reconnecting })
     }
 
     /// The incoming-call toast content (288 wide), in the toolkit's toast frame.
@@ -483,7 +485,7 @@ impl App {
             ui.add_space(14.0);
             ui.label(RichText::new(&v.name).font(semibold(20.0)).color(t.text1));
             ui.add_space(4.0);
-            ui.label(RichText::new(state_text(&v.state, v.secs)).size(14.0).color(t.text2));
+            ui.label(RichText::new(v.status()).size(14.0).color(t.text2));
             ui.add_space(22.0);
             if v.ended { return; }
             let row = Rect::from_center_size(ui.cursor().center_top() + Vec2::new(0.0, 26.0), Vec2::new(4.0 * 48.0 + 3.0 * 20.0, 52.0));
@@ -552,7 +554,16 @@ impl App {
 }
 
 /// One frame of call data for the surface (host-independent).
-pub(crate) struct CallView { pub state: CallState, pub name: String, pub email: String, pub secs: u64, pub ended: bool, pub photo: Option<egui::TextureId> }
+pub(crate) struct CallView { pub state: CallState, pub name: String, pub email: String, pub secs: u64, pub ended: bool, pub photo: Option<egui::TextureId>,
+    /// Connected, but the media is down for a while.
+    pub reconnecting: bool }
+
+impl CallView {
+    /// The status line: `state_text`, or "Reconnecting…" while a connected call's media is down.
+    pub(crate) fn status(&self) -> String {
+        if self.reconnecting && self.state == CallState::Connected { tr("Reconnecting...").into() } else { state_text(&self.state, self.secs) }
+    }
+}
 /// What the user pressed.
 #[derive(Default)]
 pub(crate) struct CallActions { pub hang: bool, pub answer: bool, pub mute: bool, pub message: bool, pub contact: bool, pub toggle_ring: bool, pub dismiss: bool,

@@ -145,6 +145,8 @@ pub fn debug_log_enabled() -> bool {
 /// `~/Library/Application Support/WebOx`), only when `WEBOX_DEBUG_LOG=1` (off by default). Each line starts with the
 /// UTC time of day (hh:mm:ss.mmm).
 pub fn dbg_conn(s: &str) {
+    // call events also go to the always-on call log (call_log.rs), with or without the debug log
+    if s.starts_with("call:") { crate::cloud::call_log::write(s); }
     if !debug_log_enabled() { return; }
     use std::io::Write;
     let mut o = std::fs::OpenOptions::new();
