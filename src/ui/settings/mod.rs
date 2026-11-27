@@ -22,7 +22,7 @@ pub(crate) mod video_page;
 use nav::Page;
 pub(crate) use pages_a::msg_font_scale_of;
 
-const NAV_W: f32 = 280.0; // navigation column width
+pub(crate) const NAV_W: f32 = 280.0; // navigation column width
 fn header_h() -> f32 { crate::ui::theme::density::m().settings_header_h } // page header height (52)
 const CONTENT_W: f32 = 720.0; // page body width cap
 
@@ -81,7 +81,9 @@ impl App {
         egui::CentralPanel::default().frame(egui::Frame::default().inner_margin(egui::Margin { left: 0, right: 4, top: 0, bottom: 0 })).show(ctx, |ui| {
             let full = ui.available_rect_before_wrap();
             let _ = ui.allocate_rect(full, Sense::hover());
-            let (nav_r, page_r) = (Rect::from_min_max(full.min, pos2(full.left() + NAV_W, full.bottom())), Rect::from_min_max(pos2(full.left() + NAV_W + 4.0, full.top()), full.max));
+            // The navigation column's width comes from the layout.
+            let nav_w = self.layout.rect(crate::ui::layout::Component::SettingsNav).map_or(NAV_W, |r| r.width());
+            let (nav_r, page_r) = (Rect::from_min_max(full.min, pos2(full.left() + nav_w, full.bottom())), Rect::from_min_max(pos2(full.left() + nav_w + 4.0, full.top()), full.max));
             vgrad(ui.painter(), nav_r, L::CardRadius.get(), t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), nav_r, L::CardRadius.get(), true);
             vgrad(ui.painter(), page_r, L::CardRadius.get(), t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), page_r, L::CardRadius.get(), false);
             let mut s: SUi = ctx.data(|d| d.get_temp(egui::Id::new("settings-ui"))).unwrap_or_default();
@@ -98,7 +100,7 @@ impl App {
 
     fn settings_nav(&mut self, ui: &mut egui::Ui, t: &Th, s: &mut SUi, nav_rect: Rect) {
         let k = kit::tok(t);
-        let sf = Rect::from_min_size(nav_rect.min + Vec2::new(12.0, 12.0), Vec2::new(NAV_W - 24.0, 32.0));
+        let sf = Rect::from_min_size(nav_rect.min + Vec2::new(12.0, 12.0), Vec2::new(nav_rect.width() - 24.0, 32.0));
         let dm = crate::ui::theme::density::m(); // navigation rows: Standard top 56, rows 36 on a 38 pitch
         let mut y = nav_rect.top() + dm.settings_nav_top;
         for (p, title, icon, depth) in nav::NAV {

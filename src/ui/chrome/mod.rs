@@ -193,9 +193,10 @@ impl App {
         self.presence_line(p, now_ms)
     }
 
-    pub(crate) fn top_bar(&mut self, ctx: &egui::Context, t: &Th, now: f64) {
+    /// The header, `height` high (the layout's header region).
+    pub(crate) fn top_bar(&mut self, ctx: &egui::Context, t: &Th, now: f64, height: f32) {
         header_layout::keep_min_size(ctx);
-        egui::TopBottomPanel::top("top").exact_height(header_h()).show_separator_line(false).frame(egui::Frame::default()).show(ctx, |ui| {
+        egui::TopBottomPanel::top("top").exact_height(height).show_separator_line(false).frame(egui::Frame::default()).show(ctx, |ui| {
             let full = ui.max_rect();
             let cy = full.top() + HEADER_CY;
             let forced = std::env::var("WEBOX_SHOT_HOVER").unwrap_or_default();
