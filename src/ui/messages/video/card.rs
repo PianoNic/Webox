@@ -134,10 +134,10 @@ impl App {
     pub(super) fn video_spinner(&mut self, ui: &mut egui::Ui, _c: &Mc, at: egui::Pos2, pct: Option<u32>, now: f64) {
         let p = ui.painter();
         p.circle_filled(at, 24.0, Color32::from_black_alpha(120));
-        p.circle_stroke(at, 18.0, Stroke::new(3.0_f32, hex(0x8F8F8F))); // spinner-progress-track
+        p.circle_stroke(at, 18.0, Stroke::new(3.0_f32, C::SpinnerTrack.fixed())); // spinner-progress-track
         let (a0, span) = match pct { Some(k) => (-std::f32::consts::FRAC_PI_2, std::f32::consts::TAU * k as f32 / 100.0), None => ((now * 5.0) as f32, 1.6) };
         let pts: Vec<egui::Pos2> = (0..=40).map(|i| { let a = a0 + span * i as f32 / 40.0; at + Vec2::new(a.cos(), a.sin()) * 18.0 }).collect();
-        if span > 0.0 { p.add(Shape::line(pts, Stroke::new(3.0_f32, hex(0x64B4FA)))); } // spinner-progress-cursor
+        if span > 0.0 { p.add(Shape::line(pts, Stroke::new(3.0_f32, C::SpinnerCursor.fixed()))); } // spinner-progress-cursor
         if let Some(k) = pct { p.text(at, Align2::CENTER_CENTER, format!("{k}%"), FontId::proportional(11.0), Color32::WHITE); }
         ui.ctx().request_repaint_after(std::time::Duration::from_millis(50));
     }

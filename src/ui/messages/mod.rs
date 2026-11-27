@@ -122,8 +122,8 @@ fn mc(t: &Th) -> Mc {
         bar: t.at(tok!("legacy-separator-primary")), // reply bar
         white: t.at(tok!("message-bodyText-primary-text")),
         checked: wa(f, 0.11), // message-background checked: #FFFFFF/0.11 dark, #000000/0.11 light
-        danger: if t.light { hex(0xD43519) } else { hex(0xF55868) }, // as the menus' danger entries
-        added: if t.light { hex(0x1A7F37) } else { hex(0x85E89D) },
+        danger: t.c(C::Danger), // as the menus' danger entries
+        added: t.c(C::Added),
     }
 }
 

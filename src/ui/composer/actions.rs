@@ -143,7 +143,7 @@ impl App {
 
     pub(super) fn rich_toolbar(&mut self, ui: &mut egui::Ui, t: &Th, row: Rect, st: &mut St, id: &str) {
         let light = super::super::menu::light(t);
-        let border = if light { hex(0xEDEDED) } else { hex(0x3B3B3B) }; // wx-default-border
+        let border = t.c(C::ComposerPopupBorder); // wx-default-border
         let ink = if light { hex(0x121212) } else { hex(0xF3F3F3) };
         let mut x = row.left();
         let cy = row.center().y;
@@ -199,7 +199,7 @@ impl App {
     pub(super) fn markdown_legend(&mut self, ctx: &egui::Context, t: &Th, st: &mut St, now: f64) {
         let light = super::super::menu::light(t);
         let (bg, border) = if light { (Color32::WHITE, alpha(Color32::BLACK, 0.2)) } else { (hex(0x121212), alpha(Color32::WHITE, 0.15)) };
-        let div = if light { hex(0xEDEDED) } else { hex(0x3B3B3B) }; // wx-default-border
+        let div = t.c(C::ComposerPopupBorder); // wx-default-border
         // (kind, text): h = header, b = bold item, i = italic item, n = item, x = example header, e = example item, s = 4 px separator.
         let data: [(char, &str); 29] = [('h', "Style"), ('b', "**Bold**"), ('i', "_Italic_"), ('n', "> Quote"), ('s', ""),
             ('h', "Lists"), ('n', "1. First item"), ('n', "2. Second item"), ('n', "3. Third item"), ('n', "* Bullet item 1"), ('n', "* Bullet item 2"), ('s', ""),

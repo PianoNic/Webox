@@ -140,7 +140,7 @@ impl App {
             p.rect_stroke(outer, 12.0, Stroke::new(2.0_f32, border), egui::StrokeKind::Inside);
             // Field row: field 28 pt high, 20 pt from the top, 24 pt side margins, close button 28 pt.
             let field = Rect::from_min_size(outer.min + Vec2::new(24.0, 20.0), Vec2::new(w - 48.0 - 36.0, 28.0));
-            p.rect_filled(field, 14.0, if light { hex(0xEDEDED) } else { hex(0x3B3B3B) });
+            p.rect_filled(field, 14.0, t.c(C::SearchField));
             p.rect_stroke(field, 14.0, Stroke::new(1.0_f32, t.accent), egui::StrokeKind::Inside); // `focus` is the keyboard-focus ring
             self.icons.paint(ui, "search-regular", Rect::from_center_size(field.left_center() + Vec2::new(18.0, 0.0), Vec2::splat(16.0)), text);
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(field.min + Vec2::new(34.0, 0.0), field.max - Vec2::new(12.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
@@ -252,7 +252,7 @@ impl App {
                 let y = rc.top() + 40.0 + 68.0 * k as f32;
                 p.text(pos2(rc.left() + 12.0, y + 6.0), egui::Align2::LEFT_CENTER, crate::ui::widgets::tr(label), F::Small.font(), text2);
                 let fr = Rect::from_min_size(pos2(rc.left() + 12.0, y + 16.0), Vec2::new(rc.width() - 24.0, 32.0));
-                p.rect_filled(fr, 8.0, if light { hex(0xEDEDED) } else { hex(0x3B3B3B) });
+                p.rect_filled(fr, 8.0, t.c(C::SearchField));
                 self.icons.paint(ui, "search-regular", Rect::from_center_size(fr.left_center() + Vec2::new(14.0, 0.0), Vec2::splat(14.0)), text2);
                 let mut fc = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(fr.min + Vec2::new(28.0, 0.0), fr.max - Vec2::new(8.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
                 let target = if val == 0 { &mut g2.pf } else { &mut g2.sf };

@@ -69,9 +69,9 @@ impl App {
                     0 | 1 | 2 if closed => (["video-regular", "handset-regular", "share-screen-regular"][which as usize], Some([t.ink_a(0.2); 3]), Color32::TRANSPARENT, t.ink_a(0.4)),
                     3 if closed => ("calendar-add-regular", None, t.ink_a(0.2), t.ink_a(0.4)),
                     4 if closed => ("start-chat-regular", None, t.ink_a(0.2), t.ink_a(0.4)),
-                    0 => ("video-regular", Some([hex(0x248052), hex(0x1C5E3D), hex(0x17422C)]), Color32::TRANSPARENT, Color32::WHITE),
-                    1 => ("handset-regular", Some([hex(0x248052), hex(0x1C5E3D), hex(0x17422C)]), Color32::TRANSPARENT, Color32::WHITE),
-                    2 => ("share-screen-regular", Some([hex(0x0A78CC), hex(0x08599C), hex(0x103C63)]), Color32::TRANSPARENT, Color32::WHITE),
+                    0 => ("video-regular", Some([t.c(C::CallButton), t.c(C::CallButtonHover), t.c(C::CallButtonDown)]), Color32::TRANSPARENT, Color32::WHITE),
+                    1 => ("handset-regular", Some([t.c(C::CallButton), t.c(C::CallButtonHover), t.c(C::CallButtonDown)]), Color32::TRANSPARENT, Color32::WHITE),
+                    2 => ("share-screen-regular", Some([t.c(C::ShareButton), t.c(C::ShareButtonHover), t.c(C::ShareButtonDown)]), Color32::TRANSPARENT, Color32::WHITE),
                     3 => ("calendar-add-regular", None, t.at(tok!("button-primary-background:disabled")), t.at(tok!("button-primary-background:disabled"))), // 20 %
                     _ => ("start-chat-regular", None, t.text2, t.text1),
                 };
@@ -113,7 +113,7 @@ impl App {
             let fill = match (in_call, space.meeting) {
                 (true, _) => t.at(tok!("button-primary-background:disabled")),
                 // the call buttons' emerald (-60 / -70 hover / -80 pressed) for "join the running meeting"
-                (false, true) => if down { hex(0x17422C) } else if presp.hovered() { hex(0x1C5E3D) } else { hex(0x248052) },
+                (false, true) => if down { t.c(C::CallButtonDown) } else if presp.hovered() { t.c(C::CallButtonHover) } else { t.c(C::CallButton) },
                 // the enabled primary button (button-primary-background, as in ui/invite.rs)
                 (false, false) => if down { t.at(tok!("button-primary-background:pressed")) } else if presp.hovered() { t.at(tok!("button-primary-background:hovered")) } else { t.white_btn },
             };

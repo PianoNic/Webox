@@ -69,7 +69,7 @@ struct Pal { bg: Color32, border: Color32, hover: Color32, pressed: Color32, tex
 fn pal(t: &Th) -> Pal {
     Pal { bg: t.at(tok!("menulistbackground-primary-background")), border: t.at(tok!("menulistbackground-primary-border")), hover: t.at(tok!("listitem-background:hovered")),
           pressed: t.at(tok!("listitem-background:pressed")), text: t.at(tok!("label-primary-text")), text2: t.at(tok!("label-secondary-text")),
-          dim: t.at(tok!("label-primary-text:disabled")), sep: t.at(tok!("menulistbackground-primary-border")), danger: if t.light { hex(0xD43519) } else { hex(0xF55868) } }
+          dim: t.at(tok!("label-primary-text:disabled")), sep: t.at(tok!("menulistbackground-primary-border")), danger: t.c(C::Danger) }
 }
 
 fn key(k: &str) -> egui::Id { egui::Id::new(("webex-menu-open", k)) }

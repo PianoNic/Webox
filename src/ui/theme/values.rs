@@ -101,6 +101,7 @@ pub(crate) enum Def {
     /// Light themes, dark themes (0xRRGGBB each).
     LightDark(u32, u32),
     /// A core token of the active theme.
+    #[allow(dead_code)] // the first theme packages refer to core tokens
     Tok(TokenId),
 }
 
@@ -109,6 +110,42 @@ registry! {
     C, COLORS, Def, 0;
     /// The ring around the profile picture in the header.
     HeaderAvatarRing = "header.avatar.ring" => Def::LightDark(0x454545, 0xCFCFCF),
+    /// The header's video and audio call buttons, and "join the running meeting": emerald, with hover and pressed shades.
+    CallButton = "chat_header.call_button.background" => Def::Rgb(0x248052),
+    CallButtonHover = "chat_header.call_button.background:hovered" => Def::Rgb(0x1C5E3D),
+    CallButtonDown = "chat_header.call_button.background:pressed" => Def::Rgb(0x17422C),
+    /// The header's screen-share button.
+    ShareButton = "chat_header.share_button.background" => Def::Rgb(0x0A78CC),
+    ShareButtonHover = "chat_header.share_button.background:hovered" => Def::Rgb(0x08599C),
+    ShareButtonDown = "chat_header.share_button.background:pressed" => Def::Rgb(0x103C63),
+    /// The blue "jump to the latest" and "new messages" buttons of the message list.
+    JumpButton = "message_list.jump_button.background" => Def::Rgb(0x1170CF),
+    JumpButtonHover = "message_list.jump_button.background:hovered" => Def::Rgb(0x0353A8),
+    JumpButtonDown = "message_list.jump_button.background:pressed" => Def::Rgb(0x063A75),
+    /// Text of destructive menu entries and failures ("Delete", "Leave", removed text in an edit history).
+    Danger = "menu.danger.text" => Def::LightDark(0xD43519, 0xF55868),
+    /// Added text in an edit history.
+    Added = "message_list.diff.added" => Def::LightDark(0x1A7F37, 0x85E89D),
+    /// The filled red button of a confirmation dialog.
+    DialogDanger = "dialog.button.danger.background" => Def::Rgb(0xD43519),
+    DialogDangerHover = "dialog.button.danger.background:hovered" => Def::Rgb(0xA12512),
+    /// The filled primary button of a confirmation dialog, and its text.
+    DialogPrimary = "dialog.button.primary.background" => Def::LightDark(0x121212, 0xF2F3F1),
+    DialogPrimaryHover = "dialog.button.primary.background:hovered" => Def::LightDark(0x2B2B2B, 0xDCDDDB),
+    DialogPrimaryText = "dialog.button.primary.text" => Def::LightDark(0xFFFFFF, 0x121212),
+    /// Borders and dividers of the composer's popups (mentions, actions).
+    ComposerPopupBorder = "composer.popup.border" => Def::LightDark(0xEDEDED, 0x3B3B3B),
+    /// The outline of the send button group.
+    ComposerSendBorder = "composer.send.border" => Def::LightDark(0xCCCCCC, 0x3B3B3B),
+    /// Composer glyphs that are not active (the send arrow without text, the AI sparkle).
+    ComposerIconDim = "composer.icon.dim" => Def::Rgb(0x6F6F6F),
+    /// The search field of the global search popup.
+    SearchField = "search.field.background" => Def::LightDark(0xEDEDED, 0x3B3B3B),
+    /// Upload and download progress of pictures and videos in messages.
+    MediaProgress = "message_list.media.progress" => Def::Rgb(0x1170CF),
+    /// The loading spinner's track and its moving part.
+    SpinnerTrack = "spinner.track" => Def::Rgb(0x8F8F8F),
+    SpinnerCursor = "spinner.cursor" => Def::Rgb(0x64B4FA),
 }
 
 impl Th {
@@ -125,7 +162,17 @@ impl Th {
     }
 }
 
-#[allow(dead_code)]
+impl C {
+    /// A colour whose default is the same in every theme (`Def::Rgb`), for code that has no `Th` at hand: the theme's
+    /// override, or the default.
+    #[inline]
+    pub(crate) fn fixed(self) -> Color32 {
+        let v = COLORS.with(|a| a[self as usize].get());
+        if v != 0 { return unpack(v); }
+        match self.default_value() { Def::Rgb(v) => crate::hex(v), _ => { debug_assert!(false, "{} depends on the theme", self.name()); Color32::MAGENTA } }
+    }
+}
+
 fn pack(c: Color32) -> u32 { u32::from_be_bytes(c.to_array()).max(1) }
 fn unpack(v: u32) -> Color32 { let [r, g, b, a] = v.to_be_bytes(); Color32::from_rgba_premultiplied(r, g, b, a) }
 

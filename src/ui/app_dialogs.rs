@@ -52,7 +52,7 @@ impl App {
         let mut tab = ctx.data(|x| x.get_temp::<usize>(kt)).unwrap_or(first).min(d.tabs.len() - 1);
         if !menu::menu_is_open(ctx, &k) { menu::menu_open(ctx, &k); }
         menu::set_dialog_width(ctx, &k, 600.0);
-        let (added, removed) = if t.light { (hex(0x1A7F37), hex(0xD43519)) } else { (hex(0x85E89D), hex(0xF55868)) };
+        let (added, removed) = (t.c(C::Added), t.c(C::Danger));
         let mut body = |ui: &mut egui::Ui| {
             if let Some((label, _)) = &d.switch {
                 ui.horizontal(|ui| {

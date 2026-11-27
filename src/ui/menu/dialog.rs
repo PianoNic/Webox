@@ -43,8 +43,8 @@ pub(crate) fn webex_dialog_bg(ctx: &egui::Context, t: &Th, k: &str, title: &str,
                     let (r, resp) = ui.allocate_exact_size(Vec2::new(tw + 40.0, 32.0), Sense::click());
                     let hov = resp.hovered();
                     if hov { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
-                    let (fill, fg, stroke) = if b.danger { (if hov { hex(0xA12512) } else { hex(0xD43519) }, Color32::WHITE, Stroke::NONE) }
-                        else if b.primary { (if hov { if light { hex(0x2B2B2B) } else { hex(0xDCDDDB) } } else if light { hex(0x121212) } else { hex(0xF2F3F1) }, if light { Color32::WHITE } else { hex(0x121212) }, Stroke::NONE) }
+                    let (fill, fg, stroke) = if b.danger { (if hov { t.c(C::DialogDangerHover) } else { t.c(C::DialogDanger) }, Color32::WHITE, Stroke::NONE) }
+                        else if b.primary { (if hov { t.c(C::DialogPrimaryHover) } else { t.c(C::DialogPrimary) }, t.c(C::DialogPrimaryText), Stroke::NONE) }
                         else { (if hov { if light { alpha(Color32::BLACK, 0.07) } else { alpha(Color32::WHITE, 0.12) } } else { Color32::TRANSPARENT }, text, Stroke::new(1.0_f32, if light { alpha(Color32::BLACK, 0.3) } else { alpha(Color32::WHITE, 0.3) }) ) };
                     ui.painter().rect_filled(r, 16.0, fill);
                     if stroke.width > 0.0 { ui.painter().rect_stroke(r, 16.0, stroke, egui::StrokeKind::Inside); }

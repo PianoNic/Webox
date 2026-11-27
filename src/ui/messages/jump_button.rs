@@ -28,7 +28,7 @@ impl App {
         if a <= 0.0 { return; }
         let r = Rect::from_center_size(pos2(list.center().x, list.bottom() - BOTTOM_MARGIN - DIAMETER / 2.0), Vec2::splat(DIAMETER));
         let resp = ui.interact(r, Id::new("msg-jump-bottom-btn"), Sense::click());
-        let bg = if resp.is_pointer_button_down_on() { hex(0x063A75) } else if resp.hovered() { hex(0x0353A8) } else { hex(0x1170CF) };
+        let bg = if resp.is_pointer_button_down_on() { C::JumpButtonDown.fixed() } else if resp.hovered() { C::JumpButtonHover.fixed() } else { C::JumpButton.fixed() };
         ui.painter().circle_filled(r.center(), DIAMETER / 2.0, bg.gamma_multiply(a));
         self.icons.paint(ui, "arrow-down_12", Rect::from_center_size(r.center(), Vec2::splat(12.0)), wa(Color32::WHITE, 0.95 * a));
         if resp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
