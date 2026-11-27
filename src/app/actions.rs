@@ -91,7 +91,8 @@ impl App {
             match self.plugins.command(&text) {
                 Some(t) if t.is_empty() => return,
                 Some(t) => text = t,
-                None => { self.toast(format!("No plugin answers {}", text.split(' ').next().unwrap_or("")), now); return; }
+                // no plugin knows the command: it is just text starting with "/" (like "/fix" in a chat), sent as typed
+                None => {}
             }
         }
         let Some(mut text) = self.plugins.on_send(&text) else { self.toast("A plugin stopped this message", now); return };
