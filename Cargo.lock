@@ -7149,7 +7149,7 @@ dependencies = [
 
 [[package]]
 name = "webox"
-version = "0.3.11"
+version = "0.3.12"
 dependencies = [
  "ab_glyph",
  "aes",
