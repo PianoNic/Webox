@@ -8,6 +8,7 @@ pub(crate) mod call_note_macos; // the incoming-call banner (Accept / Decline)
 pub(crate) mod toast_pos;
 pub(crate) mod chrome;
 pub(crate) mod theme; // the Momentum themes and their colour tokens
+pub(crate) mod layout; // the layout engine: the window as a tree of regions and components (docs/theming-engine.md)
 pub(crate) mod conversation;
 pub(crate) mod closed; // read-only notice of a closed chat
 pub(crate) mod welcome; // empty-chat welcome item
