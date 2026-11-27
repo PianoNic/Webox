@@ -251,6 +251,8 @@ impl App {
         thumb.map(|a| &a.key).hash(&mut h);
         (wrap.to_bits(), c.body, c.white, c.accent, c.head, c.danger, crate::ui::theme::density::get()).hash(&mut h); // density: the attachment gap
         (&self.me.id, &self.me.name, emoji_text::ensure_font(&ctx), super::super::widgets::msg_scale().to_bits(), ctx.pixels_per_point().to_bits()).hash(&mut h);
+        // after egui rebuilt its font atlas the kept galleys point at the old glyph places: lay the text out again
+        super::super::widgets::font_gen().hash(&mut h);
         for a in &m.images { (&a.key, a.width, a.height, self.photos.image_size(&ctx, &a.key)).hash(&mut h); }
         // a video card's height follows its poster once the first frame is decoded
         for a in m.files.iter().chain(&m.images).filter(|a| is_video(a)) { self.video_known_size(&ctx, a).hash(&mut h); }

@@ -112,6 +112,7 @@ impl eframe::App for App {
         if self.frames == 1 && self.shot.is_some() { if let Ok(v) = std::env::var("WEBOX_SHOT_DENSITY") { self.settings["density"] = json!(v); }
             if let Ok(v) = std::env::var("WEBOX_SHOT_COMPACT_VIEW") { self.settings["compact_view"] = json!(v == "1"); } }
         crate::ui::theme::density::set_from(&self.settings);
+        crate::ui::widgets::note_font_atlas(ctx);
         let t = self.apply_theme(ctx);
         // Every blink of the text cursor redraws the whole window (egui has no partial redraws): it blinks while you work and
         // stays on, without redraws, from 10 s after the last key press or mouse move, so a window left open is really idle.

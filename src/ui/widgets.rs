@@ -441,6 +441,20 @@ pub(crate) fn vquad(p: &egui::Painter, r: Rect, top: Color32, bottom: Color32) {
     p.add(m);
 }
 
+/// Counts how often egui threw its font atlas away. It does that when the atlas is over 80 % full (or the scale changes):
+/// every glyph gets a new place in a new texture, so text laid out before (an `Arc<Galley>` kept across frames) draws
+/// garbage from the new texture. Caches of laid-out text key on this and lay out again after a reset.
+static FONT_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+thread_local! { static FONT_FILL: std::cell::Cell<f32> = const { std::cell::Cell::new(0.0) }; }
+/// Once per frame (frame.rs): a drop in the atlas fill ratio means egui cleared it.
+pub(crate) fn note_font_atlas(ctx: &egui::Context) {
+    let fill = ctx.fonts(|f| f.font_atlas_fill_ratio());
+    let before = FONT_FILL.with(|c| c.replace(fill));
+    if fill + 0.05 < before { FONT_GEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed); }
+}
+/// The font atlas generation (see `note_font_atlas`).
+pub(crate) fn font_gen() -> u64 { FONT_GEN.load(std::sync::atomic::Ordering::Relaxed) }
+
 /// Translates an English UI string: the official language packs (any context), then Webox's own translations; English
 /// (and unknown strings) pass through unchanged.
 pub(crate) fn tr(s: &str) -> &str {
@@ -467,3 +481,28 @@ pub(crate) static PRESENCE_SHOWN: std::sync::atomic::AtomicBool = std::sync::ato
 /// Message text scale of Accessibility > Font size (f32 bits; 1.0 = Regular), set each frame by App::appwide_frame.
 pub(crate) static MSG_SCALE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3F80_0000);
 pub(crate) fn msg_scale() -> f32 { f32::from_bits(MSG_SCALE.load(std::sync::atomic::Ordering::Relaxed)) }
+
+#[cfg(test)]
+mod font_atlas_tests {
+    use eframe::egui;
+    #[test]
+    fn a_cleared_atlas_starts_a_new_generation_so_kept_text_is_laid_out_again() {
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |_| {});
+        let g0 = super::font_gen();
+        super::note_font_atlas(&ctx);
+        // lots of distinct glyphs at many sizes fill the atlas past egui's 80 % mark; the next pass clears it
+        let mut saw_reset = false;
+        for round in 0..400 {
+            let _ = ctx.run(egui::RawInput::default(), |ctx| {
+                ctx.fonts(|f| for size in 0..8 {
+                    let text: String = (0..200u32).filter_map(|i| char::from_u32(0x4E00 + round * 200 + i)).chain((0..200u32).filter_map(|i| char::from_u32(0x100 + i))).collect();
+                    let _ = f.layout_no_wrap(text, egui::FontId::proportional(10.0 + round as f32 % 40.0 + size as f32 * 7.0), egui::Color32::WHITE);
+                });
+            });
+            super::note_font_atlas(&ctx);
+            if super::font_gen() > g0 { saw_reset = true; break; }
+        }
+        assert!(saw_reset, "filling the atlas must be noticed as a new generation");
+    }
+}
