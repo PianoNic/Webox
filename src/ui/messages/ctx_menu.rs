@@ -3,7 +3,7 @@
 //! order), with the actions of what was clicked on top:
 //!
 //!   * text: Open Link / Copy link (on a link), Copy (with a selection), Select all;
-//!   * a picture: Copy image, Save as;
+//!   * a picture: Copy image, Save as; with the GIF Extras plugin on also Add to favorites / Remove from favorites;
 //!   * a file or video: the file menu (Open, Download, Save as, Show in folder);
 //!   * a link card: Open Link, Copy link.
 //!
@@ -78,8 +78,9 @@ pub(super) fn row_right_click(ui: &egui::Ui, row: Rect) -> Option<egui::Pos2> {
 
 /// The entries of the right-click menu: the actions of what was clicked (`hit`), a separator, the message's own entries
 /// (`msg_items`; a kept deleted message only "Copy message"), then the plugins' entries after a separator.
-/// `selected`: there is a text selection in this message; `file_items`: the file menu, for a file hit.
-pub(super) fn context_entries(hit: &Hit, selected: bool, deleted: bool, file_items: Vec<menu::Entry>, msg_items: Vec<menu::Entry>, plugin: &[PluginItem]) -> Vec<menu::Entry> {
+/// `selected`: there is a text selection in this message; `file_items`: the file menu, for a file hit; `img_fav`: on a picture,
+/// the GIF Extras plugin's favourites entry (`Some(saved?)`, None while the plugin is off).
+pub(super) fn context_entries(hit: &Hit, img_fav: Option<bool>, selected: bool, deleted: bool, file_items: Vec<menu::Entry>, msg_items: Vec<menu::Entry>, plugin: &[PluginItem]) -> Vec<menu::Entry> {
     let mut v: Vec<menu::Entry> = Vec::new();
     let link = |v: &mut Vec<menu::Entry>| {
         v.push(menu::Item::new("open-link", tr("Open Link")).icon("browser-regular").entry());
@@ -95,6 +96,10 @@ pub(super) fn context_entries(hit: &Hit, selected: bool, deleted: bool, file_ite
         Hit::Image(_) => {
             v.push(menu::Item::new("img-copy", tr("Copy image")).icon("copy-regular").entry());
             v.push(menu::Item::new("img-save", tr("Save as")).icon("save-regular").entry());
+            if let Some(fav) = img_fav {
+                let (label, icon) = if fav { ("Remove from favorites", "favorite-filled") } else { ("Add to favorites", "favorite-regular") };
+                v.push(menu::Item::new("img-fav", tr(label)).icon(icon).entry());
+            }
         }
         Hit::File { .. } => v.extend(file_items),
         Hit::Link(_) => link(&mut v),
@@ -182,10 +187,12 @@ impl App {
     }
 
     /// Screenshot checks only: opens the right-click menu of `m` in the middle of the window as if its text was right-clicked.
+    /// With `WEBOX_SHOT_CTX_HIT=image` as if its first picture was right-clicked.
     pub(super) fn shot_context_menu(&mut self, ctx: &egui::Context, id: &str, m: &Message) {
         let k = ctx_key(&m.id);
         let at = ctx.screen_rect().center();
-        ctx.data_mut(|d| { d.insert_temp(Id::new(("msg-ctx-target", &m.id)), Hit::Text { link: None }); d.insert_temp(Id::new(("msg-ctx-at", &m.id)), at); });
+        let hit = match (std::env::var("WEBOX_SHOT_CTX_HIT").as_deref(), m.images.first()) { (Ok("image"), Some(a)) => Hit::Image(a.clone()), _ => Hit::Text { link: None } };
+        ctx.data_mut(|d| { d.insert_temp(Id::new(("msg-ctx-target", &m.id)), hit); d.insert_temp(Id::new(("msg-ctx-at", &m.id)), at); });
         menu::menu_open(ctx, &k);
         self.message_menu_opened(ctx, id, m, &k);
     }
@@ -218,7 +225,8 @@ impl App {
         let items = if msel(&ctx, id).multi { self.message_entries(&ctx, id, m) } else {
             let file_items = match &hit { Hit::File { key, .. } => self.file_menu_entries(key, false), _ => vec![] };
             let plug: Vec<PluginItem> = ctx.data(|d| d.get_temp(plug_id(&k))).unwrap_or_default();
-            context_entries(&hit, selected.is_some(), m.deleted != 0, file_items, self.message_entries(&ctx, id, m), &plug)
+            let img_fav = match &hit { Hit::Image(a) => self.gif_ext_image_menu(&ctx, a), _ => None };
+            context_entries(&hit, img_fav, selected.is_some(), m.deleted != 0, file_items, self.message_entries(&ctx, id, m), &plug)
         };
         let Some(a) = self.message_menu_show(&ctx, t, id, m, &k, Rect::from_min_size(at, Vec2::ZERO), menu::Side::Below, menu::Align::Left, false, items, false) else { return };
         let link = match &hit { Hit::Text { link } => link.clone(), Hit::Link(u) => Some(u.clone()), _ => None };
@@ -228,6 +236,7 @@ impl App {
             ("select-all", _) => ctx.data_mut(|d| d.insert_temp(k_sel, (m.id.clone(), 0usize, total))),
             ("img-copy", Hit::Image(a)) => self.image_copy(&ctx, &a.key),
             ("img-save", Hit::Image(a)) => { let a = a.clone(); self.image_save(&a.key, Some(&a)); }
+            ("img-fav", Hit::Image(a)) => { let a = a.clone(); self.gif_ext_image_menu_pick(&ctx, &a); }
             (f, Hit::File { key, name }) if f.starts_with("file-") => { let (key, name) = (key.clone(), name.clone()); self.file_menu_do(f, &key, &name, now); }
             _ => self.message_do(&ctx, id, m, &a, link.as_deref()),
         }
@@ -271,7 +280,7 @@ mod tests {
         let base = || crate::ui::msg_actions::message_items(&msg(false), false);
         let n = base().len();
         let tail = ids(&base());
-        let with = |hit: Hit, sel: bool| ids(&context_entries(&hit, sel, false, vec![menu::Item::new("file-open", tr("Open")).entry()], base(), &[]));
+        let with = |hit: Hit, sel: bool| ids(&context_entries(&hit, None, sel, false, vec![menu::Item::new("file-open", tr("Open")).entry()], base(), &[]));
         // The empty part of the row, the header, the avatar: exactly the "···" menu.
         assert_eq!(with(Hit::Row, false), tail);
         let top = |v: Vec<String>| v[..v.len() - n].to_vec();
@@ -285,17 +294,33 @@ mod tests {
     }
 
     #[test]
+    fn a_picture_gets_the_favourites_entry_only_from_the_gif_extras_plugin() {
+        let img = Hit::Image(Attachment { key: "k".into(), mime: "image/png".into(), ..Default::default() });
+        let top = |fav: Option<bool>| { let v = context_entries(&img, fav, false, false, vec![], vec![], &[]); (ids(&v), labels(&v)) };
+        // The plugin off (no entry from it): the menu is exactly as before.
+        assert_eq!(top(None).0, ["img-copy", "img-save"]);
+        let (i, l) = top(Some(false));
+        assert_eq!(i, ["img-copy", "img-save", "img-fav"]);
+        assert_eq!(l[2], tr("Add to favorites"));
+        assert_eq!(top(Some(true)).1[2], tr("Remove from favorites"));
+        // Only on a picture.
+        for h in [Hit::Row, Hit::Text { link: None }, Hit::Link("u".into()), Hit::File { key: "k".into(), name: "a.pdf".into() }] {
+            assert!(!ids(&context_entries(&h, Some(false), false, false, vec![], vec![], &[])).contains(&"img-fav".to_string()));
+        }
+    }
+
+    #[test]
     fn a_kept_deleted_message_copies_and_shows_the_plugins_entries() {
         let plug = [PluginItem { plugin: "dev.x".into(), id: "forget".into(), label: "Remove deleted message".into(), icon: "delete-regular".into(), danger: true },
             PluginItem { plugin: "dev.x".into(), id: "clear".into(), label: "Clear this space's history".into(), icon: "no-such-icon".into(), danger: false }];
-        let v = context_entries(&Hit::Text { link: None }, false, true, vec![], crate::ui::msg_actions::message_items(&msg(true), false), &plug);
+        let v = context_entries(&Hit::Text { link: None }, None, false, true, vec![], crate::ui::msg_actions::message_items(&msg(true), false), &plug);
         assert_eq!(ids(&v), ["select-all", "-", "copy-message", "-", "plug:0", "plug:1"]);
         let menu::Entry::Item(p0) = &v[4] else { panic!() };
         assert_eq!((p0.label.as_str(), p0.icon, p0.danger), ("Remove deleted message", Some("delete-regular"), true));
         let menu::Entry::Item(p1) = &v[5] else { panic!() };
         assert_eq!(p1.icon, None, "an unknown icon name draws no icon");
         // A picture of a kept deleted message still has its picture actions.
-        assert_eq!(ids(&context_entries(&Hit::Image(Attachment::default()), false, true, vec![], vec![], &[])), ["img-copy", "img-save", "-", "copy-message"]);
+        assert_eq!(ids(&context_entries(&Hit::Image(Attachment::default()), None, false, true, vec![], vec![], &[])), ["img-copy", "img-save", "-", "copy-message"]);
         // No plugin: no separator, nothing added.
         assert!(plugin_entries(&[]).is_empty());
     }
@@ -303,13 +328,13 @@ mod tests {
     #[test]
     fn a_menu_never_ends_in_a_separator() {
         // A kept deleted message right-clicked on its text, no plugin entries: the text actions, one separator, "Copy message".
-        assert_eq!(ids(&context_entries(&Hit::Text { link: None }, false, true, vec![], vec![], &[])), ["select-all", "-", "copy-message"]);
+        assert_eq!(ids(&context_entries(&Hit::Text { link: None }, None, false, true, vec![], vec![], &[])), ["select-all", "-", "copy-message"]);
         // Whatever the parts give, no separator is left at either end or doubled.
         let sep = || menu::Entry::Sep;
         let it = |id: &str| menu::Item::new(id, id).entry();
         assert_eq!(ids(&tidy(vec![sep(), it("a"), sep(), sep(), it("b"), sep()])), ["a", "-", "b"]);
         assert!(tidy(vec![sep(), sep()]).is_empty());
-        assert_eq!(ids(&context_entries(&Hit::Text { link: None }, false, false, vec![], vec![sep()], &[])), ["select-all"]);
+        assert_eq!(ids(&context_entries(&Hit::Text { link: None }, None, false, false, vec![], vec![sep()], &[])), ["select-all"]);
     }
 
     /// A row with a text part and a picture part, right-clicked at `at`: what the row's menu would open with.

@@ -19,6 +19,8 @@ impl GifExtras for Spy {
     fn popup(&mut self, _: &mut App, _: &mut egui::Ui, _: &Th, _: Rect, _: Rect, _: &str) -> PopupOut { self.0.set(self.0.get() + 1); PopupOut::default() }
     fn image_overlay(&mut self, _: &mut App, _: &mut egui::Ui, _: Rect, _: &cloud::Attachment, _: (&str, usize), _: bool) { self.0.set(self.0.get() + 1) }
     fn viewer_button(&mut self, _: &mut App, _: &mut egui::Ui, _: Rect, _: &cloud::Attachment) -> bool { self.0.set(self.0.get() + 1); true }
+    fn image_menu(&mut self, _: &mut App, _: &egui::Context, _: &cloud::Attachment) -> Option<bool> { self.0.set(self.0.get() + 1); Some(false) }
+    fn image_menu_pick(&mut self, _: &mut App, _: &egui::Context, _: &cloud::Attachment) { self.0.set(self.0.get() + 1) }
 }
 
 #[test]
@@ -194,4 +196,89 @@ fn standard_layout_is_unchanged() {
 fn send_on_click_is_a_plugin_setting_off_by_default() {
     let schema: serde_json::Value = serde_json::from_str(&settings_schema()).unwrap();
     assert!(schema.to_string().contains(SEND_INSTANTLY), "the toggle is on the plugin's own settings page");
+}
+
+#[test]
+fn the_picture_menu_hook_is_not_reached_while_the_plugin_is_off() {
+    // The message menu asks the plugin through the same gate as every other hook: off, it is never reached, so a picture's menu
+    // keeps only "Copy image" and "Save as" (ctx_menu's tests check the entries for None / Some).
+    std::thread::spawn(|| {
+        let d = tmp("menu-gate");
+        let mut p = Plugins::new(&d);
+        let calls = Rc::new(Cell::new(0));
+        register(KEY, Box::new(Spy(calls.clone())));
+        assert_eq!(dispatch(active(&p, None), |_| Some(true)).flatten(), None::<bool>);
+        assert_eq!(calls.get(), 0);
+        let i = p.list.iter().position(|e| e.builtin).unwrap();
+        p.set_enabled(i, true);
+        assert_eq!(dispatch(active(&p, None), |_| Some(false)).flatten(), Some(false));
+        let _ = std::fs::remove_dir_all(d);
+    }).join().unwrap();
+}
+
+#[test]
+fn a_saved_picture_is_added_once_and_removed_with_its_files() {
+    use upload_favs::tests::encode;
+    let d = tmp("pic-add");
+    let mut favs = favs::Favs::load(Some(d.clone()));
+    let dir = d.join(upload_favs::DIR);
+    let png = encode(image::ImageFormat::Png, 7);
+    let keep = |favs: &mut favs::Favs, key: &str, bytes: &[u8]| {
+        let used = upload_favs::used_bytes(favs.uploads(), &upload_favs::content_id(bytes));
+        let mut f = upload_favs::star(&dir, "photo.png", bytes, used).unwrap();
+        f.src = upload_favs::src_id(key);
+        favs.insert(f)
+    };
+    assert!(keep(&mut favs, "key-a", &png).is_empty());
+    // The same picture again (here posted in another message): one entry, by content.
+    keep(&mut favs, "key-b", &png);
+    assert_eq!(favs.uploads().count(), 1);
+    let id = upload_favs::content_id(&png);
+    assert_eq!(favs.get(&id).unwrap().src, upload_favs::src_id("key-b"));
+    assert_eq!(favs.by_src(&upload_favs::src_id("key-b")).map(|f| f.id.as_str()), Some(id.as_str()));
+    assert!(favs.by_src("").is_none());
+    // Saved next to the settings and read back with the source hash (never the key itself).
+    let raw = std::fs::read_to_string(d.join("giphy_favorites.json")).unwrap();
+    assert!(raw.contains(&upload_favs::src_id("key-b")) && !raw.contains("key-b"));
+    let back = favs::Favs::load(Some(d.clone()));
+    assert_eq!(back.get(&id).unwrap(), favs.get(&id).unwrap());
+    // Another picture is a second entry; removing one deletes its files only.
+    keep(&mut favs, "key-c", &encode(image::ImageFormat::Jpeg, 8));
+    assert_eq!(favs.uploads().count(), 2);
+    let f = favs.remove(&id).unwrap();
+    upload_favs::unstar(&dir, &f);
+    assert!(!std::path::Path::new(&f.media_url).exists() && !std::path::Path::new(&f.thumb_url).exists());
+    assert_eq!(favs.uploads().count(), 1);
+    let _ = std::fs::remove_dir_all(d);
+}
+
+#[test]
+fn a_saved_picture_is_in_the_favourites_and_goes_out_as_an_image_attachment() {
+    use upload_favs::tests::encode;
+    let d = tmp("pic-send");
+    let mut favs = favs::Favs::load(None);
+    let png = encode(image::ImageFormat::Png, 3);
+    favs.toggle(&crate::extras::giphy::Gif { id: "g1".into(), thumb_url: "https://media.giphy.com/media/g1/200w_d.gif".into(), media_url: "https://media.giphy.com/media/g1/giphy.gif".into(), ..Default::default() }, false);
+    favs.insert(upload_favs::star(&d, "chart.png", &png, 0).unwrap());
+    // In the GIF tab's favourites, next to the Giphy GIF, with its thumbnail at the picture's aspect.
+    let list = favs.list(false);
+    assert_eq!(list.len(), 2);
+    let g = list[0].to_gif();
+    assert!(upload_favs::is_upload_id(&g.id) && g.title == "chart.png");
+    assert_eq!((g.thumb_w, g.thumb_h), (240, 150));
+    assert!(favs.list(true).is_empty(), "not a sticker");
+    // Picked: a copy of the original file, staged in the composer like a chosen file (the same path as "Attach a file").
+    let p = upload_favs::stage_copy(&g).unwrap();
+    assert_eq!(std::fs::read(&p).unwrap(), png);
+    assert!(crate::app::files::mime_of(&p.file_name().unwrap().to_string_lossy(), &png).starts_with("image/"), "sent as an image");
+    crate::app::files::push_picks("space-x", vec![p.clone()]);
+    assert_eq!(crate::app::files::take_picks("space-x"), vec![p.clone()]);
+    let _ = std::fs::remove_dir_all(p.parent().unwrap());
+    let _ = std::fs::remove_dir_all(d);
+}
+
+#[test]
+fn the_send_on_click_label_covers_pictures_and_keeps_its_id() {
+    let s = settings_schema();
+    assert!(s.contains("\"send_instantly\"") && s.contains(&*crate::trq!("Send favorites on click")));
 }

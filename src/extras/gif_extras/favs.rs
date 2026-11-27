@@ -14,22 +14,28 @@ const FILE: &str = "giphy_favorites.json";
 pub struct Fav {
     pub id: String, pub title: String, pub thumb_url: String, pub media_url: String,
     pub thumb_w: u32, pub thumb_h: u32, pub media_w: u32, pub media_h: u32,
-    /// "gif", "sticker" or "upload" (an uploaded GIF kept on this computer, see `upload_favs`: `media_url` / `thumb_url` are local paths).
+    /// "gif", "sticker" or "upload" (an uploaded GIF or picture kept on this computer, see `upload_favs`: `media_url` / `thumb_url`
+    /// are local paths).
     pub kind: String,
+    /// "upload" only: a hash of the attachment key it was saved from (`upload_favs::src_id`), so the message menu knows a saved
+    /// picture before its original is loaded again. Empty otherwise. Never the key itself.
+    pub src: String,
 }
 
 impl Fav {
     pub fn from_gif(g: &Gif, sticker: bool) -> Fav {
         Fav { id: g.id.clone(), title: g.title.clone(), thumb_url: g.thumb_url.clone(), media_url: g.media_url.clone(), thumb_w: g.thumb_w, thumb_h: g.thumb_h,
-              media_w: g.media_w, media_h: g.media_h, kind: if sticker { "sticker" } else { "gif" }.into() }
+              media_w: g.media_w, media_h: g.media_h, kind: if sticker { "sticker" } else { "gif" }.into(), src: String::new() }
     }
     pub fn to_gif(&self) -> Gif {
         Gif { id: self.id.clone(), title: self.title.clone(), thumb_url: self.thumb_url.clone(), thumb_w: self.thumb_w, thumb_h: self.thumb_h, media_url: self.media_url.clone(), media_w: self.media_w, media_h: self.media_h }
     }
     pub fn is_sticker(&self) -> bool { self.kind == "sticker" }
     fn to_json(&self) -> Value {
-        json!({ "id": self.id, "title": self.title, "thumb_url": self.thumb_url, "media_url": self.media_url,
-                "thumb_w": self.thumb_w, "thumb_h": self.thumb_h, "media_w": self.media_w, "media_h": self.media_h, "kind": self.kind })
+        let mut v = json!({ "id": self.id, "title": self.title, "thumb_url": self.thumb_url, "media_url": self.media_url,
+                "thumb_w": self.thumb_w, "thumb_h": self.thumb_h, "media_w": self.media_w, "media_h": self.media_h, "kind": self.kind });
+        if !self.src.is_empty() { v["src"] = json!(self.src); }
+        v
     }
     /// Entries without an id or the two URLs are dropped (a hand-edited file cannot inject anything else).
     fn from_json(v: &Value) -> Option<Fav> {
@@ -37,7 +43,8 @@ impl Fav {
         let n = |k: &str| v[k].as_u64().unwrap_or(0) as u32;
         let (id, thumb_url, media_url) = (st("id").filter(|s| !s.is_empty())?, st("thumb_url")?, st("media_url")?);
         Some(Fav { id, title: st("title").unwrap_or_default(), thumb_url, media_url, thumb_w: n("thumb_w"), thumb_h: n("thumb_h"), media_w: n("media_w"), media_h: n("media_h"),
-                   kind: match st("kind").as_deref() { Some("sticker") => "sticker".into(), Some("upload") => "upload".into(), _ => "gif".into() } })
+                   kind: match st("kind").as_deref() { Some("sticker") => "sticker".into(), Some("upload") => "upload".into(), _ => "gif".into() },
+                   src: st("src").unwrap_or_default() })
     }
 }
 
@@ -59,8 +66,13 @@ impl Favs {
     pub fn latest(&self, sticker: bool) -> Option<&Fav> { self.items.iter().find(|f| f.is_sticker() == sticker && super::upload_favs::usable(f)) }
     /// An entry by id (any kind).
     pub fn get(&self, id: &str) -> Option<&Fav> { self.items.iter().find(|f| f.id == id) }
-    /// Adds an entry at the front (replacing one with the same id). Saves the file.
-    pub fn insert(&mut self, f: Fav) { self.items.retain(|x| x.id != f.id); self.items.insert(0, f); self.items.truncate(MAX); self.save(); }
+    /// The kept upload saved from the attachment with this `upload_favs::src_id`.
+    pub fn by_src(&self, src: &str) -> Option<&Fav> { if src.is_empty() { return None } self.items.iter().find(|f| f.src == src && super::upload_favs::is_upload(f)) }
+    /// The kept uploads (GIFs and pictures).
+    pub fn uploads(&self) -> impl Iterator<Item = &Fav> { self.items.iter().filter(|f| super::upload_favs::is_upload(f)) }
+    /// Adds an entry at the front (replacing one with the same id). Saves the file. Returns the entries dropped for the cap
+    /// (a kept upload's files are the caller's to delete).
+    pub fn insert(&mut self, f: Fav) -> Vec<Fav> { self.items.retain(|x| x.id != f.id); self.items.insert(0, f); let out = self.items.split_off(self.items.len().min(MAX)); self.save(); out }
     /// Removes the entry with this id (any kind) and returns it. Saves the file.
     pub fn remove(&mut self, id: &str) -> Option<Fav> { let i = self.items.iter().position(|f| f.id == id)?; let f = self.items.remove(i); self.save(); Some(f) }
     #[allow(dead_code)]

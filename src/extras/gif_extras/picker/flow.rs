@@ -64,11 +64,14 @@ impl Plugin {
                         if mode == "favs" { let pick: Vec<Gif> = [1, 4, 6].iter().filter_map(|i| self.picker.sample_all.get(*i).cloned()).collect(); for g in &pick { self.favs(app).toggle(g, false); } }
                         self.enter(app, View::Favorites, "");
                     }
-                    "upfavs" => { // an uploaded GIF kept as a favourite (temporary folder), shown in "Favorites" beside a Giphy one
+                    "upfavs" => { // an uploaded GIF and a picture kept as favourites (temporary folder), in "Favorites" beside a Giphy one
                         let dir = upload_stars::upload_fav_dir(app);
                         let (g0, g3) = (self.picker.sample_all.first().cloned(), self.picker.sample_all.get(3).map(|g| g.id.clone()));
                         if let (Some(g0), Some(b)) = (g0, g3.and_then(|id| self.picker.thumbs.get(&id))) {
-                            if let Ok(f) = upload_favs::star(&dir, "My animation.gif", &b) { self.favs(app).toggle(&g0, false); self.favs(app).insert(f); }
+                            if let Ok(f) = upload_favs::star(&dir, "My animation.gif", &b, 0) { self.favs(app).toggle(&g0, false); self.favs(app).insert(f); }
+                        }
+                        if let Some(b) = app.photos.image_bytes("sample-img-1").map(|b| b.to_vec()) {
+                            if let Ok(f) = upload_favs::star(&dir, "screenshot.png", &b, 0) { self.favs(app).insert(f); }
                         }
                         self.enter(app, View::Favorites, "");
                     }

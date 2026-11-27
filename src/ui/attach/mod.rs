@@ -247,6 +247,15 @@ impl App {
         }
     }
 
+    /// Sends files at once as a message of their own, with the same checks as staging them (GIF Extras' "Send favorites on
+    /// click" for a kept picture); the composer's own text and staged files stay.
+    pub(crate) fn send_files_now(&mut self, space: &str, paths: Vec<PathBuf>, now: f64) {
+        let edit = matches!(self.compose, Compose::Edit { .. });
+        let mut chips = Vec::new();
+        self.stage_paths(&mut chips, paths, edit, now);
+        if !chips.is_empty() { self.send_staged(space, chips, String::new(), Vec::new(), now); }
+    }
+
     /// A pasted image / screen capture: written to the app's staging folder under its own name, then staged like a file.
     pub(super) fn stage_bytes(&mut self, chips: &mut Vec<Chip>, name: &str, bytes: &[u8], edit: bool, now: f64) {
         // a temporary file in this user's private folder, removed after sending
