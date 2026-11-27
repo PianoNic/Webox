@@ -13,7 +13,7 @@ impl App {
     /// Width of the list card (default 367 pt), stored as "list_w" in the settings JSON. Limits: see [`list_width_max`].
     pub(crate) fn list_card_width(&self, ctx: &egui::Context) -> f32 {
         const DEFAULT: f32 = 367.0;
-        let rail_w = if self.rail_wide { RAIL_WIDE } else { super::chrome::RAIL_NARROW };
+        let rail_w = if self.rail_labels() { RAIL_WIDE } else { super::chrome::RAIL_NARROW };
         let max = list_width_max(ctx.screen_rect().width(), rail_w);
         let shot = self.shot.is_some().then(|| std::env::var("WEBOX_SHOT_LISTW").ok().and_then(|v| v.parse::<f32>().ok())).flatten();
         let w = shot.or_else(|| ctx.data(|d| d.get_temp::<f32>(egui::Id::new("list_w")))).or_else(|| self.settings["list_w"].as_f64().map(|v| v as f32)).unwrap_or(DEFAULT);
@@ -22,7 +22,7 @@ impl App {
 
     /// The drag handle in the 4 px gap between the list card and the chat card: resize cursor, a thin line on hover, double-click resets.
     pub(crate) fn list_splitter(&mut self, ctx: &egui::Context, t: &Th, card_w: f32) {
-        let rail_w = super::chrome::RAIL_NARROW + (RAIL_WIDE - super::chrome::RAIL_NARROW) * ctx.animate_bool_with_time(egui::Id::new("rail-open"), self.rail_wide, M::RailExpand.secs());
+        let rail_w = super::chrome::RAIL_NARROW + (RAIL_WIDE - super::chrome::RAIL_NARROW) * ctx.animate_bool_with_time(egui::Id::new("rail-open"), self.rail_labels(), M::RailExpand.secs());
         let e = super::chrome::edge_inset(ctx); // the not-maximised margin around all content
         let x = e + rail_w + card_w + 2.0;
         let screen = ctx.screen_rect();

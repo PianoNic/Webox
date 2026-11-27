@@ -58,7 +58,13 @@ impl Main {
 
     /// Where the last solve placed `c`, if it is shown.
     pub(crate) fn rect(&self, c: Component) -> Option<Rect> {
-        self.out.iter().find_map(|p| match p { Placed::Component(x, r) if *x == c => Some(*r), _ => None })
+        self.out.iter().find_map(|p| match p { Placed::Component(x, r, _) if *x == c => Some(*r), _ => None })
+    }
+
+    /// The option the active layout chose for `c`'s `variant` where it is shown, else the contract's default.
+    pub(crate) fn variant(&self, c: Component, variant: &str) -> &'static str {
+        let node = self.out.iter().find_map(|p| match p { Placed::Component(x, _, n) if *x == c => Some(*n), _ => None });
+        self.compiled.variant(node.unwrap_or(u32::MAX), c, variant)
     }
 
     /// The area of the last solve.
@@ -85,6 +91,16 @@ impl crate::App {
         let mut m = std::mem::replace(&mut self.layout, Main::placeholder());
         m.update(area, bits, i, self);
         self.layout = m;
+    }
+}
+
+impl crate::App {
+    /// Makes the layout in `path` the main window's layout; on any finding, prints them and keeps the current one.
+    pub(crate) fn load_layout_file(&mut self, path: &str) {
+        match std::fs::read_to_string(path).map_err(|e| vec![super::Error { path: path.to_string(), msg: e.to_string() }]).and_then(|j| load(&j)) {
+            Ok((_, c)) => self.layout = Main::new(c),
+            Err(errs) => for e in errs { eprintln!("layout {path}: {e}") },
+        }
     }
 }
 

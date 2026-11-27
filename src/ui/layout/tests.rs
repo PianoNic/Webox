@@ -14,7 +14,7 @@ fn default_env<'a>(c: &'a Compiled, page: &'a str, list_hidden: bool) -> E<'a> {
 }
 
 fn component(out: &[Placed], c: Component) -> Option<Rect> {
-    out.iter().find_map(|p| match p { Placed::Component(x, r) if *x == c => Some(*r), _ => None })
+    out.iter().find_map(|p| match p { Placed::Component(x, r, _) if *x == c => Some(*r), _ => None })
 }
 
 #[test]
@@ -29,7 +29,7 @@ fn the_default_layout_loads_and_places_the_webex_arrangement() {
     assert_eq!(component(&out, Component::SpaceList), Some(Rect::from_min_max(pos2(60.8, 44.8), pos2(427.8, 720.0))));
     assert_eq!(component(&out, Component::Conversation), Some(Rect::from_min_max(pos2(431.8, 44.8), pos2(1200.0, 720.0))));
     // Cards come before what they hold, components in tree order (the Tab order).
-    let order: Vec<_> = out.iter().map(|p| match p { Placed::Component(c, _) => c.id(), Placed::Card(_) => "card" }).collect();
+    let order: Vec<_> = out.iter().map(|p| match p { Placed::Component(c, _, _) => c.id(), Placed::Card(_) => "card" }).collect();
     assert_eq!(order, ["header", "rail", "card", "space_list", "card", "conversation"]);
 }
 
@@ -127,4 +127,33 @@ fn parts_cannot_be_placed_on_their_own_yet() {
     let bad = DEFAULT_LAYOUT.replace(r#""child": { "slot": "conversation" }"#, r#""child": { "slot": "message_list" }"#);
     let e = errors(&bad);
     assert!(e.iter().any(|m| m == "surfaces.main: message_list is drawn by conversation and cannot be placed on its own yet (conversation@1)"), "{e:?}");
+}
+
+#[test]
+fn the_variants_fixture_loads() {
+    let (l, _) = load(include_str!("../../../tests/fixtures/layouts/variants.json")).expect("fixture valid");
+    assert_eq!(l.id, "variant-check");
+}
+
+fn node_of(out: &[Placed], c: Component) -> u32 {
+    out.iter().find_map(|p| match p { Placed::Component(x, _, n) if *x == c => Some(*n), _ => None }).unwrap()
+}
+
+#[test]
+fn variants_follow_the_placement_and_default_to_the_first_option() {
+    let (_, c) = load(DEFAULT_LAYOUT).unwrap();
+    let area = Rect::from_min_max(pos2(0.0, 0.0), pos2(1200.0, 720.0));
+    let mut out = vec![];
+    c.solve(area, &default_env(&c, "messaging", false), &mut out);
+    assert_eq!(c.variant(node_of(&out, Component::Rail), Component::Rail, "labels"), "when_wide");
+    // Not set in the default layout: the contract's default.
+    assert_eq!(c.variant(node_of(&out, Component::SpaceList), Component::SpaceList, "row"), "two_line");
+    assert_eq!(c.variant(u32::MAX, Component::SpaceList, "row"), "two_line");
+    assert_eq!(c.variant(node_of(&out, Component::SpaceList), Component::SpaceList, "nope"), "");
+    let one = DEFAULT_LAYOUT.replace(r#"{ "slot": "space_list" }"#, r#"{ "slot": "space_list", "variants": { "row": "one_line" } }"#)
+        .replace(r#""labels": "when_wide""#, r#""labels": "never""#);
+    let (_, c) = load(&one).unwrap();
+    c.solve(area, &default_env(&c, "messaging", false), &mut out);
+    assert_eq!(c.variant(node_of(&out, Component::SpaceList), Component::SpaceList, "row"), "one_line");
+    assert_eq!(c.variant(node_of(&out, Component::Rail), Component::Rail, "labels"), "never");
 }

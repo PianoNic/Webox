@@ -44,7 +44,10 @@ pub(crate) fn one_line(p: &egui::Painter, x: f32, cy: f32, avail: f32, title: &s
 
 impl App {
     /// The compact view is on.
-    pub(crate) fn compact_view(&self) -> bool { self.settings[KEY].as_bool().unwrap_or(false) }
+    /// One-line rows: the person's setting, or a layout that asks for them (`space_list` variant `row: one_line`).
+    pub(crate) fn compact_view(&self) -> bool {
+        self.settings[KEY].as_bool().unwrap_or(false) || self.layout.variant(crate::ui::layout::Component::SpaceList, "row") == "one_line"
+    }
 
     /// Switches the compact view and saves it (not in --screenshot runs, which never touch the user's file).
     pub(crate) fn set_compact_view(&mut self, on: bool) {
