@@ -89,9 +89,10 @@ $Scenes = [ordered]@{
     'pride_wide_dark'       = @{ PRIDE = 'rainbow'; WEBOX_SHOT_WIDE = '1' }
 }
 
-# Scenes that follow the wall clock (call history times "now - n minutes", the moving camera test pattern): rendered and
-# compared only with -All, since two runs a minute apart differ.
-$Clock = @('page_calls', 'page_calls_dial', 'page_voicemail', 'set_video')
+# Scenes that follow the wall clock (call history times "now - n minutes", the moving camera test pattern, the sample
+# meetings at fixed times of today, which turn "running" or "over" as the day goes on): rendered and compared only with
+# -All, since two runs a minute apart can differ.
+$Clock = @('page_calls', 'page_calls_dial', 'page_voicemail', 'set_video', 'page_meetings')
 $Scenes['page_calls'] = @{ WEBOX_SHOT_TAB = 'calls' }
 $Scenes['page_calls_dial'] = @{ WEBOX_SHOT_TAB = 'calls'; WEBOX_SHOT_DIAL = '1' }
 $Scenes['page_voicemail'] = @{ WEBOX_SHOT_TAB = 'voicemail' }
