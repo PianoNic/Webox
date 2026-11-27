@@ -261,14 +261,29 @@ pub enum Net {
     Loopback,
 }
 
-/// The local address of an outbound TCP connection to `host:443`: the interface the system uses to reach Webex.
-pub fn route_ip(host: &str) -> Option<IpAddr> {
+/// `host:443` resolved (the first address): where `route_ip` and `route_probe` route to.
+pub fn route_target(host: &str) -> Option<std::net::SocketAddr> {
     use std::net::ToSocketAddrs;
-    let to = (host, 443).to_socket_addrs().ok()?.next()?;
-    let s = std::net::TcpStream::connect_timeout(&to, Duration::from_secs(3)).ok()?;
+    (host, 443).to_socket_addrs().ok()?.next()
+}
+
+/// The local address of an outbound TCP connection to `to`: the interface the system uses to reach Webex.
+pub fn route_ip(to: Option<std::net::SocketAddr>) -> Option<IpAddr> {
+    let s = std::net::TcpStream::connect_timeout(&to?, Duration::from_secs(3)).ok()?;
     let ip = s.local_addr().ok()?.ip();
     let _ = s.shutdown(std::net::Shutdown::Both);
     Some(ip)
+}
+
+/// The local address the system routes to `to` from right now, without a packet on the wire: a UDP socket is
+/// connected (that only asks the routing table) and dropped. None = no route: the machine is offline. Microseconds,
+/// so the call's 1 s tick can afford it; it runs only while a call's media was up (`Session::recovery_tick`), never
+/// outside a call. A new address means the network changed (Wi-Fi <-> LAN, VPN on / off).
+pub fn route_probe(to: std::net::SocketAddr) -> Option<IpAddr> {
+    let any: std::net::SocketAddr = if to.is_ipv4() { (IpAddr::from([0u8; 4]), 0).into() } else { (IpAddr::from([0u16; 8]), 0).into() };
+    let s = std::net::UdpSocket::bind(any).ok()?;
+    s.connect(to).ok()?;
+    Some(s.local_addr().ok()?.ip()).filter(|ip| !ip.is_unspecified())
 }
 
 /// Needs the tokio runtime (the ICE socket is registered with it).
@@ -593,27 +608,7 @@ impl Media {
         match section_of_kind(&sdp, "audio", 2) { Some(i) => with_direction(&sdp, i, "inactive"), None => sdp }
     }
 
-    /// Starts an ICE restart on the same session (the media path broke): a new local offer with new ICE credentials is
-    /// set, its candidates gather on the media runtime. Returns at once; `ice_restart_ready` hands out the OFFER once the
-    /// gathering is done, so the call's thread never waits for it (ROAP answers, hang-up and the keep-alive go on).
-    pub fn begin_ice_restart(&self) -> Result<(), String> {
-        let pc = self.pc.clone();
-        self.rt.block_on(async move {
-            let offer = pc.create_offer(Some(RTCOfferOptions { ice_restart: true, ..Default::default() })).await.map_err(|e| e.to_string())?;
-            pc.set_local_description(offer).await.map_err(|e| e.to_string())
-        })
-    }
-
-    /// The ICE restart OFFER once its gathering is complete (same four lines and directions, only the ICE credentials and
-    /// candidates are new); None while it still gathers. Never waits.
-    pub fn ice_restart_ready(&self) -> Option<String> {
-        use webrtc::ice_transport::ice_gathering_state::RTCIceGatheringState;
-        if self.pc.ice_gathering_state() != RTCIceGatheringState::Complete { return None; }
-        let sdp = self.rt.block_on(self.pc.local_description()).map(|d| d.sdp).filter(|s| s.contains("a=candidate:"))?;
-        Some(if self.has_lines() { Self::share_layout(sdp) } else { sdp })
-    }
-
-    /// Our OFFER is given up (its gathering timed out, it could not be sent, or no ANSWER came): back to a stable session
+    /// Our OFFER is given up (the server refused it, or its answer could not be applied): back to a stable session
     /// with the server's last answer, so later rounds and `redeclare` work again.
     pub fn abandon_offer(&self) -> Result<(), String> {
         use webrtc::peer_connection::signaling_state::RTCSignalingState;
@@ -623,19 +618,7 @@ impl Media {
         self.set_lines_answer(&answer)
     }
 
-    /// `begin_ice_restart` and `ice_restart_ready`, waiting up to 5 s (the loopback tests).
-    #[cfg(test)]
-    pub fn ice_restart_offer(&self) -> Result<String, String> {
-        self.begin_ice_restart()?;
-        let t0 = Instant::now();
-        loop {
-            if let Some(s) = self.ice_restart_ready() { return Ok(s); }
-            if t0.elapsed() > Duration::from_secs(5) { return Err("ICE gathering timed out".into()); }
-            std::thread::sleep(Duration::from_millis(20));
-        }
-    }
-
-    /// The server's ANSWER to an OFFER of ours (the join's, an ICE restart's).
+    /// The server's ANSWER to an OFFER of ours (the join's, or a media reconnect's on a new connection).
     pub fn apply_answer(&self, sdp: String) -> Result<(), String> { self.apply_answer_with(sdp, &system_lookup) }
 
     /// `apply_answer` with the resolver for host names in the answer (a stub in tests).
@@ -1247,10 +1230,11 @@ mod tests {
         b.close();
     }
 
-    /// An ICE restart in a running call (new credentials, candidates gathered again, the far end answers): audio keeps
-    /// flowing on the same session. 127.0.0.1 only.
+    /// The official media reconnect (`spark-windows-desktop-ui.dll` FUN_184ef4ff4: "remove media connection [", then a new
+    /// connection): the far end's peer dies mid-call, our connection leaves Connected, and a NEW peer connection (new
+    /// ICE credentials, new DTLS certificate) negotiated with a new far end carries audio both ways again. 127.0.0.1 only.
     #[test]
-    fn ice_restart_keeps_audio() {
+    fn a_dead_media_connection_is_rebuilt_and_audio_flows_again() {
         let (io1, io2) = (Arc::new(Io::default()), Arc::new(Io::default()));
         let a = Media::new(io1.clone(), None, Net::Loopback).unwrap();
         let b = Media::new(io2.clone(), None, Net::Loopback).unwrap();
@@ -1259,27 +1243,41 @@ mod tests {
         let tone = audio::tone(440.0, 30000, 0.5);
         let mut fed = 0;
         let rx = |m: &Media| m.rx_packets.load(Ordering::Relaxed);
-        let mut run = |until: &dyn Fn() -> bool| {
+        let mut run = |until: &dyn Fn() -> bool, secs: u64| {
             let t0 = std::time::Instant::now();
-            while t0.elapsed() < Duration::from_secs(30) && !until() {
+            while t0.elapsed() < Duration::from_secs(secs) && !until() {
                 for io in [&io1, &io2] { if io.captured.lock().unwrap().len() < 4800 && fed + FRAME <= tone.len() { io.captured.lock().unwrap().extend(tone[fed..fed + FRAME].iter()); } }
                 fed = if fed + 2 * FRAME > tone.len() { 0 } else { fed + FRAME };
                 std::thread::sleep(Duration::from_millis(10));
             }
         };
-        run(&|| rx(&b) > 40);
-        assert!(rx(&b) > 40, "audio before the restart: {}", rx(&b));
-        let offer = a.ice_restart_offer().unwrap();
-        let ufrag = |s: &str| s.lines().find_map(|l| l.strip_prefix("a=ice-ufrag:")).map(str::to_string);
-        assert_ne!(ufrag(&offer), ufrag(&first), "new ICE credentials");
-        assert!(offer.contains("a=candidate:"), "{offer}");
-        a.apply_answer(b.answer(offer).unwrap()).unwrap();
-        let before = rx(&b);
-        run(&|| rx(&b) > before + 40 && a.state() == MediaState::Connected);
-        assert_eq!(a.state(), MediaState::Connected);
-        assert!(rx(&b) > before + 40, "audio after the restart: {} -> {}", before, rx(&b));
-        a.close();
+        run(&|| rx(&b) > 40 && a.state() == MediaState::Connected, 30);
+        assert!(rx(&b) > 40, "audio before the drop: {}", rx(&b));
+        // the media server's side is gone (its socket closes): our connection notices it within the disconnect timeout
         b.close();
+        run(&|| a.state() != MediaState::Connected, 30);
+        assert_ne!(a.state(), MediaState::Connected, "the dead connection is noticed");
+        // the rebuild: the old connection is removed, a new one offers and the far end's new endpoint answers
+        a.close();
+        let a2 = Media::new(io1.clone(), None, Net::Loopback).unwrap();
+        let b2 = Media::new(io2.clone(), None, Net::Loopback).unwrap();
+        let offer = a2.offer().unwrap();
+        let line = |s: &str, k: &str| s.lines().find_map(|l| l.strip_prefix(k)).map(str::to_string);
+        assert_ne!(line(&offer, "a=ice-ufrag:"), line(&first, "a=ice-ufrag:"), "new ICE credentials");
+        assert_ne!(line(&offer, "a=fingerprint:"), line(&first, "a=fingerprint:"), "new DTLS certificate");
+        assert_eq!(mids_of(&offer).len(), 4, "the same four lines as the join's offer");
+        a2.apply_answer(b2.answer(offer).unwrap()).unwrap();
+        run(&|| rx(&b2) > 40 && rx(&a2) > 40 && a2.state() == MediaState::Connected, 30);
+        assert_eq!(a2.state(), MediaState::Connected);
+        assert!(rx(&b2) > 40 && rx(&a2) > 40, "audio both ways on the rebuilt connection: {} / {}", rx(&b2), rx(&a2));
+        a2.close();
+        b2.close();
+    }
+
+    /// The network-change probe asks the routing table only: loopback routes from loopback.
+    #[test]
+    fn the_route_probe_reads_the_local_address() {
+        assert_eq!(route_probe(([127, 0, 0, 1], 443).into()), Some(IpAddr::from([127, 0, 0, 1])));
     }
 
     #[test]

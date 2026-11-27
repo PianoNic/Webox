@@ -33,10 +33,13 @@
 //!
 //! "Connected" is shown only when the callee's participant state is JOINED **and** our peer connection is `Connected`;
 //! a call whose media doesn't come up (no ROAP answer, no ICE / DTLS, no RTP) is reported to the user (`media_stall`).
+//! Media that was up and drops is reconnected the official way (`recover_step`, `Session::recovery_tick`): a new media
+//! connection with a new ROAP OFFER on the same participant, at most `MEDIA_RECONNECT_MAX` times, then the call ends;
+//! paused while offline, and at once when the local network address changes.
 //!
 //! Safety: `WEBOX_CALL_TEST_ONLY=<address>` makes every outgoing call to any other address fail before any network request,
 //! only e-mail style addresses can be dialled (no phone numbers), one call at a time, at most one dial every 10 s.
-use super::media::{route_ip, Media, MediaState, Net};
+use super::media::{route_ip, route_probe, route_target, Media, MediaState, Net};
 use super::*;
 use crate::media::audio;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -429,11 +432,13 @@ struct Active {
     gone_since: Option<Instant>,
     /// When a locus was last applied (an event or a successful read): the grace above ends only on a fresh one.
     fresh_at: Option<Instant>,
-    /// ICE recovery: since when the media is not connected after having been up, and when the last ICE restart OFFER
-    /// went out (`ice_tick`).
-    media_down_at: Option<Instant>, ice_restart_at: Option<Instant>,
-    /// An ICE restart whose candidates are gathering (since then); its OFFER goes out from a later tick.
-    restart_pending: Option<Instant>,
+    /// Since when the media is not connected after having been up (`recovery_tick`; "Reconnecting…" after
+    /// `RECONNECTING_AFTER`).
+    media_down_at: Option<Instant>,
+    /// The media connection was up once in this call: a later drop is the media reconnect's business (`recovery_tick`).
+    was_up: bool,
+    /// The official media reconnect of this call (`recovery_tick`).
+    recovery: Recovery,
     /// "Reconnecting…" was sent to the call window (`Resp::CallReconnecting`).
     reconnecting: bool,
     /// The last ROAP ERROR the server sent for this call (its cause fields, for the end reason in the call log).
@@ -448,7 +453,7 @@ impl Active {
             media: None, roap_seq: 0, roap_done: false, roap_applied: 0, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None,
             locus: Value::Null, joined_at: None, media_up_at: None, offer_at: None, share: None,
             remote_share: None, remote_since: None, rx_warned: false, mute_info: None, space: None, roster_sent: None,
-            video: Default::default(), gone_since: None, fresh_at: None, media_down_at: None, ice_restart_at: None, restart_pending: None, reconnecting: false, roap_error: String::new(), keep_alive: None, keep_alive_at: None }
+            video: Default::default(), gone_since: None, fresh_at: None, media_down_at: None, was_up: false, recovery: Recovery::default(), reconnecting: false, roap_error: String::new(), keep_alive: None, keep_alive_at: None }
     }
 }
 
@@ -457,20 +462,93 @@ impl Active {
 pub const MEDIA_TIMEOUT: Duration = Duration::from_secs(15);
 /// Media is up but not one RTP packet came from the server.
 pub const RTP_TIMEOUT: Duration = Duration::from_secs(8);
-/// Media that was up and is down this long (or whose ICE failed) gets an ICE restart (`ice_tick`), repeated at most this
-/// often. The official client never restarts ICE (it switches transport, UDP -> TCP -> TLS 443), so this is Webox's own
-/// recovery: late, so webrtc-rs doesn't drop a pair that would have come back by itself.
-pub const ICE_RESTART_AFTER: Duration = Duration::from_secs(10);
-pub const ICE_RESTART_EVERY: Duration = Duration::from_secs(15);
-/// The restart's candidates must be gathered by then, or it is not sent.
-pub const ICE_GATHER_TIMEOUT: Duration = Duration::from_secs(5);
-/// The switch for the ICE restart. Off at runtime with `WEBOX_NO_ICE_RESTART=1` (in case real calls show the server
-/// doesn't answer it).
-pub const ICE_RESTART: bool = true;
-pub fn ice_restart_enabled() -> bool {
-    static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    ICE_RESTART && !*OFF.get_or_init(|| std::env::var("WEBOX_NO_ICE_RESTART").is_ok_and(|v| v == "1"))
+/// The official media reconnect (`spark-windows-desktop-ui.dll` 46.11.0.36194, FUN_184ef4ff4 at RVA 0x4ef4ff4, the
+/// handler of the media connection's `ConnectionState::Terminated` / `IceFailure`):
+///
+/// * on hold: nothing ("ConnectionState::Terminated: Call held. do not attempt to reconnect media");
+/// * offline: a flag is set and nothing else ("Network is offline, wait for network restored, before triggering media
+///   reconnect."); the network handler (FUN_184ebbfc2, on "network/restored" and "network/ip-address-changed") sees the
+///   flag and reconnects ("Network restored, and wme session was terminated, reconnect media");
+/// * else ("Network is available, triggering media reconnect"), while `reconnects < 5`
+///   (`if (*(ulong*)(call+0x2818) < 5)`): the counter goes up, "The <n> time to reconnect media for ICE Failure during
+///   meeting", "remove media connection [<id>]" and `MediaManager::reconnectMedia`: a NEW media connection (new peer
+///   connection, ICE, DTLS) and its offer to Locus;
+/// * at 5: the counter is cleared, "Media fail to reconnect after Terminated for 5 times, end meeting/call and report
+///   media drop events", the call ends (end reason `MediaReconnectMaxRetry`).
+///
+/// Webox's media stack (webrtc-rs) has no WME session that terminates on its own, so its stand-in for `Terminated` is
+/// the peer connection Failed, or not connected for `MEDIA_RECONNECT_AFTER` (WME's own timer is not in the decompile).
+pub const MEDIA_RECONNECT_MAX: u32 = 5;
+pub const MEDIA_RECONNECT_AFTER: Duration = Duration::from_secs(10);
+/// A reconnect whose new connection is not up by then failed (the official client waits for the new connection's
+/// next `Terminated`): the ROAP answer's `ROAP_TIMEOUT` plus the join's `MEDIA_TIMEOUT`.
+pub const MEDIA_RECONNECT_TIMEOUT: Duration = Duration::from_secs(25);
+
+/// The state of a call's media reconnect.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Recovery {
+    /// Reconnects started since the media was last up (the official counter, `call+0x2818`).
+    pub attempts: u32,
+    /// The running reconnect's start; None between them.
+    pub attempt_at: Option<Instant>,
+    /// The running reconnect failed already (its offer was not sent / refused, its answer not applied).
+    pub attempt_failed: bool,
+    /// Offline while the media was down: reconnect once the network is back (the official flag).
+    pub offline_wait: bool,
 }
+
+/// What the network looks like this tick (`route_probe` against the address the media connection was made from).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Route { Same, Changed, Offline }
+
+/// Why a reconnect starts (the call log).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Trigger { IceFailed, DownTooLong, NetworkChanged, NetworkRestored, AttemptFailed }
+
+impl Trigger {
+    pub fn text(self) -> &'static str {
+        match self {
+            Trigger::IceFailed => "ICE failed",
+            Trigger::DownTooLong => "media down too long",
+            Trigger::NetworkChanged => "local network address changed",
+            Trigger::NetworkRestored => "network restored",
+            Trigger::AttemptFailed => "the last attempt failed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Recover {
+    Nothing,
+    /// The media connection is up again: the counter is cleared.
+    Recovered,
+    /// Offline: wait for the network (the first tick of it sets `offline_wait`).
+    WaitOffline,
+    /// Tear the media connection down and build a new one.
+    Rebuild(Trigger),
+    /// `MEDIA_RECONNECT_MAX` reconnects failed: end the call.
+    End,
+}
+
+/// One tick of the media reconnect. Pure, for the tests. `was_up`: the media was up once in this call (the join phase
+/// has its own counter in the official client and stays with `media_stall` here); `connected` / `failed`: the current
+/// connection's state; `down_since`: since when it is not connected.
+pub fn recover_step(r: &Recovery, now: Instant, was_up: bool, connected: bool, failed: bool, down_since: Option<Instant>, route: Route, held: bool) -> Recover {
+    if !was_up || held { return Recover::Nothing; }
+    let rebuild = |t| if r.attempts >= MEDIA_RECONNECT_MAX { Recover::End } else { Recover::Rebuild(t) };
+    if route == Route::Offline { return if connected { Recover::Nothing } else { Recover::WaitOffline }; }
+    if route == Route::Changed { return rebuild(Trigger::NetworkChanged); }
+    if connected { return if r.attempts > 0 || r.attempt_at.is_some() { Recover::Recovered } else { Recover::Nothing }; }
+    if r.offline_wait { return rebuild(Trigger::NetworkRestored); }
+    if let Some(t) = r.attempt_at {
+        let over = r.attempt_failed || failed || now.saturating_duration_since(t) >= MEDIA_RECONNECT_TIMEOUT;
+        return if over { rebuild(Trigger::AttemptFailed) } else { Recover::Nothing };
+    }
+    if failed { return rebuild(Trigger::IceFailed); }
+    if down_since.is_some_and(|d| now.saturating_duration_since(d) >= MEDIA_RECONNECT_AFTER) { return rebuild(Trigger::DownTooLong); }
+    Recover::Nothing
+}
+
 /// The call window says "Reconnecting…" once media that was up is down this long.
 pub const RECONNECTING_AFTER: Duration = Duration::from_secs(5);
 /// Our ROAP OFFER got no ANSWER.
@@ -482,7 +560,7 @@ pub fn media_stall(now: Instant, offer_at: Option<Instant>, joined_at: Option<In
     let over = |t: Option<Instant>, d: Duration| t.is_some_and(|t| now.saturating_duration_since(t) >= d);
     if over(offer_at, ROAP_TIMEOUT) { return Some("No answer from the media server to the connection request (ROAP). The call may have no sound."); }
     if media == Some(MediaState::Failed) { return Some("Audio connection failed (ICE/DTLS). The call has no sound."); }
-    // only before the media was ever up: a later drop is ICE recovering (`ice_tick`), not "no connection"
+    // only before the media was ever up: a later drop is the media reconnect's (`recovery_tick`), not "no connection"
     if media != Some(MediaState::Connected) && media_up_at.is_none() && over(joined_at, MEDIA_TIMEOUT) { return Some("No audio connection to the media server (ICE/DTLS doesn't connect). Check the network or firewall."); }
     if media == Some(MediaState::Connected) && rx == 0 && over(media_up_at, RTP_TIMEOUT) { return Some("Connected, but no sound arrives (no audio data from the media server)."); }
     None
@@ -497,6 +575,9 @@ pub struct Calls {
     video_want: Option<crate::media::camera::PreviewKey>,
     /// A tick is waiting in the job queue (the ticker sends no second one).
     tick_queued: Arc<AtomicBool>,
+    /// Where the system routes to Webex (`route_target`) and from which local address when the current media connection
+    /// was made (`route_probe`): the network-change check of `recovery_tick`.
+    route: (Option<std::net::SocketAddr>, Option<std::net::IpAddr>),
 }
 
 /// The ROAP v2 message envelope Locus expects in `localMedias[].localSdp` (JSON string), camera off.

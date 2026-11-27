@@ -95,6 +95,7 @@ Only Webex addresses (email) can be called.	Angerufen werden können nur Webex-A
 Test guard active: calls only to the allowed address.	Testschutz aktiv: Anrufe nur an die freigegebene Adresse.
 No answer from the media server to the connection request (ROAP). The call may have no sound.	Keine Antwort des Medienservers auf die Verbindungsanfrage (ROAP). Der Anruf hat möglicherweise keinen Ton.
 Audio connection failed (ICE/DTLS). The call has no sound.	Audioverbindung fehlgeschlagen (ICE/DTLS). Der Anruf hat keinen Ton.
+The call was terminated because of a lost connection.	Der Anruf wurde wegen einer unterbrochenen Verbindung beendet.
 No audio connection to the media server (ICE/DTLS doesn't connect). Check the network or firewall.	Keine Audioverbindung zum Medienserver (ICE/DTLS kommt nicht zustande). Netzwerk oder Firewall prüfen.
 Connected, but no sound arrives (no audio data from the media server).	Verbunden, aber es kommt kein Ton an (keine Audiodaten vom Medienserver).
 Video not possible: no camera found.	Video nicht möglich: Keine Kamera gefunden.
