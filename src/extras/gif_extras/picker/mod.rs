@@ -8,7 +8,7 @@
 //! emoji picker. "No results", "Favorites", ... come from the language pack; "Search GIFs", "Trending GIFs", the
 //! tab labels, the sticker search hint and the empty-favourites texts are Webox's own wording.
 //! The setting "Compact size" switches to the smaller popup of earlier versions (`layout.rs`), read every frame.
-//! Screenshot runs (with `WEBOX_SHOT_GIF_EXTRAS=1`): `WEBOX_SHOT_GIF=1|stickers|emoji|trending|search|favs|favs-empty|home-favs`,
+//! Screenshot runs (with `WEBOX_SHOT_GIF_EXTRAS=1`): `WEBOX_SHOT_GIF=1|stickers|emoji|trending|search|favs|favs-empty|upfavs|home-favs`,
 //! `WEBOX_SHOT_GIF_COMPACT=0|1` overrides the size setting.
 use super::{upload_favs, upload_stars, Plugin};
 use crate::extras::giphy::{self, Category, Debounce, Event, FetchError, Gif, Kind};
@@ -373,8 +373,13 @@ impl Plugin {
         if let Some(i) = pick {
             if let Some(g) = self.picker.gifs.get(i).cloned() {
                 if upload_favs::is_upload_id(&g.id) {
-                    // A favourite uploaded GIF goes out as a file (encrypted upload on Send), staged in the composer like an attachment.
-                    match upload_favs::stage_copy(&g) { Some(p) => crate::app::files::push_picks(space, vec![p]), None => app.toast(crate::trq!("The file no longer exists").into_owned(), now) }
+                    // A kept GIF / picture goes out as a file (encrypted upload), staged in the composer like an attachment, or sent
+                    // at once with "Send favorites on click".
+                    match upload_favs::stage_copy(&g) {
+                        Some(p) if super::send_instantly(app) => app.send_files_now(space, vec![p], now),
+                        Some(p) => crate::app::files::push_picks(space, vec![p]),
+                        None => app.toast(crate::trq!("The file no longer exists").into_owned(), now),
+                    }
                 } else { let b = self.picker.thumbs.get(&g.id); out.pick = Some((g, b)); }
             }
             close = true;

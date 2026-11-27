@@ -61,8 +61,8 @@ The media server rejected the video connection (ROAP error).	Der Medienserver ha
 Hanging up failed: {{0}}	Auflegen fehlgeschlagen: {{0}}
 
 # GIF extras
-Send GIFs on click	GIFs beim Anklicken sofort senden
-A picked GIF is sent at once instead of being added to the message.	Ein ausgewählter GIF wird sofort gesendet, statt der Nachricht hinzugefügt zu werden.
+Send favorites on click	Favoriten beim Anklicken sofort senden
+A picked GIF or saved picture is sent at once instead of being added to the message.	Ein ausgewähltes GIF oder gespeichertes Bild wird sofort gesendet, statt der Nachricht hinzugefügt zu werden.
 
 # Calls: sharing, media and video
 Can't share: someone else is sharing right now.	Freigabe nicht möglich: Gerade gibt jemand anderes Inhalte frei.
@@ -271,14 +271,15 @@ Star on GIFs in the chat	Stern an GIFs im Chat
 Appears in the top right corner of a GIF while the mouse pointer is over it.	Erscheint oben rechts auf einem GIF, solange der Mauszeiger darüber steht.
 Star in the image viewer	Stern in der Bildansicht
 A star button next to the image viewer's buttons.	Ein Stern-Knopf neben den Knöpfen der Bildansicht.
-Uploaded GIFs too	Auch hochgeladene GIFs
-Starred uploaded GIFs are kept on this computer (folder gif-favorites).	Hochgeladene GIFs mit Stern werden auf diesem Computer behalten (Ordner gif-favorites).
+Uploads too	Auch Hochgeladenes
+Starred uploads are kept on this computer (folder gif-favorites): GIFs in the chat, any picture in the image viewer.	Hochgeladenes mit Stern wird auf diesem Computer behalten (Ordner gif-favorites): GIFs im Chat, jedes Bild in der Bildansicht.
 Storage location	Speicherort
 Open favorites folder	Favoriten-Ordner öffnen
-The folder with the kept uploaded GIFs.	Der Ordner mit den behaltenen hochgeladenen GIFs.
-GIF too large	GIF zu groß
-Not a GIF	kein GIF
-GIF cannot be read	GIF nicht lesbar
+The folder with the kept uploaded GIFs and pictures.	Der Ordner mit den behaltenen hochgeladenen GIFs und Bildern.
+Picture too large	Bild zu groß
+Not a supported picture	Kein unterstütztes Bild
+Picture cannot be read	Bild nicht lesbar
+The favorites folder is full (%1)	Der Favoriten-Ordner ist voll (%1)
 Settings are not valid JSON: {{0}}	Einstellungen sind kein gültiges JSON: {{0}}
 Settings must be a JSON object	Einstellungen müssen ein JSON-Objekt sein
 Settings without "sections" or "fields"	Einstellungen ohne "sections" oder "fields"

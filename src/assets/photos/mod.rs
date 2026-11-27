@@ -340,6 +340,8 @@ impl Photos {
     /// The encoded bytes of a message image (`key`, or `full:<key>` for the original) for the viewer's Kopieren /
     /// Speichern unter.
     pub fn image_bytes(&self, key: &str) -> Option<&[u8]> { self.images.get(key).map(|b| b.as_slice()) }
+    /// Whether the original behind thumbnail `key` was already asked for (`App::request_full_image`).
+    pub fn full_requested(&self, key: &str) -> bool { self.full_requested.contains(key) }
     /// Whether a profile picture with that key (person id, uuid or lower-case e-mail) is loaded.
     pub fn has_photo(&self, key: &str) -> bool { self.bytes.contains_key(key) }
 

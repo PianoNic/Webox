@@ -78,7 +78,7 @@ Use `WEBOX_SHOT_*` variables together with `--sample --screenshot`. Examples:
 - `WEBOX_SHOT_GIF=1`: the GIF picker. With the GIF-Extras plugin: `WEBOX_SHOT_GIF_EXTRAS=1`, e.g. `WEBOX_SHOT_GIF=stickers`,
   and `WEBOX_SHOT_GIF_COMPACT=1` for its compact size.
 - Message logging hooks: `WEBOX_SHOT_KEPT=<n>[,<n>]`, `WEBOX_SHOT_EDITED=<n>:<text>[;...]`, `WEBOX_SHOT_CTX=<n>`
-  (the right-click menu), `WEBOX_SHOT_EDIT_DIALOG=<n>` with `WEBOX_SHOT_DIALOG_TAB=<i>`.
+  (the right-click menu; `WEBOX_SHOT_CTX_HIT=image` on its picture), `WEBOX_SHOT_EDIT_DIALOG=<n>` with `WEBOX_SHOT_DIALOG_TAB=<i>`.
 - `WEBOX_LANG=en`: the language.
 
 Each variable is documented where it is read. `scripts/shots.ps1` renders a set into `shots/`.

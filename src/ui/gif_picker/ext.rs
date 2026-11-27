@@ -31,6 +31,10 @@ pub(crate) trait GifExtras {
     fn image_overlay(&mut self, app: &mut App, ui: &mut egui::Ui, r: Rect, a: &cloud::Attachment, salt: (&str, usize), ready: bool);
     /// One extra button in the image viewer's top-right row, in `cell`; returns whether it took the cell.
     fn viewer_button(&mut self, app: &mut App, ui: &mut egui::Ui, cell: Rect, a: &cloud::Attachment) -> bool;
+    /// The message menu is open on picture `a`: `Some(saved?)` adds "Add to favorites" / "Remove from favorites" to it.
+    fn image_menu(&mut self, app: &mut App, ctx: &egui::Context, a: &cloud::Attachment) -> Option<bool>;
+    /// That entry was picked.
+    fn image_menu_pick(&mut self, app: &mut App, ctx: &egui::Context, a: &cloud::Attachment);
 }
 
 struct Reg { key: &'static str, ext: Option<Box<dyn GifExtras>> }
@@ -81,5 +85,17 @@ impl App {
         let Some(a) = a else { return false };
         let on = self.gif_extras_on();
         dispatch(on, |e| e.viewer_button(self, ui, cell, a)).unwrap_or(false)
+    }
+
+    /// Message menu hook on a picture: `Some(saved?)` for the favourites entry (only while the plugin is on; None = no entry).
+    pub(crate) fn gif_ext_image_menu(&mut self, ctx: &egui::Context, a: &cloud::Attachment) -> Option<bool> {
+        let on = self.gif_extras_on();
+        dispatch(on, |e| e.image_menu(self, ctx, a)).flatten()
+    }
+
+    /// The favourites entry of the message menu on a picture was picked.
+    pub(crate) fn gif_ext_image_menu_pick(&mut self, ctx: &egui::Context, a: &cloud::Attachment) {
+        let on = self.gif_extras_on();
+        dispatch(on, |e| e.image_menu_pick(self, ctx, a));
     }
 }

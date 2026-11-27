@@ -239,7 +239,7 @@ impl App {
         if close { st.open = false; st.debounce.reset(); }
         let picked_gif = close && pick.is_some();
         put(st);
-        // GIF-Extras' "Send GIFs on click": the picked GIF goes out at once instead of waiting in the composer.
+        // GIF-Extras' "Send favorites on click": the picked GIF goes out at once instead of waiting in the composer.
         if picked_gif && crate::extras::gif_extras::send_instantly(self) { self.gif_send_staged(space, now); }
         else if picked_gif { ctx.memory_mut(|m| m.request_focus(egui::Id::new("composer-edit"))); }
     }
