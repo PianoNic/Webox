@@ -1,7 +1,7 @@
-//! "Inhalte freigeben": picks the screen or window to share, with live thumbnails, the "optimise for" choice and "Computer-Audio
-//! freigeben". Its own borderless window, 1080 x 772 (at least 832 x 584), like the Webex share dialog: title bar, the grid of
-//! sources ("Bildschirm", then "Anwendung"; cells 200 x 156) on the left, the 280 wide "Freigabeoptionen" panel on the right,
-//! an 80 high bottom bar with "Freigeben" and the button that hides / shows the options (`view.rs`).
+//! "Share content": picks the screen or window to share, with live thumbnails, the "optimise for" choice and "Share computer
+//! audio". Its own borderless window, 1080 x 772 (at least 832 x 584), like the Webex share dialog: title bar, the grid of
+//! sources ("Screen", then "Application"; cells 200 x 156) on the left, the 280 wide "Sharing options" panel on the right,
+//! an 80 high bottom bar with "Share" and the button that hides / shows the options (`view.rs`).
 //!
 //! The call code opens it with `open()` and takes the user's pick with `take_choice()` (source + encoder settings); closing
 //! the dialog leaves no choice. Thumbnails come from a worker thread once a second while the dialog is open.
@@ -72,7 +72,7 @@ pub(crate) fn close() {
 #[allow(dead_code)]
 pub(crate) fn is_open() -> bool { PICKER.lock().map(|p| p.is_some()).unwrap_or(false) }
 
-/// The pick, once (after "Freigeben").
+/// The pick, once (after "Share").
 #[allow(dead_code)]
 pub(crate) fn take_choice() -> Option<Choice> { CHOICE.lock().unwrap_or_else(|e| e.into_inner()).take() }
 
@@ -82,10 +82,10 @@ fn sample_sources() -> Vec<ShareSource> {
     vec![
         s(Kind::Screen, 1, &format!("{} 1", crate::trq!("Screen")), "", (1920, 1080), false),
         s(Kind::Screen, 2, &format!("{} 2", crate::trq!("Screen")), "", (2560, 1440), false),
-        s(Kind::Window, 11, "Quartalsplanung.xlsx - Excel", "EXCEL", (1600, 900), false),
-        s(Kind::Window, 12, "Projektnotizen - Editor", "notepad", (900, 700), false),
-        s(Kind::Window, 13, "Entwurf Präsentation - PowerPoint", "POWERPNT", (1400, 900), false),
-        s(Kind::Window, 14, "Dateien", "explorer", (1000, 640), true),
+        s(Kind::Window, 11, "Quarterly planning.xlsx - Excel", "EXCEL", (1600, 900), false),
+        s(Kind::Window, 12, "Project notes - Notepad", "notepad", (900, 700), false),
+        s(Kind::Window, 13, "Draft presentation - PowerPoint", "POWERPNT", (1400, 900), false),
+        s(Kind::Window, 14, "Documents", "explorer", (1000, 640), true),
     ]
 }
 
@@ -224,7 +224,7 @@ impl App {
 mod tests {
     use super::*;
 
-    /// Screens come first ("Bildschirm"), windows after ("Anwendung"); the pick carries the preset of its optimisation.
+    /// Screens come first ("Screen"), windows after ("Application"); the pick carries the preset of its optimisation.
     #[test]
     fn sections_and_choice() {
         let list = sample_sources();

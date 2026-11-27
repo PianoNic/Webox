@@ -1,5 +1,6 @@
 //! One row of the list: seen-by, notices, grouping, day lines, measuring and drawing a message.
 use super::*;
+use crate::ui::widgets::tr;
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -11,8 +12,12 @@ thread_local! {
     static ROWS: RefCell<std::collections::HashMap<u64, RowEntry>> = RefCell::new(std::collections::HashMap::new());
 }
 /// Entries kept at most before unused ones are swept, and how many passes "unused" means.
-const ROW_CACHE_SWEEP: usize = 4096;
-const ROW_CACHE_IDLE_PASSES: u64 = 600;
+/// A measured row holds its laid-out text (galleys), tens of KB for a long message; the 4096 rows kept after browsing through
+/// many spaces were most of the heap. Rows of chats no longer shown (and of other window widths) go after 60 passes.
+const ROW_CACHE_SWEEP: usize = 256;
+const ROW_CACHE_IDLE_PASSES: u64 = 60;
+/// Measured rows cached (the `WEBOX_PROBE=1` report).
+pub(crate) fn row_cache_len() -> usize { ROWS.with(|r| r.borrow().len()) }
 
 thread_local! {
     /// Height of a message header line by (sender name, pixels per point): the height of the name's galley.
@@ -27,8 +32,21 @@ fn header_height(ui: &egui::Ui, who: &str) -> f32 {
     h
 }
 
+thread_local! {
+    /// `html::reply_ref` by the message HTML itself (a pure function of it): `quote_thumb` runs for every row each frame, and
+    /// tokenizing the whole HTML of each quoting reply there grew with the list. Keyed by the text, not a hash: a crafted
+    /// message must not be able to collide with another and show its quote or jump target.
+    static REPLY_REFS: RefCell<std::collections::HashMap<String, Option<QuoteRef>>> = RefCell::new(std::collections::HashMap::new());
+}
+fn reply_ref_cached(html: &str) -> Option<QuoteRef> {
+    if let Some(q) = REPLY_REFS.with(|m| m.borrow().get(html).cloned()) { return q; }
+    let q = html::reply_ref(html);
+    REPLY_REFS.with(|m| { let mut m = m.borrow_mut(); if m.len() > 1024 { m.clear(); } m.insert(html.to_string(), q.clone()); });
+    q
+}
+
 impl App {
-    /// "Gesehen von": who has seen the conversation's newest message (whoever wrote it). The banner is always the list's last row,
+    /// "Seen by": who has seen the conversation's newest message (whoever wrote it). The banner is always the list's last row,
     /// at the very end of the conversation. The readers come from `seen_keys`; the offline sample has no marks and shows the chat
     /// partner when my message is the newest one.
     pub(super) fn seen_by(&self, id: &str, msgs: &[Message]) -> Option<Vec<Person>> {
@@ -51,11 +69,11 @@ impl App {
     }
 
     /// A system line (call log, joins / leaves, renames, ...): centred secondary text, no avatar, no box, the time at
-    /// the end ("Jonas Weber war nicht erreichbar. 16:11"); height = text + the info-row padding.
+    /// the end ("Jonas Weber was unavailable. 16:11"); height = text + the info-row padding.
     pub(super) fn notice_row(&self, ui: &mut egui::Ui, c: &Mc, m: &Message) {
         let w = ui.available_width();
         // The info row's time is stamped like a message header: "HH:MM" today / yesterday, else
-        // "15.12.2025, 15:08" ("Sie haben Ihre Nachricht gelöscht. 15.12.2025, 15:08").
+        // "15.12.2025, 15:08" ("You deleted your message. 15.12.2025, 15:08").
         let (today, yesterday) = day_ref(self.client.is_some());
         let when = header_time(&m.date, &m.time, &today, &yesterday);
         let mut job = egui::text::LayoutJob::simple(format!("{} {when}", m.notice).trim().to_string(), FontId::proportional(SECOND), c.day, (w - 20.0).max(40.0));
@@ -68,12 +86,12 @@ impl App {
         ui.painter().galley(pos2(r.center().x - g.rect.center().x, r.top() + day_pad() / 2.0), g, c.day);
     }
 
-    /// A run of `n` kept deleted messages a plugin folds (`Message::collapsed`), starting with `first`: "1 gelöschte Nachricht" /
-    /// "N gelöschte Nachrichten" like a collapsed join/leave row (link colour, arrow); a click unfolds or folds them again.
+    /// A run of `n` kept deleted messages a plugin folds (`Message::collapsed`), starting with `first`: "1 deleted message" /
+    /// "N deleted messages" like a collapsed join/leave row (link colour, arrow); a click unfolds or folds them again.
     /// Whether they are unfolded.
     pub(super) fn fold_row(&mut self, ui: &mut egui::Ui, c: &Mc, space: &str, first: &str, n: usize) -> bool {
         let w = ui.available_width();
-        let label = if n == 1 { "1 gelöschte Nachricht".to_string() } else { format!("{n} gelöschte Nachrichten") };
+        let label = if n == 1 { tr("1 deleted message").to_string() } else { crate::trq!("%1 deleted messages", n) };
         let g = ui.painter().layout(label, FontId::proportional(SECOND), c.accent, (w - 60.0).max(40.0));
         let (r, resp) = ui.allocate_exact_size(Vec2::new(w, g.size().y + day_pad()), Sense::click());
         let key = fold_key(space, first);
@@ -131,7 +149,7 @@ impl App {
     fn info_row_select(&self, ui: &egui::Ui, m: &Message, r: Rect) {
         if super::super::widgets::hover_ok(ui, r) { record_pointer_row(ui.ctx(), &m.id, ui.input(|i| i.pointer.primary_pressed())); }
         let esc = m.notice.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
-        record_copy(ui.ctx(), CopyRow { id: m.id.clone(), stamp: copy_stamp(&m.date, &m.time), body: esc, ..Default::default() });
+        record_copy(ui.ctx(), CopyRow { id: m.id.clone(), stamp: copy_stamp(&m.date, &m.time), body: esc.into(), ..Default::default() });
     }
 
     /// Day separator: secondary label centred, 1 px lines of the same colour from x=75 to the label and from the label to the
@@ -189,7 +207,7 @@ impl App {
         let history: Vec<Arc<Galley>> = m.history.iter().map(|old| ui.fonts(|f| f.layout_job(text::spans_job(old, font.clone(), c.head, c.added, c.danger, wrap)))).collect();
         for g in &history { h += g.size().y + HISTORY_GAP; }
         let kept_deleted = m.deleted != 0 && m.deleted != crate::extras::plugins::kept::STYLE_PLAIN;
-        let tag = if kept_deleted { Some(("(gelöscht)", c.danger)) } else if m.deleted == 0 && (!m.history.is_empty() || m.edit_tag) { Some(("(bearbeitet)", c.head)) } else { None };
+        let tag = if kept_deleted { Some((tr("(deleted)"), c.danger)) } else if m.deleted == 0 && (!m.history.is_empty() || m.edit_tag) { Some((tr("(edited)"), c.head)) } else { None };
         let tag = tag.map(|(s, col)| ui.painter().layout_no_wrap(s.to_string(), FontId::proportional(SECOND), col));
         if let Some(g) = &tag { h += g.size().y; }
         let mut first = true;
@@ -200,14 +218,14 @@ impl App {
         if let Some(g) = &galley { if attach { h += CAPTION_GAP; } h += g.size().y; }
         if !m.reactions.is_empty() { h += 2.0 + REACT_H; } // 2 pt spacer + reactions row
         let thumb = thumb.zip(thumb_at).map(|(a, i)| (a.clone(), i));
-        Content { text: galley, links, emojis, quotes, jump, thumb, files, file_atts, videos, history, tag, h }
+        Content { text: galley, links, emojis, quotes, jump, thumb, files, file_atts, videos, history, tag, h, copy_body: body_html(m).into() }
     }
 
     /// The picture a reply quotes, when its quote names a shared file ("Shared a file: <name>") and the quoted message (found like
-    /// "Zur Originalnachricht springen" does) is loaded in this space with a picture of that name.
+    /// "Go to message" does) is loaded in this space with a picture of that name.
     pub(super) fn quote_thumb(&self, space: &str, m: &Message) -> Option<Attachment> {
         if !m.html.contains("<blockquote") || !m.html.contains("Shared ") { return None; }
-        let q = html::reply_ref(&m.html)?;
+        let q = reply_ref_cached(&m.html)?;
         let name = q.shared.as_ref()?.name()?.to_string();
         let msgs = self.messages.get(space)?;
         let tg = jump_target(msgs, &m.id, &q)?;
@@ -289,7 +307,7 @@ impl App {
         if !hovered { ui.ctx().data_mut(|d| d.remove::<Rect>(bar_key)); }
         // Multi-selection (multisel.rs): the row under the pointer / pressed, and the row as "copy selected messages" reads it.
         if inside { record_pointer_row(ui.ctx(), &m.id, ui.input(|i| i.pointer.primary_pressed())); }
-        record_copy(ui.ctx(), CopyRow { id: m.id.clone(), name: if head { who.clone() } else { String::new() }, stamp: copy_stamp(&m.date, &m.time), grouped: !head, body: body_html(m) });
+        record_copy(ui.ctx(), CopyRow { id: m.id.clone(), name: if head { who.clone() } else { String::new() }, stamp: copy_stamp(&m.date, &m.time), grouped: !head, body: ct.copy_body.clone() });
         let picked = msel(ui.ctx(), id).highlighted(&m.id);
 
         let vis = ui.is_rect_visible(row.expand(40.0));
@@ -308,7 +326,7 @@ impl App {
             if picked { p.rect_filled(boxr, RADIUS, c.checked); } else if hovered { p.rect_filled(boxr, RADIUS, c.hover_bg); }
             // A deleted message kept by a plugin in the overlay style: a red wash over the whole box.
             if m.deleted == crate::extras::plugins::kept::STYLE_OVERLAY { p.rect_filled(boxr, RADIUS, wa(c.danger, 0.15)); }
-            // "Zur Originalnachricht springen": the target flashes for a moment
+            // "Go to message": the target flashes for a moment
             if let Some((fid, t0)) = ui.ctx().data(|d| d.get_temp::<(String, f64)>(Id::new("msg-flash"))) {
                 if fid == m.id { let k = ((ui.input(|i| i.time) - t0) / 1.8) as f32; if k < 1.0 { p.rect_filled(boxr, RADIUS, wa(c.accent, 0.28 * (1.0 - k))); ui.ctx().request_repaint(); } }
             }
@@ -465,7 +483,7 @@ impl App {
         if hovered && !self.space_closed(id) && m.deleted == 0 { self.message_toolbar(ui, t, c, id, m, boxr, head, bar_key, ui.clip_rect().top()); }
     }
 
-    /// "(bearbeitet)" / the header's "Bearbeitet" of message `m` at `r`: while a plugin listens to `message.edit_tag_clicked` it
+    /// "(edited)" / the header's "Edited" of message `m` at `r`: while a plugin listens to `message.edit_tag_clicked` it
     /// is a button (e.g. the plugin's edit history dialog). `salt`: the row's sequence number and which of the two it is.
     fn edit_tag_click(&mut self, ui: &egui::Ui, space: &str, m: &Message, r: Rect, salt: (u32, u8)) {
         if m.deleted != 0 || !self.plugins.subscribed("message.edit_tag_clicked") { return; }

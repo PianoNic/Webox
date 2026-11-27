@@ -134,7 +134,7 @@ pub(crate) fn avatar_photo(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th, nam
 }
 
 /// Where an avatar's presence badge sits: centre as a fraction of the avatar's box from its top-left, diameter as a fraction
-/// of the size, the transparent ring cut around it (pt), and whether it ignores Settings "Verfügbarkeit und Status anzeigen"
+/// of the size, the transparent ring cut around it (pt), and whether it ignores Settings "Show availability and status"
 /// (the header's own badge always shows).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BadgeGeom { pub cx: f32, pub cy: f32, pub d: f32, pub ring: f32, pub always: bool }
@@ -153,7 +153,7 @@ pub(crate) fn avatar_photo_with(ui: &mut egui::Ui, ic: &mut icons::Icons, t: &Th
     let ctx = ui.ctx().clone();
     let g = AvatarGrid::new(r.min, size, ctx.pixels_per_point());
     let bg = bg.unwrap_or(t.avatar);
-    // Settings "Verfügbarkeit und Status anzeigen" off: no presence badges (App::presence_shown sets the flag each frame).
+    // Settings "Show availability and status" off: no presence badges (App::presence_shown sets the flag each frame).
     let status = if geom.always || PRESENCE_SHOWN.load(std::sync::atomic::Ordering::Relaxed) { status } else { None };
     let badge = presence_badge(status.unwrap_or(""));
     let dot = badge.map(|_| g.badge(size, geom));
@@ -441,27 +441,11 @@ pub(crate) fn vquad(p: &egui::Painter, r: Rect, top: Color32, bottom: Color32) {
     p.add(m);
 }
 
-/// The UI's German strings (from the language packs). Unknown keys pass through unchanged.
+/// Translates an English UI string: the official language packs (any context), then Webox's own translations; English
+/// (and unknown strings) pass through unchanged.
 pub(crate) fn tr(s: &str) -> &str {
-    // Delegate to the language packs (any context); English = identity.
     if crate::i18n::is_source_language() { return s; }
-    if let Some(t) = crate::i18n::lookup_any(s) { return t; }
-    // The hand-written map below is the fallback.
-    match s {
-        "Messaging" => "Nachrichten", "Meetings" => "Meetings", "Calling" => "Anrufe", "Whiteboards" => "Whiteboards",
-        "Contacts" => "Kontakte", "Teams" => "Teams", "More" => "Weitere", "Settings" => "Einstellungen", "Help" => "Hilfe",
-        "All" => "Alle", "Direct" => "Direkt", "Spaces" => "Bereiche", "Public" => "Öffentlich",
-        "Recommended messages" => "Empfohlene Nachrichten", "Favorites" => "Favoriten", "Other" => "Andere",
-        "Messages" => "Nachrichten", "People" => "Personen", "Profile" => "Profil", "Content" => "Inhalt", "Apps" => "+Apps",
-        "Search, meet, and call" => "Suchen, treffen und anrufen", "Ctrl+F" => "Strg+F", "Connect to a device" => "Mit einem Gerät verbinden",
-        "Set a status" => "Status festlegen", "Meet" => "Treffen",
-        "Shift+Enter for a new line" => "Umschalt+Eingabe für eine neue Zeile", "Today" => "Heute", "Yesterday" => "Gestern", "You" => "Sie",
-        "No filter" => "Kein Filter", "Notifications" => "Benachrichtigungen", "Drafts" => "Entwürfe", "Unread" => "Ungelesen",
-        "@Mentions to me" => "@Erwähnungen an mich", "@Mentions to all" => "@Erwähnungen an alle", "Flags" => "Markierungen",
-        "Filter" => "Filtern", "Create a space" => "Bereich erstellen", "Reply to thread" => "Im Thread antworten",
-        "Edited" => "Bearbeitet", "Back" => "Zurück", "Forward" => "Weiter", "Seen by" => "Gesehen von",
-        _ => s,
-    }
+    crate::i18n::lookup_any(s).unwrap_or(s)
 }
 
 pub(crate) fn toggle<'a>(on: &'a mut bool, t: &'a Th) -> impl egui::Widget + 'a {
@@ -478,8 +462,8 @@ pub(crate) fn toggle<'a>(on: &'a mut bool, t: &'a Th) -> impl egui::Widget + 'a 
     }
 }
 
-// See avatar_photo: false while Settings > "Verfügbarkeit und Status anzeigen" is off.
+// See avatar_photo: false while Settings > "Show availability and status" is off.
 pub(crate) static PRESENCE_SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
-/// Message text scale of Barrierefreiheit > Schriftgröße (f32 bits; 1.0 = Regulär), set each frame by App::appwide_frame.
+/// Message text scale of Accessibility > Font size (f32 bits; 1.0 = Regular), set each frame by App::appwide_frame.
 pub(crate) static MSG_SCALE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3F80_0000);
 pub(crate) fn msg_scale() -> f32 { f32::from_bits(MSG_SCALE.load(std::sync::atomic::Ordering::Relaxed)) }

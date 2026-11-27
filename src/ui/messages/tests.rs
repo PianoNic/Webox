@@ -133,7 +133,10 @@ fn content_revision_follows_what_the_list_draws() {
 #[test]
 fn utc_converts_to_local_time() {
     let (d, t) = to_local("2026-11-13", "15:48").unwrap();
-    if cfg!(windows) { assert!(d == "2026-11-13" || d == "2026-11-14" || d == "2026-11-12"); } else { assert_eq!((d.as_str(), t.as_str()), ("2026-11-13", "15:48")); }
+    // The system zone's offset at that instant, on every platform (not just Windows).
+    let utc = crate::i18n::days_from_civil(2026, 11, 13) * 86_400 + 15 * 3600 + 48 * 60;
+    let p = crate::i18n::parts(utc + crate::i18n::local_offset_secs(utc) as i64);
+    assert_eq!((d, t.clone()), (format!("{:04}-{:02}-{:02}", p.year, p.month, p.day), format!("{:02}:{:02}", p.hour, p.minute)));
     assert_eq!(t.len(), 5);
     assert!(to_local("", "15:48").is_none() && to_local("2026-11-13", "now").is_none() && to_local("2026-13-01", "10:00").is_none());
 }
@@ -253,7 +256,7 @@ fn pinned_list_redoes_frames_whose_height_changed() {
     let r = rows(&[("a", 0.0, 500.0), ("b", 500.0, 900.0)]);
     // Opened: laid out once invisibly, redone.
     assert!(scroll_fix(&r, None, 400.0, 400.0, 1.0e5, true, false, true).redo);
-    // A link preview / "Gesehen von" / reload made the list 48 pt taller: the frame laid out at the old maximum is redone.
+    // A link preview / "Seen by" / reload made the list 48 pt taller: the frame laid out at the old maximum is redone.
     let f = scroll_fix(&r, None, 352.0, 400.0, 352.0, true, false, false);
     assert!(f.redo && f.set.is_none());
     // Nothing changed.

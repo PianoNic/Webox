@@ -78,7 +78,8 @@ fn stamp() -> u128 { std::time::SystemTime::now().duration_since(std::time::UNIX
 pub fn stage_dir(root: &Path, pkg: &str) -> Result<PathBuf, String> {
     if !valid_pkg(pkg) { return Err(crate::trq!("invalid package ID").into_owned()); }
     let d = root.join(pkg).join(format!(".staging-{}", stamp()));
-    std::fs::create_dir_all(&d).map_err(|e| e.to_string())?;
+    // Owner-only (0700 on unix) from creation: nobody else can swap the library between its hash check and loading it.
+    crate::system::create_private_dir(&d).map_err(|e| e.to_string())?;
     Ok(d)
 }
 

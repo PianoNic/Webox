@@ -12,7 +12,10 @@ pub struct Anim { frames: Vec<(egui::TextureHandle, f32)>, size: [usize; 2], tot
 /// Decoded message images (all frames of all GIFs) kept in texture memory at most; beyond it the ones not drawn for the
 /// longest time are dropped and decoded again (on a worker) when they come back on screen.
 /// With OpenGL on an integrated GPU, textures live in system RAM, so this counts fully against Webox's memory.
-const IMAGE_TEX_BUDGET: usize = 64 * 1024 * 1024;
+/// 16 MB (mipmaps counted) holds the pictures of two to three screens of a chat (a 512 px thumbnail is 1 MB); pictures further
+/// away are decoded again (on a worker, a few ms each) when they come back. Measured with the Intel OpenGL driver, every MB of
+/// texture costs about 2 MB of private memory.
+const IMAGE_TEX_BUDGET: usize = 16 * 1024 * 1024;
 
 /// Message images are decoded on worker threads (a big picture or a long GIF would block the UI thread for tens to hundreds
 /// of ms); the textures are created there too (egui's texture manager is thread-safe) and handed back with the key's generation.
@@ -41,6 +44,9 @@ impl Decoder {
 /// A sanity cap only; `MAX_ANIM_BYTES` is what normally limits a GIF.
 /// Setting "Only play GIFs when Webox is the active window" (`gifs_pause_unfocused`), mirrored once per frame (frame.rs).
 pub static GIFS_ONLY_FOCUSED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+/// The main window is in the tray or minimised (set each frame by ui/frame.rs): message pictures are neither decoded nor kept
+/// in texture memory meanwhile (nobody sees them; the window may still draw in the background).
+pub static AWAY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub const MAX_FRAMES: usize = 600;
 pub const MAX_FRAME_SIDE: u32 = 512;
@@ -48,6 +54,8 @@ pub const MAX_FRAME_SIDE: u32 = 512;
 pub const MAX_TEXTURE_SIDE: u32 = 8192;
 /// One GIF's frames at most (the whole image budget, so the one on screen plays every frame; off-screen ones are evicted).
 const MAX_ANIM_BYTES: usize = 64 * 1024 * 1024;
+/// Largest side of a profile picture's own texture (only the stand-in until its round texture exists, see `Photos::texture`).
+const PHOTO_TEX_SIDE: u32 = 64;
 /// Largest side of a full-size image in the viewer (enough for a 4K screen; phone photos are larger and only cost memory).
 const MAX_FULL_SIDE: u32 = 4096;
 
@@ -150,7 +158,7 @@ fn decode_anim(ctx: &egui::Context, key: &str, bytes: &[u8]) -> Option<Anim> {
     }
     match image::load_from_memory(bytes) {
         Ok(img) => {
-            let mut img = img.to_rgba8();
+            let mut img = img.into_rgba8(); // no copy of an RGBA picture (a large one would briefly need twice its memory)
             let max_side = if key.starts_with("full:") { MAX_FULL_SIDE } else { MAX_TEXTURE_SIDE };
             if img.width().max(img.height()) > max_side { // larger than useful (viewer) or than a GPU texture can be: scale down
                 let s = max_side as f32 / img.width().max(img.height()) as f32;
@@ -160,7 +168,7 @@ fn decode_anim(ctx: &egui::Context, key: &str, bytes: &[u8]) -> Option<Anim> {
             let tex = upload(ctx, format!("img:{key}"), &img, true);
             // A space's round picture: keep its pixels for the screen-resolution round textures (round.rs).
             if key.starts_with("spaceavatar:") { round::register(ctx, tex.id(), &img); }
-            Some(Anim { frames: vec![(tex, 1.0)], size, total: 1.0, start: None, paused_at: None, drawn: 0.0, bytes: size[0] * size[1] * 4, used: 0 }) }
+            Some(Anim { frames: vec![(tex, 1.0)], size, total: 1.0, start: None, paused_at: None, drawn: 0.0, bytes: size[0] * size[1] * 4 * 4 / 3, used: 0 }) } // + the mipmaps
         Err(e) => {
             let kind = if fmt.is_some() { "unsupported or damaged" } else { "unrecognised (not an image)" };
             crate::cloud::dbg_conn(&format!("image decode failed: {kind}, format {fmt:?}, {} bytes: {e}", bytes.len()));
@@ -223,6 +231,24 @@ pub struct Photos {
 }
 
 impl Photos {
+    /// The window went to the tray or was minimised: every decoded message picture's texture is dropped (decoded again from the
+    /// bytes kept here when the window is back), so a window nobody looks at holds no texture memory for them. Profile
+    /// pictures stay: the notification toasts show them.
+    pub fn release_textures(&mut self, ctx: &egui::Context) {
+        let keys: Vec<String> = self.image_tex.keys().cloned().collect();
+        for k in keys { self.drop_decoded(&k); }
+        self.decoding.clear(); // results still on their way are dropped as stale
+        for id in self.forget_round.drain(..) { round::forget(ctx, id); }
+        self.gray_tex.clear();
+    }
+
+    /// What the caches hold (the `WEBOX_PROBE=1` report): encoded message images, encoded profile pictures, decoded image
+    /// texture memory, profile picture textures.
+    pub fn mem_report(&self) -> String {
+        let mb = |b: usize| b as f64 / 1048576.0;
+        format!("images={}/{:.1}MB avatars={}/{:.1}MB image_tex={:.1}MB photo_tex={}", self.images.len(), mb(self.images.values().map(|b| b.len()).sum()),
+            self.bytes.len(), mb(self.bytes.values().map(|b| b.len()).sum()), mb(self.tex_bytes), self.tex.len())
+    }
     /// Drops the full-resolution image of `key` (bytes and textures) when the viewer closes.
     pub fn release_full(&mut self, key: &str) {
         let k = format!("full:{key}");
@@ -345,6 +371,7 @@ impl Photos {
         self.collect(pass);
         for id in self.forget_round.drain(..) { round::forget(ctx, id); }
         if !self.images.contains_key(key) { return None; }
+        if AWAY.load(std::sync::atomic::Ordering::Relaxed) && !cfg!(test) { return None; }
         if !self.image_tex.contains_key(key) {
             if cfg!(test) {
                 let a = decode_anim(ctx, key, &self.images[key]);
@@ -374,17 +401,22 @@ impl Photos {
 
     /// The decoded picture for a person id, uuid or email (decoded lazily, cached); `None` if there is none.
     pub fn texture(&mut self, ctx: &egui::Context, key: &str) -> Option<egui::TextureId> {
-        let key = if self.bytes.contains_key(key) { key.to_string() } else { key.to_lowercase() };
         for id in self.forget_round.drain(..) { round::forget(ctx, id); }
+        // Already decoded under this exact key (called per avatar and frame): no key copy.
+        if let Some(t) = self.tex.get(key) { return t.as_ref().map(|t| t.id()); }
+        let key = if self.bytes.contains_key(key) { key.to_string() } else { key.to_lowercase() };
         if !self.bytes.contains_key(&key) { return None; }
         if !self.tex.contains_key(&key) {
             let t = match image::load_from_memory(&self.bytes[&key]) {
                 Ok(img) => {
                     let img = img.to_rgba8();
-                    let size = [img.width() as usize, img.height() as usize];
-                    // Mipmapped for the fallback drawing (scaled mesh); the avatars themselves use round.rs textures.
+                    // The avatars are drawn from round.rs textures, rendered from the full picture registered below; this texture
+                    // is only the stand-in for the frame or two before one is rendered (and the key of the picture's round
+                    // textures), so a small copy does: 196 KB of texture memory per 192 px picture became 22 KB.
+                    let small = if img.width().max(img.height()) > PHOTO_TEX_SIDE { image::imageops::thumbnail(&img, PHOTO_TEX_SIDE, PHOTO_TEX_SIDE) } else { img.clone() };
+                    let size = [small.width() as usize, small.height() as usize];
                     let opts = egui::TextureOptions { mipmap_mode: Some(egui::TextureFilter::Linear), ..egui::TextureOptions::LINEAR };
-                    let t = ctx.load_texture(format!("photo:{key}"), egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw()), opts);
+                    let t = ctx.load_texture(format!("photo:{key}"), egui::ColorImage::from_rgba_unmultiplied(size, small.as_raw()), opts);
                     round::register(ctx, t.id(), &img);
                     Some(t)
                 }

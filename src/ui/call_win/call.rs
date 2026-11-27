@@ -21,7 +21,7 @@ pub(crate) fn fill_uv(pic: Vec2, room: Vec2) -> Rect {
     else { let v = ip / rp; Rect::from_min_max(pos2(0.0, (1.0 - v) / 2.0), pos2(1.0, (1.0 + v) / 2.0)) }
 }
 
-/// The end button is the red "Anruf beenden" pill from this control-bar width on, a round button below it.
+/// The end button is the red "End call" pill from this control-bar width on, a round button below it.
 const END_PILL_FROM: f32 = 600.0;
 
 impl App {
@@ -34,13 +34,13 @@ impl App {
     pub(super) fn persist_ok(&self) -> bool { !self.call.sample && self.shot.is_none() }
 
     /// Ctrl+Shift+X ("ShowHideCallingDock", shortcuts/commands.rs): shows or hides the calling dock. Returns false when this
-    /// window setup has no dock (separate windows off, or a backend without OS windows); the caller falls back to "Anrufe".
+    /// window setup has no dock (separate windows off, or a backend without OS windows); the caller falls back to "Calling".
     pub(crate) fn toggle_calling_dock(&mut self, ctx: &egui::Context) -> bool {
         if !self.separate_call_windows(ctx) { return false; }
         self.call.win.toggle_dock();
         true
     }
-    /// Tray "Anruf-Dock einblenden": shows the dock (never hides it); false like [`Self::toggle_calling_dock`].
+    /// Tray "Show calling dock": shows the dock (never hides it); false like [`Self::toggle_calling_dock`].
     pub(crate) fn show_calling_dock(&mut self, ctx: &egui::Context) -> bool {
         if !self.separate_call_windows(ctx) { return false; }
         let w = &mut self.call.win;
@@ -64,7 +64,7 @@ impl App {
             "stats" => { self.preview_call("connected", now); self.sample_stats(); }
             "incoming" | "ringing" | "connected" => self.preview_call(&k, now),
             // a video call: the other side's picture, our self view (made-up pictures); with the video menu open; my
-            // outgoing video call still ringing; a ringing call answered with video ("Anrufe mit eingeschalteter Videokamera annehmen")
+            // outgoing video call still ringing; a ringing call answered with video ("Answer calls with my video on")
             "video" | "video-menu" => {
                 self.preview_call("connected", now); self.call.video.wanted = true; super::super::call::video::show_sample();
                 if k == "video-menu" { super::super::menu::menu_open(ctx, "call-video"); }
@@ -120,7 +120,7 @@ impl App {
 
     pub(super) fn finish_call_actions(&mut self, ctx: &egui::Context, mut a: CallActions, email: &str) {
         if a.toggle_ring { self.call.ring_muted = !self.call.ring_muted; }
-        if a.message { self.open_chat_with_email(ctx, email, false); a.hang = true; } // "Zurückschreiben": decline, then open the chat (nothing is sent)
+        if a.message { self.open_chat_with_email(ctx, email, false); a.hang = true; } // "Text back": decline, then open the chat (nothing is sent)
         if a.contact { self.open_chat_with_email(ctx, email, true); }
         if self.call.sample { // offline demo: the buttons act on the made-up call only
             if a.hang { self.call.cur = None; }
@@ -171,7 +171,7 @@ impl App {
             self.call.win.call_b = Some(b);
         }
         let (pos, size) = self.call.win.call_b.unwrap_or((pos2(100.0, 100.0), size_default));
-        let mut b = egui::ViewportBuilder::default().with_title(CALL_TITLE).with_decorations(false).with_inner_size(size).with_min_inner_size(CALL_MIN)
+        let mut b = egui::ViewportBuilder::default().with_title(tr(CALL_TITLE)).with_decorations(false).with_inner_size(size).with_min_inner_size(CALL_MIN)
             .with_position(pos).with_taskbar(true);
         if self.shot.is_some() { b = b.with_active(false); }
         ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("webox-call-window"), b, |vctx, class| {
@@ -180,7 +180,7 @@ impl App {
             self.remember_rect(vctx, true);
             self.viewport_shot(vctx, "call");
         });
-        self.round_once(1, CALL_TITLE);
+        self.round_once(1, tr(CALL_TITLE));
         actions
     }
 
@@ -238,12 +238,12 @@ impl App {
                 1 => { p.rect_stroke(Rect::from_center_size(c, Vec2::splat(10.0)), 0.0, s, egui::StrokeKind::Inside); }
                 _ => { let d = 5.0; p.line_segment([c - Vec2::splat(d), c + Vec2::splat(d)], s); p.line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], s); }
             }
-            out[i] = resp.on_hover_text(["Minimieren", if maxed { "Wiederherstellen" } else { "Maximieren" }, "Fenster schließen"][i]).clicked();
+            out[i] = resp.on_hover_text([tr("Minimize"), if maxed { tr("Restore") } else { tr("Maximize") }, tr("Close window")][i]).clicked();
         }
         (out[0], out[1], out[2])
     }
 
-    /// The received share as the stage of the call window: a 32 high bar "<Name> teilt den Bildschirm" on top, the picture
+    /// The received share as the stage of the call window: a 32 high bar "<Name> is sharing the screen" on top, the picture
     /// fitted into the rest (aspect kept, nothing cropped), a strip of `STRIP_W` on the right for the person. Returns the
     /// strip. Draws nothing per frame that isn't there: a new picture is uploaded once (`remote_share_picture`).
     fn share_stage(&mut self, ui: &mut egui::Ui, vctx: &egui::Context, t: &Th, body: Rect, v: &CallView) -> Rect {
@@ -253,14 +253,14 @@ impl App {
         let p = ui.painter();
         p.rect_filled(bar, 0.0, t.win_b);
         let who = self.call.remote_share.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| v.name.clone());
-        crate::ui::chrome::fit_text(p, bar.left() + 12.0, bar.center().y, &format!("{who} teilt den Bildschirm"), semibold(13.0), t.text1, bar.width() - 24.0);
+        crate::ui::chrome::fit_text(p, bar.left() + 12.0, bar.center().y, &crate::trq!("%1 is sharing the screen", who), semibold(13.0), t.text1, bar.width() - 24.0);
         p.rect_filled(stage, 4.0, Color32::BLACK);
         match self.remote_share_picture(vctx) {
             Some((id, size)) => {
                 let r = Rect::from_center_size(stage.center(), fit_size(size, stage.size()));
                 ui.painter().image(id, r, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
             }
-            None => { ui.painter().text(stage.center(), egui::Align2::CENTER_CENTER, "Freigabe wird geladen…", FontId::proportional(14.0), t.text2); }
+            None => { ui.painter().text(stage.center(), egui::Align2::CENTER_CENTER, tr("Loading share…"), FontId::proportional(14.0), t.text2); }
         }
         strip
     }
@@ -351,7 +351,7 @@ impl App {
                 let von = self.call.video.wanted;
                 if round_at(ui, &mut self.icons, "video", pos2(cx, y), 48.0, if von { "camera-regular" } else { "camera-muted-regular" }, if von { t.selected } else { t.badge }, Color32::WHITE, t.focus)
                     .on_hover_text(super::super::call::video::video_tip(von)).clicked() { a.video = true; }
-                if round_at(ui, &mut self.icons, "hang", pos2(cx + 60.0, y), 48.0, "handset-down-slash-regular", t.badge, Color32::WHITE, t.focus).on_hover_text("Auflegen").clicked() { a.hang = true; }
+                if round_at(ui, &mut self.icons, "hang", pos2(cx + 60.0, y), 48.0, "handset-down-slash-regular", t.badge, Color32::WHITE, t.focus).on_hover_text(tr("Hang up")).clicked() { a.hang = true; }
                 self.self_view(ui, t, pip_area, full_screen);
                 return;
             }
@@ -378,22 +378,22 @@ impl App {
                 let muted = self.call.muted;
                 if round_at(&mut bu, &mut self.icons, "bar-mute", pos2(x0 + 20.0, y), 40.0, if muted { "microphone-muted-regular" } else { "microphone-regular" }, if muted { t.badge } else { t.selected }, Color32::WHITE, t.focus)
                     .on_hover_text(self.mute_tip()).clicked() { a.mute = true; }
-                // Video ("Video starten" / "Video beenden"), its arrow opens the camera and self-view menu ("Video-Optionen").
+                // Video ("Start video" / "Stop video"), its arrow opens the camera and self-view menu ("Video options").
                 let vopen = super::super::menu::menu_is_open(vctx, "call-video");
                 let (vt, vm) = self.video_button(&mut bu, t, Rect::from_min_size(pos2(x0 + 48.0, y - 20.0), Vec2::new(64.0, 40.0)), vopen);
                 if vt.clicked() { a.video = true; }
                 if vm.clicked() { menu_toggle(vctx, "call-video"); }
                 let x0 = x0 + 72.0;
                 let open = ["call-devices", "call-mic", "call-spk"].iter().any(|k| super::super::menu::menu_is_open(vctx, k));
-                let dev = round_at(&mut bu, &mut self.icons, "bar-dev", pos2(x0 + 20.0 + 48.0, y), 40.0, "speaker-regular", if open { t.accent } else { t.selected }, Color32::WHITE, t.focus).on_hover_text("Audiogeräte");
+                let dev = round_at(&mut bu, &mut self.icons, "bar-dev", pos2(x0 + 20.0 + 48.0, y), 40.0, "speaker-regular", if open { t.accent } else { t.selected }, Color32::WHITE, t.focus).on_hover_text(tr("Audio devices"));
                 if dev.clicked() { menu_toggle(vctx, "call-devices"); }
-                // Keypad ("Tastatur" / "Tastenfeld"): tones go into the call as DTMF (locus sendDtmf).
+                // Keypad ("Keyboard" / "Dialpad"): tones go into the call as DTMF (locus sendDtmf).
                 let kp_on = self.call.mc.keypad;
                 if round_at(&mut bu, &mut self.icons, "bar-keypad", pos2(x0 + 20.0 + 96.0, y), 40.0, "dialpad-regular", if kp_on { t.accent } else { t.selected }, Color32::WHITE, t.focus)
-                    .on_hover_text("Tastenfeld").clicked() { self.call.mc.keypad = !kp_on; }
-                // Share ("Freigeben"): the picker, then the share runs in the call (cloud/locus/share.rs); again = stop.
+                    .on_hover_text(tr("Dialpad")).clicked() { self.call.mc.keypad = !kp_on; }
+                // Share ("Share"): the picker, then the share runs in the call (cloud/locus/share.rs); again = stop.
                 let (sharing, pending) = (self.call.sharing, self.call.share_pending);
-                let tip = if sharing { "Freigabe beenden" } else if pending { "Freigabe wird gestartet… (klicken zum Abbrechen)" } else { "Inhalte freigeben" };
+                let tip = if sharing { tr("Stop sharing") } else if pending { tr("Starting share… (click to cancel)") } else { tr("Share content") };
                 if round_at(&mut bu, &mut self.icons, "bar-share", pos2(x0 + 20.0 + 144.0, y), 40.0, "share-screen-regular", if sharing { t.green } else if pending { t.accent } else { t.selected }, Color32::WHITE, t.focus)
                     .on_hover_text(tip).clicked() { share = true; }
                 // Participants panel, raise hand (group calls).
@@ -406,9 +406,9 @@ impl App {
                 bu.painter().rect_filled(pill, 20.0, if pr.hovered() { t.badge.gamma_multiply(0.85) } else { t.badge });
                 let ic = if wide { pill.left_center() + Vec2::new(24.0, 0.0) } else { pill.center() };
                 self.icons.paint(&bu, "handset-down-slash-regular", Rect::from_center_size(ic, Vec2::splat(20.0)), Color32::WHITE);
-                if wide { bu.painter().text(pill.left_center() + Vec2::new(42.0, 0.0), egui::Align2::LEFT_CENTER, "Anruf beenden", semibold(13.0), Color32::WHITE); }
+                if wide { bu.painter().text(pill.left_center() + Vec2::new(42.0, 0.0), egui::Align2::LEFT_CENTER, tr("End call"), semibold(13.0), Color32::WHITE); }
                 if pr.has_focus() { bu.painter().rect_stroke(pill.expand(1.5), 21.5, Stroke::new(2.0_f32, t.focus), egui::StrokeKind::Inside); }
-                if pr.on_hover_text("Anruf beenden").clicked() { a.hang = true; }
+                if pr.on_hover_text(tr("End call")).clicked() { a.hang = true; }
                 self.device_menu(vctx, t, now, dev.rect);
                 self.video_menu(vctx, t, now, vm.rect);
             }

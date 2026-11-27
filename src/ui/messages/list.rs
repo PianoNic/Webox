@@ -1,5 +1,6 @@
 //! The scrolling message list: paging older messages, spinner, scrollbar, screenshot script.
 use super::*;
+use crate::ui::widgets::tr;
 
 impl App {
     pub(crate) fn message_list(&mut self, ui: &mut egui::Ui, t: &Th, id: &str, msgs: &[Message]) {
@@ -18,7 +19,7 @@ impl App {
         let force_hover: Option<usize> = if self.shot.is_some() { std::env::var("WEBOX_SHOT_HOVER_MSG").ok().and_then(|v| v.parse().ok()) } else { None };
         let mut counter = 0usize;
         let seen = self.seen_by(id, msgs);
-        // People typing join the "Gesehen von" row with the typing overlay (ui/typing.rs).
+        // People typing join the "Seen by" row with the typing overlay (ui/typing.rs).
         let seen = {
             let mut list = seen.unwrap_or_default();
             for p in crate::ui::typing::typers(id) {
@@ -57,7 +58,7 @@ impl App {
             if nm.1 && nm.2.len() >= 16 && nm.2.is_char_boundary(16) {
                 let cut = nm.2[..16].to_string(); // "YYYY-MM-DDTHH:MM" (UTC), like the messages' date + time before localisation
                 if let Some(f) = utc_msgs.iter().find(|m| m.parent.is_empty() && !m.mine && m.notice.is_empty() && { let (d, t) = utc_date_time(m); format!("{d}T{t}") > cut }) { nm.3 = f.id.clone(); }
-                // The same cut gives the targets of "Neue Nachrichten" / "Neue Antworten" (new_banners.rs).
+                // The same cut gives the targets of "New messages" / "New replies" (new_banners.rs).
                 let replies: Vec<(String, bool)> = utc_msgs.iter().filter(|m| !m.parent.is_empty() && !m.mine && m.notice.is_empty() && { let (d, t) = utc_date_time(m); format!("{d}T{t}") > cut }).map(|m| (m.id.clone(), false)).collect();
                 new_banners::set_targets(&ctx, id, new_banners::NewTargets { msg: (!nm.3.is_empty()).then(|| (nm.3.clone(), false)), replies });
             }
@@ -126,7 +127,7 @@ impl App {
             let (mut prev, mut day) = (String::new(), String::new());
             let (mut prev_min, mut prev_share) = (None::<i32>, false);
             let mut prev_ms = 0i64;
-            // Kept deleted messages a plugin folds: one "N gelöschte Nachrichten" row per run, the run itself only when unfolded.
+            // Kept deleted messages a plugin folds: one "N deleted messages" row per run, the run itself only when unfolded.
             let runs = rows::fold_runs(&roots, |id| replies_of.get(id).is_some_and(|r| !r.is_empty()));
             let mut folded_until = 0usize;
             for (ri, m) in roots.iter().enumerate() {
@@ -137,7 +138,7 @@ impl App {
                     prev.clear();
                     if had_previous { self.day_line(ui, t, &day_label(&day, &today, &yesterday), c.day); }
                 }
-                if m.id == new_first { self.day_line(ui, t, "Neue Nachrichten", c.accent); prev.clear(); } // chat-new-message-newMessageBanner-text
+                if m.id == new_first { self.day_line(ui, t, tr("New messages"), c.accent); prev.clear(); } // chat-new-message-newMessageBanner-text
                 if let Some(&(_, n)) = runs.iter().find(|r| r.0 == ri) {
                     if !self.fold_row(ui, &c, id, &m.id, n) { folded_until = ri + n; }
                     prev.clear();
@@ -161,7 +162,7 @@ impl App {
                 counter += 1;
                 if replies.is_empty() { continue; }
                 let open = self.open_threads.contains(&m.id);
-                // Settings > Nachrichten "Threads reduzieren": every thread starts collapsed.
+                // Settings > Messaging "Collapse threads": every thread starts collapsed.
                 if (replies.len() > THREAD_PREVIEW || self.settings["threads"] == "collapse") && !open {
                     self.collapsed_thread(ui, t, &c, m, &replies);
                     prev.clear();
@@ -177,22 +178,22 @@ impl App {
                 self.thread_end(ui, t, &c, m, replies.len() > THREAD_PREVIEW);
                 prev.clear();
             }
-            if let Some(p) = &seen { self.seen_banner(ui, t, &c, p); } // the "Gesehen von" row: always the last row of the list
+            if let Some(p) = &seen { self.seen_banner(ui, t, &c, p); } // the "Seen by" row: always the last row of the list
             self.sched_list(ui, t, id); // scheduled messages of this space
-            ui.add_space(list_bottom()); // "Gesehen von" centre -> composer line = 48 pt
+            ui.add_space(list_bottom()); // "Seen by" centre -> composer line = 48 pt
         })
         }).inner;
         self.multi_select_input(&ctx, ui, id, list);
         // A press that landed on no message text clears the text selection.
         if ctx.data_mut(|d| d.remove_temp::<bool>(Id::new("msg-sel-consumed"))).is_none() && ctx.input(|i| i.pointer.primary_pressed()) { ctx.data_mut(|d| d.remove::<(String, usize, usize)>(Id::new("msg-sel"))); }
-        // A click on "Zur Originalnachricht springen": find the quoted message above the reply, scroll to it and let it flash.
+        // A click on "Go to message": find the quoted message above the reply, scroll to it and let it flash.
         if let Some((from, quote)) = ctx.data_mut(|d| d.remove_temp::<(String, QuoteRef)>(Id::new("msg-jump"))) {
             if let Some(tg) = jump_target(msgs, &from, &quote) {
                 let y = ctx.data(|d| d.get_temp::<std::collections::HashMap<String, f32>>(Id::new("msg-rowpos")).and_then(|h| h.get(&tg).copied()));
                 if let Some(y) = y { let now = ctx.input(|i| i.time); ctx.data_mut(|d| { d.insert_temp(k_set, (y - 70.0).max(0.0)); d.insert_temp(Id::new("msg-flash"), (tg.clone(), now)); }); ctx.request_repaint(); }
             }
         }
-        // "In Unterhaltung anzeigen" (Inhalt tab): scroll to that message and let it flash; the row positions exist once
+        // "Show in conversation" (Content tab): scroll to that message and let it flash; the row positions exist once
         // the list has been drawn, so the request waits a few frames.
         if let Some((tg, tries)) = ctx.data(|d| d.get_temp::<(String, u8)>(Id::new("msg-goto"))) {
             let y = ctx.data(|d| d.get_temp::<std::collections::HashMap<String, f32>>(Id::new("msg-rowpos")).and_then(|h| h.get(&tg).copied()));
@@ -243,10 +244,10 @@ impl App {
         // longer fits is discarded and laid out again at once, so no frame ever shows the content shifted (the jitter).
         let k_anchor = Id::new(("msg-anchor", id));
         let fix = {
-            let spans = ctx.data(|d| d.get_temp::<Vec<(String, f32, f32)>>(Id::new("msg-rowspans"))).unwrap_or_default();
             let prev = ctx.data(|d| d.get_temp::<(String, f32)>(k_anchor));
             let explicit = explicit_set || scripted_up || ctx.data(|d| d.get_temp::<f32>(k_set)).is_some();
-            scroll_fix(&spans, prev.as_ref(), off, max, applied, next_pinned, explicit, settle)
+            // The spans read in place (`get_temp` would copy every row's id each frame).
+            ctx.data_mut(|d| scroll_fix(d.get_temp_mut_or_default::<Vec<(String, f32, f32)>>(Id::new("msg-rowspans")), prev.as_ref(), off, max, applied, next_pinned, explicit, settle))
         };
         if let Some(to) = fix.set { ctx.data_mut(|d| d.insert_temp(k_set, to)); }
         match &fix.anchor { Some(a) => ctx.data_mut(|d| d.insert_temp(k_anchor, a.clone())), None => ctx.data_mut(|d| d.remove::<(String, f32)>(k_anchor)) }
@@ -273,7 +274,7 @@ impl App {
     /// The start of the conversation, once everything older has been loaded.
     pub(super) fn start_marker(&self, ui: &mut egui::Ui, c: &Mc, title: &str) {
         let w = ui.available_width();
-        let g = ui.painter().layout(format!("Anfang der Unterhaltung{}", if title.is_empty() { String::new() } else { format!(" · {title}") }), FontId::proportional(SECOND), c.day, (w - 150.0).max(80.0));
+        let g = ui.painter().layout(format!("{}{}", tr("Beginning of the conversation"), if title.is_empty() { String::new() } else { format!(" · {title}") }), FontId::proportional(SECOND), c.day, (w - 150.0).max(80.0));
         // 32 pt of vertical padding (not tied to DAY_PAD).
         let (r, _) = ui.allocate_exact_size(Vec2::new(w, g.size().y + 32.0), Sense::hover());
         ui.painter().galley(pos2(r.center().x - g.size().x / 2.0, r.center().y - g.size().y / 2.0), g, c.day);
@@ -310,8 +311,8 @@ impl App {
                     let root = list.iter().find(|m| m.parent.is_empty() && m.notice.is_empty()).map(|m| m.id.clone()).unwrap_or_default();
                     let mk = |id: String, text: &str, parent: String| Message { id, author: "Mara Lind".into(), email: "mara@example.com".into(), text: text.into(), time: "10:05".into(), date: system::today(), parent, ..Default::default() };
                     let n = list.len();
-                    list.push(mk(format!("{sp}-in{n}"), "Neue Nachricht während du oben warst", String::new()));
-                    if !root.is_empty() { let at = list.iter().position(|m| m.id == root).map_or(list.len(), |i| i + 1); list.insert(at, mk(format!("{sp}-in{n}r"), "Eine Antwort im Thread", root)); }
+                    list.push(mk(format!("{sp}-in{n}"), "A new message while you were scrolled up", String::new()));
+                    if !root.is_empty() { let at = list.iter().position(|m| m.id == root).map_or(list.len(), |i| i + 1); list.insert(at, mk(format!("{sp}-in{n}r"), "A reply in the thread", root)); }
                 },
                 s if s.starts_with("scroll") => { // "scroll600": scroll the open chat to that offset (screenshot checks)
                     if let (Some(sp), Ok(v)) = (self.selected.clone(), s[6..].parse::<f32>()) { ctx.data_mut(|d| d.insert_temp(Id::new(("msg-set-offset", sp.as_str())), v)); }

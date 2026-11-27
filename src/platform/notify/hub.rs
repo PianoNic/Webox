@@ -322,8 +322,9 @@ impl App {
             { self.notify.raise_token = None; }
         }
 
-        // Test hook: capture the toast window (and the sidecar facts), then quit.
-        if let Ok(path) = std::env::var("WEBOX_TOAST_SHOT") {
+        // Test hook: capture the toast window (and the sidecar facts), then quit. The variable is read once: this runs every frame.
+        static TOAST_SHOT: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+        if let Some(path) = TOAST_SHOT.get_or_init(|| std::env::var("WEBOX_TOAST_SHOT").ok()).as_deref() {
             let ready = self.notify.toasts.iter().map(|ts| ts.born).fold(f64::MAX, f64::min);
             let menu_ready = self.notify.menu.as_ref().is_some_and(|m| clock - m.opened > 1.2 && m.hwnd.is_some());
             if (!self.notify.toasts.is_empty() && clock - ready > 1.3 && self.notify.hwnd.is_some()) || menu_ready {
@@ -404,7 +405,8 @@ impl App {
     #[cfg(target_os = "linux")]
     pub(super) fn native_toasts(&mut self, ctx: &egui::Context) {
         use crate::platform::linux::notifications as n;
-        let on = match std::env::var("WEBOX_NATIVE_TOASTS").ok().as_deref() { Some("1") => true, Some("0") => false, _ => crate::platform::linux::session() == crate::platform::linux::Session::Wayland };
+        static FORCED: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new(); // read once: this runs every frame
+        let on = match FORCED.get_or_init(|| std::env::var("WEBOX_NATIVE_TOASTS").ok()).as_deref() { Some("1") => true, Some("0") => false, _ => crate::platform::linux::session() == crate::platform::linux::Session::Wayland };
         let clock = self.notify.clock();
         let hub = &mut self.notify;
         if on && self.shot.is_none() {

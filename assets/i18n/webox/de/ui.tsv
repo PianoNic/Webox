@@ -1,0 +1,442 @@
+# German for Webox-only UI strings (src/ui). One "English source<TAB>German" per line; escapes \t \n \\.
+# Strings the official language packs carry are not listed here: the packs translate those.
+ - showing the last loaded list	 - zeige die zuletzt geladene Liste
+"Unformatted text"	"Nicht formatierter Text"
+%1 %2 installed	%1 %2 installiert
+%1 (not connected)	%1 (nicht angeschlossen)
+%1 (not official)	%1 (nicht offiziell)
+%1 deleted messages	%1 gelöschte Nachrichten
+%1 deleted the message.	%1 hat die Nachricht gelöscht.
+%1 is not available in this version	%1 ist in dieser Version nicht verfügbar
+%1 is sharing the screen	%1 teilt den Bildschirm
+%1 is too large (file size: %2)	%1 ist zu groß (Dateigröße: %2)
+%1 of %2 MB	%1 von %2 MB
+%1 plugin updates available (Settings > Plugins)	%1 Plugin-Updates verfügbar (Einstellungen > Plugins)
+%1 plugins	%1 Plugins
+%1 restarts after the call.	%1 wird nach dem Anruf neu gestartet.
+%1 spaces	%1 Bereiche
+%1 uninstalled	%1 deinstalliert
+%1 updates	%1 Updates
+%1's room	%1's Raum
+(deleted)	(gelöscht)
+(edited)	(bearbeitet)
+(installed: v%1)	(installiert: v%1)
+* Bullet item 1	* Aufzählungspunkt 1
+* Bullet item 2	* Aufzählungspunkt 2
+**Bold**	**Fett**
+, %1 invalid entries skipped	, %1 ungültige Einträge übersprungen
+1 deleted message	1 gelöschte Nachricht
+1 plugin	1 Plugin
+1 plugin update available (Settings > Plugins)	1 Plugin-Update verfügbar (Einstellungen > Plugins)
+1 update	1 Update
+1. First item	1. Erster Punkt
+2. Second item	2. Zweiter Punkt
+20 minutes	20 Minuten
+3 hours	3 Stunden
+3. Third item	3. Dritter Punkt
+> Quote	> Zitat
+[Link text](Link)	[Linktext](Link)
+_Italic_	_Kursiv_
+``` HTML\n<h1>Hello world! </h1>\n```	``` HTML\n<h1>Hallo Welt! </h1>\n```
+``` Language (optional)\nCODEBLOCK\n```	``` Sprache (optional)\nCODEBLOCK\n```
+A message can have at most %1 files	Pro Nachricht sind maximal %1 Dateien erlaubt
+About Webox	Info über Webox
+Accessibility settings are reset to the default.	Die Zugriffseinstellungen werden auf den Standardwert zurückgesetzt.
+Account	Konto
+Active: DeepFilterNet 3	Aktiv: DeepFilterNet 3
+Active: RNNoise	Aktiv: RNNoise
+Active: RNNoise (DeepFilterNet could not be loaded)	Aktiv: RNNoise (DeepFilterNet konnte nicht geladen werden)
+Active: RNNoise (DeepFilterNet is too slow on this device)	Aktiv: RNNoise (DeepFilterNet ist auf diesem Gerät zu langsam)
+Actual size	Originalgröße
+Add a meeting agenda	Meeting-Tagesordnung hinzufügen
+Add GIFs	GIFs hinzufügen
+Add or remove repositories	Repositories hinzufügen oder entfernen
+Add people to “%1”	Personen zu „%1“ hinzufügen
+Add repository?	Repository hinzufügen?
+Adjust the notification sounds under Audio.	Passen Sie die Benachrichtigungstöne unter Audio an.
+Advanced audio settings	Erweiterte Audioeinstellungen
+Advanced video settings	Erweiterte Videoeinstellungen
+AI summary	KI-Zusammenfassung
+All contacts	Alle Kontakte
+All files	Alle Dateien
+All items are hidden	Alle Einträge sind ausgeblendet
+All noise	Alle Geräusche
+Answer (video on)	Antworten (Video an)
+Archive space	Bereich archivieren
+Are you sure you want to delete this message?	Sind Sie sicher, dass Sie diese Nachricht löschen möchten?
+as in the original	wie im Original
+Audio devices	Audiogeräte
+Author: %1 · Package: %2	Autor: %1 · Paket: %2
+Autocomplete	Autovervollständigung
+Automatically stepped away	Automatisch Abwesend
+Available plugins	Verfügbare Plugins
+Beginning of the conversation	Anfang der Unterhaltung
+Bring held calls into view when the active call ends	Gehaltene Anrufe nach Beendigung des aktiven Anrufs anzeigen
+Bring the calling dock to the front for incoming calls	Anruf-Dock für eingehende Anrufe im Vordergrund anzeigen
+Bronze, Jade, Lavender, Indigo	Bronze, Jade, Lavendel, Indigoblau
+Browse…	Durchsuchen…
+Built into Webox	In Webox integriert
+Buttons at the top of the window. Search also opens with Ctrl+F.	Schaltflächen oben im Fenster. Die Suche öffnet sich auch mit Strg+F.
+Buttons under the message box. The shortcuts (Ctrl+O, Alt+Shift+M, Ctrl+Shift+Space) work without the buttons too.	Schaltflächen unter dem Nachrichtenfeld. Die Tastenkombinationen (Strg+O, Alt+Umschalt+M, Strg+Umschalt+Leertaste) funktionieren auch ohne Schaltfläche.
+Bypass Windows signal processing	Windows-Signalverarbeitung umgehen
+Calendar and scheduler	Kalender und Terminplaner
+Call details	Anrufdetails
+Call pickup	Anrufübernahme
+Call sounds (ringtone, ringback, call end)	Töne bei Anrufen (Klingelton, Freizeichen, Anrufende)
+Camera resolution, brightness, contrast	Kameraauflösung, Helligkeit, Kontrast
+Can't be loaded: %1	Kann nicht geladen werden: %1
+Can't talk right now.	Kann gerade nicht sprechen.
+Check for updates automatically	Automatisch nach Updates suchen
+Check now	Jetzt prüfen
+Checking and installing the new version …	Neue Version wird geprüft und eingesetzt …
+Choose a time between 30 minutes and 30 days from now.	Wählen Sie einen Zeitpunkt zwischen 30 Minuten und 30 Tagen ab jetzt.
+Choose microphone	Mikrofon wählen
+Choose speaker	Lautsprecher wählen
+Choose where your incoming call notifications are prioritized.	Wählen Sie aus, wo Ihre Benachrichtigungen für eingehende Anrufe priorisiert werden.
+Clear Do not disturb	„Bitte nicht stören“ löschen
+Clear quiet hours	Ruhige Stunden löschen
+Clear search	Suche löschen
+Click to rotate the video by 90 degrees	Einmal klicken, um die Videoansicht um 90 Grad zu drehen
+Client registered	Client registriert
+Collapse scheduled messages	Geplante Nachrichten reduzieren
+Compact reduces the spacing in lists, messages, menus and settings. Font sizes stay the same.	Kompakt verringert die Abstände in Listen, Nachrichten, Menüs und Einstellungen. Die Schriftgrößen bleiben gleich.
+Connect %1 to Microsoft Outlook	Verbindung von %1 mit Microsoft Outlook herstellen
+Connect automatically	Automatisch Verbindung herstellen
+Contact card	Visitenkarte
+Convert emoticons such as :) or xD to emoji	Emoticons wie :) oder xD in Emojis umwandeln
+Convert emoticons to emoji	Emoticons in Emojis umwandeln
+Copy image	Bild kopieren
+Copy message	Nachricht kopieren
+Copy selected messages	Ausgewählte Nachrichten kopieren
+Couldn't connect automatically	Verbindung konnte nicht automatisch hergestellt werden
+Create team	Team erstellen
+Ctrl+F	Strg+F
+Custom sound…	Benutzerdefinierter Ton…
+Customize the interface	Oberfläche anpassen
+Date and time	Datum und Uhrzeit
+Date: DD.MM.YYYY	Datum: TT.MM.JJJJ
+Decrease indent	Einzug verkleinern
+Default Dark, Light	Standard Dunkel, Hell
+Default, Compact	Standard, Kompakt
+Description, Shortcut, Global	Beschreibung, Tastenkombination, Global
+Design plugin: overrides the colors of the chosen theme (Appearance).	Design-Plugin: überschreibt die Farben des ausgewählten Themas (Erscheinungsbild).
+Design plugins	Design-Plugins
+Desktop notifications	Desktopbenachrichtigungen
+Display density	Darstellungsdichte
+Divider	Trennlinie
+Do not disturb status has been cleared.	Der Status „Bitte nicht stören“ wurde aufgehoben.
+Dock	Andocken
+Don't connect	Nicht verbinden
+Download of %1 failed: %2	Download von %1 fehlgeschlagen: %2
+Download Webox.app from the release page on GitHub and replace the old app.	Laden Sie Webox.app von der Release-Seite auf GitHub herunter und ersetzen Sie die bisherige App.
+Downloading… %1 %	Wird heruntergeladen… %1 %
+Edit profile	Profil bearbeiten
+Emoji	Emojis
+Emoji autocomplete	Emoji-Autovervollständigung
+Emoji graphics	Emoji-Grafiken
+Enable GPU acceleration for the virtual background	GPU-Beschleunigung für virtuellen Hintergrund aktivieren
+End call for everyone	Anruf für alle beenden
+End for everyone	Für alle beenden
+End the call for everyone?	Anruf für alle beenden?
+Ended	Beendet
+Enter a value	Wert eingeben
+Entries in the More menu of the app sidebar.	Einträge im Menü „Weitere“ der App-Seitenleiste.
+Everything looks good here!	Alles sieht gut aus!
+Expand or collapse threads	Threads erweitern oder reduzieren
+Expand scheduled messages	Geplante Nachrichten erweitern
+Failed: %1	Fehlgeschlagen: %1
+File: %1, %2	Datei: %1, %2
+Files shared in messages	In den Nachrichten freigegebene Dateien
+Filter	Filtern
+Find all the voicemails you have sent here. Your sent items are empty right now.	Hier finden Sie alle Sprachnachrichten, die Sie gesendet haben. Ihre gesendeten Elemente sind gerade leer.
+Find all your voicemails here. There are no messages right now. Enjoy the silence.	Hier finden Sie alle Ihre Sprachnachrichten. Derzeit sind keine Nachrichten vorhanden. Genießen Sie die Stille.
+Fit to window	An Fenster anpassen
+Floating mini window for a call or meeting	Unverankertes Minifenster für Anruf oder Meeting
+Folder for downloaded files	Ordner für heruntergeladene Dateien
+Food & Drink	Essen & Trinken
+From repository: %1	Aus Repository: %1
+Hang up	Auflegen
+Headsets and accessories	Headsets und Zubehör
+Hello, recycling star! Nothing in the trash today. When you delete voicemails, you will find them here.	Hallo Recycling-Star! Heute ist nichts im Papierkorb. Wenn Sie Sprachnachrichten löschen, finden Sie sie hier.
+Hide input	Eingabe ausblenden
+Hide keypad	Tastenfeldansicht ausblenden
+Hide labels	Beschriftungen ausblenden
+Hide People, Content, Meetings, +Apps	Personen, Inhalt, Meetings, +Apps ausblenden
+Hide search, +, Connect to a device, AI Assistant	Suche, +, Mit einem Gerät verbinden, KI-Assistent ausblenden
+Hide what you don't need and reorder the app sidebar and the message box toolbar. Hidden features stay reachable through their shortcuts and menus.	Blenden Sie Elemente aus, die Sie nicht brauchen, und ordnen Sie die App-Seitenleiste und die Symbolleiste des Nachrichtenfelds neu an. Ausgeblendete Funktionen bleiben über ihre Tastenkombinationen und Menüs erreichbar.
+Highlight a number before you call it in the %1 app to see a preview.	Markieren Sie die Nummer vor dem Anruf in der %1-App, um eine Vorschau anzuzeigen.
+I'll call you back soon.	Ich rufe gleich zurück.
+I'm in a meeting right now.	Bin gerade in einem Meeting.
+Icons and illustrations	Symbole und Illustrationen
+In the space	Im Bereich
+Inbox	Posteingang
+Incoming call notification options	Optionen für die Benachrichtigung bei eingehendem Anruf
+Increase indent	Einzug vergrößern
+Input device and input level	Eingabegerät und Eingangspegel
+Install	Installieren
+Install %1 v%2?	%1 v%2 installieren?
+Install and update plugins from repositories	Plugins aus Repositories installieren und aktualisieren
+Installed	Installiert
+Installed manually (plugin folder)	Manuell installiert (Plugin-Ordner)
+Installed plugins	Installierte Plugins
+Installing is turned off: %1.	Installieren ist ausgeschaltet: %1.
+Installing version %1	Version %1 wird installiert
+Interface language	Sprache der Oberfläche
+Keep the calling dock in front	Anruf-Dock im Vordergrund beibehalten
+Last modified	Zuletzt geändert
+Like	Gefällt mir
+Link text	Linktext
+Link, number, host PIN	Link, Nummer, Gastgeber-PIN
+Loading DeepFilterNet …	DeepFilterNet wird geladen …
+Loading repositories …	Repositories werden geladen …
+Loading share…	Freigabe wird geladen…
+Loading statistics…	Statistik wird geladen…
+Loading v%1 …	Lädt v%1 …
+Look for new plugin versions once a day	Einmal am Tag nach neuen Plugin-Versionen suchen
+Looks for a new version on GitHub once a day. Nothing is installed until you agree, and never during a call.	Sucht einmal täglich auf GitHub nach einer neuen Version. Installiert wird erst, wenn Sie zustimmen, und nie während eines Anrufs.
+Make a call or join a meeting	Einen Anruf tätigen oder einem Meeting beitreten
+Markdown disabled	Markdown deaktiviert
+Markdown enabled	Markdown aktiviert
+Meeting link	Meeting-Link
+Meeting link, number, or video address	Meeting-Link, Nummer oder Videoadresse
+Meetings from the browser	Meetings aus dem Browser
+Members	Mitglieder
+Message actions	Nachrichtenaktionen
+Message box	Nachrichtenfeld
+Message box toolbar	Symbolleiste des Nachrichtenfelds
+Message font size	Nachrichten-Schriftgröße
+Message notifications reset to default.	Nachrichtenbenachrichtigungen auf die Standardeinstellung zurückgesetzt.
+Message sounds	Töne für Nachrichten
+Minimize to the notification area when closing	Beim Schließen in den Infobereich minimieren
+Momentum icon set of the original client	Momentum-Symbolsatz des ursprünglichen Clients
+More actions	Weitere Aktionen
+More menu	Menü „Weitere“
+More reactions	Weitere Reaktionen
+Mute my audio when I join a meeting	Meinen Ton nach Meeting-Beitritt ausschalten
+Muted by others	Von anderen stummgeschaltet
+Name the space (required)	Bereich benennen (erforderlich)
+Native plugins (.%1) from repositories and from the plugin folder. Plugins you turn on run at once; the choice is saved.	Native Plugins (.%1) aus Repositories und aus dem Plugin-Ordner. Aktivierte Plugins laufen sofort; die Auswahl wird gespeichert.
+Nature & Activities	Natur & Aktivitäten
+Next image	Nächstes Bild
+No access to the camera	Kein Zugriff auf die Kamera
+No access to the camera (/dev/video*). Is your user in the video group?	Kein Zugriff auf die Kamera (/dev/video*). Ist dein Benutzer in der Gruppe „video“?
+No accessories were detected.	Es wurde kein Zubehör erkannt.
+No active calls	Keine aktiven Anrufe
+No calls	Keine Anrufe
+No cameras found	Keine Kameras gefunden
+No devices were found.	Es wurden keine Geräte gefunden.
+No file	Keine Datei
+No files	Keine Dateien
+No filter	Kein Filter
+No links	Keine Links
+No meetings scheduled	Keine Meetings angesetzt
+No members known.	Keine Mitglieder bekannt.
+No missed calls	Keine verpassten Anrufe
+No picture from the camera	Kein Bild von der Kamera
+No picture – is the camera cover closed?	Kein Bild – ist die Kameraabdeckung geschlossen?
+No plugins found. Check the repositories below.	Keine Plugins gefunden. Prüfen Sie die Repositories unten.
+No plugins installed. Find plugins from the repositories under Available, or put a plugin file into the plugin folder and reload.	Keine Plugins installiert. Unter „Verfügbar“ finden Sie Plugins aus den Repositories, oder legen Sie eine Plugin-Datei in den Plugin-Ordner und laden Sie neu.
+No profile information available	Keine Profilinformationen verfügbar
+No sound while in Do not disturb. Sounds only play for chats that are not open.	Kein Ton im Status „Nicht stören“. Gespielt wird nur für Chats, die gerade nicht geöffnet sind.
+No teams	Keine Teams
+No transcript available.	Keine Abschrift verfügbar.
+No voicemails	Keine Sprachnachrichten
+No whiteboards	Keine Whiteboards
+No whiteboards yet	Noch keine Whiteboards
+Not compatible: %1	Nicht kompatibel: %1
+Not connected	Nicht verbunden
+Not loaded yet	Noch nicht geladen
+Not registered	Nicht registriert
+Not set.	Nicht gesetzt.
+Not signed in	Nicht angemeldet
+Notification before a meeting starts	Benachrichtigung vor Meeting-Beginn
+Once a day. Updates are only shown, not installed automatically.	Einmal am Tag. Updates werden nur angezeigt, nicht automatisch installiert.
+One or more services are inaccessible	Mindestens ein Dienst ist nicht verfügbar
+Only add repositories you trust: they can deliver any code.	Fügen Sie nur Repositories hinzu, denen Sie vertrauen: Sie können beliebigen Code ausliefern.
+Only play GIFs while Webox is the active window	GIFs nur abspielen, wenn Webox das aktive Fenster ist
+only play while Webox is the active window	nur abspielen, wenn Webox das aktive Fenster ist
+Open meeting links from Chrome, Chromium, Edge and Firefox here	Meeting-Links aus Chrome, Chromium, Edge und Firefox hier öffnen
+Open meeting links from Chrome, Edge and Firefox here	Meeting-Links aus Chrome, Edge und Firefox hier öffnen
+Open plugin folder	Plugin-Ordner öffnen
+Open source licenses and legal notices	Open-Source-Lizenzen und Rechtliche Hinweise
+Operational	Betriebsbereit
+Optimize for motion and video	Für Bewegung und Video optimieren
+Optimize for text and images	Für Text und Bilder optimieren
+Output device and volume	Ausgabegerät und Lautstärke
+Override the colors of the chosen theme	Überschreiben die Farben des gewählten Themas
+Packages from Nix or your distribution are updated by the system update.	Pakete von Nix oder Ihrer Distribution werden über die Systemaktualisierung auf den neuen Stand gebracht.
+Pause GIFs	GIFs anhalten
+People & Gestures	Personen & Gesten
+People / Profile	Personen / Profil
+Permanently delete the selected items from your call history?	Ausgewählte Elemente dauerhaft aus Ihrem Anrufprotokoll löschen?
+Phone numbers	Telefonnummern
+Play a beep when I mute	Einen Signalton wiedergeben, wenn ich die Stummschaltung aktiviere
+Play ringtones and alerts through	Klingeltöne und Warnungen ausgeben über
+Play test tone	Testton abspielen
+Play the ringtone on all output devices	Klingelton auf allen Ausgabegeräten abspielen
+Play the sound	Ton anhören
+Plays a short tone on the selected speaker	Spielt einen kurzen Ton auf dem gewählten Lautsprecher
+Please enter a meeting link	Bitte geben Sie einen Meeting-Link ein
+Plugin folder	Plugin-Ordner
+Plugin log	Plugin-Protokoll
+Plugin repositories	Plugin-Repositories
+Plugins are native code. They run inside Webox with the same rights as Webox itself and have full access to your account and your signed-in session: messages, spaces, contacts and credentials. Only install plugins from sources you trust.	Plugins sind nativer Code. Sie laufen in Webox mit denselben Rechten wie Webox selbst und haben vollen Zugriff auf Ihr Konto und Ihre angemeldete Sitzung: Nachrichten, Bereiche, Kontakte und Anmeldedaten. Installieren Sie nur Plugins aus Quellen, denen Sie vertrauen.
+Plugins reloaded	Plugins neu geladen
+press Enter to capture the full screen	Eingabetaste drücken, um gesamten Bildschirm zu erfassen
+Preview in notifications	Vorschau in Benachrichtigungen
+Previous image	Vorheriges Bild
+Quick reactions (thumbs up, grinning face, raised hands)	Schnelle Reaktionen (Daumen hoch, Grinsendes Gesicht, Erhobene Hände)
+Quiet hours cleared	Ruhezeiten gelöscht
+Raising hands	Erhobene Hände
+Reactions, Edit, Reply, Forward on hover	Reaktionen, Bearbeiten, Antworten, Weiterleiten beim Darüberfahren
+Read receipts	Lesebestätigungen
+Recently joined	Zuletzt beigetreten
+Recently used	Kürzlich verwendet
+Refresh list	Liste aktualisieren
+Register global shortcuts system-wide	Globale Tastenkombinationen systemweit registrieren
+Registered	Registriert
+Release notes	Versionshinweise
+Reload plugins, open folder	Plugins neu laden, Ordner öffnen
+Reminder at %1	Erinnerung um %1 Uhr
+Remove file	Datei entfernen
+Remove your own sound, use the default	Eigenen Ton entfernen, Standard verwenden
+Replace	Ersetzen
+Replace existing quote	Vorhandenes Zitat ersetzen
+Replaces the Webex browser helper.	Ersetzt den Webex-Browser-Helper.
+Reply in thread	Im Thread antworten
+Reply in thread to %1	Antwort im Thread an %1
+Repository not reachable (HTTP %1)	Repository nicht erreichbar (HTTP %1)
+Return to main view	Zur Hauptansicht zurückkehren
+Ringtone, custom sound	Klingelton, Benutzerdefinierter Ton
+Ringtones and alerts	Klingeltöne und Warnungen
+sample data	Beispieldaten
+sample, nothing is opened in offline mode	Beispiel, im Offline-Modus wird nichts geöffnet
+Saved in the keyring.	Gespeichert im Schlüsselbund.
+Saved in the settings file, NOT encrypted: no keyring available.	Gespeichert in der Einstellungsdatei, NICHT verschlüsselt: kein Schlüsselbund verfügbar.
+Saved in Windows Credential Manager.	Gespeichert in der Windows-Anmeldeinformationsverwaltung.
+Schedule a meeting. Share the link and meet later	Setzen Sie ein Meeting an. Link teilen und später treffen
+Schedule meetings	Meetings ansetzen
+Screen capture cancelled.	Screenshot abgebrochen.
+Screen capture failed.	Screenshot fehlgeschlagen.
+Screen capture not possible: access denied.	Screenshot nicht möglich: Zugriff verweigert.
+Screen capture not possible: the desktop offers no screenshot service (xdg-desktop-portal).	Screenshot nicht möglich: Der Desktop bietet keinen Screenshot-Dienst (xdg-desktop-portal).
+Search for a room or device	Nach einem Raum oder Gerät suchen
+Search for devices	Nach Geräten suchen
+Search for new team members	Nach neuen Teammitgliedern suchen
+Search for people, spaces and devices	Nach Personen, Bereichen und Geräten suchen
+Search or dial a number	Nummer suchen oder wählen
+Search the settings	Einstellungen durchsuchen
+Select a meeting	Wählen Sie ein Meeting aus
+Select a team from the list or create a new one.	Wählen Sie ein Team aus der Liste aus oder erstellen Sie ein neues.
+Select a voicemail from the list.	Wählen Sie eine Sprachnachricht aus der Liste aus.
+Self view in meetings	Selbstansicht in Meetings
+Send single emoji large	Einzelne Emojis groß senden
+Sending GIFs is not available yet	GIF senden ist noch nicht verfügbar
+Set Do not disturb for	„Bitte nicht stören“ einrichten für
+Settings and More can't both be hidden, so that Settings stays reachable.	„Einstellungen“ und „Weitere“ können nicht beide ausgeblendet werden, damit die Einstellungen erreichbar bleiben.
+Settings and More can't both be hidden.	„Einstellungen“ und „Weitere“ können nicht beide ausgeblendet werden.
+Shift+Up arrow	Umschalt+Pfeil nach oben
+Shortcuts are reset to their defaults.	Tastenkombinationen werden auf die Standardeinstellungen zurückgesetzt.
+Show a notification before scheduled meetings	Benachrichtigung vor angesetzten Meetings anzeigen
+Show desktop notifications	Desktopbenachrichtigungen anzeigen
+Show input	Eingabe anzeigen
+Show labels	Beschriftungen anzeigen
+Show labels (Alt+Shift+Q)	Beschriftungen anzeigen (Alt+Umschalt+Q)
+Show More or Settings again first.	Blenden Sie zuerst „Weitere“ bzw. „Einstellungen“ wieder ein.
+Show or hide tabs and order them with the arrows. Hidden tabs are in the More menu; their shortcuts keep working.	Registerkarten ein- und ausblenden und mit den Pfeilen anordnen. Ausgeblendete Registerkarten finden Sie im Menü „Weitere“; ihre Tastenkombinationen funktionieren weiterhin.
+Show, hide and order elements	Elemente ein-/ausblenden und anordnen
+Show, hide and order tabs	Registerkarten ein-/ausblenden und anordnen
+Show, hide and order the buttons under the message box	Schaltflächen unter dem Nachrichtenfeld ein-/ausblenden und anordnen
+Size of messages	Größe der Nachrichten
+Smileys & Emotions	Smileys & Emotionen
+Sound when a participant is waiting in the lobby	Ton, wenn ein Teilnehmer in der Lobby wartet
+Sound when a participant joins the meeting	Ton, wenn ein Teilnehmer dem Meeting beitritt
+Sound when a participant leaves the meeting	Ton, wenn ein Teilnehmer das Meeting verlässt
+Sound when a participant raises a hand	Ton, wenn ein Teilnehmer die Hand hebt
+Sound when I receive a message	Ton, wenn ich eine Nachricht erhalte
+Sounds for direct message notifications	Töne für Benachrichtigungen über Direktnachrichten
+Sounds for favorite space notifications	Töne für Benachrichtigungen über Favoriten-Bereiche
+Sounds for space notifications	Töne für Bereichsbenachrichtigungen
+Space created (sample data)	Bereich erstellt (Beispieldaten)
+Space settings	Bereichseinstellungen
+Space tabs	Registerkarten im Bereich
+Spell check	Rechtschreibprüfung
+Start a meeting in the space	Meeting im Bereich starten
+Start my video when I join a meeting	Mein Video bei Meeting-Beitritt übertragen
+Starting meetings is not available in this version	Das Starten von Meetings ist in dieser Version nicht verfügbar
+Starting share… (click to cancel)	Freigabe wird gestartet… (klicken zum Abbrechen)
+Suggest emoji automatically	Emojis automatisch vorschlagen
+Symbols & Objects	Symbole & Objekte
+Takes the keys in other programs too	Belegt die Tasten auch in anderen Programmen
+Taskbar flashes	Taskleiste blinkt
+Team description	Teambeschreibung
+Team name	Teamname
+Test tone	Testton
+The AI Assistant is not available in this version	Der KI-Assistent ist in dieser Version nicht verfügbar
+The AI summary is not available in this version	Die KI-Zusammenfassung ist in dieser Version nicht verfügbar
+The bar above a message when you point at it. More actions (···) always stays and holds the other actions.	Die Leiste über einer Nachricht, wenn Sie mit der Maus darauf zeigen. „Weitere Aktionen“ (···) bleibt immer da und enthält die übrigen Aktionen.
+The calling dock gives you quick access to Webex Calling features such as the multi-call window, voicemail, call history, settings and more.	Über das Anruf-Dock erhalten Sie direkt schnellen Zugriff auf Webex Calling-Funktionen wie das Multi-Anruf-Fenster, Voicemail, Anrufprotokoll, Einstellungen und mehr.
+The camera delivers no picture. Another app may be using it, or camera access is turned off in the privacy settings.	Die Kamera liefert kein Bild. Möglicherweise wird sie von einer anderen App verwendet, oder der Kamerazugriff ist in den Datenschutzeinstellungen deaktiviert.
+The chosen file was not found. The default sound is used.	Die gewählte Datei wurde nicht gefunden. Der Standardton wird verwendet.
+The clipboard content exceeds the maximum number of characters for a single message.	Der Inhalt der Zwischenablage überschreitet die maximale Anzahl an Zeichen für eine einzelne Nachricht.
+The language of the interface.	Sprache der Oberfläche.
+The number was added to the block list.	Die Nummer wurde zur Sperrliste hinzugefügt.
+The phone numbers you used in recent meetings show here. There are no recently used phone numbers yet.	Ihre zuletzt in Meetings verwendeten Telefonnummern werden hier angezeigt. Derzeit sind keine kürzlich gewählten Telefonnummern verfügbar.
+The settings of this plugin are broken: %1	Die Einstellungen dieses Plugins sind fehlerhaft: %1
+The sound can't be played.	Der Ton kann nicht abgespielt werden.
+The tabs next to Messages at the top of a space.	Registerkarten neben „Nachrichten“ oben in einem Bereich.
+Themes (dark and light)	Themen (dunkel und hell)
+There is no chat with %1 yet	Es gibt noch keinen Chat mit %1
+These are based on your local time zone, set in the %1 settings.	Diese basieren auf Ihrer lokalen Zeitzone, die Sie in den %1-Einstellungen festgelegt haben.
+These options apply when you join a meeting, unless the Webex site settings override them.	Diese Optionen gelten, wenn Sie einem Meeting beitreten, sofern sie nicht von den Einstellungen der Webex-Seite überschrieben werden.
+This list is only saved in Webox; the Webex service is not told about it.	Diese Liste wird nur in Webox gespeichert; der Webex-Dienst wird nicht informiert.
+This meeting has no link	Für dieses Meeting gibt es keinen Link
+This plugin has no settings.	Dieses Plugin hat keine Einstellungen.
+This plugin is not from the official Webox repository but from “%1”:	Dieses Plugin kommt nicht aus dem offiziellen Webox-Repository, sondern aus „%1“:
+This repository is not the official Webox repository. Whoever runs it can offer any plugins.	Dieses Repository ist nicht das offizielle Webox-Repository. Wer es betreibt, kann beliebige Plugins anbieten.
+This session · active	Diese Sitzung · aktiv
+This team has no spaces yet.	In diesem Team gibt es noch keine Bereiche.
+Time zone for your profile and quiet hours	Zeitzone für Ihr Profil und Ruhezeiten
+Time: HH:MM	Zeit: HH:MM
+To call anyone with a phone number, click "Learn more".	Um eine beliebige Person mit einer Telefonnummer anzurufen, klicken Sie auf „Mehr erfahren“.
+To call someone who uses Webex, enter their name or email address in the search bar.\nTo join a meeting, type or paste its address in the search bar.	Um eine andere Person anzurufen, die Webex verwendet, geben Sie den Namen oder die E-Mail-Adresse in die Suchleiste ein.\nUm einem Meeting beizutreten, geben Sie die Adresse in der Suchleiste ein oder kopieren Sie sie dorthin.
+Top bar	Kopfzeile
+Trash	Papierkorb
+Travel & Places	Reisen & Orte
+Turn installed plugins on or off	Installierte Plugins aktivieren oder deaktivieren
+Turn off group call pickup notifications	Benachrichtigungen für die Gruppenrufannahme ausschalten
+Turn off watchlist call pickup notifications	Benachrichtigungen für Watchlist-Anrufübernahme ausschalten
+Turn on Markdown	Markdown einschalten
+Turn on the calling dock	Anruf-Dock aktivieren
+Twemoji © Twitter, Inc. and other contributors (jdecked/twemoji)	Twemoji © Twitter, Inc. und weitere Mitwirkende (jdecked/twemoji)
+Typing writes into the message box automatically	Beim Tippen automatisch ins Nachrichtenfeld schreiben
+unknown	unbekannt
+Update failed	Update fehlgeschlagen
+Update to v%1	Aktualisieren auf v%1
+Urgent	Dringend
+Use my default join options	Meine standardmäßigen Beitrittsoptionen verwenden
+Use my last join options	Meine letzten Beitrittsoptionen verwenden
+Use the computer's time zone	Zeitzone des Computers verwenden
+Use the standard call notification	Standard-Anrufbenachrichtigung verwenden
+Version %1 is available	Version %1 ist verfügbar
+Version %1 is installed	Version %1 ist installiert
+Video enhancements	Videoverbesserungen
+Voice only	Nur Stimme
+Voicemail, Plugins & Themes, About Webox, Show labels	Voicemail, Plugins & Themes, Info über Webox, Beschriftungen anzeigen
+We can't find a matching emoji. Try something else, there are plenty to choose from.	Wir finden kein passendes Emoji. Versuche es mit etwas anderem, es gibt eine große Auswahl.
+Webox - Call	Webox - Anruf
+Webox - Calling dock	Webox - Anruf-Dock
+Webox - Incoming call	Webox - Eingehender Anruf
+Webox sends no logs to Cisco. Its logs are in its settings folder.	Webox sendet keine Protokolle an Cisco. Die Protokolle von Webox liegen in ihrem Einstellungsordner.
+What you see first when {{APP_NAME}} opens	Was beim Öffnen von {{APP_NAME}} zuerst angezeigt wird
+When this computer is used for calls:	Wenn dieser Computer für Anrufe verwendet wird:
+Which scheduler do you want to use to schedule meetings?	Welche Funktion zum Ansetzen möchten Sie zum Ansetzen von Meetings verwenden?
+Whiteboards aren't available in this version	Whiteboards sind in dieser Version nicht verfügbar
+Window settings	Fenstereinstellungen
+You are looking at sample data.	Sie sehen Beispieldaten.
+You can't add screen captures to this message.	Sie können keine Screenshots zu dieser Nachricht hinzufügen.
+Your current version stays as it is.	Ihre bisherige Version bleibt unverändert.
+Your message draft already contains a quote.\nDo you want to replace it with this one?	In Ihrem Nachrichtenentwurf ist bereits ein Zitat enthalten.\nMöchten Sie es durch dieses ersetzen?
+Your self view is your own video. When your video is off, your self view shows what others see instead of your video, such as your profile picture or display name. These options only change how you see your self view, not what others see.	Ihre Selbstansicht ist Ihre eigene Videoansicht. Wenn Ihr Video ausgeschaltet ist, ist Ihre Selbstansicht die Ansicht, die andere anstelle Ihres Videos sehen, z. B. Ihr Profilbild oder Ihren Anzeigenamen. Diese Optionen steuern nur Ihre Anzeige Ihrer Selbstansicht und nicht, was andere sehen.
+•••••••• (saved; type again to change)	•••••••• (gespeichert; zum Ändern neu eingeben)
+‹ All plugins	‹ Alle Plugins

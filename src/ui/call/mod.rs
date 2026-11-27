@@ -2,8 +2,8 @@
 //! (320 pt wide: avatar, caller, round answer / decline buttons), ringing sounds, the audio device pickers (in the call card
 //! and in Settings > Audio) and the session's call history.
 //! Signalling and media live in `cloud/locus/` / `cloud/media.rs`.
-//! German strings: "Verbindung wird hergestellt …", "Annehmen", "Ablehnen", "Verbunden", "Anruf abgebrochen", "Klingeln...",
-//! "Mikrofon" / "Lautsprecher" from the language pack; the rest is Webox's own wording.
+//! Strings: "Connecting...", "Accept", "Decline", "Connected", "Ringing...", "Microphone" / "Speaker" come from the
+//! language pack; the rest is Webox's own wording (assets/i18n/webox).
 use crate::media::audio::{self, Choice, Dev};
 use crate::cloud::locus::{CallEvent, CallReq, CallState};
 use crate::media::sounds::{self, Prefs};
@@ -58,22 +58,22 @@ pub(crate) struct CallUi {
     pub(crate) cam: super::settings::video_page::CamUi,
     /// The call window's side of video: the self view, the textures, the camera list (`video.rs`).
     pub(crate) video_ui: video::VideoUi,
-    /// The ringing call was ignored ("Anruf ignorieren"): toast gone, no local ring, the call is not declined (my other
+    /// The ringing call was ignored ("Ignore call"): toast gone, no local ring, the call is not declined (my other
     /// devices keep ringing until the caller gives up). Per call, like `ring_muted` and `reply_open`.
     pub(crate) ignored: bool,
-    /// The toast shows the quick replies ("Anruf ablehnen und mit Textnachricht antworten") instead of its buttons.
+    /// The toast shows the quick replies ("Decline call and reply with a text") instead of its buttons.
     pub(crate) reply_open: bool,
     /// The caller whose ringing call was declined because of the block list (once per call; cleared when it ends).
     blocked: Option<String>,
 }
 
-/// Quick replies of "Anruf ablehnen und mit Textnachricht antworten". The official desktop app has the action (keyboard
+/// Quick replies of "Decline call and reply with a text". The official desktop app has the action (keyboard
 /// shortcut "Decline call and reply with a text") but ships no reply texts, so these are Webox's own; the toast's last
-/// entry opens the chat for a custom message ("Schreiben Sie eine benutzerdefinierte Nachricht.").
-pub(crate) const QUICK_REPLIES: [&str; 3] = ["Kann gerade nicht sprechen.", "Ich rufe gleich zurück.", "Bin gerade in einem Meeting."];
+/// entry opens the chat for a custom message ("Write a custom message."). Shown and sent through `tr`.
+pub(crate) const QUICK_REPLIES: [&str; 3] = ["Can't talk right now.", "I'll call you back soon.", "I'm in a meeting right now."];
 
 /// Which sound plays: 0 none, 1 ringtone (incoming), 2 ringback (my outgoing call rings). An incoming call stays silent when
-/// call sounds are off, the toast's bell muted it, it was ignored, or "Bitte nicht stören" / Ruhezeiten are on (`silenced`,
+/// call sounds are off, the toast's bell muted it, it was ignored, or "Do not disturb" / quiet hours are on (`silenced`,
 /// which mutes notifications in the official app); my own outgoing ringback is not a notification and still plays.
 pub(crate) fn ring_kind(call_sounds: bool, sample: bool, muted: bool, ignored: bool, silenced: bool, state: Option<&CallState>) -> u8 {
     if !call_sounds || sample { return 0; }
@@ -84,7 +84,7 @@ pub(crate) fn ring_kind(call_sounds: bool, sample: bool, muted: bool, ignored: b
     }
 }
 
-/// The caller is on the local block list (Einstellungen > Anrufe > Sperrliste): an entry with an @ matches the e-mail
+/// The caller is on the local block list (Settings > Calling > Block list): an entry with an @ matches the e-mail
 /// (case-insensitive); any other entry is a phone number and matches a caller address whose user part is that number
 /// (digits compared, so "+41 44 123 45 67" matches "+41441234567@example.com").
 pub(crate) fn is_blocked(list: &[String], email: &str) -> bool {
@@ -98,14 +98,14 @@ pub(crate) fn is_blocked(list: &[String], email: &str) -> bool {
     })
 }
 
-/// German status text of the card / toast.
+/// Status text of the card / toast.
 pub(crate) fn state_text(s: &CallState, secs: u64) -> String {
     match s {
-        CallState::Dialing | CallState::Connecting => "Verbindung wird hergestellt…".into(),
-        CallState::Ringing => "Klingeln...".into(), // pack: QObject "Ringing..."
-        CallState::Incoming => "Eingehender Anruf".into(),
-        CallState::Connected => format!("Verbunden · {:02}:{:02}", secs / 60, secs % 60),
-        CallState::Ended(w) => match w.as_str() { "declined" => "Anruf abgelehnt", "unanswered" => "Keine Antwort", "missed" => "Verpasster Anruf", _ => "Anruf beendet" }.into(),
+        CallState::Dialing | CallState::Connecting => tr("Connecting...").into(),
+        CallState::Ringing => tr("Ringing...").into(),
+        CallState::Incoming => tr("Incoming call").into(),
+        CallState::Connected => format!("{} · {:02}:{:02}", tr("Connected"), secs / 60, secs % 60),
+        CallState::Ended(w) => tr(match w.as_str() { "declined" => "Call rejected", "unanswered" => "No Response", "missed" => "Missed Call", _ => "Call ended" }).into(),
     }
 }
 
@@ -122,7 +122,7 @@ pub(crate) fn direct_space_with(spaces: &[Space], email: &str) -> Option<String>
 }
 
 impl App {
-    /// "Anruf ablehnen und mit Textnachricht antworten": declines the ringing call, then sends `text` to the caller's 1:1
+    /// "Decline call and reply with a text": declines the ringing call, then sends `text` to the caller's 1:1
     /// space (created when there is none yet). Offline sample: the made-up call just goes, nothing is sent.
     pub(crate) fn decline_with_reply(&mut self, email: &str, text: &str, now: f64) {
         if self.call.sample { self.call.cur = None; return; }
@@ -133,18 +133,18 @@ impl App {
             Some(id) => c.req(Req::Send(id, text.to_string())),
             None => c.req(Req::Direct { who: email.to_string(), text: text.to_string(), invite: false }),
         }
-        self.toast("Nachricht gesendet", now);
+        self.toast(tr("Message sent"), now);
     }
 
     /// Places an audio call to `email` (checked again, and before any request, in the cloud thread).
     pub(crate) fn start_call(&mut self, email: &str, name: &str, now: f64) { self.start_call_with(email, name, now, false) }
 
-    /// Places a call to `email`, with our camera on when `video` ("Videoanruf").
+    /// Places a call to `email`, with our camera on when `video` ("Video call").
     pub(crate) fn start_call_with(&mut self, email: &str, name: &str, now: f64, video: bool) {
-        if self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none()) { self.toast("Es läuft bereits ein Anruf.", now); return; }
+        if self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none()) { self.toast(tr("A call is already in progress."), now); return; }
         if let Err(e) = cloud::locus::call_allowed(email, std::env::var(cloud::locus::GUARD_ENV).ok().as_deref()) { self.toast(e, now); return; }
         let choice = self.choice();
-        if self.client.is_none() { self.toast("Nicht verbunden", now); return; }
+        if self.client.is_none() { self.toast(tr("Not connected"), now); return; }
         self.prime_video(video);
         let Some(c) = &self.client else { return };
         c.req(Req::Call(CallReq::Dial(email.trim().to_string(), choice)));
@@ -157,7 +157,7 @@ impl App {
         // (or the dial's error arrives, see `call_failed`).
         if let Some(c) = &self.client { c.req(Req::Call(CallReq::HangUp)); }
     }
-    /// Answers with the camera on when "Anrufe mit eingeschalteter Videokamera annehmen" is set.
+    /// Answers with the camera on when "Answer calls with my video on" is set.
     fn answer_call(&mut self) {
         let choice = self.choice();
         let video = self.answer_with_video();
@@ -175,8 +175,8 @@ impl App {
     /// is said once (the official client: "You've been muted by others.").
     pub(crate) fn on_call_mute(&mut self, m: cloud::locus::MuteInfo, now: f64) {
         let prev = self.call.mute;
-        if m.me.remote && !prev.me.remote { self.toast("Du wurdest von anderen stummgeschaltet.", now); }
-        if m.me.unmute_requested && !prev.me.unmute_requested && self.call.muted { self.toast("Du wirst gebeten, deine Stummschaltung aufzuheben.", now); }
+        if m.me.remote && !prev.me.remote { self.toast(tr("You've been muted by others."), now); }
+        if m.me.unmute_requested && !prev.me.unmute_requested && self.call.muted { self.toast(tr("You're being asked to unmute yourself."), now); }
         self.call.muted = m.local;
         self.call.mute = m;
     }
@@ -190,13 +190,13 @@ impl App {
         ui.painter().circle_filled(c, d / 2.0 + 2.0, t.win);
         ui.painter().circle_filled(c, d / 2.0, t.badge);
         self.icons.paint(ui, "microphone-muted-regular", Rect::from_center_size(c, Vec2::splat(d * 0.6)), Color32::WHITE);
-        ui.interact(Rect::from_center_size(c, Vec2::splat(d)), ui.id().with(("peer-muted", ar.min.x as i32)), Sense::hover()).on_hover_text("Stummgeschaltet");
+        ui.interact(Rect::from_center_size(c, Vec2::splat(d)), ui.id().with(("peer-muted", ar.min.x as i32)), Sense::hover()).on_hover_text(tr("Muted"));
     }
 
     /// The mute button's tooltip (muted by someone else and not allowed to unmute: says so).
     pub(crate) fn mute_tip(&self) -> &'static str {
-        if self.call.muted && self.call.mute.me.remote && !self.call.mute.me.unmute_allowed { "Von anderen stummgeschaltet" }
-        else if self.call.muted { "Stummschaltung aufheben" } else { "Stummschalten" }
+        if self.call.muted && self.call.mute.me.remote && !self.call.mute.me.unmute_allowed { tr("Muted by others") }
+        else if self.call.muted { tr("Unmute") } else { tr("Mute") }
     }
 
     /// The other side's share started (their name) or ended.
@@ -233,13 +233,13 @@ impl App {
     fn take_share_choice(&mut self, now: f64) {
         let Some(ch) = super::share_picker::take_choice() else { return };
         let live = self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none() && c.state == CallState::Connected);
-        if !live { self.toast("Bildschirmfreigabe ist erst möglich, wenn der Anruf verbunden ist.", now); return; }
-        let Some(c) = &self.client else { self.toast("Nicht verbunden", now); return };
+        if !live { self.toast(tr("Screen sharing is only possible once the call is connected."), now); return; }
+        let Some(c) = &self.client else { self.toast(tr("Not connected"), now); return };
         c.req(Req::Call(CallReq::Share(Some(cloud::locus::share::ShareReq { source: ch.source, opts: ch.opts }))));
         self.call.share_pending = true;
     }
 
-    /// "Bitte nicht stören" or Ruhezeiten: an incoming call does not ring (the toast still shows, silent).
+    /// "Do not disturb" or quiet hours: an incoming call does not ring (the toast still shows, silent).
     pub(crate) fn calls_silenced(&self) -> bool { self.me.status == "DoNotDisturb" || self.quiet_now() }
 
     pub(crate) fn on_call_event(&mut self, ev: CallEvent, now: f64) {
@@ -257,13 +257,14 @@ impl App {
         }
         let known = self.people.iter().chain(self.spaces.iter().flat_map(|s| s.participants.iter())).find(|p| !ev.email.is_empty() && p.email.eq_ignore_ascii_case(&ev.email)).map(|p| p.name.clone());
         let name = [known, Some(ev.name.clone()).filter(|n| !n.is_empty()), self.call.cur.as_ref().map(|c| c.name.clone()).filter(|n| !n.is_empty()), Some(ev.email.clone())]
-            .into_iter().flatten().find(|n| !n.is_empty()).unwrap_or_else(|| "Unbekannt".into());
+            .into_iter().flatten().find(|n| !n.is_empty()).unwrap_or_else(|| tr("Unknown").into());
         let prev = self.call.cur.take();
         let (mut since, was_connected) = prev.as_ref().map_or((now, false), |p| (p.since, p.state == CallState::Connected));
         if ev.state == CallState::Connected && !was_connected { since = now; }
         let ended_at = if let CallState::Ended(w) = &ev.state {
             let blocked = self.call.blocked.take().is_some_and(|b| b.eq_ignore_ascii_case(&ev.email));
-            let r = match w.as_str() { _ if blocked => "Blockiert", "declined" => "Abgelehnt", "missed" => "Verpasst", "unanswered" => "Keine Antwort", "elsewhere" => "Anderswo angenommen", _ => "Beendet" };
+            // The result in English; shown through tr() (calls_page compares "Missed").
+            let r = match w.as_str() { _ if blocked => "Blocked", "declined" => "Declined", "missed" => "Missed", "unanswered" => "No Response", "elsewhere" => "Answered elsewhere", _ => "Ended" };
             self.call.history.insert(0, (name.clone(), ev.incoming, r));
             self.call.history.truncate(30);
             self.call.muted = false;
@@ -276,7 +277,7 @@ impl App {
             if let Some(c) = &self.client { c.req(Req::CallHistory); } // the session is in janus now
             if w == "missed" && ev.incoming && !blocked { self.on_missed_call(&name, &ev.email, now); } // rail badge + toast (calls_page)
             // An incoming call that ends while it still rings here (I declined it, the caller cancelled, another of my
-            // devices took it) just stops ringing: no call window, no "Anruf abgelehnt" screen, no tone. Like the official
+            // devices took it) just stops ringing: no call window, no "Call rejected" screen, no tone. Like the official
             // client, which only removes its incoming-call notification.
             if ends_quietly(ev.incoming, prev.as_ref().map(|p| &p.state)) { self.call.cur = None; return; }
             // Call-end tone (see sounds.rs).
@@ -391,10 +392,10 @@ impl App {
         ctx.request_repaint_after(std::time::Duration::from_secs_f64(if opening { 0.05 } else { left + 0.05 }));
     }
 
-    /// The new-message sound for a chat that isn't open: per category, off in Nicht stören or when switched off.
+    /// The new-message sound for a chat that isn't open: per category, off in Do not disturb or when switched off.
     pub(crate) fn message_sound(&mut self, space_id: &str) {
         let p = self.prefs();
-        if !p.msg_sounds || self.me.status == "DoNotDisturb" || self.quiet_now() { return; } // + Ruhezeiten
+        if !p.msg_sounds || self.me.status == "DoNotDisturb" || self.quiet_now() { return; } // + quiet hours
         let (direct, fav) = self.spaces.iter().find(|s| s.id == space_id).map_or((false, false), |s| (s.direct, s.favorite));
         let id = if fav { p.msg_favorite } else if direct { p.msg_dm } else { p.msg_space };
         if id.is_empty() { return; }
@@ -449,7 +450,7 @@ impl App {
                 ui.spacing_mut().item_spacing.x = 12.0;
                 let (icon, tip) = super::call_toast::answer_look(self.answer_with_video());
                 if round_fill(ui, &mut self.icons, icon, t.green, 40.0).on_hover_text(tip).clicked() { a.answer = true }
-                if round_fill(ui, &mut self.icons, "handset-down-slash-regular", t.badge, 40.0).on_hover_text("Ablehnen").clicked() { a.hang = true }
+                if round_fill(ui, &mut self.icons, "handset-down-slash-regular", t.badge, 40.0).on_hover_text(tr("Decline")).clicked() { a.hang = true }
             });
         });
         a
@@ -465,12 +466,12 @@ impl App {
         if share {
             // the other side's screen on top of the card (the in-window fallback of the call window's stage)
             let who = self.call.remote_share.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| v.name.clone());
-            ui.label(RichText::new(format!("{who} teilt den Bildschirm")).font(semibold(13.0)).color(t.text1));
+            ui.label(RichText::new(crate::trq!("%1 is sharing the screen", who)).font(semibold(13.0)).color(t.text1));
             let (r, _) = ui.allocate_exact_size(Vec2::new(480.0, 270.0), Sense::hover());
             ui.painter().rect_filled(r, 4.0, Color32::BLACK);
             match self.remote_share_picture(&ctx) {
                 Some((id, size)) => { ui.painter().image(id, Rect::from_center_size(r.center(), crate::ui::call_win::fit_size(size, r.size())), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE); }
-                None => { ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, "Freigabe wird geladen…", FontId::proportional(14.0), t.text2); }
+                None => { ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, tr("Loading share…"), FontId::proportional(14.0), t.text2); }
             }
             ui.add_space(14.0);
         }
@@ -491,14 +492,14 @@ impl App {
             let muted = self.call.muted;
             if round_fill(&mut r, &mut self.icons, if muted { "microphone-muted-regular" } else { "microphone-regular" }, if muted { t.badge } else { t.selected }, 48.0)
                 .on_hover_text(self.mute_tip()).clicked() { a.mute = true }
-            if round_fill(&mut r, &mut self.icons, "handset-down-slash-regular", t.badge, 48.0).on_hover_text("Auflegen").clicked() { a.hang = true }
+            if round_fill(&mut r, &mut self.icons, "handset-down-slash-regular", t.badge, 48.0).on_hover_text(tr("Hang up")).clicked() { a.hang = true }
             let open = menu_is_open(&ctx, "call-devices");
-            let dev = round_fill(&mut r, &mut self.icons, "speaker-regular", if open { t.accent } else { t.selected }, 48.0).on_hover_text("Audiogeräte");
+            let dev = round_fill(&mut r, &mut self.icons, "speaker-regular", if open { t.accent } else { t.selected }, 48.0).on_hover_text(tr("Audio devices"));
             if dev.clicked() { menu_toggle(&ctx, "call-devices"); }
             if v.state == CallState::Connected {
                 let sharing = self.call.sharing;
                 if round_fill(&mut r, &mut self.icons, "share-screen-regular", if sharing { t.green } else { t.selected }, 48.0)
-                    .on_hover_text(if sharing { "Freigabe beenden" } else { "Inhalte freigeben" }).clicked() { self.share_button(now); }
+                    .on_hover_text(if sharing { tr("Stop sharing") } else { tr("Share content") }).clicked() { self.share_button(now); }
             }
             ui.allocate_rect(row, Sense::hover());
             ui.add_space(16.0);
@@ -579,8 +580,8 @@ mod tests {
     fn dnd_quiet_hours_and_ignore_silence_only_the_incoming_ring() {
         let inc = Some(&CallState::Incoming);
         assert_eq!(ring_kind(true, false, false, false, false, inc), 1, "a normal incoming call rings");
-        assert_eq!(ring_kind(true, false, false, false, true, inc), 0, "Bitte nicht stören / Ruhezeiten: no ringtone");
-        assert_eq!(ring_kind(true, false, false, true, false, inc), 0, "Anruf ignorieren stops the local ring");
+        assert_eq!(ring_kind(true, false, false, false, true, inc), 0, "Do not disturb / quiet hours: no ringtone");
+        assert_eq!(ring_kind(true, false, false, true, false, inc), 0, "Ignore call stops the local ring");
         assert_eq!(ring_kind(true, false, true, false, false, inc), 0, "the toast's bell");
         assert_eq!(ring_kind(true, false, false, false, true, Some(&CallState::Ringing)), 2, "my own outgoing ringback still plays under DND");
         assert_eq!(ring_kind(false, false, false, false, false, inc), 0);

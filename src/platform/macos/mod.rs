@@ -25,11 +25,12 @@ pub fn reveal(p: &Path) {
 }
 
 /// A Notification Center banner without an app bundle (`notifications` uses `UNUserNotificationCenter` inside Webox.app). The
-/// texts go in as arguments of the script, never into its source, so nothing in a message can run as AppleScript. macOS shows it
-/// as coming from "Script Editor", and a click does nothing.
+/// texts go in as arguments of the script, never into its source, so nothing in a message can run as AppleScript (`--` ends the
+/// options: a title like "-e" would otherwise make the body a script line). macOS shows it as coming from "Script Editor", and a
+/// click does nothing.
 pub fn notify(title: &str, body: &str) {
     crate::system::spawn_detached(std::process::Command::new("/usr/bin/osascript")
-        .args(["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run"])
+        .args(["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", "--"])
         .args([title, body])
         .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()));
 }

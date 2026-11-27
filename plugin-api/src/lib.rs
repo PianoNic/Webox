@@ -283,8 +283,10 @@ extern "C" fn frame_shim(ctx: *mut c_void, f: *mut VideoFrame) -> i32 {
     catch_unwind(AssertUnwindSafe(|| {
         let v = unsafe { &mut *f };
         let (w, h, stride) = (v.width as usize, v.height as usize, v.stride as usize);
-        if v.format != FRAME_RGBA || v.data.is_null() || w == 0 || h == 0 || stride < w * 4 { return 0; }
-        let data = unsafe { std::slice::from_raw_parts_mut(v.data, stride * h) };
+        if v.format != FRAME_RGBA || v.data.is_null() || w == 0 || h == 0 { return 0; }
+        // Checked (32-bit targets): a wrapped product must not describe a slice other than the frame.
+        let Some(len) = w.checked_mul(4).filter(|&row| stride >= row).and_then(|_| stride.checked_mul(h)).filter(|&l| l <= isize::MAX as usize) else { return 0 };
+        let data = unsafe { std::slice::from_raw_parts_mut(v.data, len) };
         (unsafe { &mut *(ctx as *mut FrameClosure) })(&mut Frame { width: w, height: h, stride, data, seq: v.seq, time_us: v.time_us });
         1
     })).unwrap_or(0)

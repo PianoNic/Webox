@@ -145,13 +145,13 @@ pub fn numerus_index(rules: &[u8], n: i64) -> usize {
                     truth = !truth;
                 }
                 and_val = and_val && truth;
-                if i == size || rules[i] != Q_AND {
+                if i >= size || rules[i] != Q_AND {
                     break;
                 }
                 i += 1;
             }
             or_val = or_val || and_val;
-            if i == size || rules[i] != Q_OR {
+            if i >= size || rules[i] != Q_OR {
                 break;
             }
             i += 1;
@@ -160,7 +160,7 @@ pub fn numerus_index(rules: &[u8], n: i64) -> usize {
             return result;
         }
         result += 1;
-        if i == size {
+        if i >= size {
             break;
         }
         i += 1; // Q_NEWRULE

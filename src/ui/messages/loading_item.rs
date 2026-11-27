@@ -1,5 +1,5 @@
 //! The message list's loading item: a row 50 pt high with the animated "Loading.gif" centred in it, scaled to 40 pt wide
-//! (the gif is 144 x 90 px with 6 frames of 700 ms, so 40 x 25), or - when loading failed - a "Wiederholen" pill that asks
+//! (the gif is 144 x 90 px with 6 frames of 700 ms, so 40 x 25), or - when loading failed - a "Retry" pill that asks
 //! again. The list is bottom-to-top, so a list holding only this row shows it at the bottom, above the list's bottom margin.
 //! No delay before it appears. The same row is shown at the top while older messages load. Without the gif
 //! (assets/cisco/images/Loading.gif missing) three pulsing dots of the same size stand in.

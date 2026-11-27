@@ -1,10 +1,10 @@
-//! "Scroll to the latest messages" button: a round XS button with "arrow-down_12", tooltip "Klicken, um zu den neuesten
-//! Nachrichten zu scrollen", centred horizontally over the message list, its bottom 20 pt above the list's bottom. Shown
+//! "Scroll to the latest messages" button: a round XS button with "arrow-down_12", tooltip "Click to scroll to the latest
+//! messages", centred horizontally over the message list, its bottom 20 pt above the list's bottom. Shown
 //! while the list is not at its newest end, opacity animated over 300 ms. A click jumps (no animation) to the newest end.
-//! The same request comes from the shortcut "Zum Ende springen" (Shift+PgDown).
+//! The same request comes from the shortcut "Jump to the end" (Shift+PgDown).
 //! Colours: button-message-fill-background normal #1170CF / hovered #0353A8 / pressed #063A75, icon button-message-fill-text
-//! #FFFFFF @ 0.95 (both themes); 24 pt diameter. No new-message count or text on it: the "Neue Nachrichten" /
-//! "Neue Antworten" banners are separate buttons above it.
+//! #FFFFFF @ 0.95 (both themes); 24 pt diameter. No new-message count or text on it: the "New messages" /
+//! "New replies" banners are separate buttons above it.
 //! It is drawn on the list's own layer, so the wheel over it still scrolls the list.
 use super::*;
 
@@ -17,7 +17,7 @@ pub(crate) const JUMP_KEY: &str = "msg-jump-bottom";
 /// Shown while the list can scroll and is not at its end.
 pub(crate) fn jump_button_visible(off: f32, max: f32) -> bool { max > 1.0 && off < max - 1.0 }
 
-/// Asks the open message list to jump to its newest message (shortcut "Zum Ende springen").
+/// Asks the open message list to jump to its newest message (shortcut "Jump to the end").
 pub(crate) fn request_jump_to_bottom(ctx: &egui::Context) { ctx.data_mut(|d| d.insert_temp(Id::new(JUMP_KEY), true)); }
 
 impl App {

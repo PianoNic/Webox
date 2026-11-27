@@ -13,7 +13,7 @@ impl App {
     pub(super) fn plugin_form(&mut self, ui: &mut egui::Ui, t: &Th, s: &mut PUi, i: usize, now: f64) {
         let Some(schema) = self.plugins.list[i].settings.schema.clone() else { return };
         for sec in &schema.sections {
-            let title = if sec.title.is_empty() { "Einstellungen" } else { &sec.title };
+            let title = if sec.title.is_empty() { tr("Settings") } else { &sec.title };
             kit::section(ui, t, title, &sec.description, false, |ui| {
                 for f in &sec.fields {
                     ui.add_space(6.0);
@@ -65,18 +65,18 @@ impl App {
                 let buf = s.edits.entry(k.clone()).or_default();
                 let mut submit = false;
                 ui.horizontal(|ui| {
-                    let r = secret_field(ui, t, buf, if at == SecretAt::Unset { "Wert eingeben" } else { "•••••••• (gespeichert; zum Ändern neu eingeben)" });
+                    let r = secret_field(ui, t, buf, if at == SecretAt::Unset { tr("Enter a value") } else { tr("•••••••• (saved; type again to change)") });
                     submit = !buf.is_empty() && (r.lost_focus() || (r.has_focus() && ui.input(|i| i.key_pressed(Key::Enter))));
-                    if at != SecretAt::Unset { ui.add_space(8.0); if kit::pill(ui, t, "Entfernen", false, true).clicked() { buf.clear(); submit = true; } }
+                    if at != SecretAt::Unset { ui.add_space(8.0); if kit::pill(ui, t, tr("Remove"), false, true).clicked() { buf.clear(); submit = true; } }
                 });
                 if submit { let v = buf.clone(); self.apply_setting(s, i, &f.id, Value::String(v)); s.edits.insert(k.clone(), String::new()); }
-                let note = match self.plugins.secret_at(i, &f.id) {
-                    SecretAt::Unset => "Nicht gesetzt.",
-                    SecretAt::Keyring => if cfg!(windows) { "Gespeichert in der Windows-Anmeldeinformationsverwaltung." } else { "Gespeichert im Schlüsselbund." },
-                    SecretAt::File => "Gespeichert in der Einstellungsdatei, NICHT verschlüsselt: kein Schlüsselbund verfügbar.",
+                let (note, warn) = match self.plugins.secret_at(i, &f.id) {
+                    SecretAt::Unset => (tr("Not set."), false),
+                    SecretAt::Keyring => (if cfg!(windows) { tr("Saved in Windows Credential Manager.") } else { tr("Saved in the keyring.") }, false),
+                    SecretAt::File => (tr("Saved in the settings file, NOT encrypted: no keyring available."), true),
                 };
                 ui.add_space(2.0);
-                kit::text_block(ui, note, kit::SECOND, if note.contains("NICHT") { t.tk("listitem-textmissed") } else { t.text2 }, 0.0);
+                kit::text_block(ui, note, kit::SECOND, if warn { t.tk("listitem-textmissed") } else { t.text2 }, 0.0);
             }
             Kind::Number { min, max, step, .. } => {
                 label(ui);
@@ -111,11 +111,11 @@ impl App {
                 let buf = s.edits.entry(k.clone()).or_insert_with(|| cur.clone());
                 let mut commit = None;
                 ui.horizontal(|ui| {
-                    let r = kit::text_field(ui, t, buf, "Keine Datei", FIELD_W);
+                    let r = kit::text_field(ui, t, buf, tr("No file"), FIELD_W);
                     if (r.lost_focus() || (r.has_focus() && ui.input(|i| i.key_pressed(Key::Enter)))) && *buf != cur { commit = Some(buf.clone()); }
                     ui.add_space(8.0);
-                    if kit::pill(ui, t, "Durchsuchen…", false, true).clicked() { pick_file(k.clone(), filter.clone(), extensions.clone()); }
-                    if !cur.is_empty() { ui.add_space(4.0); if kit::pill(ui, t, "Entfernen", false, true).clicked() { commit = Some(String::new()); } }
+                    if kit::pill(ui, t, tr("Browse…"), false, true).clicked() { pick_file(k.clone(), filter.clone(), extensions.clone()); }
+                    if !cur.is_empty() { ui.add_space(4.0); if kit::pill(ui, t, tr("Remove"), false, true).clicked() { commit = Some(String::new()); } }
                 });
                 if let Some(v) = commit { s.edits.remove(&k); self.apply_setting(s, i, &f.id, Value::String(v)); }
             }
@@ -147,8 +147,8 @@ fn pick_file(key: String, filter: String, ext: Vec<String>) {
     std::thread::spawn(move || {
         let _rt = system::enter_dbus_rt(); // rfd's portal backend needs the D-Bus tokio runtime
         let mut d = rfd::FileDialog::new();
-        if !ext.is_empty() { d = d.add_filter(if filter.is_empty() { "Dateien" } else { &filter }, &ext); }
-        if let Some(p) = d.add_filter("Alle Dateien", &["*"]).pick_file() { lock_picks().push((key, p)); }
+        if !ext.is_empty() { d = d.add_filter(if filter.is_empty() { tr("Files") } else { &filter }, &ext); }
+        if let Some(p) = d.add_filter(tr("All files"), &["*"]).pick_file() { lock_picks().push((key, p)); }
         crate::ui::wake();
     });
 }

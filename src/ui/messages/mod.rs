@@ -10,10 +10,10 @@ use cloud::{Attachment, LinkPreview, REACTIONS};
 use egui::{epaint::Vertex, Align2, Galley, Id, Mesh, Shape, StrokeKind, TextureId};
 use std::sync::Arc;
 
-/// Replies shown under a thread root before it collapses into the "N Antworten" row.
+/// Replies shown under a thread root before it collapses into the "N replies" row.
 pub(crate) const THREAD_PREVIEW: usize = 2;
 /// The three favourite emoji of the hover toolbar: 👍 😀 🙌.
-const QUICK: [(&str, &str); 3] = [("👍", "Daumen hoch"), ("😀", "Grinsendes Gesicht"), ("🙌", "Erhobene Hände")];
+const QUICK: [(&str, &str); 3] = [("👍", "Thumbs up"), ("😀", "Grinning face"), ("🙌", "Raising hands")];
 
 /// The reaction name sent for an emoji: the legacy name for the ones that have one (thumbsup, heart, ...), else the emoji itself.
 fn reaction_name(ch: &str) -> String {
@@ -66,7 +66,7 @@ const TB_W: f32 = 32.0; // hover toolbar button width
 /// Extra space between an attachment and the caption text below it (image bottom -> caption cap top = 12.8 pt).
 const CAPTION_GAP: f32 = 2.6;
 // Scrollbar: track 16 pt wide, thumb 7.6 pt, chevron buttons at both ends.
-/// Space under the last list item ("Gesehen von" row centre -> composer line = 48 pt).
+/// Space under the last list item ("Seen by" row centre -> composer line = 48 pt).
 fn list_bottom() -> f32 { dm().msg_list_bottom } // 25.5
 /// The offline sample's number of older pages.
 const SAMPLE_PAGES: u32 = 2;
@@ -74,9 +74,9 @@ const SAMPLE_PAGES: u32 = 2;
 const SB_W: f32 = crate::ui::autoscroll::BAR_W;
 /// Readers shown as avatars at most; the rest collapse into "+N".
 const MAX_SEEN: usize = 10;
-// Last line's top -> "Gesehen von" centre = 47.6 pt (SEEN_TOP + seen_h() / 2 = 23.4 in Standard).
+// Last line's top -> "Seen by" centre = 47.6 pt (SEEN_TOP + seen_h() / 2 = 23.4 in Standard).
 const SEEN_TOP: f32 = -0.6;
-// Height of the "Gesehen von" row; the label and avatars are centred in it (the avatars drawn in `seen_banner` are 22 pt).
+// Height of the "Seen by" row; the label and avatars are centred in it (the avatars drawn in `seen_banner` are 22 pt).
 fn seen_h() -> f32 { dm().seen_h } // 48
 fn day_pad() -> f32 { dm().day_pad } // vertical padding of info rows (30)
 
@@ -91,7 +91,7 @@ struct Mc {
     body: Color32, head: Color32, hover_bg: Color32, accent: Color32, chip_border: Color32, chip_hover: Color32,
     ring: Color32, bubble: Color32, tile: Color32, tile_hover: Color32, tile_border: Color32, file_icon_bg: Color32,
     mention_other: Color32, code_bg: Color32, select: Color32, pill_bg: Color32, pill_hover: Color32, pill_border: Color32, day: Color32, bar: Color32, white: Color32, checked: Color32,
-    /// Deleted messages a plugin keeps ("(gelöscht)", red text or overlay): the danger tone of menus and dialogs.
+    /// Deleted messages a plugin keeps ("(deleted)", red text or overlay): the danger tone of menus and dialogs.
     danger: Color32,
     /// Added text in a plugin's diff view (`kept::SPAN_ADDED`); removed text uses `danger`.
     added: Color32,
@@ -140,11 +140,13 @@ struct Style { bold: bool, italic: bool, underline: bool, strike: bool, code: bo
 /// What a message needs below its text, measured before painting.
 /// `files` / `file_atts`: the file cards (names and their attachments); `videos`: the video files of the share, drawn as video
 /// cards after the pictures (a video with a thumbnail comes in `Message.images` and is drawn there).
-/// `history`: earlier texts a plugin attached (struck through above the text); `tag`: "(gelöscht)" / "(bearbeitet)" below it.
+/// `history`: earlier texts a plugin attached (struck through above the text); `tag`: "(deleted)" / "(edited)" below it.
 /// `jump`: what the reply's quote says about the quoted message; `thumb`: the quoted picture and the char index of the line kept
 /// free for its thumbnail.
 struct Content { text: Option<Arc<Galley>>, links: Vec<(std::ops::Range<usize>, String)>, emojis: Vec<EmojiRun>, quotes: Vec<(usize, usize)>, jump: Option<QuoteRef>, thumb: Option<(Attachment, usize)>, files: Vec<String>, file_atts: Vec<Option<Attachment>>, videos: Vec<Attachment>,
-    history: Vec<Arc<Galley>>, tag: Option<Arc<Galley>>, h: f32 }
+    history: Vec<Arc<Galley>>, tag: Option<Arc<Galley>>, h: f32,
+    /// The message as HTML for "copy selected messages" (`body_html`), made once with the layout, not per row and frame.
+    copy_body: Arc<str> }
 
 #[cfg(test)]
 mod tests;
@@ -165,6 +167,7 @@ pub(crate) use loading_item::*;
 mod multisel;
 pub(crate) use multisel::*;
 mod rows;
+pub(crate) use rows::row_cache_len;
 mod media;
 mod video;
 mod attachments;

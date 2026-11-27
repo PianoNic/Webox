@@ -157,6 +157,8 @@ pub fn fetch_thumb(tx: Sender<Event>, id: String, url: String) {
         let bytes = (|| {
             if !media_host_ok(&url) { return None }
             let r = agent().get(&url).call().ok()?;
+            // The agent follows redirects: the bytes must still come from Giphy's CDN over TLS.
+            if !media_host_ok(r.get_url()) { return None }
             let mut b = vec![];
             std::io::Read::read_to_end(&mut std::io::Read::take(r.into_reader(), THUMB_MAX_BYTES + 1), &mut b).ok()?;
             (!b.is_empty() && b.len() as u64 <= THUMB_MAX_BYTES).then_some(b)

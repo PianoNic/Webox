@@ -1,5 +1,5 @@
-//! Full screen for the call window (the official MeetingViewButtons "Vollbild" / "Vollbildmodus beenden"): the title bar
-//! button, F11 and the registry's `FullScreen` (Alt+Eingabe) toggle it, Esc leaves it. The OS does the work (winit
+//! Full screen for the call window (the official MeetingViewButtons "Full screen" / "Exit full screen"): the title bar
+//! button, F11 and the registry's `FullScreen` (Alt+Enter) toggle it, Esc leaves it. The OS does the work (winit
 //! borderless full screen on the window's monitor); nothing is drawn or repainted for it.
 use super::*;
 

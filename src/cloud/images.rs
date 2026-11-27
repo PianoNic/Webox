@@ -86,10 +86,11 @@ impl Session {
         let Some(d) = self.full_desc.get(key) else { return Ok(()) };
         if !d.mime.starts_with("image/") { return Ok(()) }
         let full_key = format!("full:{key}");
-        if !self.images_done.insert(full_key.clone()) { return Ok(()) }
+        // No "done" dedupe here: the viewer asks once per opening (App::request_full_image) and drops the original when it closes,
+        // so a reopened picture must be fetched again (it stayed at preview quality before).
         let kid = Some(st(&jose::header(&d.scr), "kid")).filter(|k| !k.is_empty()).unwrap_or(d.key_url.clone());
         let scr_jwe = d.scr.clone();
-        let scr = self.key(&kid).and_then(|k| jose::decrypt_dir(&k, &scr_jwe)).and_then(|p| parse_scr(&p)).map_err(|e| { self.images_done.remove(&full_key); e })?;
+        let scr = self.key(&kid).and_then(|k| jose::decrypt_dir(&k, &scr_jwe)).and_then(|p| parse_scr(&p))?;
         let (agent, token, out) = (self.agent.clone(), self.token.clone(), self.out.clone());
         std::thread::spawn(move || match download(&agent, &token, &scr, FULL_IMAGE_MAX_BYTES) {
             Ok(b) => { dbg_conn(&format!("full image: {} bytes", b.len())); let _ = out.send(Resp::Images(vec![(full_key, b)])); }
@@ -159,6 +160,7 @@ fn download(agent: &ureq::Agent, token: &str, scr: &Scr, cap: u64) -> Result<Vec
     if giphy_host(&scr.loc) {
         // A GIF share points at Giphy's public CDN: plain GET, no Authorization header, content is not encrypted.
         let url = scr.loc.replacen("http://", "https://", 1); // always over TLS
+        if !url.starts_with("https://") { return Err("download url is not https".into()); }
         let r = agent.get(&url).call().map_err(|e| format!("giphy {}", short(&e)))?;
         let mut blob = vec![];
         r.into_reader().take(cap + 1).read_to_end(&mut blob).map_err(|e| e.to_string())?;

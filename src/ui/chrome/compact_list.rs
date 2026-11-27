@@ -1,6 +1,6 @@
-//! Compact view of the space list ("Kompakte Ansicht anzeigen"): 32 pt rows on a 33 pt pitch, 24 pt avatars 4 pt from the
-//! row's left edge, the text 12 pt after them in the secondary font, name and subtitle on one line ("Name • Untertitel").
-//! Toggled in the list's filter menu and in Settings > Messaging > Bereichsliste; stored locally as compact_view, off by
+//! Compact view of the space list ("Show compact view"): 32 pt rows on a 33 pt pitch, 24 pt avatars 4 pt from the
+//! row's left edge, the text 12 pt after them in the secondary font, name and subtitle on one line ("Name • Subtitle").
+//! Toggled in the list's filter menu and in Settings > Messaging > Space list; stored locally as compact_view, off by
 //! default.
 use crate::*;
 

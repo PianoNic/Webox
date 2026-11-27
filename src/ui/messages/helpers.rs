@@ -84,7 +84,7 @@ pub(super) struct ScrollFix {
 /// `pinned` = it stays at the bottom, `explicit` = an offset set on purpose this frame (scrollbar, jump to a message) that
 /// must not be corrected, `first` = the chat's first frame with content.
 /// - Pinned to the bottom: nothing to correct, but a frame laid out with the previous maximum shows the content shifted when
-///   the list's height changed (late images, link previews, "Gesehen von", a reload replacing the list): redo it.
+///   the list's height changed (late images, link previews, "Seen by", a reload replacing the list): redo it.
 /// - Scrolled up: the first visible row keeps its on-screen y while rows above it change height (older pages, the spinner row,
 ///   join/leave and date rows, pictures); the frame is redone with the corrected offset, so the jump is never shown.
 #[allow(clippy::too_many_arguments)]
@@ -124,7 +124,7 @@ pub(super) fn should_request_older(seen_frames: u32, pinned: bool, off: f32, vie
     (!pinned && off < view_h) || max < 0.5
 }
 
-/// The readers of "Gesehen von": (lower-case email, person id, name hint), newest reader first; never me.
+/// The readers of "Seen by": (lower-case email, person id, name hint), newest reader first; never me.
 /// The banner belongs to the conversation's newest readable activity, whoever wrote it - not to my newest message: every
 /// participant but me whose read time is at or after it is a reader, sorted by read time, newest first.
 /// Here the anchor is the newest list entry that is a message (not a system notice); a person is a reader when their read
@@ -142,9 +142,12 @@ pub(super) fn seen_keys(msgs: &[Message], marks: &[cloud::ReadMark]) -> Vec<(Str
             None => out.push((time.to_string(), (e, pid.to_string(), name.to_string()))),
         }
     };
+    // A mark counts when the first message with its activity id is at or after the anchor: in the (short) tail and not before
+    // it. Runs every frame: marks outside the tail are skipped without a scan of the whole list.
+    let tail = &msgs[anchor..];
     for mk in marks {
-        let Some(at) = msgs.iter().position(|m| m.id == mk.activity) else { continue };
-        if at >= anchor { add(&mk.time, &mk.email, &mk.person, ""); }
+        if !tail.iter().any(|m| m.id == mk.activity) || msgs[..anchor].iter().any(|m| m.id == mk.activity) { continue; }
+        add(&mk.time, &mk.email, &mk.person, "");
     }
     for m in &msgs[anchor..] { if !m.mine && !m.email.is_empty() && m.notice.is_empty() { add("", &m.email, "", &m.author); } }
     out.sort_by(|a, b| b.0.cmp(&a.0)); // stable: equal times keep the order found
@@ -186,17 +189,12 @@ pub(super) fn chip_emoji(name: &str) -> Option<String> {
 }
 
 /// The data layer delivers UTC: `Message.date` is the UTC day and `Message.time` the UTC "HH:MM" of the activity. The UI shows local
-/// time (Windows: the system time zone incl. daylight saving through SystemTimeToTzSpecificLocalTime; elsewhere UTC is kept).
-#[cfg(windows)]
+/// time: the system time zone incl. daylight saving (`i18n::local_offset_secs`).
 pub(super) fn utc_to_local(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> (i32, u32, u32, u32, u32) {
-    use windows::Win32::Foundation::SYSTEMTIME;
-    use windows::Win32::System::Time::SystemTimeToTzSpecificLocalTime;
-    let utc = SYSTEMTIME { wYear: y as u16, wMonth: mo as u16, wDayOfWeek: 0, wDay: d as u16, wHour: h as u16, wMinute: mi as u16, wSecond: 0, wMilliseconds: 0 };
-    let mut local = SYSTEMTIME::default();
-    if unsafe { SystemTimeToTzSpecificLocalTime(None, &utc, &mut local) }.is_ok() { (local.wYear as i32, local.wMonth as u32, local.wDay as u32, local.wHour as u32, local.wMinute as u32) } else { (y, mo, d, h, mi) }
+    let secs = crate::i18n::days_from_civil(y as i64, mo as i64, d as i64) * 86_400 + h as i64 * 3600 + mi as i64 * 60;
+    let p = crate::i18n::parts(secs + crate::i18n::local_offset_secs(secs) as i64);
+    (p.year as i32, p.month as u32, p.day as u32, p.hour as u32, p.minute as u32)
 }
-#[cfg(not(windows))]
-pub(super) fn utc_to_local(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> (i32, u32, u32, u32, u32) { (y, mo, d, h, mi) }
 
 /// (UTC "YYYY-MM-DD", UTC "HH:MM") -> the same moment in local time.
 pub(super) fn to_local(date: &str, time: &str) -> Option<(String, String)> {
@@ -226,7 +224,7 @@ pub(super) fn day_ref(real: bool) -> (String, String) {
 
 // Messages arriving from the service: each message is converted to local time once when it arrives (`prepare_arrived`, called
 // from App::poll), keeping the UTC values in `Message.utc`; all of them are converted again only when the time zone changes
-// (`zone_changed`, checked once a minute). The "Heute" / "Gestern" labels compare the local date with `day_ref` at drawing
+// (`zone_changed`, checked once a minute). The "Today" / "Yesterday" labels compare the local date with `day_ref` at drawing
 // time, so midnight needs no conversion.
 
 /// Messages that just arrived from the service: date / time made local once and the content revision stamped.

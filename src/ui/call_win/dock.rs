@@ -19,7 +19,7 @@ impl App {
         let thumb = matches!(self.call.win.dock_mode, DockMode::Docked(_));
         let pin = self.settings[crate::ui::settings::DOCK_KEEP_IN_FRONT].as_bool().unwrap_or(false);
         let (min, max) = if thumb { (Vec2::splat(DOCK_THUMB), Vec2::splat(DOCK_THUMB)) } else { (DOCK_MIN, DOCK_MAX) };
-        let mut b = egui::ViewportBuilder::default().with_title(DOCK_TITLE).with_decorations(false).with_inner_size(size).with_min_inner_size(min).with_max_inner_size(max)
+        let mut b = egui::ViewportBuilder::default().with_title(tr(DOCK_TITLE)).with_decorations(false).with_inner_size(size).with_min_inner_size(min).with_max_inner_size(max)
             .with_position(pos).with_taskbar(false).with_window_level(if pin { egui::WindowLevel::AlwaysOnTop } else { egui::WindowLevel::Normal });
         if self.shot.is_some() { b = b.with_active(false); }
         ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("webox-calling-dock"), b, |vctx, class| {
@@ -28,7 +28,7 @@ impl App {
             self.remember_rect(vctx, false);
             self.viewport_shot(vctx, "dock");
         });
-        self.round_once(2, DOCK_TITLE);
+        self.round_once(2, tr(DOCK_TITLE));
         actions
     }
 
@@ -125,7 +125,7 @@ impl App {
             let y = head.center().y;
             let mut x = head.right() - 12.0 - 16.0;
             let side = match mode { DockMode::Hovered(s) => Some(s), _ => None };
-            let (min_icon, min_tip) = match side { Some(DockSide::Left) => ("arrow-circle-left-bold", "Andocken"), Some(DockSide::Right) => ("arrow-circle-right-bold", "Andocken"), Some(DockSide::Top) => ("arrow-circle-up-bold", "Andocken"), None => ("minus-bold", "Minimieren") };
+            let (min_icon, min_tip) = match side { Some(DockSide::Left) => ("arrow-circle-left-bold", tr("Dock")), Some(DockSide::Right) => ("arrow-circle-right-bold", tr("Dock")), Some(DockSide::Top) => ("arrow-circle-up-bold", tr("Dock")), None => ("minus-bold", tr("Minimize")) };
             if ghost_at(ui, &mut self.icons, t, "dock-min", pos2(x, y), 32.0, min_icon, t.text1).on_hover_text(min_tip).clicked() {
                 if let Some(s) = side {
                     let o = outer.unwrap_or(full);
@@ -135,22 +135,22 @@ impl App {
                 } else { vctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)); }
             }
             x -= 36.0;
-            let sett = ghost_at(ui, &mut self.icons, t, "dock-settings", pos2(x, y), 32.0, "settings-bold", t.text1).on_hover_text("Einstellungen");
+            let sett = ghost_at(ui, &mut self.icons, t, "dock-settings", pos2(x, y), 32.0, "settings-bold", t.text1).on_hover_text(tr("Settings"));
             if sett.clicked() { menu_toggle(vctx, "dock-settings"); }
             x -= 36.0;
-            if !crate::ui::chrome::wayland() && ghost_at(ui, &mut self.icons, t, "dock-pin", pos2(x, y), 32.0, if pin { "pin-muted-bold" } else { "pin-bold" }, t.text1).on_hover_text(if pin { "Lösen" } else { "Anheften" }).clicked() {
+            if !crate::ui::chrome::wayland() && ghost_at(ui, &mut self.icons, t, "dock-pin", pos2(x, y), 32.0, if pin { "pin-muted-bold" } else { "pin-bold" }, t.text1).on_hover_text(if pin { tr("Unpin") } else { tr("Pin") }).clicked() {
                 self.settings[crate::ui::settings::DOCK_KEEP_IN_FRONT] = json!(!pin);
                 if self.persist_ok() { system::save_settings(&self.cfg, &self.settings); }
             }
             let entries = vec![
-                Item::new("calls", "Anrufeinstellungen").entry(), Item::new("dock", "Anruf-Dock-Einstellungen").entry(), Entry::Sep,
-                Item::new("close", "Anruf-Dock schließen (Strg + Umschalt + X)").entry(),
+                Item::new("calls", tr("Call settings")).entry(), Item::new("dock", tr("Calling dock settings")).entry(), Entry::Sep,
+                Item::new("close", format!("{} (Ctrl + Shift + X)", tr("Close calling dock"))).entry(),
             ];
             if let Some(id) = webex_menu(vctx, &mut self.icons, t, "dock-settings", sett.rect, Side::Below, Align::Right, true, &entries) {
                 match id.as_str() {
                     "close" => self.dock_close_request(),
                     other => {
-                        // Straight to Anrufe / Anruf-Dock in Settings (the page the entry names).
+                        // Straight to Calling / Calling dock in Settings (the page the entry names).
                         use crate::ui::settings::nav::Page;
                         let page = if other == "dock" { Page::CallDock } else { Page::Calling };
                         vctx.data_mut(|d| d.insert_temp(egui::Id::new("settings-goto"), page));
@@ -168,35 +168,35 @@ impl App {
                 }
                 _ => {
                     bu.add_space(40.0);
-                    bu.label(RichText::new("Keine aktiven Anrufe").font(semibold(16.0)).color(t.text1));
+                    bu.label(RichText::new(tr("No active calls")).font(semibold(16.0)).color(t.text1));
                     bu.add_space(16.0);
                     let hist = self.call.history.clone();
                     for (name, incoming, res) in hist.iter().take(8) {
-                        bu.label(RichText::new(format!("{}  {}  {}", if *incoming { "←" } else { "→" }, name, res)).size(13.0).color(t.text2));
+                        bu.label(RichText::new(format!("{}  {}  {}", if *incoming { "←" } else { "→" }, name, tr(res))).size(13.0).color(t.text2));
                     }
                 }
             }
-            // "Anruf-Dock schließen?" (dialog 402 wide, border modal-primary-border).
+            // "Close calling dock?" (dialog 402 wide, border modal-primary-border).
             if self.call.win.dock_confirm {
                 ui.painter().rect_filled(full, 0.0, Color32::from_black_alpha(120));
                 let w = 402.0_f32.min(full.width() - 24.0);
                 egui::Area::new(egui::Id::new("dock-confirm")).order(egui::Order::Foreground).fixed_pos(full.center() - Vec2::new(w / 2.0, 80.0)).show(vctx, |ui| {
                     egui::Frame::default().fill(t.tk("modal-primary-background")).stroke(Stroke::new(1.0_f32, border)).inner_margin(20).show(ui, |ui| {
                         ui.set_width(w - 42.0);
-                        ui.label(RichText::new("Anruf-Dock schließen?").font(semibold(16.0)).color(t.text1));
+                        ui.label(RichText::new(tr("Close calling dock?")).font(semibold(16.0)).color(t.text1));
                         ui.add_space(8.0);
-                        ui.label(RichText::new(crate::shortcuts::native_hint("Mit der Tastenkombination Strg+Umschalt+X können Sie es sofort wieder öffnen.")).size(14.0).color(t.text2));
+                        ui.label(RichText::new(crate::shortcuts::native_hint(tr("You can use Ctrl + Shift + X to reopen it instantly."))).size(14.0).color(t.text2));
                         ui.add_space(12.0);
                         let mut chk = self.call.win.dock_chk;
-                        ui.checkbox(&mut chk, "Nicht erneut nachfragen");
+                        ui.checkbox(&mut chk, tr("Don't ask me again"));
                         self.call.win.dock_chk = chk;
                         ui.add_space(14.0);
                         ui.horizontal(|ui| {
-                            if ui.button("Schließen").clicked() {
+                            if ui.button(tr("Close")).clicked() {
                                 if self.call.win.dock_chk { self.settings["dock_dont_ask"] = json!(true); if self.persist_ok() { system::save_settings(&self.cfg, &self.settings); } }
                                 self.dock_close_now();
                             }
-                            if ui.button("Abbrechen").clicked() { self.call.win.dock_confirm = false; }
+                            if ui.button(tr("Cancel")).clicked() { self.call.win.dock_confirm = false; }
                         });
                     });
                 });
@@ -207,7 +207,7 @@ impl App {
         a
     }
 
-    /// Closing the dock: asks first unless "Nicht erneut nachfragen" was ticked.
+    /// Closing the dock: asks first unless "Don't ask me again" was ticked.
     pub(super) fn dock_close_request(&mut self) {
         if self.settings["dock_dont_ask"].as_bool().unwrap_or(false) { self.dock_close_now(); } else { self.call.win.dock_confirm = true; }
     }
@@ -217,8 +217,8 @@ impl App {
     }
 }
 
-/// Whether a live, answered call puts the dock on screen by itself: "Anruf-Dock aktivieren" (on by default) and the main
-/// window minimised, or - with Allgemein > Multitasking ticked - none of the Webox windows in front.
+/// Whether a live, answered call puts the dock on screen by itself: "Enable calling dock" (on by default) and the main
+/// window minimised, or - with General > Multitasking ticked - none of the Webox windows in front.
 pub(super) fn dock_auto(settings: &serde_json::Value, root_min: bool, any_focus: bool) -> bool {
     let enabled = settings[crate::ui::settings::DOCK_ENABLED].as_bool().unwrap_or(true);
     let covered = settings[crate::ui::settings::DOCK_AUTO_COVERED].as_bool().unwrap_or(false);
@@ -234,10 +234,10 @@ mod tests {
         // Default: only while the main window is minimised.
         assert!(dock_auto(&json!({}), true, false));
         assert!(!dock_auto(&json!({}), false, false));
-        // Allgemein > Multitasking (the key that page writes) adds "covered by other apps".
+        // General > Multitasking (the key that page writes) adds "covered by other apps".
         assert!(dock_auto(&json!({"dock_auto_covered": true}), false, false));
         assert!(!dock_auto(&json!({"dock_auto_covered": true}), false, true));
-        // "Anruf-Dock aktivieren" off: never by itself.
+        // "Enable calling dock" off: never by itself.
         assert!(!dock_auto(&json!({"calling_dock": false, "dock_auto_covered": true}), true, false));
     }
 

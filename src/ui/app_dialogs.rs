@@ -1,6 +1,6 @@
-//! App-wide dialogs opened from the profile menu, its "Hilfe" submenu, the header, the tray and shortcuts.
+//! App-wide dialogs opened from the profile menu, its "Help" submenu, the header, the tray and shortcuts.
 //! Drawn every frame by `appwide_dialogs` (hook in frame.rs). Each is a `menu::webex_dialog` keyed by the consts below
-//! (open with `menu::menu_open(ctx, KEY)`). Texts from the German pack where it has them, else Webox's own wording.
+//! (open with `menu::menu_open(ctx, KEY)`). Texts are English sources, translated by the language packs where they have them.
 use crate::*;
 use super::menu::{self, Button};
 use super::status_time;
@@ -14,7 +14,7 @@ const PICKER: &str = "appwide-time-picker";
 pub(crate) const SESSIONS: &str = "appwide-sessions";
 pub(crate) const HIDE_FROM: &str = "appwide-hide-from";
 
-/// Opens the date/time picker for "dnd" (DND "Anpassen...") or "status" (custom status "Benutzerdefiniert").
+/// Opens the date/time picker for "dnd" (DND "Customize...") or "status" (custom status "Custom").
 pub(crate) fn open_time_picker(ctx: &egui::Context, what: &str) {
     let n = crate::i18n::now_ms();
     let (day, slot) = status_time::first_slot(n, crate::i18n::local_offset_secs(n / 1000));
@@ -41,7 +41,7 @@ impl App {
     }
 
     /// A plugin's read-only dialog (`ui.dialog`, extras/plugins/dialog.rs): its switch, a row of tabs (a disabled one greyed
-    /// out with its hint as tooltip), the selected tab's text (diff spans in green / red); "Schließen", the X and Esc close it.
+    /// out with its hint as tooltip), the selected tab's text (diff spans in green / red); "Close", the X and Esc close it.
     fn plugin_dialog(&mut self, ctx: &egui::Context, t: &Th) {
         let Some(d) = self.plugins.dialog_shown().cloned() else { self.plugins.dialog = None; return };
         let k = format!("plugin-dialog-{}", d.serial);
@@ -80,7 +80,7 @@ impl App {
                 ui.add(egui::Label::new(job).selectable(true));
             });
         };
-        let res = menu::webex_dialog(ctx, t, &k, &d.title, "", Some(&mut body), &[Button::primary("close", "Schließen")]);
+        let res = menu::webex_dialog(ctx, t, &k, &d.title, "", Some(&mut body), &[Button::primary("close", tr("Close"))]);
         ctx.data_mut(|x| { x.insert_temp(ks, on); x.insert_temp(kt, tab); });
         if res.is_some() { self.plugins.dialog = None; menu::menu_close(ctx, &k); }
     }
@@ -97,7 +97,7 @@ impl App {
         }
     }
 
-    /// Settings > Allgemein > Letzte Sitzungen > "Details anzeigen": the sessions Webox knows = this one (the device it registers,
+    /// Settings > General > Recent sessions > "View details": the sessions Webox knows = this one (the device it registers,
     /// cloud.rs `name: "WebOx on <os>"`).
     fn sessions_dialog(&mut self, ctx: &egui::Context, t: &Th) {
         if !menu::menu_is_open(ctx, SESSIONS) { return; }
@@ -106,14 +106,14 @@ impl App {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(format!("WebOx on {}", std::env::consts::OS)).font(semibold(14.5)).color(t.text1));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(RichText::new(if signed { "Diese Sitzung · aktiv" } else { "Nicht angemeldet" }).size(13.5).color(t.text2));
+                    ui.label(RichText::new(if signed { tr("This session · active") } else { tr("Not signed in") }).size(13.5).color(t.text2));
                 });
             });
         };
-        if menu::webex_dialog(ctx, t, SESSIONS, "Letzte Sitzungen", "", Some(&mut body), &[Button::primary("close", "Schließen")]).is_some() { menu::menu_close(ctx, SESSIONS); }
+        if menu::webex_dialog(ctx, t, SESSIONS, tr("Recent sessions"), "", Some(&mut body), &[Button::primary("close", tr("Close"))]).is_some() { menu::menu_close(ctx, SESSIONS); }
     }
 
-    /// Settings > Privatsphäre > "Meine Verfügbarkeit und meinen Status ausblenden" > "Hinzufügen": pick people; the list is kept in
+    /// Settings > Privacy > "Hide my availability and status" > "Add": pick people; the list is kept in
     /// the settings (`hidden_from`, person ids). Not sent to the service, so these people still see the presence (the dialog
     /// says so).
     fn hide_from_dialog(&mut self, ctx: &egui::Context, t: &Th) {
@@ -124,7 +124,7 @@ impl App {
         let people = self.people.clone();
         let mut changed = false;
         let mut body = |ui: &mut egui::Ui| {
-            ui.add(egui::TextEdit::singleline(&mut q).hint_text("Anhand von Name, Nummer oder E-Mail-Adresse hinzufügen").desired_width(f32::INFINITY)); // the header "+" pane's hint
+            ui.add(egui::TextEdit::singleline(&mut q).hint_text(tr("Add by name, number, or email")).desired_width(f32::INFINITY)); // the header "+" pane's hint
             ui.add_space(6.0);
             let ql = q.to_lowercase();
             let hits: Vec<&Person> = people.iter().filter(|p| !ql.is_empty() && (p.name.to_lowercase().contains(&ql) || p.email.to_lowercase().contains(&ql))).take(6).collect();
@@ -139,20 +139,20 @@ impl App {
                 let name = people.iter().find(|p| &p.id == id).map(|p| p.name.clone()).unwrap_or_else(|| id.clone());
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(name).size(14.0).color(t.text1));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { if ui.small_button("Entfernen").clicked() { del = Some(i); } }); // pack "Remove"
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| { if ui.small_button(tr("Remove")).clicked() { del = Some(i); } });
                 });
             }
             if let Some(i) = del { list.remove(i); changed = true; }
             ui.add_space(6.0);
-            ui.label(RichText::new("Diese Liste wird nur in Webox gespeichert; der Webex-Dienst wird nicht informiert.").size(12.5).color(t.text2));
+            ui.label(RichText::new(tr("This list is only saved in Webox; the Webex service is not told about it.")).size(12.5).color(t.text2));
         };
-        let res = menu::webex_dialog(ctx, t, HIDE_FROM, "Meine Verfügbarkeit und meinen Status ausblenden", "", Some(&mut body), &[Button::primary("close", "Fertig")]);
+        let res = menu::webex_dialog(ctx, t, HIDE_FROM, tr("Hide my availability and status"), "", Some(&mut body), &[Button::primary("close", tr("Done"))]);
         if changed { self.settings["hidden_from"] = json!(list); if self.shot.is_none() { system::save_settings(&self.cfg, &self.settings); } }
         ctx.data_mut(|d| d.insert_temp(qid, q));
         if res.is_some() { menu::menu_close(ctx, HIDE_FROM); }
     }
 
-    /// "Profil bearbeiten" (picture + name + pronouns + cover). Shown read-only: editing the name and picture is not
+    /// "Edit profile" (picture + name + pronouns + cover). Shown read-only: editing the name and picture is not
     /// implemented, so there is no Save button.
     fn edit_profile_dialog(&mut self, ctx: &egui::Context, t: &Th) {
         if !menu::menu_is_open(ctx, EDIT_PROFILE) { return; }
@@ -164,30 +164,29 @@ impl App {
                 avatar_photo(ui, icons, t, &name, 96.0, false, None, None, photo);
                 ui.add_space(20.0);
                 ui.vertical(|ui| {
-                    ui.label(RichText::new("Profilbild").font(semibold(14.0)).color(t.text1)); // pack "Profile picture"
+                    ui.label(RichText::new(tr("Profile picture")).font(semibold(14.0)).color(t.text1));
                     ui.add_space(14.0);
-                    ui.label(RichText::new("Anzeigename").font(semibold(14.0)).color(t.text1)); // pack "Display name"
+                    ui.label(RichText::new(tr("Display name")).font(semibold(14.0)).color(t.text1));
                     ui.label(RichText::new(if name.is_empty() { "—" } else { &name }).size(15.0).color(t.text1));
                     if !email.is_empty() { ui.add_space(4.0); ui.label(RichText::new(&email).size(13.5).color(t.text2)); }
                 });
             });
         };
-        if menu::webex_dialog(ctx, t, EDIT_PROFILE, "Profil bearbeiten", "", Some(&mut body), &[Button::primary("close", "Schließen")]).is_some() { menu::menu_close(ctx, EDIT_PROFILE); }
+        if menu::webex_dialog(ctx, t, EDIT_PROFILE, tr("Edit profile"), "", Some(&mut body), &[Button::primary("close", tr("Close"))]).is_some() { menu::menu_close(ctx, EDIT_PROFILE); }
     }
 
-    /// "Zustandsüberprüfung": what Webox itself knows - signed in, device registration, the connection state.
+    /// "Health Checker": what Webox itself knows - signed in, device registration, the connection state.
     fn health_dialog(&mut self, ctx: &egui::Context, t: &Th) {
         if !menu::menu_is_open(ctx, HEALTH) { return; }
         let connected = self.client.is_some() && !self.need_login;
         let registered = connected && self.settings["device"].as_str().is_some_and(|d| !d.is_empty());
         let rows: Vec<(&str, &str, bool)> = vec![
-            ("Serververbindung", if connected { "Betriebsbereit" } else { "Nicht registriert" }, connected),
-            ("Client registriert", if registered { "Registriert" } else { "Nicht registriert" }, registered),
+            (tr("Server connection"), if connected { tr("Operational") } else { tr("Not registered") }, connected),
+            (tr("Client registered"), if registered { tr("Registered") } else { tr("Not registered") }, registered),
         ];
         let ok = rows.iter().all(|r| r.2);
         let mut body = |ui: &mut egui::Ui| {
-            // "Everything looks good here!" / "One or more services are inaccessible".
-            ui.label(RichText::new(if ok { "Alles sieht gut aus!" } else { "Mindestens ein Dienst ist nicht verfügbar" }).font(semibold(15.0)).color(t.text1));
+                        ui.label(RichText::new(if ok { tr("Everything looks good here!") } else { tr("One or more services are inaccessible") }).font(semibold(15.0)).color(t.text1));
             ui.add_space(10.0);
             for (k, v, good) in &rows {
                 ui.horizontal(|ui| {
@@ -201,28 +200,28 @@ impl App {
             ui.add_space(4.0);
             ui.label(RichText::new(&self.status).size(12.5).color(t.text2));
         };
-        match menu::webex_dialog(ctx, t, HEALTH, "Zustandsüberprüfung", "", Some(&mut body), &[Button::secondary("refresh", "Aktualisieren"), Button::primary("close", "Schließen")]).as_deref() {
-            // "Aktualisieren" re-runs the read-only checks (the space list reload is the connection test).
+        match menu::webex_dialog(ctx, t, HEALTH, tr("Health Checker"), "", Some(&mut body), &[Button::secondary("refresh", tr("Refresh")), Button::primary("close", tr("Close"))]).as_deref() {
+            // "Refresh" re-runs the read-only checks (the space list reload is the connection test).
             Some("refresh") => if let Some(c) = &self.client { c.req(Req::Spaces); },
             Some(_) => menu::menu_close(ctx, HEALTH),
             None => {}
         }
     }
 
-    /// "Feedback senden": Webox uploads no logs; it offers its own log folder ("Protokolle speichern").
+    /// "Send Feedback": Webox uploads no logs; it offers its own log folder ("Save Logs").
     fn feedback_dialog(&mut self, ctx: &egui::Context, t: &Th) {
         if !menu::menu_is_open(ctx, FEEDBACK) { return; }
-        let body = "Webox sendet keine Protokolle an Cisco. Die Protokolle von Webox liegen in ihrem Einstellungsordner.";
-        match menu::webex_dialog(ctx, t, FEEDBACK, "Feedback senden", body, None, &[Button::secondary("logs", "Protokolle speichern"), Button::primary("close", "Schließen")]).as_deref() {
+        let body = tr("Webox sends no logs to Cisco. Its logs are in its settings folder.");
+        match menu::webex_dialog(ctx, t, FEEDBACK, tr("Send Feedback"), body, None, &[Button::secondary("logs", tr("Save Logs")), Button::primary("close", tr("Close"))]).as_deref() {
             Some("logs") => { system::open_folder(&self.cfg); menu::menu_close(ctx, FEEDBACK); }
             Some(_) => menu::menu_close(ctx, FEEDBACK),
             None => {}
         }
     }
 
-    /// "Mit einem Gerät verbinden" (device list → device search → code pairing). Webox finds no devices (no ultrasound / device
+    /// "Connect to a device" (device list → device search → code pairing). Webox finds no devices (no ultrasound / device
     /// search service), so the list shows the no-device state; the code page takes the 9-character code, but pairing itself is
-    /// not implemented and answers "Verbindung konnte nicht automatisch hergestellt werden".
+    /// not implemented and answers "Couldn't connect automatically".
     fn device_dialog(&mut self, ctx: &egui::Context, t: &Th) {
         if !menu::menu_is_open(ctx, DEVICE) { return; }
         let pid = egui::Id::new("device-page");
@@ -234,30 +233,30 @@ impl App {
         let mut go_code = false;
         let res = {
             let mut body = |ui: &mut egui::Ui| match page {
-                DevPage::List => { ui.label(RichText::new("Keine Geräte gefunden").size(15.0).color(t.text2)); }
+                DevPage::List => { ui.label(RichText::new(tr("No devices found")).size(15.0).color(t.text2)); }
                 DevPage::Search => {
-                    ui.add(egui::TextEdit::singleline(&mut q).hint_text("Nach einem Raum oder Gerät suchen").desired_width(f32::INFINITY));
+                    ui.add(egui::TextEdit::singleline(&mut q).hint_text(tr("Search for a room or device")).desired_width(f32::INFINITY));
                     ui.add_space(8.0);
-                    ui.label(RichText::new("Keine Geräte gefunden").size(14.0).color(t.text2));
+                    ui.label(RichText::new(tr("No devices found")).size(14.0).color(t.text2));
                     ui.add_space(8.0);
-                    let l = ui.add(egui::Label::new(RichText::new("Verbindung über neunstelligen Code herstellen").size(14.0).color(t.link)).sense(Sense::click()));
+                    let l = ui.add(egui::Label::new(RichText::new(tr("Connect using 9-character code")).size(14.0).color(t.link)).sense(Sense::click()));
                     if l.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                     if l.clicked() { go_code = true; }
                 }
                 DevPage::Code => {
-                    ui.label(RichText::new("Geben Sie den auf dem Webex-Gerät angezeigten neunstelligen Code ein.").size(14.0).color(t.text1));
+                    ui.label(RichText::new(tr("Enter the 9-character code shown on the Webex device.")).size(14.0).color(t.text1));
                     ui.add_space(8.0);
                     ui.horizontal(|ui| { for c in code.iter_mut() { ui.add(egui::TextEdit::singleline(c).char_limit(3).desired_width(60.0)); } });
                 }
-                DevPage::Failed => { ui.label(RichText::new("Verbindung konnte nicht automatisch hergestellt werden").size(15.0).color(t.text1)); }
+                DevPage::Failed => { ui.label(RichText::new(tr("Couldn't connect automatically")).size(15.0).color(t.text1)); }
             };
             let buttons: Vec<Button> = match page {
-                DevPage::List => vec![Button::secondary("close", "Schließen"), Button::primary("search", "Nach Geräten suchen")],
-                DevPage::Search => vec![Button::secondary("back", "Zurück"), Button::primary("close", "Schließen")],
-                DevPage::Code => vec![Button::secondary("back", "Zurück"), Button::primary("next", "Weiter")],
-                DevPage::Failed => vec![Button::secondary("search", "Nach Geräten suchen"), Button::primary("close", "Schließen")],
+                DevPage::List => vec![Button::secondary("close", tr("Close")), Button::primary("search", tr("Search for devices"))],
+                DevPage::Search => vec![Button::secondary("back", tr("Back")), Button::primary("close", tr("Close"))],
+                DevPage::Code => vec![Button::secondary("back", tr("Back")), Button::primary("next", tr("Next"))],
+                DevPage::Failed => vec![Button::secondary("search", tr("Search for devices")), Button::primary("close", tr("Close"))],
             };
-            menu::webex_dialog(ctx, t, DEVICE, "Mit einem Gerät verbinden", "", Some(&mut body), &buttons)
+            menu::webex_dialog(ctx, t, DEVICE, tr("Connect to a device"), "", Some(&mut body), &buttons)
         };
         let mut next = if go_code { DevPage::Code } else { page };
         match res.as_deref() {
@@ -271,7 +270,7 @@ impl App {
         ctx.data_mut(|d| { d.insert_temp(pid, next); d.insert_temp(qid, q); d.insert_temp(cid, code); });
     }
 
-    /// Date / time picker for DND "Anpassen..." and the custom status' "Benutzerdefiniert" (range: 30 minutes .. 30 days).
+    /// Date / time picker for DND "Customize..." and the custom status' "Custom" (range: 30 minutes .. 30 days).
     fn time_picker(&mut self, ctx: &egui::Context, t: &Th, now: f64) {
         if !menu::menu_is_open(ctx, PICKER) { return; }
         let what: String = ctx.data(|d| d.get_temp(egui::Id::new("picker-what"))).unwrap_or_default();
@@ -280,8 +279,8 @@ impl App {
         let n = crate::i18n::now_ms();
         let off = crate::i18n::local_offset_secs(n / 1000);
         let days: Vec<String> = (0..=status_time::MAX_DAYS as usize).map(|i| match i {
-            0 => "Heute".to_string(), // pack "Today"
-            1 => "Morgen".to_string(), // pack "Tomorrow"
+            0 => tr("Today").to_string(),
+            1 => tr("Tomorrow").to_string(),
             _ => crate::i18n::format_date_time(status_time::picked_ms(n, off, i, 0) + 12 * 3_600_000, crate::i18n::DateStyle::Date),
         }).collect();
         let slots: Vec<String> = (0..48).map(|i| format!("{:02}:{:02}", i / 2, (i % 2) * 30)).collect();
@@ -294,10 +293,10 @@ impl App {
                 ui.add_space(8.0);
                 menu::dropdown(ui, icons, t, "picker-slot", &mut slot, &slots, 110.0);
             });
-            if !ok { ui.add_space(6.0); ui.label(RichText::new("Wählen Sie einen Zeitpunkt zwischen 30 Minuten und 30 Tagen ab jetzt.").size(12.5).color(hex(0xF55868))); }
+            if !ok { ui.add_space(6.0); ui.label(RichText::new(tr("Choose a time between 30 minutes and 30 days from now.")).size(12.5).color(hex(0xF55868))); }
         };
-        let title = if what == "dnd" { "„Bitte nicht stören“ einrichten für" } else { "Status löschen nach" };
-        let res = menu::webex_dialog(ctx, t, PICKER, title, "", Some(&mut body), &[Button::secondary("cancel", "Abbrechen"), Button::primary("save", "Speichern")]);
+        let title = if what == "dnd" { tr("Set Do not disturb for") } else { tr("Clear status after") };
+        let res = menu::webex_dialog(ctx, t, PICKER, title, "", Some(&mut body), &[Button::secondary("cancel", tr("Cancel")), Button::primary("save", tr("Save"))]);
         ctx.data_mut(|d| { d.insert_temp(egui::Id::new("picker-day"), day); d.insert_temp(egui::Id::new("picker-slot"), slot); });
         match res.as_deref() {
             Some("save") if ok => { menu::menu_close(ctx, PICKER); self.time_picked(&what, until, ctx); }

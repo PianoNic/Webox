@@ -1,53 +1,53 @@
 //! Navigation model of the Settings page and the search index.
 //!
-//! Rows are (title, icon, depth); titles come from the German pack (page title = nav title). A parent row selects its own
-//! page and expands: Audio > Smart Audio, Benachrichtigungen > Nachrichten / Anrufe / Meetings, Meetings > Beitrittsoptionen /
-//! Layout / Lobby, Anrufe > Anruf-Dock / Sperrliste.
+//! Rows are (title, icon, depth); titles are English pack sources, translated when drawn (page title = nav title). A parent
+//! row selects its own page and expands: Audio > Smart Audio, Notifications > Messages / Calls / Meetings, Meetings > Join
+//! options / Layout / Lobby, Calling > Calling dock / Block list.
 //!
-//! Pages for features a plain Webex cloud account doesn't have are not shown: Konten (UC/CUCM accounts), Telefonservice
-//! (UDS/UC login), Kundenbetreuer-Benachrichtigungen (Customer Assist agents), KI-Assistent / MCP-Server / Entwickler,
-//! Video-Hintergrund.
+//! Pages for features a plain Webex cloud account doesn't have are not shown: Accounts (UC/CUCM accounts), Phone service
+//! (UDS/UC login), Customer Assist notifications, AI Assistant / MCP servers / Developer, Video background.
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub(crate) enum Page {
     #[default] General, Audio, SmartAudio, Video, Share, Notifications, NotifMessages, NotifCalls, NotifMeetings, Appearance, Accessibility, Shortcuts,
     Privacy, Messaging, Meetings, MeetJoin, MeetLayout, MeetLobby, Calling, CallDock, CallBlock, Devices, Accessories,
-    /// Oberfläche anpassen: show / hide / order UI elements (ui/customize.rs); took over the rail part of "App-Seitenleiste".
+    /// Customize the interface: show / hide / order UI elements (ui/customize.rs); took over the rail part of "App sidebar".
     Customize,
     /// Webox only: the installed plugins.
     Plugins,
 }
 
-/// (page, German title, icon, depth) in display order.
+/// (page, English title (translated with `tr` when drawn), icon, depth) in display order.
 pub(crate) const NAV: [(Page, &str, &str, u8); 25] = [
-    (Page::General, "Allgemein", "settings-regular", 0),
+    (Page::General, "General", "settings-regular", 0),
     (Page::Audio, "Audio", "speaker-regular", 0),
     (Page::SmartAudio, "Smart Audio", "audio-enhancement-regular", 1),
     (Page::Video, "Video", "video-regular", 0),
-    (Page::Share, "Freigabe von Inhalten", "share-screen-regular", 0),
-    (Page::Notifications, "Benachrichtigungen", "alert-regular", 0),
-    (Page::NotifMessages, "Nachrichtenbenachrichtigungen", "chat-regular", 1),
-    (Page::NotifCalls, "Anrufbenachrichtigungen", "handset-regular", 1),
-    (Page::NotifMeetings, "Meeting-Benachrichtigungen", "meetings-regular", 1),
-    (Page::Appearance, "Erscheinungsbild", "appearance-regular", 0),
-    (Page::Customize, "Oberfläche anpassen", "adjust-regular", 0),
-    (Page::Accessibility, "Barrierefreiheit", "accessibility-regular", 0),
-    (Page::Shortcuts, "Tastenkombinationen", "keyboard-regular", 0),
-    (Page::Privacy, "Privatfunktion", "private-regular", 0),
+    (Page::Share, "Sharing content", "share-screen-regular", 0),
+    (Page::Notifications, "Notifications", "alert-regular", 0),
+    (Page::NotifMessages, "Message Notifications", "chat-regular", 1),
+    (Page::NotifCalls, "Call Notifications", "handset-regular", 1),
+    (Page::NotifMeetings, "Meeting Notifications", "meetings-regular", 1),
+    (Page::Appearance, "Appearance", "appearance-regular", 0),
+    (Page::Customize, "Customize the interface", "adjust-regular", 0),
+    (Page::Accessibility, "Accessibility", "accessibility-regular", 0),
+    (Page::Shortcuts, "Keyboard shortcuts", "keyboard-regular", 0),
+    (Page::Privacy, "Privacy", "private-regular", 0),
     (Page::Messaging, "Messaging", "chat-regular", 0),
     (Page::Meetings, "Meetings", "meetings-regular", 0),
-    (Page::MeetJoin, "Beitrittsoptionen", "", 1),
+    (Page::MeetJoin, "Join options", "", 1),
     (Page::MeetLayout, "Layout", "", 1),
     (Page::MeetLobby, "Lobby", "", 1),
-    (Page::Calling, "Anrufe", "handset-regular", 0),
-    (Page::CallDock, "Anruf-Dock", "", 1),
-    (Page::CallBlock, "Sperrliste", "", 1),
-    (Page::Devices, "Geräte", "devices-regular", 0),
-    (Page::Accessories, "Zubehör", "headset-regular", 0),
+    (Page::Calling, "Calling", "handset-regular", 0),
+    (Page::CallDock, "Calling dock", "", 1),
+    (Page::CallBlock, "Block List", "", 1),
+    (Page::Devices, "Devices", "devices-regular", 0),
+    (Page::Accessories, "Accessories", "headset-regular", 0),
     (Page::Plugins, "Plugins", "integrations-regular", 0), // Webox only, after the Webex entries
 ];
 
-pub(crate) fn title(p: Page) -> &'static str { NAV.iter().find(|n| n.0 == p).map_or("", |n| n.1) }
+/// The page title in the active language.
+pub(crate) fn title(p: Page) -> &'static str { NAV.iter().find(|n| n.0 == p).map_or("", |n| crate::ui::widgets::tr(n.1)) }
 pub(crate) fn parent(p: Page) -> Option<Page> {
     match p {
         Page::SmartAudio => Some(Page::Audio), Page::NotifMessages | Page::NotifCalls | Page::NotifMeetings => Some(Page::Notifications),
@@ -69,98 +69,105 @@ pub(crate) fn by_name(s: &str) -> Option<Page> {
     })
 }
 
-/// Search index: (page, setting label, short description). Labels are the page's German labels.
+/// Search index: (page, setting label, short description). Labels are the page's English sources (`{{APP_NAME}}` filled
+/// and translated by [`search`]).
 pub(crate) const INDEX: &[(Page, &str, &str)] = &[
-    (Page::General, concat!(crate::app_name!(), " zusammen mit meinem Computer starten"), "Anmelden"),
-    (Page::General, "Verfügbarkeit und Status anzeigen", "Verfügbarkeit und Status"),
-    (Page::General, concat!("Verbindung von ", crate::app_name!(), " mit Microsoft Outlook herstellen"), "Outlook-Einstellungen"),
-    (Page::General, "Zielbildschirm", concat!("Was beim Öffnen von ", crate::app_name!(), " zuerst angezeigt wird")),
-    (Page::General, "Standardmäßiger Dateispeicherort", "Ordner für heruntergeladene Dateien"),
-    (Page::General, "Lokale Zeitzone", "Zeitzone für Ihr Profil und Ruhezeiten"),
-    (Page::General, "Multitasking", "Unverankertes Minifenster für Anruf oder Meeting"),
-    (Page::General, "Sprache", "Sprache der Oberfläche"),
-    (Page::General, "Beim Schließen in den Infobereich minimieren", "Fenster schließen"),
-    (Page::Audio, "Lautsprecher", "Ausgabegerät und Lautstärke"),
-    (Page::Audio, "Mikrofon", "Eingabegerät und Eingangspegel"),
-    (Page::Audio, "Klingeltöne und Warnungen", "Klingelton, Benutzerdefinierter Ton"),
-    (Page::Audio, "Windows-Signalverarbeitung umgehen", "Erweiterte Audioeinstellungen"),
-    (Page::SmartAudio, "Mikrofonaudio", "Smart Audio"),
-    (Page::SmartAudio, "Externe Audiokommunikation", "Smart Audio"),
-    (Page::Video, "Kamera", "Kameraauflösung, Helligkeit, Kontrast"),
-    (Page::Video, "Selbstansicht in Meetings", "Nur anzeigen, wenn mein Video aktiviert ist"),
-    (Page::Video, "Videoverbesserungen", "Look auffrischen"),
-    (Page::Share, "Maximale Auflösung der Inhalte", "Auflösung und Bildrate"),
-    (Page::Notifications, "Ruhezeiten", "Benachrichtigungen stummschalten"),
-    (Page::Notifications, "Desktopbenachrichtigungen anzeigen", "Benachrichtigungen"),
-    (Page::Notifications, "Nachrichtenvorschau anzeigen", "Vorschau in Benachrichtigungen"),
-    (Page::Notifications, "Benachrichtigungen in der Taskleiste", "Taskleiste blinkt"),
-    (Page::NotifMessages, "Alle Nachrichten (Standard)", "Nachrichtenbenachrichtigungen"),
-    (Page::NotifMessages, "Töne für Benachrichtigungen über Direktnachrichten", "Sounds"),
-    (Page::NotifMessages, "Töne für Bereichsbenachrichtigungen", "Sounds"),
-    (Page::NotifMessages, "Töne für Benachrichtigungen über Favoriten-Bereiche", "Sounds"),
-    (Page::NotifCalls, "Klingelton für direkte Anrufe", "Anrufbenachrichtigungen"),
-    (Page::NotifCalls, "Ton für Anrufübernahme", "Anrufübernahme"),
-    (Page::NotifMeetings, "Angesetzte Meetings", "Benachrichtigung vor Meeting-Beginn"),
-    (Page::NotifMeetings, "Einen Signalton wiedergeben, wenn ich die Stummschaltung aktiviere", "Meeting-Aktionstöne"),
-    (Page::NotifMeetings, "Ton, wenn ein Teilnehmer dem Meeting beitritt", "In-Meeting-Benachrichtigungen"),
-    (Page::Appearance, "Themen", concat!("Legen Sie fest, wie ", crate::app_name!(), " aussehen soll.")),
-    (Page::Appearance, "Standard Dunkel, Hell", "Themen"),
-    (Page::Appearance, "Bronze, Jade, Lavendel, Indigoblau", "Themen (dunkel und hell)"),
-    (Page::Appearance, "Immer dunkles Thema verwenden", "Meetings"),
-    (Page::Appearance, "Handgesten erkennen", "Meetings und Anrufe"),
-    (Page::Appearance, "Darstellungsdichte", "Standard, Kompakt"),
-    (Page::Appearance, "GIFs anhalten", "nur abspielen, wenn Webox das aktive Fenster ist"),
-    (Page::Accessibility, "Schriftgröße", "Größe der Nachrichten"),
-    (Page::Messaging, "Emoticons in Emojis umwandeln", ":) xD :D"),
-    (Page::Shortcuts, "Tastenkombinationen", "Beschreibung, Tastenkombination, Global"),
-    (Page::Privacy, "Verfügbarkeit und Status anzeigen", "Privatfunktion"),
-    (Page::Privacy, "Meine Verfügbarkeit und meinen Status ausblenden", "Personen"),
-    (Page::Messaging, "Rechtschreibprüfung aktivieren", "Sprache der Rechtschreibprüfung"),
-    (Page::Messaging, "Kompakte Ansicht anzeigen", "Bereichsliste"),
-    (Page::Messaging, "Threads", "Threads erweitern oder reduzieren"),
-    (Page::Messaging, "Lesebestätigungen", "Durch Lesebestätigungen gesehen"),
-    (Page::Messaging, "Namen automatisch eintragen", "Autovervollständigung"),
-    (Page::Messaging, "Emojis automatisch vorschlagen", "Emoji-Autovervollständigung"),
-    (Page::Messaging, "Nachrichten-Schriftgröße", "Barrierefreiheit"),
-    (Page::Meetings, "Meetings ansetzen", "Kalender und Terminplaner"),
-    (Page::Meetings, "Mein persönlicher Raum", "Link, Nummer, Gastgeber-PIN"),
-    (Page::Meetings, "Meeting vorübergehend verlassen", "Automatisch Abwesend"),
-    (Page::MeetJoin, "Mein Video bei Meeting-Beitritt übertragen", "Beitrittsoptionen"),
-    (Page::MeetJoin, "Meinen Ton nach Meeting-Beitritt ausschalten", "Beitrittsoptionen"),
-    (Page::MeetJoin, "Mich anrufen um", "Telefonnummern"),
-    (Page::MeetLayout, "Anzahl der Videos pro Seite in der Rasteransicht", "Layout"),
-    (Page::MeetLobby, "Ton für einen Teilnehmer, der in Lobbys wartet", "Lobby"),
-    (Page::Calling, "Anrufe mit eingeschaltetem Video annehmen", "Eingehende Anrufe"),
-    (Page::Calling, "Rufumleitung", "Zusätzliche Nummern für Anrufe"),
-    (Page::Calling, "Voicemail", "Zusätzliche Anrufeinstellungen"),
-    (Page::CallDock, "Anruf-Dock aktivieren", "Anruf-Dock"),
-    (Page::CallDock, "Anruf-Dock im Vordergrund beibehalten", "Fenstereinstellungen"),
-    (Page::CallBlock, "Nummer hinzufügen", "Sperrliste"),
-    (Page::Devices, "Liste aktualisieren", "Gerätesuche und -verbindung"),
-    (Page::Accessories, "Zubehör", "Headsets und Zubehör"),
-    (Page::Customize, "App-Seitenleiste", "Registerkarten ein-/ausblenden und anordnen"),
-    (Page::Customize, "Oberfläche anpassen", "Elemente ein-/ausblenden und anordnen"),
-    (Page::Customize, "Symbolleiste des Nachrichtenfelds", "Schaltflächen unter dem Nachrichtenfeld ein-/ausblenden und anordnen"),
-    (Page::Customize, "Menü „Weitere“", "Voicemail, Plugins & Themes, Info über Webox, Beschriftungen anzeigen"),
-    (Page::Customize, "Kopfzeile", "Suche, +, Mit einem Gerät verbinden, KI-Assistent ausblenden"),
-    (Page::Customize, "Registerkarten im Bereich", "Personen, Inhalt, Meetings, +Apps ausblenden"),
-    (Page::Customize, "Nachrichtenaktionen", "Reaktionen, Bearbeiten, Antworten, Weiterleiten beim Darüberfahren"),
-    (Page::Plugins, "Plugins", "Installierte Plugins aktivieren oder deaktivieren"),
-    (Page::Plugins, "Design-Plugins", "Überschreiben die Farben des gewählten Themas"),
-    (Page::Plugins, "Plugin-Ordner", "Plugins neu laden, Ordner öffnen"),
-    (Page::Plugins, "Verfügbare Plugins", "Plugins aus Repositories installieren und aktualisieren"),
-    (Page::Plugins, "Plugin-Repositories", "Repositories hinzufügen oder entfernen"),
-    (Page::Plugins, "Automatisch nach Updates suchen", "Einmal am Tag nach neuen Plugin-Versionen suchen"),
+    (Page::General, "Start {{APP_NAME}} when my computer starts", "Sign In"),
+    (Page::General, "Show availability and status", "Availability and Status"),
+    (Page::General, "Connect %1 to Microsoft Outlook", "Outlook Settings"),
+    (Page::General, "Landing screen", "What you see first when {{APP_NAME}} opens"),
+    (Page::General, "Default file location", "Folder for downloaded files"),
+    (Page::General, "Local time zone", "Time zone for your profile and quiet hours"),
+    (Page::General, "Multitasking", "Floating mini window for a call or meeting"),
+    (Page::General, "Language", "Interface language"),
+    (Page::General, "Minimize to the notification area when closing", "Close window"),
+    (Page::Audio, "Speaker", "Output device and volume"),
+    (Page::Audio, "Microphone", "Input device and input level"),
+    (Page::Audio, "Ringtones and alerts", "Ringtone, custom sound"),
+    (Page::Audio, "Bypass Windows signal processing", "Advanced audio settings"),
+    (Page::SmartAudio, "Microphone audio", "Smart Audio"),
+    (Page::SmartAudio, "External audio", "Smart Audio"),
+    (Page::Video, "Camera", "Camera resolution, brightness, contrast"),
+    (Page::Video, "Self view in meetings", "Show only when my video is on"),
+    (Page::Video, "Video enhancements", "Touch up my look"),
+    (Page::Share, "Maximum content resolution", "Resolution and frame rate"),
+    (Page::Notifications, "Quiet hours", "Mute notifications"),
+    (Page::Notifications, "Show desktop notifications", "Notifications"),
+    (Page::Notifications, "Show Message Previews", "Preview in notifications"),
+    (Page::Notifications, "Taskbar notifications", "Taskbar flashes"),
+    (Page::NotifMessages, "All messages (default)", "Message Notifications"),
+    (Page::NotifMessages, "Sounds for direct message notifications", "Sounds"),
+    (Page::NotifMessages, "Sounds for space notifications", "Sounds"),
+    (Page::NotifMessages, "Sounds for favorite space notifications", "Sounds"),
+    (Page::NotifCalls, "Direct calls ringtone", "Call Notifications"),
+    (Page::NotifCalls, "Call pickup tone", "Call pickup"),
+    (Page::NotifMeetings, "Scheduled meetings", "Notification before a meeting starts"),
+    (Page::NotifMeetings, "Play a beep when I mute", "Meeting action sounds"),
+    (Page::NotifMeetings, "Sound when a participant joins the meeting", "In-meeting notifications"),
+    (Page::Appearance, "Themes", "Choose how you want {{APP_NAME}} to look."),
+    (Page::Appearance, "Default Dark, Light", "Themes"),
+    (Page::Appearance, "Bronze, Jade, Lavender, Indigo", "Themes (dark and light)"),
+    (Page::Appearance, "Always use dark theme", "Meetings"),
+    (Page::Appearance, "Recognize hand gestures", "Meetings & Calls"),
+    (Page::Appearance, "Display density", "Default, Compact"),
+    (Page::Appearance, "Pause GIFs", "only play while Webox is the active window"),
+    (Page::Accessibility, "Font size", "Size of messages"),
+    (Page::Messaging, "Convert emoticons to emoji", ":) xD :D"),
+    (Page::Shortcuts, "Keyboard shortcuts", "Description, Shortcut, Global"),
+    (Page::Privacy, "Show availability and status", "Privacy"),
+    (Page::Privacy, "Hide my availability and status", "People"),
+    (Page::Messaging, "Enable spell check", "Spell check language"),
+    (Page::Messaging, "Show compact view", "Space list"),
+    (Page::Messaging, "Threads", "Expand or collapse threads"),
+    (Page::Messaging, "Read receipts", "Seen by Read Receipts"),
+    (Page::Messaging, "Autofill names", "Autocomplete"),
+    (Page::Messaging, "Suggest emoji automatically", "Emoji autocomplete"),
+    (Page::Messaging, "Message font size", "Accessibility"),
+    (Page::Meetings, "Schedule meetings", "Calendar and scheduler"),
+    (Page::Meetings, "My Personal Room", "Link, number, host PIN"),
+    (Page::Meetings, "Step away from meeting", "Automatically stepped away"),
+    (Page::MeetJoin, "Start my video when I join a meeting", "Join options"),
+    (Page::MeetJoin, "Mute my audio when I join a meeting", "Join options"),
+    (Page::MeetJoin, "Call me at", "Phone numbers"),
+    (Page::MeetLayout, "Number of videos per page in grid view", "Layout"),
+    (Page::MeetLobby, "Sound for participant waiting in the lobbys", "Lobby"),
+    (Page::Calling, "Answer calls with my video on", "Incoming Calls"),
+    (Page::Calling, "Call Forward", "Additional numbers to ring"),
+    (Page::Calling, "Voicemail", "Additional Call Settings"),
+    (Page::CallDock, "Turn on the calling dock", "Calling dock"),
+    (Page::CallDock, "Keep the calling dock in front", "Window settings"),
+    (Page::CallBlock, "Add a number", "Block List"),
+    (Page::Devices, "Refresh list", "Device discovery and connection"),
+    (Page::Accessories, "Accessories", "Headsets and accessories"),
+    (Page::Customize, "App sidebar", "Show, hide and order tabs"),
+    (Page::Customize, "Customize the interface", "Show, hide and order elements"),
+    (Page::Customize, "Message box toolbar", "Show, hide and order the buttons under the message box"),
+    (Page::Customize, "More menu", "Voicemail, Plugins & Themes, About Webox, Show labels"),
+    (Page::Customize, "Top bar", "Hide search, +, Connect to a device, AI Assistant"),
+    (Page::Customize, "Space tabs", "Hide People, Content, Meetings, +Apps"),
+    (Page::Customize, "Message actions", "Reactions, Edit, Reply, Forward on hover"),
+    (Page::Plugins, "Plugins", "Turn installed plugins on or off"),
+    (Page::Plugins, "Design plugins", "Override the colors of the chosen theme"),
+    (Page::Plugins, "Plugin folder", "Reload plugins, open folder"),
+    (Page::Plugins, "Available plugins", "Install and update plugins from repositories"),
+    (Page::Plugins, "Plugin repositories", "Add or remove repositories"),
+    (Page::Plugins, "Check for updates automatically", "Look for new plugin versions once a day"),
 ];
 
-/// Case-insensitive substring search over label + description, then over the elements of Oberfläche anpassen (label, group).
-pub(crate) fn search(q: &str) -> Vec<(Page, &'static str, &'static str)> {
+/// An index text in the active language (`{{APP_NAME}}` / `%1` = the app name).
+fn shown(s: &str) -> String { crate::i18n::args(&crate::i18n::tr("QObject", s), &[&crate::app_name!()]) }
+
+/// Case-insensitive substring search over label + description, then over the elements of Customize the interface (label,
+/// group). Matches the shown (translated) text and the English source. Returns the shown texts.
+pub(crate) fn search(q: &str) -> Vec<(Page, String, String)> {
     let q = q.trim().to_lowercase();
     if q.is_empty() { return vec![]; }
-    let mut v: Vec<(Page, &'static str, &'static str)> = INDEX.iter().filter(|(_, l, d)| l.to_lowercase().contains(&q) || d.to_lowercase().contains(&q)).map(|e| (e.0, e.1, e.2)).collect();
+    let hit = |s: &str| shown(s).to_lowercase().contains(&q) || s.to_lowercase().contains(&q);
+    let mut v: Vec<(Page, String, String)> = INDEX.iter().filter(|(_, l, d)| hit(l) || hit(d)).map(|e| (e.0, shown(e.1), shown(e.2))).collect();
     for g in crate::ui::customize::GROUPS {
-        for e in g.els.iter().filter(|e| e.label.to_lowercase().contains(&q)) {
-            if !v.iter().any(|r| r.0 == Page::Customize && r.1 == e.label) { v.push((Page::Customize, e.label, g.title)); }
+        for e in g.els.iter().filter(|e| hit(e.label)) {
+            let l = shown(e.label);
+            if !v.iter().any(|r| r.0 == Page::Customize && r.1 == l) { v.push((Page::Customize, l, shown(g.title))); }
         }
     }
     v
@@ -174,10 +181,10 @@ mod tests {
         for (p, t, _, d) in NAV { assert!(!t.is_empty()); assert_eq!(d == 1, parent(p).is_some(), "{t}"); }
         for (p, _, _) in INDEX { assert!(NAV.iter().any(|n| n.0 == *p)); }
         assert!(has_children(Page::Notifications) && !has_children(Page::Video));
-        assert!(search("stumm").iter().any(|e| e.0 == Page::NotifMeetings));
+        assert!(search("mute").iter().any(|e| e.0 == Page::NotifMeetings));
         assert!(search("").is_empty());
-        // Oberfläche anpassen: groups and single elements are found; the old sidebar page name still opens it.
-        for q in ["Oberfläche", "App-Seitenleiste", "GIFs hinzufügen", "Empfohlene", "Mit einem Gerät", "Whiteboards"] {
+        // Customize the interface: groups and single elements are found; the old sidebar page name still opens it.
+        for q in ["interface", "App sidebar", "Add GIFs", "Recommended", "Connect to a device", "Whiteboards"] {
             assert!(search(q).iter().any(|e| e.0 == Page::Customize), "{q}");
         }
         assert_eq!(by_name("sidebar"), Some(Page::Customize));

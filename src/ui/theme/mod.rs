@@ -1,4 +1,4 @@
-//! Themes: the ten selectable Momentum themes (Settings > Erscheinungsbild > Themen) and the `Th` palette built from their
+//! Themes: the ten selectable Momentum themes (Settings > Appearance > Themes) and the `Th` palette built from their
 //! colour tokens.
 //!
 //! A Momentum theme names a parent (MomentumBronzeDark -> BronzeDark -> Dark -> Default); every token this crate uses is
@@ -28,8 +28,8 @@ pub(crate) enum ThemeId {
 }
 
 impl ThemeId {
-    /// Picker order: Standard Dunkel, Hell, Bronze dunkel, Bronze hell, Jade dunkel, Jade hell, Lavendel dunkel, Lavendel hell,
-    /// Dunkles Indigoblau, Helles Indigoblau.
+    /// Picker order: Default Dark, Light, Bronze Dark, Bronze Light, Jade Dark, Jade Light, Lavender Dark, Lavender Light,
+    /// Indigo Dark, Indigo Light.
     pub(crate) const ALL: [ThemeId; 10] = [ThemeId::Dark, ThemeId::Light, ThemeId::BronzeDark, ThemeId::BronzeLight, ThemeId::JadeDark,
         ThemeId::JadeLight, ThemeId::LavenderDark, ThemeId::LavenderLight, ThemeId::IndigoDark, ThemeId::IndigoLight];
     /// Every theme of the token table (column order).
@@ -48,18 +48,13 @@ impl ThemeId {
         ["Default Dark", "Light", "Bronze Dark", "Bronze Light", "Jade Dark", "Jade Light", "Lavender Dark", "Lavender Light", "Indigo Dark",
          "Indigo Light", "Rose Dark", "Rose Light", "OS High Contrast"][self.idx()]
     }
-    /// The German names, used when no pack is installed.
-    pub(crate) fn german(self) -> &'static str {
-        ["Standard Dunkel", "Hell", "Bronze dunkel", "Bronze hell", "Jade dunkel", "Jade hell", "Lavendel dunkel", "Lavendel hell",
-         "Dunkles Indigoblau", "Helles Indigoblau", "Rose dunkel", "Rose hell", "Hoher Kontrast des Betriebssystems"][self.idx()]
-    }
     pub(crate) fn label(self) -> String {
-        match crate::i18n::lookup_any(self.english()) { Some(s) => s.to_string(), None => self.german().to_string() }
+        crate::ui::widgets::tr(self.english()).to_string()
     }
     pub(crate) fn is_dark(self) -> bool {
         match self { ThemeId::HighContrast => hc::window_is_dark(), _ => self.idx() % 2 == 0 }
     }
-    /// The dark theme of the same colour family (used by "Immer dunkles Thema verwenden" for calls).
+    /// The dark theme of the same colour family (used by "Always use dark theme" for calls).
     pub(crate) fn dark_variant(self) -> ThemeId { if self == ThemeId::HighContrast { self } else { ThemeId::EVERY[self.idx() & !1] } }
     /// Parses a stored value: the theme ids, and the older Webox values "dark" / "light" (kept readable; "system" = None,
     /// handled by the caller).
@@ -208,7 +203,7 @@ th! {
     outline = "wx-default-border",
     banner_a = "theme-gradient-dialog-secondary-0-background",
     banner_b = "theme-gradient-dialog-secondary-0-background",
-    /// Selected text tab ("Alle": light #C9C9C9 = black 20 % on #FBFBFB).
+    /// Selected text tab ("All": light #C9C9C9 = black 20 % on #FBFBFB).
     tab_on = "tab-active-background",
     toast_bg = "popover-primary-background",
     toast_text = "label-primary-text",

@@ -20,13 +20,13 @@ impl App {
             drafts: HashMap::new(), flags: HashSet::new(), collapsed: HashSet::new(), list_hidden: false, history: vec![], hpos: 0,
             icons: Default::default(), toasts: vec![], plugin_log: vec![], new_space: None, dial: String::new(),
             show_shortcuts: false, pending_space: a.protocol_uri.as_deref().and_then(system::space_from_uri),
-            shot: a.screenshot, frames: 0, applied: None, minimize: a.minimized,
+            shot: a.screenshot, frames: 0, applied: None, theme_cache: None, theme_sel: None, last_input: 0.0, last_pointer: None, textures_released: false, minimize: a.minimized,
             need_login: false, login_error: String::new(), email_input: String::new(), code_input: String::new(),
             pkce_verifier: String::new(), pending: None, refreshed: false,
             login_page: LoginPage::Start, config_open: false, meeting_input: String::new(), login_sized: false,
             webview: None, hwnd: None, autosignin: a.signin,
             cover: None, cover_bytes: None, photos: Default::default(),
-            compose: Compose::New, rename_input: None, add_people: false, people_filter: String::new(), open_threads: HashSet::new(), confirm_leave: None, forward_text: None, rail_wide: false, fonts_set: false, row_salt: String::new(), row_draft: false, call: Default::default(),
+            compose: Compose::New, rename_input: None, add_people: false, people_filter: String::new(), open_threads: HashSet::new(), confirm_leave: None, forward_text: None, rail_wide: false, tour: (0, 0.0), fonts_set: false, row_salt: String::new(), row_draft: false, call: Default::default(),
             sc: Default::default(),
             notify: Default::default(),
             msgx: Default::default(),
@@ -48,6 +48,7 @@ impl App {
             if let Some(s) = app.spaces.iter_mut().find(|s| s.id == "s1") { s.participants = std::iter::once(me).chain(app.people.iter().filter(|p| p.name != "Jonas Weber").cloned()).collect(); }
             app.meetings.push(Meeting { title: "Alex's Webex space: Sync".into(), start: "16:00".into(), link: "https://example.com/meet/s1".into() });
         }
+        if a.sample { ui::sample_scale::scale(&mut app); } // WEBOX_SAMPLE_SCALE: an account-sized sample for memory checks
         if a.sample { app.photos.add(ui::sample_photos::sample_photos()); if std::env::var("WEBOX_SHOT_LATE").is_err() { app.photos.add_images(ui::sample_photos::sample_images()); } app.cover_bytes = Some(ui::sample_photos::sample_banner(0)); app.photos.add_images(vec![("cover:@default".into(), ui::sample_photos::sample_banner(1)), ("cover:jonas@example.com".into(), ui::sample_photos::sample_banner(2)), ("spacecover:s6".into(), ui::sample_photos::sample_banner(0)), ("spaceavatar:s8".into(), ui::sample_photos::sample_banner(1))]); for (k, v) in ui::sample_photos::sample_last_active(ui::chrome::now_ms()) { app.photos.last_active.insert(k, v); } }
         // Startup state: nothing selected in the list, the content area shows the "Create a space" pane; no space is
         // opened, so none is marked read. Screenshot mode opens the first sample space so --sample checks stay comparable.
@@ -82,6 +83,7 @@ impl App {
         // The data API's store: what the answers change (only while a plugin uses it; app/data_sync.rs).
         let data_on = self.plugins.hub.active();
         let mut data_marks = crate::extras::data::Marks::default();
+        crate::platform::memprobe::RESPS.fetch_add(got.len(), std::sync::atomic::Ordering::Relaxed); // WEBOX_PROBE: cloud answers
         for r in got {
             if data_on {
                 data_marks.add(self.data_marks(&r));
@@ -244,9 +246,10 @@ impl App {
         self.go(self.tab, Some(id));
     }
 
-    pub(crate) fn mentions(&self, id: &str, all: bool) -> bool {
-        let needle = if all { "@all".to_string() } else { self.me.name.to_lowercase() };
-        self.messages.get(id).is_some_and(|m| m.iter().any(|m| !m.mine && m.text.to_lowercase().contains(&needle)))
+    /// Whether a message of someone else in `id` contains `needle` (lower case: my name, or "@all"). The caller lowers it once:
+    /// the list filter asks for every space each frame.
+    pub(crate) fn mentions_of(&self, id: &str, needle: &str) -> bool {
+        self.messages.get(id).is_some_and(|m| m.iter().any(|m| !m.mine && m.text.to_lowercase().contains(needle)))
     }
 
     pub(crate) fn visible(&self) -> Vec<Space> {
@@ -257,16 +260,17 @@ impl App {
     /// participants included, each frame).
     pub(crate) fn visible_idx(&self) -> Vec<usize> {
         let q = self.search.to_lowercase();
+        let me = if matches!(self.filter, Filter::Notifications | Filter::MentionMe) { self.me.name.to_lowercase() } else { String::new() };
         self.spaces.iter().enumerate().filter(|(_, s)| {
             let tab = match self.list_tab { ListTab::All => true, ListTab::Direct => s.direct, ListTab::Spaces => !s.direct, ListTab::Public => s.public };
             let f = match self.filter {
                 Filter::None => true,
-                Filter::Notifications => s.unread || self.mentions(&s.id, false),
+                Filter::Notifications => s.unread || self.mentions_of(&s.id, &me),
                 Filter::Drafts => self.drafts.get(&s.id).is_some_and(|d| !d.trim().is_empty()),
                 Filter::Unread => s.unread,
                 Filter::Favorites => s.favorite,
-                Filter::MentionMe => self.mentions(&s.id, false),
-                Filter::MentionAll => self.mentions(&s.id, true),
+                Filter::MentionMe => self.mentions_of(&s.id, &me),
+                Filter::MentionAll => self.mentions_of(&s.id, "@all"),
                 Filter::Flags => self.flags.iter().any(|f| f.0 == s.id),
             };
             !s.hidden && tab && f && (q.is_empty() || s.title.to_lowercase().contains(&q)) && self.team_sel.as_ref().is_none_or(|t| &s.team == t)
@@ -326,8 +330,25 @@ impl App {
             // only load them (14 MB from disk) when they are missing.
             if !ctx.fonts(|f| f.families().contains(&egui::FontFamily::Name("semibold".into()))) { set_fonts(ctx); }
         }
-        let light_mode = !self.theme_id(ctx).is_dark();
-        let mut t = Th::of(self.theme_id(ctx));
+        // Resolved once per change, not every frame: the theme's tokens and the design plugins' palette / accents / decorations
+        // (calls across the plugin ABI that allocate). Again when the theme, a plugin or its settings, my name or the minute
+        // changes (plugins may follow the clock), or when egui replaced the visuals (it does on a system light / dark switch);
+        // high contrast follows the system colours, so it is resolved every frame.
+        let id = self.theme_id(ctx);
+        let key = (id, self.plugins.generation, (ctx.input(|i| i.time) / 60.0) as i64, self.me.name.clone());
+        if id != ThemeId::HighContrast {
+            if let Some((k, t)) = &self.theme_cache {
+                if *k == key && Some(ctx.style().visuals.selection.stroke.color) == self.theme_sel { return *t; }
+            }
+        }
+        let t = self.resolve_theme(ctx, id);
+        self.theme_cache = Some((key, t));
+        t
+    }
+
+    fn resolve_theme(&mut self, ctx: &egui::Context, id: ThemeId) -> Th {
+        let light_mode = !id.is_dark();
+        let mut t = Th::of(id);
         // Design plugins (plugin API palette) paint over the selected theme's colours.
         if let Some(p) = self.plugins.palette() {
             let set = |c: &mut Color32, v: u32| if let Some(x) = rgba(v) { *c = x };
@@ -360,6 +381,7 @@ impl App {
             ctx.set_visuals(v);
             self.applied = Some(t);
         }
+        self.theme_sel = Some(sel);
         t
     }
 }
@@ -371,7 +393,7 @@ pub mod actions;
 pub mod files; // upload / download state shared by the UI and the cloud thread
 
 /// Whether `m` @-mentions me: a person mention with my id in its rich text, else (plain text only) my name in the text, as
-/// `App::mentions` reads it.
+/// `App::mentions_of` reads it.
 fn mentions_me(m: &crate::cloud::Message, me: &crate::cloud::Person) -> bool {
     if !m.html.is_empty() { return !me.id.is_empty() && m.html.contains(&format!("data-object-id=\"{}\"", me.id)); }
     !me.name.is_empty() && m.text.to_lowercase().contains(&me.name.to_lowercase())

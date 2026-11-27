@@ -84,14 +84,14 @@ impl App {
         webex_menu(&ctx, &mut self.icons, t, key, r, Side::Below, Align::Left, false, &entries)
     }
 
-    /// Device list as menu entries: "Systemstandard", every device (checked = current), and the saved one if unplugged.
+    /// Device list as menu entries: "System default", every device (checked = current), and the saved one if unplugged.
     fn dev_entries(list: &[Dev], cur: &str, prefix: &str) -> Vec<Entry> {
-        let mut v = vec![Item::new(&format!("{prefix}:"), "Systemstandard").checked(cur.is_empty()).entry()];
+        let mut v = vec![Item::new(&format!("{prefix}:"), tr("System default")).checked(cur.is_empty()).entry()];
         for d in list { v.push(Item::new(&format!("{prefix}:{}", d.name), if d.default { format!("{} (Standard)", d.name) } else { d.name.clone() }).checked(cur == d.name).entry()); }
-        if !cur.is_empty() && !list.iter().any(|d| d.name == cur) { v.push(Item::new("none", format!("{cur} (nicht angeschlossen)")).disabled().checked(true).entry()); }
+        if !cur.is_empty() && !list.iter().any(|d| d.name == cur) { v.push(Item::new("none", crate::trq!("%1 (not connected)", cur)).disabled().checked(true).entry()); }
         v
     }
-    fn dev_shown(cur: &str) -> String { if cur.is_empty() { "Systemstandard".into() } else { cur.into() } }
+    fn dev_shown(cur: &str) -> String { if cur.is_empty() { tr("System default").into() } else { cur.into() } }
 
     /// The microphone level bar (capture-only engine while it is on screen).
     pub(crate) fn level_bar(&mut self, ui: &mut egui::Ui, t: &Th, now: f64, width: f32) {
@@ -107,21 +107,21 @@ impl App {
         let mut c = self.choice();
         let before = c.clone();
         let (ins, outs) = (self.call.ins.clone(), self.call.outs.clone());
-        if let Some(id) = self.picker_field(ui, t, "pick-mic", "Mikrofon", &Self::dev_shown(&c.input), Self::dev_entries(&ins, &c.input, "m")) { if let Some(s) = id.strip_prefix("m:") { c.input = s.into(); } }
+        if let Some(id) = self.picker_field(ui, t, "pick-mic", tr("Microphone"), &Self::dev_shown(&c.input), Self::dev_entries(&ins, &c.input, "m")) { if let Some(s) = id.strip_prefix("m:") { c.input = s.into(); } }
         ui.add_space(4.0);
         self.level_bar(ui, t, now, 280.0);
         ui.add_space(8.0);
-        if let Some(id) = self.picker_field(ui, t, "pick-spk", "Lautsprecher", &Self::dev_shown(&c.output), Self::dev_entries(&outs, &c.output, "s")) { if let Some(s) = id.strip_prefix("s:") { c.output = s.into(); } }
+        if let Some(id) = self.picker_field(ui, t, "pick-spk", tr("Speaker"), &Self::dev_shown(&c.output), Self::dev_entries(&outs, &c.output, "s")) { if let Some(s) = id.strip_prefix("s:") { c.output = s.into(); } }
         ui.horizontal(|ui| {
-            ui.label(RichText::new("Lautstärke").size(13.0).color(t.text2));
+            ui.label(RichText::new(tr("Volume")).size(13.0).color(t.text2));
             ui.add(egui::Slider::new(&mut c.volume, 0.0..=1.0).show_value(false));
-            if ui.button("Testton").on_hover_text("Spielt einen kurzen Ton auf dem gewählten Lautsprecher").clicked() {
+            if ui.button(tr("Test tone")).on_hover_text(tr("Plays a short tone on the selected speaker")).clicked() {
                 let (out, vol) = (c.output.clone(), c.volume.max(0.1));
                 self.play_once("Tick", &out, false, vol);
             }
         });
         ui.add_space(8.0);
-        if let Some(id) = self.picker_field(ui, t, "pick-ring", "Klingeltöne und Warnungen ausgeben über", &Self::dev_shown(&c.ringtone), Self::dev_entries(&outs, &c.ringtone, "g")) { if let Some(s) = id.strip_prefix("g:") { c.ringtone = s.into(); } }
+        if let Some(id) = self.picker_field(ui, t, "pick-ring", tr("Play ringtones and alerts through"), &Self::dev_shown(&c.ringtone), Self::dev_entries(&outs, &c.ringtone, "g")) { if let Some(s) = id.strip_prefix("g:") { c.ringtone = s.into(); } }
         if c != before { self.save_choice(c); }
     }
 
@@ -130,7 +130,7 @@ impl App {
     pub(super) fn refresh_cams(&mut self, now: f64) {
         let sample = self.call.sample || self.shot.is_some();
         let v = &mut self.call.video_ui;
-        if sample { if v.cams.is_empty() { v.cams = vec![camera::CamDev { id: "sample".into(), name: "Testkamera".into() }]; } return; }
+        if sample { if v.cams.is_empty() { v.cams = vec![camera::CamDev { id: "sample".into(), name: "Test camera".into() }]; } return; }
         if let Some(rx) = &v.cam_job {
             match rx.try_recv() {
                 Ok(l) => { v.cams = l; v.cam_job = None; }
@@ -146,22 +146,22 @@ impl App {
         }
     }
 
-    /// The menu behind the video button's arrow (`CallControlBarView` VideoMenu): "Kamera" with every camera (checked = in
-    /// use; "Kamera, {{0}}, ausgewählt"), then the self view: hide / show it and mirror it.
+    /// The menu behind the video button's arrow (`CallControlBarView` VideoMenu): "Camera" with every camera (checked = in
+    /// use; "Camera, {{0}}, selected"), then the self view: hide / show it and mirror it.
     pub(crate) fn video_menu(&mut self, ctx: &egui::Context, t: &Th, now: f64, anchor: Rect) {
         if !menu_is_open(ctx, "call-video") { return; }
         self.refresh_cams(now);
         let want = self.settings["camera"].as_str().unwrap_or("").to_string();
         let cur = video::pick_camera(&self.call.video_ui.cams, &want).map(|c| c.name.clone()).unwrap_or_default();
-        let mut items = vec![Entry::Title("Kamera".into())];
-        if self.call.video_ui.cams.is_empty() { items.push(Item::new("none", "Keine Kamera gefunden").disabled().entry()); }
+        let mut items = vec![Entry::Title(tr("Camera").into())];
+        if self.call.video_ui.cams.is_empty() { items.push(Item::new("none", tr("No camera found")).disabled().entry()); }
         for c in &self.call.video_ui.cams { items.push(Item::new(&format!("cam:{}", c.name), c.name.clone()).checked(c.name == cur).entry()); }
         items.push(Entry::Sep);
         let (on, hidden, mirror) = (self.call.video.wanted, self.call.video_ui.hidden, self.self_view_mirrored());
-        // "Sie können Ihr Selbstansichtsvideo nur einblenden, wenn Ihr Video aktiviert ist."
-        let sv = if hidden { Item::new("selfview", "Selbstansichtsvideo einblenden") } else { Item::new("selfview", "Selbstansicht ausblenden") }.icon("selfview_16");
+        // "You can only show your self-view video when your video is on."
+        let sv = if hidden { Item::new("selfview", tr("Show self-view video")) } else { Item::new("selfview", tr("Hide self view")) }.icon("selfview_16");
         items.push(if on { sv.entry() } else { sv.disabled().entry() });
-        items.push(Item::new("mirror", if mirror { "Eigene Videoansicht nicht spiegeln" } else { "Eigene Videoansicht spiegeln" }).icon("mirror-regular").entry());
+        items.push(Item::new("mirror", if mirror { tr("Don't mirror my video view") } else { tr("Mirror my video view") }).icon("mirror-regular").entry());
         let Some(id) = webex_menu(ctx, &mut self.icons, t, "call-video", anchor, Side::Above, Align::Center, true, &items) else { return };
         match id.as_str() {
             "selfview" => self.call.video_ui.hidden = !hidden,
@@ -173,7 +173,7 @@ impl App {
         }
     }
 
-    /// The balloon menu behind the device button:"Mikrofon" and "Lautsprecher" lists (checked = in use) and a test tone.
+    /// The balloon menu behind the device button: "Microphone" and "Speaker" lists (checked = in use) and a test tone.
     pub(crate) fn device_menu(&mut self, ctx: &egui::Context, t: &Th, now: f64, anchor: Rect) {
         // Two levels so nothing outgrows the window: the short menu, then the device list of the chosen kind.
         let any = ["call-devices", "call-mic", "call-spk"].iter().any(|k| menu_is_open(ctx, k));
@@ -182,11 +182,11 @@ impl App {
         let c = self.choice();
         let mut c2 = c.clone();
         let short = vec![
-            Entry::Title("Audiogeräte".into()),
-            Item::new("mic", "Mikrofon wählen").icon("microphone-regular").entry(),
-            Item::new("spk", "Lautsprecher wählen").icon("speaker-regular").entry(),
+            Entry::Title(tr("Audio devices").into()),
+            Item::new("mic", tr("Choose microphone")).icon("microphone-regular").entry(),
+            Item::new("spk", tr("Choose speaker")).icon("speaker-regular").entry(),
             Entry::Sep,
-            Item::new("test", "Testton abspielen").icon("speaker-on-regular").entry(),
+            Item::new("test", tr("Play test tone")).icon("speaker-on-regular").entry(),
         ];
         if let Some(id) = webex_menu(ctx, &mut self.icons, t, "call-devices", anchor, Side::Below, Align::Center, true, &short) {
             match id.as_str() {

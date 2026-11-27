@@ -1,11 +1,11 @@
 //! UI state and dialogs of the meetings / calling domain that are not tied to one page: the data that arrives
-//! from `cloud/meetcall.rs`, the in-app scheduler ("Meeting ansetzen"), "Meeting starten" (personal room), the call window's
+//! from `cloud/meetcall.rs`, the in-app scheduler ("Schedule a meeting"), "Start meeting" (personal room), the call window's
 //! keypad (DTMF) and the sample voicemail player.
 //!
-//! Strings (German pack): "Meeting ansetzen", "Thema", "Startdatum", "Startzeit", "Endzeit", "Eingeladene Teilnehmer",
-//! "Anhand von Namen oder E-Mail-Adresse hinzufügen", "Beschreibung", "Meeting-Tagesordnung hinzufügen", "Abbrechen",
-//! "Ansetzen", "Meeting angesetzt", "Meeting konnte nicht angesetzt werden", "Tastatur", "Eingabe ausblenden" / "Eingabe
-//! anzeigen", "Schließen", "Heute", "morgen".
+//! Strings (language pack): "Schedule a meeting", "Topic", "From date", "Start time", "End time", "Invitees",
+//! "Add by name or email", "Description", "Cancel", "Schedule", "Meeting scheduled", "Unable to schedule a meeting",
+//! "Keyboard", "Close", "Today", "Tomorrow", the weekday abbreviations; Webox's own (assets/i18n/webox): "Date and time",
+//! "Add a meeting agenda", "Show input" / "Hide input", the form errors.
 #![allow(clippy::too_many_arguments)]
 use crate::cloud::meetcall::{CalEvent, CallRecord, ScheduleReq};
 use crate::i18n;
@@ -44,23 +44,23 @@ pub(crate) fn from_local(y: i64, mo: i64, d: i64, h: i64, mi: i64) -> i64 {
 pub(crate) fn hhmm(ms: i64) -> String { let p = local(ms); format!("{:02}:{:02}", p.hour, p.minute) }
 /// "16:00 - 17:00".
 pub(crate) fn time_range(a: i64, b: i64) -> String { if b > a { format!("{} - {}", hhmm(a), hhmm(b)) } else { hhmm(a) } }
-/// Day header of the meeting list: "Heute", "Morgen" or the date.
+/// Day header of the meeting list: "Today", "Tomorrow" or the date.
 pub(crate) fn day_title(ms: i64, now_ms: i64) -> String {
     let day = |t: i64| { let p = local(t); i18n::days_from_civil(p.year, p.month, p.day) };
     match day(ms) - day(now_ms) {
         0 => tr("Today").to_string(),
         1 => { let m = i18n::tr("QObject", "Tomorrow").into_owned(); let mut c = m.chars(); c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or(m) }
-        _ => { let p = local(ms); format!("{}, {:02}.{:02}.{}", ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][p.weekday as usize], p.day, p.month, p.year) }
+        _ => { let p = local(ms); format!("{}, {:02}.{:02}.{}", tr(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][p.weekday as usize]), p.day, p.month, p.year) }
     }
 }
 
-/// Parses the scheduler's date / time fields ("TT.MM.JJJJ", "HH:MM") into UTC ms (start, end). End before start = next day.
+/// Parses the scheduler's date / time fields ("DD.MM.YYYY", "HH:MM") into UTC ms (start, end). End before start = next day.
 pub(crate) fn parse_form(f: &SchedForm) -> Result<(i64, i64), &'static str> {
     let d: Vec<i64> = f.date.trim().split('.').filter(|s| !s.is_empty()).map(|s| s.trim().parse::<i64>().unwrap_or(-1)).collect();
-    let [dd, mm, yy] = d[..] else { return Err("Datum: TT.MM.JJJJ") };
-    if !(1..=31).contains(&dd) || !(1..=12).contains(&mm) || yy < 2000 { return Err("Datum: TT.MM.JJJJ") }
+    let [dd, mm, yy] = d[..] else { return Err(tr("Date: DD.MM.YYYY")) };
+    if !(1..=31).contains(&dd) || !(1..=12).contains(&mm) || yy < 2000 { return Err(tr("Date: DD.MM.YYYY")) }
     let t = |s: &str| -> Option<(i64, i64)> { let (h, m) = s.trim().split_once(':')?; let (h, m) = (h.parse::<i64>().ok()?, m.parse::<i64>().ok()?); ((0..24).contains(&h) && (0..60).contains(&m)).then_some((h, m)) };
-    let (Some((h1, m1)), Some((h2, m2))) = (t(&f.start), t(&f.end)) else { return Err("Zeit: HH:MM") };
+    let (Some((h1, m1)), Some((h2, m2))) = (t(&f.start), t(&f.end)) else { return Err(tr("Time: HH:MM")) };
     let a = from_local(yy, mm, dd, h1, m1);
     let mut b = from_local(yy, mm, dd, h2, m2);
     if b <= a { b += 86_400_000; }
@@ -96,11 +96,11 @@ impl App {
         }
     }
 
-    /// "Meeting starten": starts the personal-room meeting.
+    /// "Start meeting": starts the personal-room meeting.
     pub(crate) fn start_personal_meeting(&mut self, now: f64) {
         match &self.client {
             Some(c) => { if !self.call.mc.pmr_busy { self.call.mc.pmr_busy = true; c.req(Req::PersonalRoom); } }
-            None => self.toast("https://example.com/meet/sample (Beispiel, im Offline-Modus wird nichts geöffnet)", now),
+            None => self.toast(format!("https://example.com/meet/sample ({})", tr("sample, nothing is opened in offline mode")), now),
         }
     }
 
@@ -114,7 +114,7 @@ impl App {
             invitees: invitees.join(", "), agenda: String::new(), err: String::new() });
     }
 
-    /// Names typed in "Eingeladene Teilnehmer" -> addresses (e-mail as typed, or a contact whose name matches).
+    /// Names typed in "Invitees" -> addresses (e-mail as typed, or a contact whose name matches).
     pub(crate) fn resolve_invitees(&self, s: &str) -> Vec<String> {
         s.split([',', ';', '\n']).map(str::trim).filter(|x| !x.is_empty()).filter_map(|x| {
             if x.contains('@') { return Some(x.to_string()); }
@@ -139,19 +139,19 @@ impl App {
         let people: Vec<(String, String)> = self.people.iter().map(|p| (p.name.clone(), p.email.clone())).collect();
         let mut body = |ui: &mut egui::Ui| {
             let lab = |ui: &mut egui::Ui, s: &str| { ui.label(RichText::new(s).size(13.0).color(t.text2)); };
-            lab(ui, "Thema");
-            ui.add(egui::TextEdit::singleline(&mut f.title).hint_text("Thema").desired_width(f32::INFINITY));
+            lab(ui, tr("Topic"));
+            ui.add(egui::TextEdit::singleline(&mut f.title).hint_text(tr("Topic")).desired_width(f32::INFINITY));
             ui.add_space(8.0);
-            lab(ui, "Datum und Uhrzeit");
+            lab(ui, tr("Date and time"));
             ui.horizontal(|ui| {
-                ui.add(egui::TextEdit::singleline(&mut f.date).hint_text("Startdatum").desired_width(110.0)).on_hover_text("Startdatum");
-                ui.add(egui::TextEdit::singleline(&mut f.start).hint_text("Startzeit").desired_width(60.0)).on_hover_text("Startzeit");
+                ui.add(egui::TextEdit::singleline(&mut f.date).hint_text(tr("From date")).desired_width(110.0)).on_hover_text(tr("From date"));
+                ui.add(egui::TextEdit::singleline(&mut f.start).hint_text(tr("Start time")).desired_width(60.0)).on_hover_text(tr("Start time"));
                 ui.label("-");
-                ui.add(egui::TextEdit::singleline(&mut f.end).hint_text("Endzeit").desired_width(60.0)).on_hover_text("Endzeit");
+                ui.add(egui::TextEdit::singleline(&mut f.end).hint_text(tr("End time")).desired_width(60.0)).on_hover_text(tr("End time"));
             });
             ui.add_space(8.0);
-            lab(ui, "Eingeladene Teilnehmer");
-            ui.add(egui::TextEdit::singleline(&mut f.invitees).hint_text("Anhand von Namen oder E-Mail-Adresse hinzufügen").desired_width(f32::INFINITY));
+            lab(ui, tr("Invitees"));
+            ui.add(egui::TextEdit::singleline(&mut f.invitees).hint_text(tr("Add by name or email")).desired_width(f32::INFINITY));
             // Suggestions for the last typed name.
             let last = f.invitees.rsplit([',', ';']).next().unwrap_or("").trim().to_lowercase();
             if last.len() >= 2 && !last.contains('@') {
@@ -163,18 +163,18 @@ impl App {
                 }
             }
             ui.add_space(8.0);
-            lab(ui, "Beschreibung");
-            ui.add(egui::TextEdit::multiline(&mut f.agenda).hint_text("Meeting-Tagesordnung hinzufügen").desired_rows(3).desired_width(f32::INFINITY));
+            lab(ui, tr("Description"));
+            ui.add(egui::TextEdit::multiline(&mut f.agenda).hint_text(tr("Add a meeting agenda")).desired_rows(3).desired_width(f32::INFINITY));
             if !f.err.is_empty() { ui.add_space(6.0); ui.label(RichText::new(&f.err).size(13.0).color(t.badge)); }
-            if busy { ui.add_space(6.0); ui.label(RichText::new("Wird geladen ...").size(13.0).color(t.text2)); } // pack string
+            if busy { ui.add_space(6.0); ui.label(RichText::new(tr("Loading...")).size(13.0).color(t.text2)); }
         };
-        let r = menu::webex_dialog(ctx, t, "meetcall-schedule", "Meeting ansetzen", "", Some(&mut body),
-            &[menu::Button::secondary("cancel", "Abbrechen"), menu::Button::primary("schedule", "Ansetzen")]);
+        let r = menu::webex_dialog(ctx, t, "meetcall-schedule", tr("Schedule a meeting"), "", Some(&mut body),
+            &[menu::Button::secondary("cancel", tr("Cancel")), menu::Button::primary("schedule", tr("Schedule"))]);
         match r.as_deref() {
             Some("schedule") if !busy => {
                 match parse_form(&f) {
                     Err(e) => { f.err = e.into(); self.call.mc.sched = Some(f); }
-                    Ok(_) if f.title.trim().is_empty() => { f.err = "Thema".into(); self.call.mc.sched = Some(f); }
+                    Ok(_) if f.title.trim().is_empty() => { f.err = tr("Topic").into(); self.call.mc.sched = Some(f); }
                     Ok((a, b)) => {
                         let req = ScheduleReq { title: f.title.trim().into(), start_ms: a, end_ms: b, agenda: f.agenda.clone(), invitees: self.resolve_invitees(&f.invitees), timezone: String::new() };
                         f.err.clear();
@@ -224,11 +224,11 @@ impl App {
         let r = Rect::from_center_size(area.center(), Vec2::new(w, h));
         ui.painter().rect_filled(r, 12.0, if menu::light(t) { Color32::WHITE } else { hex(0x000000) });
         ui.painter().rect_stroke(r, 12.0, Stroke::new(1.0_f32, t.sep), egui::StrokeKind::Inside);
-        ui.painter().text(r.left_top() + Vec2::new(16.0, 20.0), egui::Align2::LEFT_CENTER, "Tastatur", semibold(15.0), t.text1);
-        let close = super::call_toast::ghost_at(ui, &mut self.icons, t, "kp-close", r.right_top() + Vec2::new(-22.0, 20.0), 28.0, "cancel-regular", t.text1).on_hover_text("Schließen");
+        ui.painter().text(r.left_top() + Vec2::new(16.0, 20.0), egui::Align2::LEFT_CENTER, tr("Keyboard"), semibold(15.0), t.text1);
+        let close = super::call_toast::ghost_at(ui, &mut self.icons, t, "kp-close", r.right_top() + Vec2::new(-22.0, 20.0), 28.0, "cancel-regular", t.text1).on_hover_text(tr("Close"));
         if close.clicked() { self.call.mc.keypad = false; }
         let eye = super::call_toast::ghost_at(ui, &mut self.icons, t, "kp-eye", r.right_top() + Vec2::new(-54.0, 20.0), 28.0, if self.call.mc.keypad_hidden { "show-regular" } else { "hide-regular" }, t.text1)
-            .on_hover_text(if self.call.mc.keypad_hidden { "Eingabe anzeigen" } else { "Eingabe ausblenden" });
+            .on_hover_text(if self.call.mc.keypad_hidden { tr("Show input") } else { tr("Hide input") });
         if eye.clicked() { self.call.mc.keypad_hidden = !self.call.mc.keypad_hidden; }
         let shown = if self.call.mc.keypad_hidden { "•".repeat(self.call.mc.keypad_text.chars().count()) } else { self.call.mc.keypad_text.clone() };
         ui.painter().text(pos2(r.center().x, r.top() + 54.0), egui::Align2::CENTER_CENTER, shown, FontId::proportional(20.0), t.text1);
@@ -282,9 +282,9 @@ pub(crate) fn sample_events(now: i64) -> Vec<CalEvent> {
         link: format!("https://example.com/meet/{id}"), recurring: rec, attendees: n, ..Default::default() };
     vec![
         e("c1", "Weekly Sync", at(0, 11, 0), 30, "Timo Steiner", "", true, 6),
-        e("c2", "Design-Review", at(0, 14, 30), 60, "Lina Roth", "Zürich, Raum 3", false, 4),
-        e("c3", "Sprint-Planung", at(1, 9, 0), 90, "Mara Lind", "", true, 8),
-        e("c4", "Kundentermin", at(3, 15, 0), 45, "Alex", "Bern", false, 3),
+        e("c2", "Design Review", at(0, 14, 30), 60, "Lina Roth", "Zurich, Room 3", false, 4),
+        e("c3", "Sprint Planning", at(1, 9, 0), 90, "Mara Lind", "", true, 8),
+        e("c4", "Customer meeting", at(3, 15, 0), 45, "Alex", "Bern", false, 3),
     ]
 }
 
@@ -296,6 +296,7 @@ mod tests {
         if !crate::assets::cisco_assets::embedded() { return; } // needs the translation packs (docs/cisco-assets.md)
         crate::i18n::set_language("de");
         let m = crate::trq!("We had a problem getting your latest Personal Room information from your {{APP_NAME}} site.");
+        crate::i18n::set_language("en"); // back to the English source so tests running alongside are not switched to German
         assert!(m.starts_with("Beim Abrufen der aktuellen Informationen zu Ihrem persönlichen Raum"), "{m}");
     }
     #[test]
@@ -314,8 +315,8 @@ mod tests {
     fn day_titles() {
         let now = from_local(2026, 11, 16, 12, 0);
         assert_eq!(day_title(now, now), tr("Today"));
-        let tomorrow = day_title(now + 86_400_000, now); // "Morgen" with the German pack, "Tomorrow" without one (tests)
+        let tomorrow = day_title(now + 86_400_000, now); // "Morgen" with the German pack, "Tomorrow" in English
         assert!(!tomorrow.contains('.') && tomorrow.chars().next().is_some_and(char::is_uppercase));
-        assert_eq!(day_title(from_local(2026, 11, 19, 9, 0), now), "Do, 19.11.2026");
+        assert_eq!(day_title(from_local(2026, 11, 19, 9, 0), now), format!("{}, 19.11.2026", tr("Thu")));
     }
 }

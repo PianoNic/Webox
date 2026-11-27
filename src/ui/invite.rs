@@ -1,9 +1,9 @@
-//! "Zu Webex einladen" (header + > third entry), shown in the content pane. Layout (pt, from the content card's top / centre):
+//! "Invite to Webex" (header + > third entry), shown in the content pane. Layout (pt, from the content card's top / centre):
 //! margins 60, a 26 pt semibold title, a 14 pt subtitle, a 480 wide search field, the message-send-320-cobalt-lime
 //! illustration (163 x 132), L pills 8 apart.
 //! Texts (language pack QObject): "Invite to {{APP_NAME}}", "Start a conversation with someone you're inviting to collaborate.",
-//! "Enter email address", "Send invite", "Close". "Einladung senden" is disabled (grey) while the field holds no e-mail address
-//! and white once one is typed (an address check). "Schließen" goes back to "Empfohlene Nachrichten"; the list selection is
+//! "Enter email address", "Send invite", "Close". "Send invite" is disabled (grey) while the field holds no e-mail address
+//! and white once one is typed (an address check). "Close" goes back to "Recommended messages"; the list selection is
 //! cleared while the pane is open.
 //! Send = the user's own click: `Req::Direct { invite: true }` (the e-mail gets a uuid with shouldCreateUsers, then the
 //! one-to-one space), see cloud/header_plus.rs.
@@ -94,7 +94,7 @@ impl App {
         let _ = (ART_TOP, ART.1);
         self.icons.art(ui, "message-send-320-cobalt-lime", Rect::from_center_size(pos2(cx, y(ART_CY)), Vec2::splat(ART.0)));
 
-        // Pills: "Einladung senden" (primary L) + "Schließen" (secondary L), centred as a pair.
+        // Pills: "Send invite" (primary L) + "Close" (secondary L), centred as a pair.
         let send_label = crate::trq!("Send invite").into_owned();
         let close_label = crate::tr!("InviteToWebexDialog", "Close").into_owned();
         let w_of = |s: &str| ui.fonts(|f| f.layout_no_wrap(s.to_string(), semibold(16.0), t.text1).size().x) + 28.0; // widths 152.8 / 92.8 pt
@@ -119,14 +119,14 @@ impl App {
             let email = s.email.trim().to_string();
             match &self.client {
                 Some(c) => { c.req(Req::Direct { who: email.clone(), text: String::new(), invite: true }); self.expect_direct(&ctx, &email); }
-                None => self.toast(format!("{} (Beispieldaten)", crate::trq!("Send invite")), now), // --sample: nothing leaves the process
+                None => self.toast(format!("{} ({})", crate::trq!("Send invite"), tr("sample data")), now), // --sample: nothing leaves the process
             }
             close_state(&ctx);
             return;
         }
         if r2.clicked() {
             close_state(&ctx);
-            // "Schließen" lands on "Empfohlene Nachrichten": its equivalent here is that filter.
+            // "Close" lands on "Recommended messages": its equivalent here is that filter.
             if let Some(id) = s.prev { if self.spaces.iter().any(|x| x.id == id) { self.open_space(id); } }
             self.filter = Filter::Notifications;
             return;

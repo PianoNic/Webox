@@ -147,7 +147,10 @@ pub fn debug_log_enabled() -> bool {
 pub fn dbg_conn(s: &str) {
     if !debug_log_enabled() { return; }
     use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(crate::system::config_dir().join("connect-debug.log")) {
+    let mut o = std::fs::OpenOptions::new();
+    o.create(true).append(true);
+    #[cfg(unix)] { use std::os::unix::fs::OpenOptionsExt; o.mode(0o600); } // the trace names spaces, people and hosts
+    if let Ok(mut f) = o.open(crate::system::config_dir().join("connect-debug.log")) {
         let ms = keepalive_now().rem_euclid(86_400_000);
         let _ = writeln!(f, "{:02}:{:02}:{:02}.{:03} {s}", ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, ms % 1000);
     }
@@ -225,6 +228,13 @@ pub(super) fn url_host(url: &str, schemes: &[&str]) -> Option<String> {
 /// `host` lies below `domain` (dot boundary, the bare domain itself doesn't count).
 pub(super) fn subdomain_of(host: &str, domain: &str) -> bool { host.strip_suffix(domain).is_some_and(|p| p.len() > 1 && p.ends_with('.')) }
 pub(super) fn hhmm(iso: &str) -> String { iso.get(11..16).unwrap_or(iso).to_string() }
+/// "HH:MM" of an ISO timestamp in the system time zone; [`hhmm`] (as written) when it doesn't parse.
+pub(super) fn local_hhmm(iso: &str) -> String {
+    let Some(ms) = crate::i18n::parse_iso_ms(iso) else { return hhmm(iso) };
+    let secs = ms.div_euclid(1000);
+    let p = crate::i18n::parts(secs + crate::i18n::local_offset_secs(secs) as i64);
+    format!("{:02}:{:02}", p.hour, p.minute)
+}
 
 #[cfg(test)]
 mod renew_tests {
@@ -238,6 +248,20 @@ mod renew_tests {
         assert!(presence_renew_due(at, at + 10 * 3_600_000), "after a night asleep: at once");
         assert!(!presence_renew_due(at, at - 540_000), "planned one period ahead");
         assert!(presence_renew_due(at, at - 540_001), "clock set back: don't wait for hours");
+    }
+}
+
+#[cfg(test)]
+mod hhmm_tests {
+    use super::local_hhmm;
+
+    #[test]
+    fn meeting_start_is_local_time() {
+        let iso = "2026-11-13T15:48:23.000Z";
+        let secs = crate::i18n::parse_iso_ms(iso).unwrap() / 1000;
+        let p = crate::i18n::parts(secs + crate::i18n::local_offset_secs(secs) as i64);
+        assert_eq!(local_hhmm(iso), format!("{:02}:{:02}", p.hour, p.minute));
+        assert_eq!(local_hhmm("soon"), "soon");
     }
 }
 

@@ -89,7 +89,8 @@ pub fn discover_idbroker(email: &str) -> String {
         let v: Value = super::tls::agent_for(&url).build().get(&url).timeout(std::time::Duration::from_secs(6)).call().ok()?.into_json().ok()?;
         let svc = v["services"].as_array()?.iter().find(|s| s["serviceName"] == "idbroker")?;
         let base = svc["serviceUrls"][0]["baseUrl"].as_str()?.trim_end_matches('/');
-        (!base.is_empty()).then(|| base.to_string())
+        // The client secret and refresh tokens go to this base: only a Webex https host.
+        super::webex_host(base).then(|| base.to_string())
     })();
     found.unwrap_or_else(|| US_BROKER.to_string())
 }

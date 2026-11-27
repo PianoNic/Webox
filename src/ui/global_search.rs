@@ -1,14 +1,14 @@
-//! The global search popup (header pill "Suchen, treffen und anrufen", Strg+F).
+//! The global search popup (header pill "Search, meet, and call", Ctrl+F).
 //!
 //! Layout: `modal-primary-background` (#000000 dark; secondary #1A1A1A / light #F7F7F7), a 2 px `modal-primary-border`
 //! (white @ 20 %), search field 28 pt high at 20 pt from the top with 24 pt side margins and a round ghost close button, tab
 //! bar 28 pt high, result list on the left (50 % of the width), a 250 pt "Filter" column on the right in
-//! `modal-secondary-background` (gray-97 #1A1A1A, radius 8) with the "Personen" and "Bereiche" filter fields; section headings
+//! `modal-secondary-background` (gray-97 #1A1A1A, radius 8) with the "People" and "Spaces" filter fields; section headings
 //! 32 pt (`text-secondary`); rows 50 pt, radius 25, 32 pt avatar at 8 pt, title 15 pt on `listitem-textprimary`, second line
-//! `text-secondary`, space activity time at the right, round S action buttons "Nachricht" / "Anrufen" / "Video" shown on
-//! hover or selection; "Mehr anzeigen" / "Weniger anzeigen" rows (28 pt, link colour); a lighthouse illustration with "Nach
-//! Personen, Bereichen und Geräten suchen" before typing, a desert illustration with "Keine Ergebnisse gefunden"; tabs
-//! Personen / Bereiche / Nachrichten. Webox's own choices: popup size / position (640 x 560 under the header), the tab "Alle",
+//! `text-secondary`, space activity time at the right, round S action buttons "Message" / "Call" / "Video" shown on
+//! hover or selection; "Show more" / "Show less" rows (28 pt, link colour); a lighthouse illustration with "Search for
+//! people, spaces and devices" before typing, a desert illustration with "No results found"; tabs
+//! People / Spaces / Messages. Webox's own choices: popup size / position (640 x 560 under the header), the tab "All",
 //! 3 results per section, the message row layout, the button colour; there is no recents list.
 //! Data: `App.people`, `App.spaces`, the loaded `App.messages`: all local, nothing is sent.
 use crate::*;
@@ -28,8 +28,8 @@ pub(crate) fn set_pill(ctx: &egui::Context, r: Rect) { ctx.data_mut(|d| d.insert
 /// `WEBOX_SHOT_SEARCH=<query>` (screenshots only): opens the popup with that query typed.
 pub(crate) fn shot_open(ctx: &egui::Context, q: &str) { set(ctx, Gs { open: true, q: q.into(), ..Default::default() }); }
 
-const LIMIT: usize = 3; // results per section before "Mehr anzeigen"
-const NAMES: [&str; 3] = ["Personen", "Bereiche", "Nachrichten"];
+const LIMIT: usize = 3; // results per section before "Show more"
+const NAMES: [&str; 3] = ["People", "Spaces", "Messages"];
 
 #[derive(Clone)]
 enum Row { Section(&'static str), Person(Person), Space(Space), Msg(String, String, Message), More(usize), Less(usize), Placeholder, NoFound }
@@ -150,13 +150,13 @@ impl App {
             let xresp = ui.interact(xr, egui::Id::new("gs-close"), Sense::click());
             if xresp.hovered() { p.circle_filled(xr.center(), 14.0, t.ink_a(0.12)); ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
             self.icons.paint(ui, "cancel_16", Rect::from_center_size(xr.center(), Vec2::splat(16.0)), text);
-            if xresp.on_hover_text("Suchdialogfeld schließen").clicked() { do_close = true; }
+            if xresp.on_hover_text(crate::ui::widgets::tr("Close search dialog")).clicked() { do_close = true; }
             // Tabs.
             let trow = Rect::from_min_size(outer.min + Vec2::new(24.0, 56.0), Vec2::new(w - 48.0, 28.0));
             let mut th = ui.new_child(egui::UiBuilder::new().max_rect(trow).layout(egui::Layout::left_to_right(egui::Align::Center)));
             th.spacing_mut().item_spacing.x = 8.0;
-            for (i, name) in ["Alle", "Personen", "Bereiche", "Nachrichten"].iter().enumerate() {
-                if text_tab(&mut th, name, g2.tab == i as u8, t, t.ink_a(0.2)).clicked() { g2.tab = i as u8; }
+            for (i, name) in ["All", "People", "Spaces", "Messages"].iter().enumerate() {
+                if text_tab(&mut th, crate::ui::widgets::tr(name), g2.tab == i as u8, t, t.ink_a(0.2)).clicked() { g2.tab = i as u8; }
             }
             // Left column: the result list (50 % of the width), right column: filters (250 pt).
             let top = outer.top() + 96.0;
@@ -172,7 +172,7 @@ impl App {
                     match row {
                         Row::Section(s) => { ui.painter().text(pos2(r.left() + 4.0, r.center().y), egui::Align2::LEFT_CENTER, s, FontId::proportional(13.5), text2); }
                         Row::Placeholder | Row::NoFound => {
-                            let (art, msg) = if matches!(row, Row::Placeholder) { ("lighthouse-filter-192-cobalt-lime", "Nach Personen, Bereichen und Geräten suchen") } else { ("desert-open-results-192-cobalt-lime", "Keine Ergebnisse gefunden") };
+                            let (art, msg) = if matches!(row, Row::Placeholder) { ("lighthouse-filter-192-cobalt-lime", crate::ui::widgets::tr("Search for people, spaces and devices")) } else { ("desert-open-results-192-cobalt-lime", crate::ui::widgets::tr("No results found")) };
                             self.icons.art(ui, art, Rect::from_center_size(pos2(r.left() + 48.0, r.center().y), Vec2::splat(80.0)));
                             let job = { let mut j = egui::text::LayoutJob::simple(msg.into(), FontId::proportional(13.5), text2, r.width() - 112.0); j.wrap.max_rows = 4; j };
                             let gal = ui.painter().layout_job(job);
@@ -183,10 +183,10 @@ impl App {
                             let on = g.sel == i || resp.hovered();
                             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); if hover_moves { g2.sel = i; } }
                             if on { ui.painter().rect_filled(r, 14.0, t.ink_a(0.05)); }
-                            if matches!(row, Row::More(_)) { ui.painter().text(pos2(r.left() + 4.0, r.center().y), egui::Align2::LEFT_CENTER, "Mehr anzeigen", FontId::proportional(14.0), t.link); }
+                            if matches!(row, Row::More(_)) { ui.painter().text(pos2(r.left() + 4.0, r.center().y), egui::Align2::LEFT_CENTER, crate::ui::widgets::tr("Show more"), FontId::proportional(14.0), t.link); }
                             else {
-                                ui.painter().text(pos2(r.left() + 4.0, r.center().y), egui::Align2::LEFT_CENTER, NAMES[*k], FontId::proportional(13.5), text2);
-                                ui.painter().text(pos2(r.right() - 4.0, r.center().y), egui::Align2::RIGHT_CENTER, "Weniger anzeigen", FontId::proportional(14.0), t.link);
+                                ui.painter().text(pos2(r.left() + 4.0, r.center().y), egui::Align2::LEFT_CENTER, crate::ui::widgets::tr(NAMES[*k]), FontId::proportional(13.5), text2);
+                                ui.painter().text(pos2(r.right() - 4.0, r.center().y), egui::Align2::RIGHT_CENTER, crate::ui::widgets::tr("Show less"), FontId::proportional(14.0), t.link);
                             }
                             if resp.clicked() || (action == Some((i, 0))) { g2.more[*k] = matches!(row, Row::More(_)); action = None; }
                         }
@@ -236,7 +236,7 @@ impl App {
                                     if bresp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); btn_hit = true; }
                                     ui.painter().circle_filled(br.center(), 14.0, if bresp.is_pointer_button_down_on() { fill[2] } else if bresp.hovered() { fill[1] } else { fill[0] });
                                     self.icons.paint(ui, icon, Rect::from_center_size(br.center(), Vec2::splat(16.0)), Color32::WHITE);
-                                    if bresp.on_hover_text(["Chat", "Anrufen", "Videoanruf"][k]).clicked() { action = Some((i, how)); }
+                                    if bresp.on_hover_text(crate::ui::widgets::tr(["Chat", "Call", "Video call"][k])).clicked() { action = Some((i, how)); }
                                 }
                             }
                             if resp.clicked() && !btn_hit { action = Some((i, 0)); }
@@ -247,16 +247,16 @@ impl App {
             // Right column: "Filter" with the two filter fields (modal-secondary-background, radius 8).
             let rc = Rect::from_min_max(pos2(outer.right() - 24.0 - 250.0 + 12.0, top), pos2(outer.right() - 14.0, top + 178.0));
             p.rect_filled(rc, 8.0, bg2);
-            p.text(pos2(rc.left() + 12.0, rc.top() + 18.0), egui::Align2::LEFT_CENTER, "Filter", FontId::proportional(14.0), text);
-            for (k, (label, val)) in [("Personen", 0), ("Bereiche", 1)].into_iter().enumerate() {
+            p.text(pos2(rc.left() + 12.0, rc.top() + 18.0), egui::Align2::LEFT_CENTER, crate::ui::widgets::tr("Filter"), FontId::proportional(14.0), text);
+            for (k, (label, val)) in [("People", 0), ("Spaces", 1)].into_iter().enumerate() {
                 let y = rc.top() + 40.0 + 68.0 * k as f32;
-                p.text(pos2(rc.left() + 12.0, y + 6.0), egui::Align2::LEFT_CENTER, label, FontId::proportional(12.5), text2);
+                p.text(pos2(rc.left() + 12.0, y + 6.0), egui::Align2::LEFT_CENTER, crate::ui::widgets::tr(label), FontId::proportional(12.5), text2);
                 let fr = Rect::from_min_size(pos2(rc.left() + 12.0, y + 16.0), Vec2::new(rc.width() - 24.0, 32.0));
                 p.rect_filled(fr, 8.0, if light { hex(0xEDEDED) } else { hex(0x3B3B3B) });
                 self.icons.paint(ui, "search-regular", Rect::from_center_size(fr.left_center() + Vec2::new(14.0, 0.0), Vec2::splat(14.0)), text2);
                 let mut fc = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(fr.min + Vec2::new(28.0, 0.0), fr.max - Vec2::new(8.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
                 let target = if val == 0 { &mut g2.pf } else { &mut g2.sf };
-                fc.add(egui::TextEdit::singleline(target).id(egui::Id::new(("gs-filter", val))).hint_text(RichText::new("Suchen").color(text2).size(13.5)).font(FontId::proportional(13.5)).frame(false).desired_width(fr.width() - 40.0));
+                fc.add(egui::TextEdit::singleline(target).id(egui::Id::new(("gs-filter", val))).hint_text(RichText::new(crate::ui::widgets::tr("Search")).color(text2).size(13.5)).font(FontId::proportional(13.5)).frame(false).desired_width(fr.width() - 40.0));
             }
         });
         if tab_before != g2.tab || g2.q != g.q || g2.pf != g.pf || g2.sf != g.sf { g2.sel = 0; } // (a non-selectable row 0 is corrected next frame)

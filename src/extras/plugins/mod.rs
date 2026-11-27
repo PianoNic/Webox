@@ -190,6 +190,9 @@ pub struct Plugins {
     i18n_gen: u64,
     /// The data API's store (extras/data/): filled by the window only while a plugin uses it.
     pub hub: crate::extras::data::Hub,
+    /// Bumped whenever a plugin is loaded, unloaded, switched or its settings change: what the plugins answer for the theme
+    /// (palette, accents, decorations) is resolved again only then (`App::apply_theme`).
+    pub(crate) generation: u64,
 }
 
 fn s(p: *const c_char) -> String { if p.is_null() { String::new() } else { unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned() } }
@@ -217,7 +220,8 @@ extern "C" fn h_set(c: Ptr, k: *const c_char, v: *const c_char) {
         let m = d.entry(c.plugin.clone()).or_insert_with(|| Value::Object(Map::new()));
         if !m.is_object() { *m = Value::Object(Map::new()); }
         m[s(k)] = Value::String(s(v));
-        let _ = std::fs::write(&c.data_file, serde_json::to_string_pretty(&*d).unwrap_or_default());
+        // Owner-only (0600 on unix): plugins keep tokens and the like here.
+        let _ = crate::system::write_private(&c.data_file, serde_json::to_string_pretty(&*d).unwrap_or_default().as_bytes());
     })
 }
 extern "C" fn h_settings(c: Ptr) -> *mut c_char { guard(c, std::ptr::null_mut(), |c| cs(&Value::Object(lock(&c.settings).clone()).to_string()).into_raw()) }
@@ -312,9 +316,11 @@ const METHODS: &[(&str, u32, Method)] = &[
     ("media.read", 1, |c, a| {
         let n = |k: &str| a.get(k).and_then(Value::as_u64).unwrap_or(0) as usize;
         let (ptr, w, h, stride) = (n("data"), n("width"), n("height"), n("stride"));
-        if ptr == 0 || w == 0 || h == 0 || stride < w * 4 { return serde_json::json!({ "error": "data, width, height, stride required" }); }
+        // Checked: wrapped products would pass the test and describe a slice other than the plugin's buffer.
+        let len = w.checked_mul(4).filter(|&row| stride >= row).and_then(|_| stride.checked_mul(h)).filter(|&l| l <= isize::MAX as usize);
+        let Some(len) = len.filter(|_| ptr != 0 && w != 0 && h != 0) else { return serde_json::json!({ "error": "data, width, height, stride required" }) };
         // SAFETY: the plugin owns `stride * height` writable bytes at `data` for the duration of the call.
-        let dst = unsafe { std::slice::from_raw_parts_mut(ptr as *mut u8, stride * h) };
+        let dst = unsafe { std::slice::from_raw_parts_mut(ptr as *mut u8, len) };
         match crate::media::camera::hook::media_read(&c.plugin, n("id") as u64, dst, w, h, stride) {
             Ok(pts) => serde_json::json!({ "pts": pts }),
             Err(e) => serde_json::json!({ "error": e }),
@@ -459,7 +465,7 @@ impl Plugins {
         let mut p = Plugins { dirs, list: vec![], out: Default::default(), install_root, data: Arc::new(Mutex::new(read_json(&data_file))),
             state_file: config.join("plugins.json"), data_file, settings_store: ps::Store::new(config), recent: Default::default(), seen: Default::default(),
             kept: Default::default(), fired: Default::default(), view: Default::default(), fed: false, confirms: Default::default(),
-            ui_thread: std::thread::current().id(), dialog: None, i18n_gen: 0, hub: Default::default() };
+            ui_thread: std::thread::current().id(), dialog: None, i18n_gen: 0, hub: Default::default(), generation: 0 };
         store::clean(&p.install_root);
         p.rescan();
         p
@@ -472,6 +478,7 @@ impl Plugins {
     }
 
     pub fn rescan(&mut self) {
+        self.generation += 1;
         for e in &mut self.list { self.hub.forget(&e.key); unload(e) }
         self.list.clear();
         let state = read_json(&self.state_file);
@@ -577,6 +584,7 @@ impl Plugins {
     }
 
     pub fn set_enabled(&mut self, i: usize, on: bool) {
+        self.generation += 1;
         // Not loaded yet (switched off at start): load it now, which starts it. A blocked or broken one (error set) stays off;
         // a repository install is hashed again first.
         let e = &self.list[i];
@@ -628,6 +636,7 @@ impl Plugins {
     /// Moves a verified download (`staged`, inside a `store::stage_dir`) into place and loads it, replacing an installed version
     /// of the same package. If the new version does not load, the old one is put back and loaded again.
     pub fn install(&mut self, inst: store::Installed, staged: &Path) -> Result<(), String> {
+        self.generation += 1;
         let discard = || { if let Some(d) = staged.parent() { let _ = std::fs::remove_dir_all(d); } };
         if crate::system::side_loading_protection() { discard(); return Err(policy_block_reason()); }
         // Hashed again on this thread right before it can run: what is loaded is exactly what was pinned.
@@ -664,6 +673,7 @@ impl Plugins {
 
     /// Unloads a repository plugin and deletes its files.
     pub fn uninstall(&mut self, pkg: &str) -> Result<(), String> {
+        self.generation += 1;
         let i = self.list.iter().position(|e| e.source.as_ref().is_some_and(|s| s.pkg == pkg)).ok_or_else(|| crate::trq!("not installed").into_owned())?;
         let mut e = self.list.remove(i);
         self.hub.forget(&e.key);

@@ -1,9 +1,9 @@
-//! The line under a person's name in lists and chat headers: "Verfügbar", "Vor 3 Stunden aktiv", "Am 13.11.2026 aktiv",
-//! "Bitte nicht stören bis 23.11.2026, 08:55", "In einem Meeting", "Abwesend bis …" …
+//! The line under a person's name in lists and chat headers: "Available", "Active 3 hours ago", "Active on 11/13/2026",
+//! "Do not disturb until 11/23/2026, 8:55 AM", "In a meeting", "Out of office until …" …
 //!
-//! The wording is the German pack's: "Do not disturb until {{0}}" → "Bitte nicht stören bis {{0}}", "Active {{0}} hours ago"
-//! → "Vor {{0}} Stunden aktiv", "Active on {{0}}" → "Am {{0}} aktiv", "Out of office until {{0}}" → "Abwesend bis {{0}}" (the
-//! pack has no "Nicht im Büro"), and so on. Dates come from `i18n::format_date_time` (local zone, the language's pattern).
+//! The wording is the packs' sources ("Do not disturb until {{0}}", "Active {{0}} hours ago", "Active on {{0}}",
+//! "Out of office until {{0}}", …), translated into the active language. Dates come from `i18n::format_date_time` (local zone,
+//! the language's pattern).
 use crate::i18n::{self, DateStyle};
 
 /// What is known about one person's presence (all of it comes from the presence services; see `cloud/people/`).
@@ -53,7 +53,7 @@ pub fn presence_detail_with(v: &PresenceView, now_ms: i64, tr: &dyn Fn(&str, &st
     }
 }
 
-/// "Jetzt aktiv" … "Vor 3 Stunden aktiv" / "Gestern aktiv" / "Am 13.11.2026 aktiv" for a person who is away.
+/// "Active now" … "Active 3 hours ago" / "Active yesterday" / "Active on 11/13/2026" for a person who is away.
 fn last_active_line(last: i64, now: i64, with: &dyn Fn(&str, String) -> String, tr: &dyn Fn(&str, &str) -> String, fmt: &dyn Fn(i64, DateStyle) -> String) -> String {
     if last <= 0 { return String::new() }
     let mins = ((now - last) / 60_000).max(0);
@@ -70,7 +70,7 @@ fn last_active_line(last: i64, now: i64, with: &dyn Fn(&str, String) -> String, 
 impl crate::App {
     /// The presence line for `p` (id, e-mail and status as the cloud thread filed them), using the live details.
     pub(crate) fn presence_line(&self, p: &crate::Person, now_ms: i64) -> String {
-        if self.settings["show_presence"] == false { return String::new(); } // "Verfügbarkeit und Status anzeigen" off
+        if self.settings["show_presence"] == false { return String::new(); } // "Show availability and status" off
         let keys = [p.id.as_str(), p.email.as_str()];
         let (until, text) = keys.iter().find_map(|k| self.photos.presence_info.get(*k).or_else(|| self.photos.presence_info.get(&k.to_lowercase())))
             .map(|(u, t)| (*u, t.as_str())).unwrap_or((None, ""));
@@ -83,64 +83,53 @@ impl crate::App {
 mod tests {
     use super::*;
 
-    /// The German pack's exact strings for everything this module asks for.
-    fn de(ctx: &str, src: &str) -> String {
-        let _ = ctx;
-        match src {
-            "Available" => "Verfügbar", "Do not disturb" => "Bitte nicht stören", "Do not disturb until {{0}}" => "Bitte nicht stören bis {{0}}",
-            "Out of Office" => "Abwesend", "Out of office until {{0}}" => "Abwesend bis {{0}}", "Busy" => "Beschäftigt", "Busy until {{0}}" => "Beschäftigt bis {{0}}",
-            "Away" => "Abwesend", "Away until {{0}}" => "Abwesend bis {{0}}", "In a meeting" => "In einem Meeting", "In a call" => "In einem Anruf", "Presenting" => "Präsentation",
-            "Active now" => "Jetzt aktiv", "Active in past few minutes" => "Aktiv in den letzten paar Minuten", "Active {{0}} minutes ago" => "Vor {{0}} Minuten aktiv",
-            "Active 1 hour ago" => "Vor 1 Stunde aktiv", "Active {{0}} hours ago" => "Vor {{0}} Stunden aktiv", "Active yesterday" => "Gestern aktiv", "Active on {{0}}" => "Am {{0}} aktiv",
-            other => other,
-        }.to_string()
-    }
-    /// German pattern in UTC+1 (winter time), independent of the machine's zone.
-    fn fmt(ms: i64, s: DateStyle) -> String { i18n::format_date_time_in(ms, 3600, s, "de") }
+    /// English: the sources as they are.
+    fn en(_ctx: &str, src: &str) -> String { src.to_string() }
+    /// English (US) pattern in UTC+1 (winter time), independent of the machine's zone.
+    fn fmt(ms: i64, s: DateStyle) -> String { i18n::format_date_time_in(ms, 3600, s, "en") }
     fn ms(iso: &str) -> i64 { i18n::parse_iso_ms(iso).unwrap() }
     fn line(status: &str, until: Option<i64>, text: &str, last: i64, now: i64) -> String {
-        presence_detail_with(&PresenceView { status, until, text, last_active: last }, now, &de, &fmt)
+        presence_detail_with(&PresenceView { status, until, text, last_active: last }, now, &en, &fmt)
     }
     const NOW: &str = "2026-11-16T10:00:00.000Z";
 
     #[test]
     fn available_and_custom_text() {
-        assert_eq!(line("active", None, "", 0, ms(NOW)), "Verfügbar");
-        assert_eq!(line("active", None, "Im Homeoffice", 0, ms(NOW)), "Im Homeoffice");
+        assert_eq!(line("active", None, "", 0, ms(NOW)), "Available");
+        assert_eq!(line("active", None, "Working from home", 0, ms(NOW)), "Working from home");
         assert_eq!(line("", None, "", 0, ms(NOW)), "");
     }
 
     #[test]
     fn do_not_disturb_with_and_without_end() {
-        // "Bitte nicht stören bis 23.11.2026, 08:55".
-        assert_eq!(line("DoNotDisturb", Some(ms("2026-11-23T07:55:00.000Z")), "", 0, ms(NOW)), "Bitte nicht stören bis 23.11.2026, 08:55");
-        assert_eq!(line("DoNotDisturb", None, "", 0, ms(NOW)), "Bitte nicht stören");
+        assert_eq!(line("DoNotDisturb", Some(ms("2026-11-23T07:55:00.000Z")), "", 0, ms(NOW)), "Do not disturb until 11/23/2026, 8:55 AM");
+        assert_eq!(line("DoNotDisturb", None, "", 0, ms(NOW)), "Do not disturb");
         // An end that has passed is no end.
-        assert_eq!(line("DoNotDisturb", Some(ms("2026-11-01T07:55:00.000Z")), "", 0, ms(NOW)), "Bitte nicht stören");
+        assert_eq!(line("DoNotDisturb", Some(ms("2026-11-01T07:55:00.000Z")), "", 0, ms(NOW)), "Do not disturb");
     }
 
     #[test]
     fn out_of_office_and_other_states() {
-        assert_eq!(line("OutOfOffice", Some(ms("2026-11-20T16:00:00.000Z")), "", 0, ms(NOW)), "Abwesend bis 20.11.2026, 17:00");
-        assert_eq!(line("OutOfOffice", None, "Urlaub", 0, ms(NOW)), "Abwesend – Urlaub");
-        assert_eq!(line("meeting", None, "", 0, ms(NOW)), "In einem Meeting");
-        assert_eq!(line("call", None, "", 0, ms(NOW)), "In einem Anruf");
-        assert_eq!(line("presenting", None, "", 0, ms(NOW)), "Präsentation");
-        assert_eq!(line("busy", Some(ms("2026-11-16T12:00:00.000Z")), "", 0, ms(NOW)), "Beschäftigt bis 16.11.2026, 13:00");
+        assert_eq!(line("OutOfOffice", Some(ms("2026-11-20T16:00:00.000Z")), "", 0, ms(NOW)), "Out of office until 11/20/2026, 5:00 PM");
+        assert_eq!(line("OutOfOffice", None, "Vacation", 0, ms(NOW)), "Out of Office – Vacation");
+        assert_eq!(line("meeting", None, "", 0, ms(NOW)), "In a meeting");
+        assert_eq!(line("call", None, "", 0, ms(NOW)), "In a call");
+        assert_eq!(line("presenting", None, "", 0, ms(NOW)), "Presenting");
+        assert_eq!(line("busy", Some(ms("2026-11-16T12:00:00.000Z")), "", 0, ms(NOW)), "Busy until 11/16/2026, 1:00 PM");
     }
 
     #[test]
     fn last_active_steps() {
         let now = ms(NOW);
         let ago = |mins: i64| line("inactive", None, "", now - mins * 60_000, now);
-        assert_eq!(ago(0), "Jetzt aktiv");
-        assert_eq!(ago(3), "Aktiv in den letzten paar Minuten");
-        assert_eq!(ago(42), "Vor 42 Minuten aktiv");
-        assert_eq!(ago(60), "Vor 1 Stunde aktiv");
-        assert_eq!(ago(3 * 60), "Vor 3 Stunden aktiv");
-        assert_eq!(ago(23 * 60 + 59), "Vor 23 Stunden aktiv");
-        assert_eq!(ago(30 * 60), "Gestern aktiv");
-        assert_eq!(line("inactive", None, "", ms("2026-11-13T13:37:00.000Z"), now), "Am 13.11.2026 aktiv");
+        assert_eq!(ago(0), "Active now");
+        assert_eq!(ago(3), "Active in past few minutes");
+        assert_eq!(ago(42), "Active 42 minutes ago");
+        assert_eq!(ago(60), "Active 1 hour ago");
+        assert_eq!(ago(3 * 60), "Active 3 hours ago");
+        assert_eq!(ago(23 * 60 + 59), "Active 23 hours ago");
+        assert_eq!(ago(30 * 60), "Active yesterday");
+        assert_eq!(line("inactive", None, "", ms("2026-11-13T13:37:00.000Z"), now), "Active on 11/13/2026");
         assert_eq!(line("inactive", None, "", 0, now), "");
     }
 }

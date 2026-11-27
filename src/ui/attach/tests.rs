@@ -1,8 +1,10 @@
 use super::*;
 #[test]
 fn strip_text_and_progress() {
-    assert_eq!(uploading_parts(&["a.pdf".into()]), ("a.pdf".into(), " wird hochgeladen".into()));
-    assert_eq!(uploading_parts(&["a.pdf".into(), "b.png".into(), "c".into()]).0, "a.pdf (+2)");
+    let (before, name, after) = uploading_parts(&["a.pdf".into()]);
+    assert_eq!(name, "a.pdf");
+    assert_eq!(format!("{before}<b>{{{{0}}}}</b>{after}"), tr("Uploading <b>{{0}}</b>"));
+    assert_eq!(uploading_parts(&["a.pdf".into(), "b.png".into(), "c".into()]).1, "a.pdf (+2)");
     assert_eq!(percent(0, 0), 0);
     assert_eq!(percent(50, 200), 25);
     assert_eq!(percent(300, 200), 100);

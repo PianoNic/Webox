@@ -47,11 +47,11 @@ impl App {
         let sr = Rect::from_center_size(pos2(title_g.right() + 21.0, banner.top() + dm.banner_actions_y), Vec2::splat(24.0));
         let sresp = ui.interact(sr, ui.id().with("fav-star"), Sense::click());
         self.icons.paint(ui, if space.favorite { "favorite-filled" } else { "favorite-regular" }, Rect::from_center_size(sr.center(), Vec2::splat(17.0)), if space.favorite { t.star } else { t.text2 });
-        if sresp.on_hover_text(crate::shortcuts::native_hint("Favorit (Strg+Umschalt+F)")).clicked() { self.set_favorite(&space.id, !space.favorite) }
+        if sresp.on_hover_text(crate::shortcuts::native_hint(&format!("{} (Ctrl+Shift+F)", tr("Favorite")))).clicked() { self.set_favorite(&space.id, !space.favorite) }
         let line = person.as_ref().map(|p| self.person_line(p, super::chrome::now_ms()));
         let (sub, sub_col) = header_subline(t, line, &space, &self.teams, t.text2);
         if !sub.is_empty() { ui.painter().text(pos2(banner.left() + 21.0, banner.top() + dm.banner_sub_y), egui::Align2::LEFT_CENTER, sub, FontId::proportional(13.0), sub_col); }
-        // Top-right actions: a group space shows the calendar button and the grey "Treffen" pill; a direct space shows the round
+        // Top-right actions: a group space shows the calendar button and the grey "Meet" pill; a direct space shows the round
         // action buttons.
         let cy = banner.top() + dm.banner_actions_y;
         if space.direct {
@@ -86,22 +86,22 @@ impl App {
                 if resp.hovered() && !closed { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 resp
             };
-            // Tooltips: "Video call" (PhoneWidgetBody "Videoanruf"), "Audio Call", "Screen Share", "Schedule a meeting. Share a link and
+            // Tooltips: "Video call" (PhoneWidgetBody), "Audio Call", "Screen Share", "Schedule a meeting. Share a link and
             // meet later". All three call buttons place the 1:1 call through the guarded call path (`start_call_with`); the video
             // button starts it with our camera on.
             let peer = person.as_ref().filter(|p| !p.email.is_empty()).map(|p| (p.email.clone(), p.name.clone()))
                 .or_else(|| space.participants.iter().find(|p| !p.email.is_empty() && !p.email.eq_ignore_ascii_case(&self.me.email)).map(|p| (p.email.clone(), p.name.clone())));
             let mut call_peer = None; // Some(with video)
-            if put(self, ui, 0).on_hover_text("Videoanruf").clicked() { call_peer = Some(true); }
-            if put(self, ui, 1).on_hover_text("Audio-Anruf").clicked() { call_peer = Some(false); }
-            if put(self, ui, 2).on_hover_text("Bildschirmfreigabe").clicked() { call_peer = Some(false); }
+            if put(self, ui, 0).on_hover_text(tr("Video call")).clicked() { call_peer = Some(true); }
+            if put(self, ui, 1).on_hover_text(tr("Audio call")).clicked() { call_peer = Some(false); }
+            if put(self, ui, 2).on_hover_text(tr("Screen share")).clicked() { call_peer = Some(false); }
             if let Some(video) = call_peer { match &peer { Some((e, n)) => self.start_call_with(e, n, now, video), None => self.toast(crate::cloud::locus::call_allowed("", None).err().unwrap_or_default(), now) } }
-            if put(self, ui, 3).on_hover_text("Setzen Sie ein Meeting an. Link teilen und später treffen").clicked() {
+            if put(self, ui, 3).on_hover_text(tr("Schedule a meeting. Share the link and meet later")).clicked() {
                 let inv: Vec<String> = peer.iter().map(|(e, _)| e.clone()).collect();
                 self.open_scheduler(&space.title, &inv);
             }
-            if put(self, ui, 4).on_hover_text("KI-Zusammenfassung").clicked() { self.toast("Die KI-Zusammenfassung ist in dieser Version nicht verfügbar", now) }        } else {
-            // "Treffen" starts the space's meeting; while one runs it is the green "Beitreten" ("Meeting läuft"). Both join the
+            if put(self, ui, 4).on_hover_text(tr("AI summary")).clicked() { self.toast(tr("The AI summary is not available in this version"), now) }        } else {
+            // "Meet" starts the space's meeting; while one runs it is the green "Join" ("Meeting in progress"). Both join the
             // space's meeting through its locus (cloud/locus/session.rs `join_space`); audio only.
             let (label, tip) = meet_pill(space.meeting);
             let galley = ui.painter().layout_no_wrap(label.to_string(), FontId::proportional(14.5), Color32::WHITE);
@@ -121,7 +121,7 @@ impl App {
             let text = if in_call { t.tk("button-primary-text:disabled") } else if space.meeting { Color32::WHITE } else { t.white_btn_text };
             ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, label, FontId::proportional(14.5), text);
             if presp.hovered() && !in_call { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            if presp.on_hover_text(if in_call { "Es läuft bereits ein Anruf." } else { tip }).clicked() { self.join_space_meeting(&space, now); }
+            if presp.on_hover_text(if in_call { tr("A call is already in progress.") } else { tip }).clicked() { self.join_space_meeting(&space, now); }
             // A 28 pt round S button, 6 pt before the pill.
             let cal = Rect::from_center_size(pos2(pill.left() - 6.0 - 14.0, cy), Vec2::splat(28.0));
             let cresp = ui.interact(cal, ui.id().with("cal-btn"), Sense::click());
@@ -129,7 +129,7 @@ impl App {
             ui.painter().circle_stroke(cal.center(), 13.5, Stroke::new(1.0_f32, t.tk("button-secondary-border:disabled")));
             self.icons.paint(ui, "calendar-add-regular", Rect::from_center_size(cal.center(), Vec2::splat(15.0)), t.ink_a(0.8));
             // The in-app scheduler with the space's people invited ("Schedule a meeting. Share a link and meet later").
-            if cresp.on_hover_text("Setzen Sie ein Meeting an. Link teilen und später treffen").clicked() {
+            if cresp.on_hover_text(tr("Schedule a meeting. Share the link and meet later")).clicked() {
                 let inv: Vec<String> = space.participants.iter().filter(|p| !p.email.is_empty() && !p.email.eq_ignore_ascii_case(&self.me.email)).map(|p| p.email.clone()).collect();
                 self.open_scheduler(&space.title, &inv);
             }
@@ -142,12 +142,12 @@ impl App {
         h.spacing_mut().item_spacing.x = 12.0;
         h.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
-            // Direct chat = Nachrichten / Profil / Inhalt / Meetings / +Apps; space = Nachrichten / Personen (N) / Inhalt / Meetings /
-            // +Apps ("Personen (N)" = "People (%1)").
+            // Direct chat = Messages / Profile / Content / Meetings / +Apps; space = Messages / People (N) / Content / Meetings /
+            // +Apps ("People (N)").
             let second = if space.direct { (ConvTab::Profile, tr("Profile").to_string()) } else if space.participants.is_empty() { (ConvTab::People, tr("People").to_string()) } else { (ConvTab::People, format!("{} ({})", tr("People"), space.participants.len())) };
             for (ct, name) in [(ConvTab::Messages, tr("Messages").to_string()), second, (ConvTab::Content, tr("Content").to_string()), (ConvTab::Meetings, "Meetings".to_string()), (ConvTab::Apps, tr("Apps").to_string())] {
-                if space.closed && ct == ConvTab::Profile { continue; } // closed chat: no Profil tab
-                // Settings > Oberfläche anpassen; the open tab stays visible until another one is picked.
+                if space.closed && ct == ConvTab::Profile { continue; } // closed chat: no Profile tab
+                // Settings > Customize the interface; the open tab stays visible until another one is picked.
                 let key = match ct { ConvTab::Profile | ConvTab::People => "people", ConvTab::Content => "content", ConvTab::Meetings => "meetings", ConvTab::Apps => "apps", ConvTab::Messages => "" };
                 if !key.is_empty() && self.conv_tab != ct && !self.ui_shown(&super::customize::SPACE_TABS, key) { continue; }
                 if text_tab(ui, &name, self.conv_tab == ct, t, t.tab_on).clicked() { self.conv_tab = ct }
@@ -155,13 +155,13 @@ impl App {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 9.0;
                 ui.add_space(27.0 - 17.0);
-                let gear = self.icons.button(ui, "settings-regular", 28.0, 17.0, t.text1, t.tab_on).on_hover_text("Bereichseinstellungen");
+                let gear = self.icons.button(ui, "settings-regular", 28.0, 17.0, t.text1, t.tab_on).on_hover_text(tr("Space settings"));
                 if gear.clicked() { super::menu::menu_toggle(ui.ctx(), "gear"); }
                 gear_rect = gear.rect;
-                // search = in-conversation search (ui/space_tabs/), pin list = "Angeheftete Nachrichten" popover
-                let sbtn = self.icons.button(ui, "search-regular", 28.0, 17.0, t.text1, t.tab_on).on_hover_text("Im Bereich suchen");
+                // search = in-conversation search (ui/space_tabs/), pin list = "Pinned messages" popover
+                let sbtn = self.icons.button(ui, "search-regular", 28.0, 17.0, t.text1, t.tab_on).on_hover_text(tr("Search in space"));
                 if sbtn.clicked() { self.conv_tab = ConvTab::Messages; super::space_tabs::find_toggle(ui.ctx(), &space.id); }
-                let pbtn = self.icons.button(ui, "pin-list-regular", 28.0, 17.0, t.text1, t.tab_on).on_hover_text("Angeheftete Nachrichten anzeigen");
+                let pbtn = self.icons.button(ui, "pin-list-regular", 28.0, 17.0, t.text1, t.tab_on).on_hover_text(tr("View pinned messages"));
                 if pbtn.clicked() { super::space_tabs::pins_toggle(ui.ctx(), &space.id); }
                 pin_rect = pbtn.rect;
             });
@@ -202,19 +202,19 @@ impl App {
     }
 }
 
-/// The group space header's meeting pill: "Treffen" ("Meet") starts the space's meeting, "Beitreten" ("Join") joins the
-/// one in progress; the tooltip is the official one ("Laufendes Meeting" = "Meeting in progress").
+/// The group space header's meeting pill: "Meet" starts the space's meeting, "Join" joins the
+/// one in progress; the tooltip is the official one ("Meeting in progress").
 pub(crate) fn meet_pill(meeting: bool) -> (&'static str, &'static str) {
-    if meeting { (tr("Join"), tr("Meeting in progress")) } else { (tr("Meet"), "Meeting im Bereich starten") }
+    if meeting { (tr("Join"), tr("Meeting in progress")) } else { (tr("Meet"), tr("Start a meeting in the space")) }
 }
 
 impl App {
-    /// "Treffen" / "Beitreten": joins (or starts) the group space's meeting; the call window shows it under the space's name.
+    /// "Meet" / "Join": joins (or starts) the group space's meeting; the call window shows it under the space's name.
     pub(crate) fn join_space_meeting(&mut self, space: &Space, now: f64) {
         if space.direct { return; }
-        if self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none()) { self.toast("Es läuft bereits ein Anruf.", now); return; }
+        if self.call.cur.as_ref().is_some_and(|c| c.ended_at.is_none()) { self.toast(tr("A call is already in progress."), now); return; }
         let choice = self.choice();
-        if self.client.is_none() { self.toast("Nicht verbunden", now); return; }
+        if self.client.is_none() { self.toast(tr("Not connected"), now); return; }
         self.prime_video(false); // the space meeting starts with the camera off; the video button turns it on
         let Some(c) = &self.client else { return };
         c.req(Req::Call(crate::cloud::locus::CallReq::JoinSpace(space.id.clone(), choice)));
@@ -243,7 +243,7 @@ pub(crate) fn header_subline(t: &Th, person_line: Option<String>, space: &Space,
 mod header_tests {
     use super::*;
 
-    /// A group space offers "Treffen" (Meet); with a meeting in progress it is "Beitreten" (Join) with the official
+    /// A group space offers "Meet"; with a meeting in progress it is "Join" with the official
     /// "Meeting in progress" tooltip. Both are enabled now (the pill was a disabled placeholder).
     #[test]
     fn the_meet_pill_turns_into_join_while_a_meeting_runs() {
@@ -257,7 +257,7 @@ mod header_tests {
         let grey = Color32::GRAY;
         let t = crate::dark();
         let teams = vec![Team { id: "t".into(), name: "Product Team".into(), color: Some((0x12, 0x34, 0x56)) }];
-        let general = Space { id: "t".into(), team: "t".into(), title: "Allgemein".into(), ..Default::default() };
+        let general = Space { id: "t".into(), team: "t".into(), title: "General".into(), ..Default::default() };
         assert_eq!(header_subline(&t, None, &general, &teams, grey), ("Product Team".to_string(), team_tones(&t, Some((0x12, 0x34, 0x56)), "t").1));
         let other = Space { id: "s".into(), team: "t".into(), ..Default::default() };
         assert_eq!(header_subline(&t, None, &other, &teams, grey).0, "Product Team");
@@ -266,6 +266,6 @@ mod header_tests {
         let unnamed = vec![Team { id: "t".into(), name: String::new(), color: None }];
         assert_eq!(header_subline(&t, None, &general, &unnamed, grey).0, "");
         // A direct chat keeps its grey presence line.
-        assert_eq!(header_subline(&t, Some("Verfügbar".into()), &Space { direct: true, ..Default::default() }, &teams, grey), ("Verfügbar".to_string(), grey));
+        assert_eq!(header_subline(&t, Some("Available".into()), &Space { direct: true, ..Default::default() }, &teams, grey), ("Available".to_string(), grey));
     }
 }

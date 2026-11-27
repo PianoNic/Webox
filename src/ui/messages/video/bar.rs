@@ -64,7 +64,7 @@ impl App {
         }
         let att = Attachment { key: key.clone(), name: name.clone(), ..Default::default() };
         let shown = shown_file(&att);
-        if ghost(self, ui, dl_r, if shown.is_some() { "open-in-folder-regular" } else { "download-regular" }, if shown.is_some() { "In Ordner anzeigen" } else { "Herunterladen" }, "dl").clicked() {
+        if ghost(self, ui, dl_r, if shown.is_some() { "open-in-folder-regular" } else { "download-regular" }, if shown.is_some() { crate::ui::widgets::tr("Show in folder") } else { crate::ui::widgets::tr("Download") }, "dl").clicked() {
             match shown { Some(f) => fs_::show_in_folder(&f), None => { let now = ui.input(|i| i.time); self.video_download(&ctx, &att, now); } }
         }
         // time label and seek slider

@@ -4,7 +4,7 @@
 //! One check per frame, before the window is drawn (ui/frame.rs).
 use crate::*;
 
-/// The settings key ("Beim Tippen automatisch ins Nachrichtenfeld schreiben", Settings > Messaging).
+/// The settings key ("Type into the message field automatically", Settings > Messaging).
 pub(crate) const KEY: &str = "type_to_composer";
 const COMPOSER: &str = "composer-edit"; // ui/composer/
 const DRAWN: &str = "type-focus-drawn";

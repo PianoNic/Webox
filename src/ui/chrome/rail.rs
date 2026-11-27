@@ -2,7 +2,7 @@
 #![allow(clippy::too_many_arguments)]
 use super::*;
 
-/// The rail tab of a Settings > Oberfläche anpassen rail id (`RAIL` in main.rs: tab, icons, label).
+/// The rail tab of a Settings > Customize the interface rail id (`RAIL` in main.rs: tab, icons, label).
 pub(crate) fn rail_tab(id: &str) -> Option<(Tab, &'static str, &'static str, &'static str)> {
     let tab = match id { "messaging" => Tab::Messaging, "meetings" => Tab::Meetings, "calling" => Tab::Calling, "whiteboards" => Tab::Whiteboards, "contacts" => Tab::Contacts, "teams" => Tab::Teams, _ => return None };
     RAIL.iter().find(|r| r.0 == tab).copied()
@@ -61,7 +61,7 @@ impl App {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
             let unread = self.spaces.iter().any(|s| s.unread);
             let missed = self.missed_badge();
-            // Settings > Oberfläche anpassen: the entries in the user's order, hidden ones left out (they move into the "…" menu).
+            // Settings > Customize the interface: the entries in the user's order, hidden ones left out (they move into the "…" menu).
             use crate::ui::customize::{self as cz, RAIL as G};
             let mut more_rect = None;
             for e in cz::visible(&self.settings, &G) {
@@ -74,7 +74,7 @@ impl App {
                     "more" => { more_rect = Some(self.rail_more(ui, ctx, t, h)); ui.add_space(gap); }
                     id => if let Some((tab, off, on_icon, label)) = rail_tab(id) {
                         let on = self.tab == tab;
-                        // Messaging: a dot for unread spaces. Anrufe: the number of calls missed since the tab was last open (calls_page).
+                        // Messaging: a dot for unread spaces. Calling: the number of calls missed since the tab was last open (calls_page).
                         let (badge, tip) = match tab {
                             Tab::Messaging => (unread.then(String::new), tr(label).to_string()),
                             Tab::Calling if missed > 0 => (Some(crate::ui::calls_page::badge_text(missed)), format!("{}, {}", tr(label), crate::ui::calls_page::missed_tip(missed))),
@@ -105,25 +105,25 @@ impl App {
         more.rect
     }
 
-    /// The "…" menu: rail entries the user hid (Settings > Oberfläche anpassen), then its own entries that aren't hidden.
+    /// The "…" menu: rail entries the user hid (Settings > Customize the interface), then its own entries that aren't hidden.
     /// Built only while it is open.
     fn rail_more_menu(&mut self, ctx: &egui::Context, t: &Th, anchor: Rect) {
         use super::super::menu::{Entry, Item};
         use crate::ui::customize::{self as cz, MORE};
         if !super::super::menu::menu_is_open(ctx, "more") { return; }
-        let mut items: Vec<Entry> = cz::rail_overflow(&self.settings).map(|e| Item::new(e.id, e.label).icon(e.icon).entry()).collect();
+        let mut items: Vec<Entry> = cz::rail_overflow(&self.settings).map(|e| Item::new(e.id, tr(e.label)).icon(e.icon).entry()).collect();
         if !items.is_empty() { items.push(Entry::Sep); }
         let shown = |id: &str| cz::shown(&self.settings, &MORE, id);
-        if shown("voicemail") { items.push(Item::new("voicemail", "Voicemail").icon("voicemail-regular").entry()); }
-        if shown("plugins") { items.push(Item::new("plugins", "Plugins & Themes").icon("apps-regular").entry()); }
+        if shown("voicemail") { items.push(Item::new("voicemail", tr("Voicemail")).icon("voicemail-regular").entry()); }
+        if shown("plugins") { items.push(Item::new("plugins", tr("Plugins & Themes")).icon("apps-regular").entry()); }
         // The "Info" entry; the settings page can show `credits_ui` itself and drop this item.
-        if shown("about") { items.push(Item::new("about", "Info über Webox").icon("info-circle-regular").entry()); }
+        if shown("about") { items.push(Item::new("about", tr("About Webox")).icon("info-circle-regular").entry()); }
         if shown("labels") {
             if items.last().is_some_and(|e| !matches!(e, Entry::Sep)) { items.push(Entry::Sep); }
-            items.push(Item::new("rail", if self.rail_wide { "Beschriftungen ausblenden" } else { "Beschriftungen anzeigen" }).icon("application-panel-regular").shortcut("Alt+Umschalt+Q").entry());
+            items.push(Item::new("rail", if self.rail_wide { tr("Hide labels") } else { tr("Show labels") }).icon("application-panel-regular").shortcut("Alt+Shift+Q").entry());
         }
         if matches!(items.last(), Some(Entry::Sep)) { items.pop(); }
-        if items.is_empty() { items.push(Item::new("none", "Alle Einträge sind ausgeblendet").disabled().entry()); }
+        if items.is_empty() { items.push(Item::new("none", tr("All items are hidden")).disabled().entry()); }
         if let Some(a) = super::super::menu::webex_menu(ctx, &mut self.icons, t, "more", anchor, super::super::menu::Side::Right, super::super::menu::Align::Left, false, &items) {
             match a.as_str() {
                 "voicemail" => self.set_tab(Tab::Voicemail),
@@ -159,8 +159,8 @@ impl App {
             ui.painter().circle_filled(btn.center(), 10.0, t.win_b);
             ui.painter().circle_stroke(btn.center(), 9.4, Stroke::new(1.2_f32, if resp.hovered() { t.tk("navigationtab-text:checked") } else { t.tk("navigationtab-text") }));
             self.icons.paint(ui, if self.rail_wide { "arrow-left-optical_10" } else { "arrow-right-optical_10" }, Rect::from_center_size(btn.center(), Vec2::splat(11.0)), t.text1);
-            // Tooltip: Webox's own wording (the pack has no German string for "Expand or collapse navigation menu").
-            if resp.on_hover_text("Navigationsmenü ein-/ausklappen (Alt+Umschalt+Q)").clicked() { self.act(Act::ToggleRail, ctx) }
+            // Tooltip: the pack's "Expand or collapse navigation menu" with the shortcut.
+            if resp.on_hover_text(format!("{} (Alt+Shift+Q)", tr("Expand or collapse navigation menu"))).clicked() { self.act(Act::ToggleRail, ctx) }
         });
     }
 }

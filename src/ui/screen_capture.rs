@@ -1,8 +1,8 @@
-//! The composer's "Screenshot" button (commands `ScreenCapture` / `ScreenCaptureNoMini` = "Screenshot" / "Screenshot ohne
-//! miniaturisieren"): the app gets out of the way (minimised, unless "ohne miniaturisieren"), the monitor it was on is
-//! captured, and a full-screen selection window lets the user drag the area to keep ("Wählen Sie einen Bereich des
-//! Bildschirms aus, der erfasst werden soll,"; "Eingabetaste drücken, um gesamten Bildschirm zu erfassen"; "Abbrechen",
-//! "Screenshot" under the selection; Esc cancels). The picture is staged in the composer as a PNG named "yyyy-MM-dd_HH-mm-ss"
+//! The composer's "Screen Capture" button (commands `ScreenCapture` / `ScreenCaptureNoMini` = "Screen Capture" / "Screen Capture
+//! without miniaturize"): the app gets out of the way (minimised, unless "without miniaturize"), the monitor it was on is
+//! captured, and a full-screen selection window lets the user drag the area to keep ("Select a portion of the screen to
+//! capture,"; "press Enter to capture the full screen"; "Cancel",
+//! "Screen Capture" under the selection; Esc cancels). The picture is staged in the composer as a PNG named "yyyy-MM-dd_HH-mm-ss"
 //! (see `files::capture_name`).
 //!
 //! Capture per platform (`grab`, on a worker thread):
@@ -28,14 +28,14 @@ static NOTE: Mutex<Option<&'static str>> = Mutex::new(None);
 /// What the platform capture gave: a screen for the selection overlay, an area the desktop already picked (PNG), or nothing.
 #[allow(dead_code)] // every platform builds only some of them
 enum Grab { Screen(image::RgbaImage), Png(Vec<u8>), Cancelled, Failed(&'static str) }
-const CANCELLED: &str = "Screenshot abgebrochen.";
-const FAILED: &str = "Screenshot fehlgeschlagen.";
+const CANCELLED: &str = "Screen capture cancelled."; // the notes are shown through tr()
+const FAILED: &str = "Screen capture failed.";
 #[cfg(target_os = "linux")]
-const DENIED: &str = "Screenshot nicht möglich: Zugriff verweigert.";
+const DENIED: &str = "Screen capture not possible: access denied.";
 #[cfg(target_os = "linux")]
-const NO_PORTAL: &str = "Screenshot nicht möglich: Der Desktop bietet keinen Screenshot-Dienst (xdg-desktop-portal).";
+const NO_PORTAL: &str = "Screen capture not possible: the desktop offers no screenshot service (xdg-desktop-portal).";
 
-/// The "Abbrechen" / "Screenshot" pills under (or, at the bottom edge, inside) the finished selection `s`, kept on screen.
+/// The "Cancel" / "Screen Capture" pills under (or, at the bottom edge, inside) the finished selection `s`, kept on screen.
 pub(crate) fn pill_rects(s: Rect, view: Rect) -> (Rect, Rect) {
     let size = Vec2::new(110.0, 34.0);
     let y = if s.bottom() + 50.0 < view.bottom() { s.bottom() + 10.0 } else { (s.bottom() - 46.0).max(view.top()) };
@@ -69,9 +69,9 @@ pub(crate) fn crop_px(sel: Rect, view: Rect, img: (u32, u32)) -> (u32, u32, u32,
 }
 
 impl App {
-    /// Toolbar button / shortcut. `minimize` false = "Screenshot ohne miniaturisieren".
+    /// Toolbar button / shortcut. `minimize` false = "Screen Capture without miniaturize".
     pub(crate) fn screen_capture_start(&mut self, space: &str, minimize: bool, now: f64) {
-        if matches!(self.compose, Compose::Edit { .. }) { self.toast("Sie können keine Screenshots zu dieser Nachricht hinzufügen.", now); return; } // pack string
+        if matches!(self.compose, Compose::Edit { .. }) { self.toast(tr("You can't add screen captures to this message."), now); return; }
         if self.shot.is_some() { return; }
         {
             let mut g = CAP.lock().unwrap_or_else(|e| e.into_inner());
@@ -96,10 +96,10 @@ impl App {
 
     /// Every frame: toasts a failed capture, shows the selection window while a capture waits for its area.
     pub(crate) fn screen_capture_frame(&mut self, ctx: &egui::Context, now: f64) {
-        if let Some(m) = NOTE.lock().unwrap_or_else(|e| e.into_inner()).take() { self.toast(m, now); }
+        if let Some(m) = NOTE.lock().unwrap_or_else(|e| e.into_inner()).take() { self.toast(tr(m), now); }
         let ready = CAP.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|c| c.img.is_some());
         if !ready { return; }
-        let vp = egui::ViewportBuilder::default().with_title("Screenshot").with_decorations(false).with_always_on_top().with_taskbar(false)
+        let vp = egui::ViewportBuilder::default().with_title(tr("Screen Capture")).with_decorations(false).with_always_on_top().with_taskbar(false)
             .with_fullscreen(true).with_active(true);
         let mut finish: Option<Option<Vec<u8>>> = None; // Some(Some(png)) captured, Some(None) cancelled
         ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("webox-screen-capture"), vp, |ctx, _| {
@@ -134,22 +134,22 @@ impl App {
                     None => { p.rect_filled(view, 0.0, dim); }
                 }
                 // Hint at the top.
-                let hint = "Wählen Sie einen Bereich des Bildschirms aus, der erfasst werden soll,\nEingabetaste drücken, um gesamten Bildschirm zu erfassen";
+                let hint = format!("{}\n{}", tr("Select a portion of the screen to capture,"), tr("press Enter to capture the full screen"));
                 let g2 = ui.fonts(|f| f.layout(hint.into(), FontId::proportional(15.0), Color32::WHITE, 700.0));
                 let hr = Rect::from_center_size(pos2(view.center().x, view.top() + 40.0 + g2.size().y / 2.0), g2.size() + Vec2::new(32.0, 20.0));
                 if sel.is_none_or(|s| !s.intersects(hr)) {
                     ui.painter().rect_filled(hr, 10.0, Color32::from_black_alpha(200));
                     ui.painter().galley(hr.min + Vec2::new(16.0, 10.0), g2, Color32::WHITE);
                 }
-                // Abbrechen / Screenshot under a finished selection.
+                // Cancel / Screen Capture under a finished selection.
                 if let (Some(s), None) = (c.sel, c.drag) {
                     let (can_r, cap_r) = pill_rects(s, view);
                     let (a, b) = (ui.interact(can_r, egui::Id::new("cap-cancel"), Sense::click()), ui.interact(cap_r, egui::Id::new("cap-ok"), Sense::click()));
                     ui.painter().rect_filled(can_r, 17.0, if a.hovered() { hex(0x3B3B3B) } else { hex(0x262626) });
                     ui.painter().rect_stroke(can_r, 17.0, Stroke::new(1.0_f32, hex(0x7F7F7F)), egui::StrokeKind::Inside);
-                    ui.painter().text(can_r.center(), egui::Align2::CENTER_CENTER, "Abbrechen", semibold(14.0), Color32::WHITE);
+                    ui.painter().text(can_r.center(), egui::Align2::CENTER_CENTER, tr("Cancel"), semibold(14.0), Color32::WHITE);
                     ui.painter().rect_filled(cap_r, 17.0, if b.hovered() { hex(0xDEDEDE) } else { hex(0xF2F3F1) });
-                    ui.painter().text(cap_r.center(), egui::Align2::CENTER_CENTER, "Screenshot", semibold(14.0), hex(0x121212));
+                    ui.painter().text(cap_r.center(), egui::Align2::CENTER_CENTER, tr("Screen Capture"), semibold(14.0), hex(0x121212));
                     if a.clicked() { finish = Some(None); }
                     if b.clicked() { finish = Some(Some(crop_png(img, crop_px(s, view, (iw, ih))))); }
                 }

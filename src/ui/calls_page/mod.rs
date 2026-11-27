@@ -1,8 +1,8 @@
-//! "Anrufe" (call history + keypad) and "Voicemail".
+//! "Calling" (call history + keypad) and "Voicemail".
 //!
-//! Strings come from the German pack ("Alle Anrufe", "Verpasste Anrufe", "Tastenfeldansicht anzeigen/ausblenden",
-//! "Nummer suchen oder wählen", "Zur Hauptansicht zurückkehren", "Verpasst", "Ausgehender Anruf", "Dauer", the empty
-//! states, the delete dialog, "Posteingang" / "Gesendet" / "Papierkorb"). Rows follow the messaging list rows (50 px,
+//! Strings come from the language pack where it has them ("All calls", "Missed calls", "Outgoing call", "Learn more", the
+//! missed-call counts); the rest (keypad toggle, dial field, empty states, the delete dialog, voicemail folders) is Webox's
+//! own wording (assets/i18n/webox). Rows follow the messaging list rows (50 px,
 //! avatar 32). Illustrations: `Callhistory_empty_space`, `empty_voicemail`.
 //!
 //! Data: the call history is the account's janus history (cloud/meetcall.rs). Voicemail: accounts without a voicemail
@@ -21,14 +21,14 @@ pub(crate) enum CallKind { Incoming, Outgoing, Missed }
 pub(crate) struct CallLogEntry { pub name: String, pub email: String, pub kind: CallKind, pub at_ms: i64, pub secs: u32, pub session_id: String, pub end_ms: i64, pub phone: String }
 impl CallLogEntry { pub(crate) fn key(&self) -> String { if self.session_id.is_empty() { format!("{}|{}", self.name, self.at_ms) } else { self.session_id.clone() } } }
 
-/// "Mehr erfahren" of the upgrade prompt: the Webex help root.
+/// "Learn more" of the upgrade prompt: the Webex help root.
 const LEARN_MORE: &str = "https://help.webex.com/";
 
 /// One voicemail (`--sample` only, see the module comment).
 #[derive(Clone, Debug)]
 pub(crate) struct VoicemailEntry { pub name: String, pub email: String, pub number: String, pub at_ms: i64, pub secs: u32, pub unread: bool, pub urgent: bool, pub sent: bool, pub transcript: String }
 
-pub(crate) fn kind_text(k: CallKind) -> &'static str { match k { CallKind::Incoming => "Eingehender Anruf", CallKind::Outgoing => "Ausgehender Anruf", CallKind::Missed => "Verpasst" } }
+pub(crate) fn kind_text(k: CallKind) -> &'static str { tr(match k { CallKind::Incoming => "Incoming call", CallKind::Outgoing => "Outgoing call", CallKind::Missed => "Missed" }) }
 pub(crate) fn kind_icon(k: CallKind) -> &'static str { match k { CallKind::Incoming => "call-incoming-regular", CallKind::Outgoing => "call-outgoing-regular", CallKind::Missed => "call-missed-regular" } }
 pub(crate) fn duration_text(s: u32) -> String { if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, s % 3600 / 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) } }
 /// listitem-textmissed (#FC8B98 / #AB0A15).
@@ -69,12 +69,12 @@ impl App {
         }
         self.call.history.iter().map(|(name, incoming, result)| CallLogEntry {
             name: name.clone(), email: self.people.iter().find(|p| &p.name == name).map(|p| p.email.clone()).unwrap_or_default(),
-            kind: if *result == "Verpasst" { CallKind::Missed } else if *incoming { CallKind::Incoming } else { CallKind::Outgoing }, at_ms: 0, secs: 0,
+            kind: if *result == "Missed" { CallKind::Missed } else if *incoming { CallKind::Incoming } else { CallKind::Outgoing }, at_ms: 0, secs: 0,
             session_id: String::new(), end_ms: 0, phone: String::new(),
         }).collect()
     }
 
-    /// The number on the "Anrufe" rail entry: calls missed since the tab was last looked at (settings `calls_seen_ms`).
+    /// The number on the "Calling" rail entry: calls missed since the tab was last looked at (settings `calls_seen_ms`).
     pub(crate) fn missed_badge(&self) -> usize {
         let seen = self.settings[super::settings::CALLS_SEEN_MS].as_i64().unwrap_or(i64::MAX);
         if self.client.is_none() { // offline sample: the made-up history
@@ -83,7 +83,7 @@ impl App {
         unseen_missed(self.call.mc.records.as_deref(), &self.call.mc.missed_at, seen)
     }
 
-    /// The "Anrufe" list is on screen in the window in front: its missed calls count as seen.
+    /// The "Calling" list is on screen in the window in front: its missed calls count as seen.
     fn mark_calls_seen(&mut self) {
         if !self.window_active() || self.missed_badge() == 0 { return; }
         self.settings[super::settings::CALLS_SEEN_MS] = json!(super::chrome::now_ms());
@@ -105,9 +105,9 @@ impl App {
         let v = |n: &str, em: &str, num: &str, ago: i64, secs: u32, unread: bool, urgent: bool, sent: bool, tr: &str| VoicemailEntry {
             name: n.into(), email: em.into(), number: num.into(), at_ms: now - ago, secs, unread, urgent, sent, transcript: tr.into() };
         vec![
-            v("Lina Roth", "lina@example.com", "+1 202 555 0122", 50 * m, 38, true, true, false, "Hallo, hier ist Lina. Kannst du mich bitte kurz zurückrufen? Es geht um das Angebot für morgen."),
-            v("Unbekannt", "", "+1 202 555 0187", 5 * h, 12, true, false, false, ""),
-            v("Mara Lind", "mara@example.com", "+1 202 555 0131", d + 2 * h, 95, false, false, false, "Danke für die Unterlagen, ich melde mich nächste Woche."),
+            v("Lina Roth", "lina@example.com", "+1 202 555 0122", 50 * m, 38, true, true, false, "Hi, it's Lina. Could you call me back? It's about tomorrow's offer."),
+            v(tr("Unknown"), "", "+1 202 555 0187", 5 * h, 12, true, false, false, ""),
+            v("Mara Lind", "mara@example.com", "+1 202 555 0131", d + 2 * h, 95, false, false, false, "Thanks for the documents, I'll get back to you next week."),
             v("Jonas Weber", "jonas@example.com", "", 2 * d, 21, false, false, true, ""),
         ]
     }
@@ -127,9 +127,9 @@ impl App {
     }
 
     /// Calling a phone number needs Webex Calling; without it the upgrade prompt is shown, whose second line is this text with
-    /// the "Mehr erfahren" link.
+    /// the "Learn more" link.
     pub(crate) fn no_phone_calling(&mut self, now: f64) {
-        self.toast("Um eine beliebige Person mit einer Telefonnummer anzurufen, klicken Sie auf „Mehr erfahren“.", now);
+        self.toast(tr("To call anyone with a phone number, click \"Learn more\"."), now);
     }
 
     /// Calls back the person of a history row: their Webex address (guarded call path), else the phone-number prompt.
@@ -140,7 +140,7 @@ impl App {
     pub(crate) fn open_chat_with(&mut self, name: &str, now: f64) {
         match self.spaces.iter().find(|s| s.direct && s.title == name).map(|s| s.id.clone()) {
             Some(id) => { self.tab = Tab::Messaging; self.team_sel = None; self.open_space(id); }
-            None => self.toast(format!("Es gibt noch keinen Chat mit {name}"), now), // Webox's own wording
+            None => self.toast(crate::trq!("There is no chat with %1 yet", name), now), // Webox's own wording
         }
     }
 
@@ -148,20 +148,20 @@ impl App {
         self.mark_calls_seen();
         let ctx = ui.ctx().clone();
         let mut st = self.pst(&ctx);
-        let (plus, _) = self.list_header(ui, t, tr("Calling"), Some("Einen Anruf tätigen"), None);
+        let (plus, _) = self.list_header(ui, t, tr("Calling"), Some(tr("Make a call")), None);
         if plus { st.dial_open = true; }
         ui.add_space(8.0);
         let mut dial_toggle = false;
         ui.allocate_ui_with_layout(Vec2::new(ui.available_width(), 28.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
             if !st.dial_open {
-                for (i, n) in ["Alle Anrufe", "Verpasste Anrufe"].iter().enumerate() {
+                for (i, n) in [tr("All calls"), tr("Missed calls")].iter().enumerate() {
                     if text_tab(ui, n, st.calls_tab as usize == i, t, t.tab_on).clicked() { st.calls_tab = i as u8; }
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(4.0);
-                let tip = if st.dial_open { "Tastenfeldansicht ausblenden" } else { "Tastenfeldansicht anzeigen" };
+                let tip = if st.dial_open { tr("Hide keypad") } else { tr("Show keypad") };
                 if self.icons.button(ui, "dialpad-regular", 28.0, 18.0, if st.dial_open { t.link } else { t.text2 }, t.hover).on_hover_text(tip).clicked() { dial_toggle = true; }
             });
         });
@@ -193,7 +193,7 @@ impl App {
                 spec.sub = kind_text(e.kind); spec.sub_icon = Some(kind_icon(e.kind)); spec.right = &right;
                 if e.kind == CallKind::Missed { spec.title_col = Some(missed_color(t)); spec.sub_col = Some(missed_color(t)); }
                 spec.selected = st.call_sel == Some(i); spec.status = p.as_ref().map(|p| p.status.as_str()); spec.photo = photo;
-                spec.action = Some(("handset-regular", "Anrufen"));
+                spec.action = Some(("handset-regular", tr("Call")));
                 let out = self.page_row(ui, t, &spec);
                 if out.clicked { st.call_sel = Some(i); }
                 if out.double || out.action { call_now = Some(e.clone()); }
@@ -201,7 +201,7 @@ impl App {
             }
             if shown == 0 {
                 ui.add_space(40.0);
-                let (title, body) = if st.calls_tab == 1 { ("Keine verpassten Anrufe", "") } else { ("Keine Anrufe", "") }; // Webox's own wording
+                let (title, body) = if st.calls_tab == 1 { (tr("No missed calls"), "") } else { (tr("No calls"), "") }; // Webox's own wording
                 ui.vertical_centered(|ui| { ui.label(RichText::new(title).font(semibold(15.0)).color(t.text1)); ui.label(RichText::new(body).color(t.text2)); });
             }
         });
@@ -216,7 +216,7 @@ impl App {
         ui.painter().rect_filled(r, 18.0, t.ink_a(0.07));
         self.icons.paint(ui, "search-regular", Rect::from_center_size(r.left_center() + Vec2::new(20.0, 0.0), Vec2::splat(16.0)), t.text2);
         let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(r.min + Vec2::new(38.0, 0.0), r.max - Vec2::new(40.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-        let resp = inner.add(egui::TextEdit::singleline(&mut self.dial).hint_text(RichText::new("Nummer suchen oder wählen").color(t.text2).size(15.0)).font(FontId::proportional(18.0)).frame(false).desired_width(r.width() - 80.0));
+        let resp = inner.add(egui::TextEdit::singleline(&mut self.dial).hint_text(RichText::new(tr("Search or dial a number")).color(t.text2).size(15.0)).font(FontId::proportional(18.0)).frame(false).desired_width(r.width() - 80.0));
         if !self.dial.is_empty() {
             let br = Rect::from_center_size(r.right_center() - Vec2::new(20.0, 0.0), Vec2::splat(24.0));
             let bresp = ui.interact(br, ui.id().with("dial-back"), Sense::click());
@@ -233,7 +233,7 @@ impl App {
             for p in hits {
                 let photo = self.photo_for(ui.ctx(), &p.id, &p.email);
                 let mut spec = RowSpec::new(format!("dial-{}", p.id), &p.name);
-                spec.sub = &p.email; spec.status = Some(&p.status); spec.photo = photo; spec.action = Some(("handset-regular", "Anrufen"));
+                spec.sub = &p.email; spec.status = Some(&p.status); spec.photo = photo; spec.action = Some(("handset-regular", tr("Call")));
                 let out = self.page_row(ui, t, &spec);
                 if out.clicked || out.action { self.start_call(&p.email, &p.name, now); }
             }
@@ -263,12 +263,12 @@ impl App {
         ui.painter().circle_filled(ctr, 28.0, if cresp.hovered() { t.green.gamma_multiply(0.85) } else { t.green });
         self.icons.paint(ui, "handset-filled", Rect::from_center_size(ctr, Vec2::splat(26.0)), Color32::WHITE);
         if cresp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        if cresp.on_hover_text("Anrufen").clicked() { self.dial_text(now); }
+        if cresp.on_hover_text(tr("Call")).clicked() { self.dial_text(now); }
         ui.allocate_space(Vec2::new(1.0, (by + 70.0) - ui.cursor().top()));
         let rr = Rect::from_center_size(pos2(x0 + total_w / 2.0, by + 90.0), Vec2::new(220.0, 22.0));
         let rresp = ui.interact(rr, ui.id().with("dial-return"), Sense::click());
         if rresp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        ui.painter().text(rr.center(), egui::Align2::CENTER_CENTER, "Zur Hauptansicht zurückkehren", semibold(13.5), t.link);
+        ui.painter().text(rr.center(), egui::Align2::CENTER_CENTER, tr("Return to main view"), semibold(13.5), t.link);
         if rresp.clicked() { st.dial_open = false; }
     }
 
@@ -280,9 +280,9 @@ impl App {
         let Some(e) = sel else {
             let area = ui.max_rect();
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(area));
-            // The empty state's "Mehr erfahren" link opens the help center (ui/profile_menu.rs).
-            if self.empty_state(&mut c, t, "Callhistory_empty_space", 160.0, "Einen Anruf tätigen oder einem Meeting beitreten",
-                "Um eine andere Person anzurufen, die Webex verwendet, geben Sie den Namen oder die E-Mail-Adresse in die Suchleiste ein.\nUm einem Meeting beizutreten, geben Sie die Adresse in der Suchleiste ein oder kopieren Sie sie dorthin.", Some("Mehr erfahren")) { system::open(LEARN_MORE); }
+            // The empty state's "Learn more" link opens the help center (ui/profile_menu.rs).
+            if self.empty_state(&mut c, t, "Callhistory_empty_space", 160.0, tr("Make a call or join a meeting"),
+                tr("To call someone who uses Webex, enter their name or email address in the search bar.\nTo join a meeting, type or paste its address in the search bar."), Some(tr("Learn more"))) { system::open(LEARN_MORE); }
             return;
         };
         let p = self.person_for(&e.name, &e.email);
@@ -293,14 +293,14 @@ impl App {
         c.add_space(18.0);
         c.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 16.0;
-            if self.round_labeled(ui, t, "handset-filled", "Anrufen", t.green, Color32::WHITE, 72.0).clicked() { self.call_back(&e, now); }
-            if self.round_labeled(ui, t, "chat-filled", "Chat", t.ink_a(0.14), t.text1, 72.0).clicked() { self.open_chat_with(&e.name, now); }
-            if self.round_labeled(ui, t, "contact-card-filled", "Visitenkarte", t.ink_a(0.14), t.text1, 84.0).clicked() {
+            if self.round_labeled(ui, t, "handset-filled", tr("Call"), t.green, Color32::WHITE, 72.0).clicked() { self.call_back(&e, now); }
+            if self.round_labeled(ui, t, "chat-filled", tr("Chat"), t.ink_a(0.14), t.text1, 72.0).clicked() { self.open_chat_with(&e.name, now); }
+            if self.round_labeled(ui, t, "contact-card-filled", tr("Contact card"), t.ink_a(0.14), t.text1, 84.0).clicked() {
                 let mut s = self.pst(ui.ctx()); s.contact_card = Some((e.email.clone(), e.name.clone(), Rect::from_center_size(ui.min_rect().center_top() + Vec2::new(0.0, 120.0), Vec2::splat(4.0)))); self.set_pst(ui.ctx(), s);
             }
         });
         c.add_space(22.0);
-        c.label(RichText::new("Anrufdetails").font(semibold(15.0)).color(t.text1));
+        c.label(RichText::new(tr("Call details")).font(semibold(15.0)).color(t.text1));
         c.add_space(6.0);
         let nowms = super::chrome::now_ms();
         for h in log.iter().filter(|x| x.name == e.name && !st.call_deleted.contains(&x.key())) {
@@ -309,7 +309,7 @@ impl App {
             self.icons.paint(&c, kind_icon(h.kind), Rect::from_center_size(r.left_center() + Vec2::new(10.0, 0.0), Vec2::splat(16.0)), col);
             c.painter().text(r.left_center() + Vec2::new(30.0, 0.0), egui::Align2::LEFT_CENTER, kind_text(h.kind), FontId::proportional(14.5), col);
             let when = if h.at_ms > 0 { when_text(h.at_ms, nowms) } else { String::new() };
-            let right = if h.secs > 0 { format!("{when}   Dauer {}", duration_text(h.secs)) } else { when };
+            let right = if h.secs > 0 { format!("{when}   {}", crate::trq!("Duration %1", duration_text(h.secs))) } else { when };
             c.painter().text(r.right_center(), egui::Align2::RIGHT_CENTER, right, FontId::proportional(13.5), t.text2);
             c.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0_f32, t.ink_a(0.08)));
         }
@@ -333,8 +333,8 @@ impl App {
 
     pub(crate) fn calls_menu(&mut self, ctx: &egui::Context, t: &Th, now: f64) {
         let items = vec![
-            Item::new("call", "Anrufen").icon("handset-regular").entry(), Item::new("chat", "Chat").icon("chat-regular").entry(),
-            Item::new("card", "Visitenkarte").icon("contact-card-regular").entry(), Entry::Sep, Item::new("delete", "Löschen").icon("delete-regular").danger().entry(),
+            Item::new("call", tr("Call")).icon("handset-regular").entry(), Item::new("chat", tr("Chat")).icon("chat-regular").entry(),
+            Item::new("card", tr("Contact card")).icon("contact-card-regular").entry(), Entry::Sep, Item::new("delete", tr("Delete")).icon("delete-regular").danger().entry(),
         ];
         if let Some((key, pick)) = self.page_menu(ctx, t, "call-row", &items) {
             let log = self.call_log();
@@ -348,8 +348,8 @@ impl App {
         }
         let mut s = self.pst(ctx);
         if let Some(k) = s.call_confirm_delete.clone() {
-            let r = menu::webex_dialog(ctx, t, "call-delete", "Ausgewählte löschen?", "Ausgewählte Elemente dauerhaft aus Ihrem Anrufprotokoll löschen?", None,
-                &[menu::Button::secondary("cancel", "Abbrechen"), menu::Button::danger("delete", "Löschen")]);
+            let r = menu::webex_dialog(ctx, t, "call-delete", tr("Delete all selected?"), tr("Permanently delete the selected items from your call history?"), None,
+                &[menu::Button::secondary("cancel", tr("Cancel")), menu::Button::danger("delete", tr("Delete"))]);
             match r.as_deref() {
                 Some("delete") => {
                     // A janus record is deleted on the server (the delete dialog -> markAsDeleted); hidden at once.
@@ -375,8 +375,8 @@ pub(crate) fn unseen_missed(records: Option<&[crate::cloud::meetcall::CallRecord
 /// Text of the rail badge: the count, at most "99+".
 pub(crate) fn badge_text(n: usize) -> String { if n > 99 { "99+".into() } else { n.to_string() } }
 
-/// Hover text of the "Anrufe" rail entry with missed calls (pack: "{{0}} entgangener Anruf" / "{{0}} entgangene Anrufe").
-pub(crate) fn missed_tip(n: usize) -> String { if n == 1 { "1 entgangener Anruf".into() } else { format!("{n} entgangene Anrufe") } }
+/// Hover text of the "Calling" rail entry with missed calls (pack: "{{0}} missed call" / "{{0}} missed calls").
+pub(crate) fn missed_tip(n: usize) -> String { if n == 1 { crate::trq!("{{0}} missed call", n) } else { crate::trq!("{{0}} missed calls", n) } }
 
 mod voicemail;
 
@@ -406,7 +406,7 @@ mod tests {
     fn badge_and_tooltip_texts() {
         assert_eq!(badge_text(1), "1");
         assert_eq!(badge_text(120), "99+");
-        assert_eq!(missed_tip(1), "1 entgangener Anruf");
-        assert_eq!(missed_tip(3), "3 entgangene Anrufe");
+        assert_eq!(missed_tip(1), crate::trq!("{{0}} missed call", 1));
+        assert_eq!(missed_tip(3), crate::trq!("{{0}} missed calls", 3));
     }
 }

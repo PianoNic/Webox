@@ -6,7 +6,7 @@ fn person(id: &str, name: &str, email: &str) -> Person { Person { id: id.into(),
 fn dropdown_sections_and_empty_states() {
     let me = person("me", "Me Self", "me@x.example");
     let people = vec![me.clone(), person("a", "Jonas Weber", "jonas@x.example"), person("b", "Ben Meier", "ben@x.example")];
-    let spaces = vec![Space { id: "s1".into(), title: "Allgemein".into(), ..Default::default() }, Space { id: "d1".into(), title: "Jonas Weber".into(), direct: true, ..Default::default() }];
+    let spaces = vec![Space { id: "s1".into(), title: "General".into(), ..Default::default() }, Space { id: "d1".into(), title: "Jonas Weber".into(), direct: true, ..Default::default() }];
     let l = lines("jonas", &people, &spaces, &me);
     assert_eq!(l, vec![Line::Header("People"), Line::Person(1), Line::Header("Spaces"), Line::Empty("We can't find any spaces in your list that match your search.")]);
     assert_eq!(ring_index(&l, None), Some(1));
@@ -14,7 +14,7 @@ fn dropdown_sections_and_empty_states() {
     assert_eq!(l.iter().filter(|x| matches!(x, Line::Empty(_))).count(), 2);
     assert_eq!(ring_index(&l, None), Some(3)); // the last empty block
     assert!(!lines("self", &people, &spaces, &me).contains(&Line::Person(0)));
-    assert_eq!(lines("allg", &people, &spaces, &me)[3], Line::Space(0));
+    assert_eq!(lines("gener", &people, &spaces, &me)[3], Line::Space(0));
 }
 
 #[test]

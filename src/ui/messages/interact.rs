@@ -1,5 +1,6 @@
 //! Reactions, threads, the seen banner, the hover toolbar and the delete and forward dialogs.
 use super::*;
+use crate::ui::widgets::tr;
 
 impl App {
     /// Reaction chips (emoji | count, then who reacted when a plugin asks for it) with 4 pt spacing, then the add-reaction pill.
@@ -42,7 +43,7 @@ impl App {
         if resp.hovered() { ui.painter().rect_filled(pill, REACT_H / 2.0, c.chip_hover); }
         ui.painter().rect_stroke(pill.shrink(0.5), REACT_H / 2.0, Stroke::new(1.0_f32, c.chip_border), StrokeKind::Inside);
         self.icons.paint(ui, "reactions_12", Rect::from_center_size(pill.center(), Vec2::splat(12.0)), c.body);
-        if resp.on_hover_text("Reaktion hinzufügen").clicked() { self.open_reaction_picker(&ui.ctx().clone(), &m.id, pill); }
+        if resp.on_hover_text(tr("Add reaction")).clicked() { self.open_reaction_picker(&ui.ctx().clone(), &m.id, pill); }
     }
 
     /// "Add reaction" (toolbar ➕ and the chip row's pill): opens the shared emoji picker (emoji_picker.rs) above `anchor` and
@@ -75,7 +76,7 @@ impl App {
         }
     }
 
-    /// Collapsed thread (wide mode, 48 pt): reply bar (28), the repliers' avatars (28), the ghost pill "N Antworten" with
+    /// Collapsed thread (wide mode, 48 pt): reply bar (28), the repliers' avatars (28), the ghost pill "N replies" with
     /// arrow-down_12, and the time of the last reply, spaced 3.
     pub(super) fn collapsed_thread(&mut self, ui: &mut egui::Ui, t: &Th, c: &Mc, root: &Message, replies: &[&Message]) {
         let w = ui.available_width();
@@ -102,7 +103,7 @@ impl App {
             x += 30.0 + 6.0;
         }
         x += 3.0 - 6.0;
-        let label = if replies.len() == 1 { "1 Antwort".to_string() } else { format!("{} Antworten", replies.len()) };
+        let label = if replies.len() == 1 { tr("1 reply").to_string() } else { crate::trq!("{{0}} replies", replies.len()) };
         let g = ui.painter().layout_no_wrap(label, semibold(SECOND), c.body); // ghost style (accent only for new replies)
         let pill = Rect::from_min_size(pos2(x, cy - 14.0), Vec2::new(12.0 + g.size().x + 6.0 + 12.0 + 12.0, 28.0));
         let pr = ui.interact(pill, Id::new(("thread-open", &root.id)), Sense::click());
@@ -114,8 +115,8 @@ impl App {
         if pr.clicked() || resp.clicked() { self.open_threads.insert(root.id.clone()); }
     }
 
-    /// Thread end buttons: secondary pills (top padding 5, spacing 5): "Im Thread antworten" (reply_12) and, when the thread
-    /// can collapse, "Ausblenden" (hide-bold).
+    /// Thread end buttons: secondary pills (top padding 5, spacing 5): "Reply in thread" (reply_12) and, when the thread
+    /// can collapse, "Hide" (hide-bold).
     pub(super) fn thread_end(&mut self, ui: &mut egui::Ui, _t: &Th, c: &Mc, root: &Message, collapsible: bool) {
         let w = ui.available_width();
         let (row, _) = ui.allocate_exact_size(Vec2::new(w, 5.0 + 28.0 + dm().thread_end_bottom), Sense::hover()); // Standard 5 + 28 + 8
@@ -133,7 +134,7 @@ impl App {
             resp.clicked()
         };
         if pill(self, ui, "reply_12", tr("Reply to thread"), "thread-reply") { self.start_reply(root); }
-        if collapsible && pill(self, ui, "hide-bold", "Ausblenden", "thread-hide") { self.open_threads.remove(&root.id); }
+        if collapsible && pill(self, ui, "hide-bold", tr("Hide"), "thread-hide") { self.open_threads.remove(&root.id); }
     }
 
     /// "Seen by": label and the readers' avatars, centred at the row centre - 20: label, avatars 24 pt on a 32 pt pitch (the first
@@ -181,7 +182,7 @@ impl App {
     pub(super) fn message_toolbar(&mut self, ui: &mut egui::Ui, t: &Th, c: &Mc, id: &str, m: &Message, boxr: Rect, head: bool, bar_key: Id, list_top: f32) {
         let k_more = format!("msg-more-{}", m.id);
         let mut more_rect = Rect::NOTHING;
-        // Settings > Oberfläche anpassen hides buttons; "···" (all actions) always stays.
+        // Settings > Customize the interface hides buttons; "···" (all actions) always stays.
         let g = &crate::ui::customize::MSG_BAR;
         let on = |id: &str| self.ui_shown(g, id);
         let (quick, react, edit, reply, fwd) = (on("quick"), on("react"), m.mine && on("edit"), on("reply"), on("forward"));
@@ -213,16 +214,16 @@ impl App {
                 i += 1;
                 resp.on_hover_text(tip)
             };
-            if quick { for (ch, tip) in QUICK { if button(self, ui, None, Some(ch), tip).clicked() { self.toggle_reaction(&m.id, &reaction_name(ch)); } } }
+            if quick { for (ch, tip) in QUICK { if button(self, ui, None, Some(ch), tr(tip)).clicked() { self.toggle_reaction(&m.id, &reaction_name(ch)); } } }
             if react {
-                let add = button(self, ui, Some("reactions_12"), None, "Reaktion hinzufügen");
+                let add = button(self, ui, Some("reactions_12"), None, tr("Add reaction"));
                 let shot_open = self.shot.is_some() && self.frames == 6 && std::env::var("WEBOX_SHOT_REACT_PICKER").is_ok(); // screenshot check only
                 if add.clicked() || shot_open { self.open_reaction_picker(&ctx, &m.id, add.rect); }
             }
-            if edit && button(self, ui, Some("edit_12"), None, "Bearbeiten (Umschalt+Pfeil nach oben)").clicked() { self.start_edit(m); }
-            if reply && button(self, ui, Some("reply_12"), None, "Im Thread antworten").clicked() { self.start_reply(m); }
-            if fwd && button(self, ui, Some("forward-message_12"), None, "Weiterleiten").clicked() { self.forward_text = Some(m.text.clone()); }
-            let more = button(self, ui, Some("more_12"), None, "Weitere Aktionen");
+            if edit && button(self, ui, Some("edit_12"), None, &format!("{} ({})", tr("Edit"), tr("Shift+Up arrow"))).clicked() { self.start_edit(m); }
+            if reply && button(self, ui, Some("reply_12"), None, tr("Reply in thread")).clicked() { self.start_reply(m); }
+            if fwd && button(self, ui, Some("forward-message_12"), None, tr("Forward")).clicked() { self.forward_text = Some(m.text.clone()); }
+            let more = button(self, ui, Some("more_12"), None, tr("More actions"));
             if more.clicked() {
                 menu::menu_toggle(&ctx, &k_more);
                 menu::menu_close(&ctx, &super::ctx_menu::remind_key(&k_more));
@@ -241,9 +242,9 @@ impl App {
     }
 
     /// Entries shared by the "···" menu and the right-click menu (ui/msg_actions.rs).
-    /// While several messages are selected the menu has only "Ausgewählte Nachrichten kopieren" (no icon).
+    /// While several messages are selected the menu has only "Copy selected messages" (no icon).
     pub(super) fn message_entries(&self, ctx: &egui::Context, id: &str, m: &Message) -> Vec<menu::Entry> {
-        if msel(ctx, id).multi { return vec![menu::Item::new("copy-selected", "Ausgewählte Nachrichten kopieren").entry()]; }
+        if msel(ctx, id).multi { return vec![menu::Item::new("copy-selected", tr("Copy selected messages")).entry()]; }
         self.msg_menu_entries(id, m)
     }
 
@@ -257,8 +258,8 @@ impl App {
     /// "Cancel" / "Delete" (buttons).
     pub(super) fn delete_dialog(&mut self, ctx: &egui::Context, t: &Th) {
         let Some(mid) = ctx.data(|d| d.get_temp::<String>(Id::new("msg-delete-confirm"))) else { return };
-        let res = menu::webex_dialog(ctx, t, "msg-delete", "Nachricht löschen", "Sind Sie sicher, dass Sie diese Nachricht löschen möchten?", None,
-            &[menu::Button::secondary("cancel", "Abbrechen"), menu::Button::danger("delete", "Löschen")]);
+        let res = menu::webex_dialog(ctx, t, "msg-delete", tr("Delete message"), tr("Are you sure you want to delete this message?"), None,
+            &[menu::Button::secondary("cancel", tr("Cancel")), menu::Button::danger("delete", tr("Delete"))]);
         if let Some(r) = res {
             if r == "delete" { self.delete_message(&mid); }
             ctx.data_mut(|d| d.remove::<String>(Id::new("msg-delete-confirm")));
@@ -283,7 +284,7 @@ impl App {
                 }
             });
         };
-        let res = menu::webex_dialog(ctx, t, "msg-forward", "Nachricht weiterleiten", "", Some(&mut list), &[menu::Button::secondary("cancel", "Abbrechen")]);
+        let res = menu::webex_dialog(ctx, t, "msg-forward", tr("Forward message"), "", Some(&mut list), &[menu::Button::secondary("cancel", tr("Cancel"))]);
         if let Some(to) = target { self.forward(&to, &text); self.forward_text = None; }
         else if res.is_some() { self.forward_text = None; }
     }

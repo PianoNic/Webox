@@ -21,6 +21,7 @@ pub struct Hit { pub key: String, pub plugin: String, pub label: String, pub des
 impl Plugins {
     /// Validates and saves a new value for setting `id` of plugin `i`, then tells the plugin.
     pub fn set_setting(&mut self, i: usize, id: &str, v: Value) -> Result<(), String> {
+        self.generation += 1;
         let e = self.list.get_mut(i).ok_or_else(|| crate::trq!("no plugin").into_owned())?;
         let schema = e.settings.schema.clone().ok_or_else(|| crate::trq!("this plugin has no settings").into_owned())?;
         let v = schema.validate(id, &v)?;
@@ -35,7 +36,7 @@ impl Plugins {
     }
 
     /// The current value of setting `id` of the plugin with `key` (defaults filled in).
-    pub fn setting(&self, key: &str, id: &str) -> Option<Value> { self.list.iter().find(|e| e.key == key)?.settings.values().get(id).cloned() }
+    pub fn setting(&self, key: &str, id: &str) -> Option<Value> { self.list.iter().find(|e| e.key == key)?.settings.value(id) }
     pub fn setting_bool(&self, key: &str, id: &str, fallback: bool) -> bool { self.setting(key, id).and_then(|v| v.as_bool()).unwrap_or(fallback) }
 
     /// Where a secret setting is kept.
@@ -43,6 +44,7 @@ impl Plugins {
 
     /// A settings button of a native plugin was pressed: its message, if any. (Built-in plugins answer in the app, see the page.)
     pub fn settings_action(&mut self, i: usize, id: &str) -> Option<String> {
+        self.generation += 1;
         let e = self.list.get(i)?;
         if !e.settings.schema.as_ref()?.field(id).is_some_and(|f| f.kind == Kind::Button) { return None; }
         let l = e.loaded.as_ref()?;

@@ -4,7 +4,7 @@ pub(crate) mod typing; // typing indicators (protocol: cloud/typing.rs)
 pub(crate) mod call_win;
 pub(crate) mod call_toast;
 #[cfg(target_os = "macos")]
-pub(crate) mod call_note_macos; // the incoming-call banner (Annehmen / Ablehnen)
+pub(crate) mod call_note_macos; // the incoming-call banner (Accept / Decline)
 pub(crate) mod toast_pos;
 pub(crate) mod chrome;
 pub(crate) mod theme; // the Momentum themes and their colour tokens
@@ -22,7 +22,7 @@ pub(crate) mod messages;
 pub(crate) mod messaging;
 pub(crate) mod pages;
 pub(crate) mod settings;
-pub(crate) mod customize; // Settings > Oberfläche anpassen: shown / hidden / ordered UI elements
+pub(crate) mod customize; // Settings > Customize the interface: shown / hidden / ordered UI elements
 pub(crate) mod settings_shortcuts;
 pub(crate) mod space_menu;
 pub(crate) mod widgets;
@@ -31,6 +31,7 @@ pub(crate) mod edit_overlay; // editing a message: an overlay over the conversat
 pub(crate) mod autoscroll; // middle-click autoscroll of every vscroll list
 pub(crate) mod scroll_route; // wheel over row overlays (hover toolbar, tooltips) scrolls the list under them
 pub(crate) mod sample_photos;
+pub(crate) mod sample_scale; // WEBOX_SAMPLE_SCALE / WEBOX_SAMPLE_TOUR: a bigger sample for memory and CPU checks
 pub(crate) mod emoji_picker;
 pub(crate) mod emoji_text;
 pub(crate) mod gif_picker;
@@ -55,7 +56,7 @@ pub(crate) mod status_time;
 pub(crate) mod settings_effects;
 pub(crate) mod attach;
 pub(crate) mod screen_capture;
-pub(crate) mod share_picker; // "Inhalte freigeben": the screen / window picker of screen sharing
+pub(crate) mod share_picker; // "Share content": the screen / window picker of screen sharing
 pub(crate) mod msg_actions;
 pub(crate) mod schedule_send;
 pub(crate) mod msg_remind;
@@ -63,7 +64,7 @@ pub(crate) mod unfurl;
 pub(crate) mod meetcall;
 pub(crate) mod spaces_ext;
 pub(crate) mod presence; // the presence line under a person's name
-pub(crate) mod update_dialog; // "Auf Updates prüfen" and the daily check
+pub(crate) mod update_dialog; // "Check for updates" and the daily check
 
 /// The main window's context, for background threads that hand a result to the UI (`wake`).
 static UI_CTX: std::sync::OnceLock<eframe::egui::Context> = std::sync::OnceLock::new();

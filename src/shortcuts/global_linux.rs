@@ -104,14 +104,27 @@ fn run_x11(shared: Arc<Mutex<Shared>>) {
             shared.lock().unwrap().registered = ok;
         }
         let mut got = false;
-        while let Ok(Some(ev)) = c.poll_for_event() {
-            got = true;
-            if let Event::KeyPress(k) = ev {
-                let m = u16::from(k.state) & u16::from(base);
-                if let Some(&(_, _, idx)) = active.iter().find(|a| a.0 == k.detail && a.1 == m) { fire(&shared, idx); }
+        loop {
+            match c.poll_for_event() {
+                Ok(Some(ev)) => {
+                    got = true;
+                    if let Event::KeyPress(k) = ev {
+                        let m = u16::from(k.state) & u16::from(base);
+                        if let Some(&(_, _, idx)) = active.iter().find(|a| a.0 == k.detail && a.1 == m) { fire(&shared, idx); }
+                    }
+                }
+                Ok(None) => break,
+                Err(_) => return, // the X server went away
             }
         }
-        if !got { std::thread::sleep(std::time::Duration::from_millis(30)); }
+        if !got {
+            // Sleeps until the next X event (or 200 ms, to pick up a changed set of hotkeys) instead of waking every 30 ms.
+            use std::os::fd::AsRawFd;
+            let mut p = libc::pollfd { fd: c.stream().as_raw_fd(), events: libc::POLLIN, revents: 0 };
+            if unsafe { libc::poll(&mut p, 1, 200) } < 0 || p.revents & (libc::POLLERR | libc::POLLHUP | libc::POLLNVAL) != 0 {
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+        }
     }
 }
 

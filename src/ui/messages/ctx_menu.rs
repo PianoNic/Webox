@@ -2,18 +2,19 @@
 //! empty part of the row) opens the same entries as the hover toolbar's "···" button (`message_items`, in the Webex desktop
 //! order), with the actions of what was clicked on top:
 //!
-//!   * text: Link öffnen / Link kopieren (on a link), Kopieren (with a selection), Alles auswählen;
-//!   * a picture: Bild kopieren, Speichern unter;
-//!   * a file or video: the file menu (Öffnen, Herunterladen, Speichern unter, In Ordner anzeigen);
-//!   * a link card: Link öffnen, Link kopieren.
+//!   * text: Open Link / Copy link (on a link), Copy (with a selection), Select all;
+//!   * a picture: Copy image, Save as;
+//!   * a file or video: the file menu (Open, Download, Save as, Show in folder);
+//!   * a link card: Open Link, Copy link.
 //!
-//! A deleted message a plugin keeps is gone on the service, so instead of the message's entries it only has "Nachricht
-//! kopieren". Plugins add their own entries at the end, after a separator (`message.menu`; a pick fires `message.menu_action`
-//! at that plugin). While several messages are selected the whole menu is "Ausgewählte Nachrichten kopieren".
+//! A deleted message a plugin keeps is gone on the service, so instead of the message's entries it only has "Copy
+//! message". Plugins add their own entries at the end, after a separator (`message.menu`; a pick fires `message.menu_action`
+//! at that plugin). While several messages are selected the whole menu is "Copy selected messages".
 //!
 //! The parts of a row note what was right-clicked (`note_hit`) while they are drawn; the row itself opens the menu at the end of
 //! its frame (`row_right_click`), so a click that no part claims opens the plain message menu.
 use super::*;
+use crate::ui::widgets::tr;
 use crate::extras::plugins::MenuItem as PluginItem;
 
 /// What a right click on a message row landed on.
@@ -33,23 +34,23 @@ pub(crate) enum Hit {
 fn hit_id(msg: &str) -> Id { Id::new(("msg-ctx-hit", msg)) }
 /// The menu of message `msg` opened by a right click.
 pub(super) fn ctx_key(msg: &str) -> String { format!("msg-ctx-{msg}") }
-/// Its "Mich erinnern in" submenu.
+/// Its "Remind me in" submenu.
 pub(super) fn remind_key(k: &str) -> String { format!("{k}-remind") }
-/// Its "Reaktion hinzufügen" submenu.
+/// Its "Add reaction" submenu.
 pub(super) fn react_key(k: &str) -> String { format!("{k}-react") }
 fn plug_id(k: &str) -> Id { Id::new(("msg-menu-plug", k)) }
 
 /// The official client's reaction submenu (its "Reactions" entries in this order: Celebrate, Love, Like, Smile, Haha, Wow, Sad),
-/// a check on the ones I gave; then "Weitere Reaktionen" for the emoji picker (Webox's own addition).
-pub(super) const MENU_REACTIONS: [(&str, &str); 7] = [("celebrate", "Feiern"), ("heart", "Liebe"), ("thumbsup", "Gefällt mir"), ("smiley", "Lächeln"),
-    ("haha", "Haha"), ("wow", "Wow!"), ("sad", "Traurig")];
+/// a check on the ones I gave; then "More reactions" for the emoji picker (Webox's own addition).
+pub(super) const MENU_REACTIONS: [(&str, &str); 7] = [("celebrate", "Celebrate"), ("heart", "Love"), ("thumbsup", "Like"), ("smiley", "Smile"),
+    ("haha", "Haha"), ("wow", "Wow"), ("sad", "Sad")];
 pub(super) fn react_entries(m: &Message) -> Vec<menu::Entry> {
     let mut v: Vec<menu::Entry> = MENU_REACTIONS.iter().map(|(name, label)| {
         let mine = m.reactions.iter().any(|r| r.name == *name && r.mine.is_some());
-        menu::Item::new(&format!("react:{name}"), *label).checked(mine).entry()
+        menu::Item::new(&format!("react:{name}"), tr(label)).checked(mine).entry()
     }).collect();
     v.push(menu::Entry::Sep);
-    v.push(menu::Item::new("react-more", "Weitere Reaktionen").icon("reactions-regular").entry());
+    v.push(menu::Item::new("react-more", tr("More reactions")).icon("reactions-regular").entry());
     v
 }
 
@@ -76,30 +77,30 @@ pub(super) fn row_right_click(ui: &egui::Ui, row: Rect) -> Option<egui::Pos2> {
 }
 
 /// The entries of the right-click menu: the actions of what was clicked (`hit`), a separator, the message's own entries
-/// (`msg_items`; a kept deleted message only "Nachricht kopieren"), then the plugins' entries after a separator.
+/// (`msg_items`; a kept deleted message only "Copy message"), then the plugins' entries after a separator.
 /// `selected`: there is a text selection in this message; `file_items`: the file menu, for a file hit.
 pub(super) fn context_entries(hit: &Hit, selected: bool, deleted: bool, file_items: Vec<menu::Entry>, msg_items: Vec<menu::Entry>, plugin: &[PluginItem]) -> Vec<menu::Entry> {
     let mut v: Vec<menu::Entry> = Vec::new();
     let link = |v: &mut Vec<menu::Entry>| {
-        v.push(menu::Item::new("open-link", "Link öffnen").icon("browser-regular").entry());
-        v.push(menu::Item::new("copy-link", "Link kopieren").icon("link-regular").entry());
+        v.push(menu::Item::new("open-link", tr("Open Link")).icon("browser-regular").entry());
+        v.push(menu::Item::new("copy-link", tr("Copy link")).icon("link-regular").entry());
     };
     match hit {
         Hit::Row => {}
         Hit::Text { link: l } => {
             if l.is_some() { link(&mut v); v.push(menu::Entry::Sep); }
-            if selected { v.push(menu::Item::new("copy", "Kopieren").icon("copy-regular").shortcut("Strg+C").entry()); }
-            v.push(menu::Item::new("select-all", "Alles auswählen").icon("select-all-regular").shortcut("Strg+A").entry());
+            if selected { v.push(menu::Item::new("copy", tr("Copy")).icon("copy-regular").shortcut("Ctrl+C").entry()); }
+            v.push(menu::Item::new("select-all", tr("Select all")).icon("select-all-regular").shortcut("Ctrl+A").entry());
         }
         Hit::Image(_) => {
-            v.push(menu::Item::new("img-copy", "Bild kopieren").icon("copy-regular").entry());
-            v.push(menu::Item::new("img-save", "Speichern unter").icon("save-regular").entry());
+            v.push(menu::Item::new("img-copy", tr("Copy image")).icon("copy-regular").entry());
+            v.push(menu::Item::new("img-save", tr("Save as")).icon("save-regular").entry());
         }
         Hit::File { .. } => v.extend(file_items),
         Hit::Link(_) => link(&mut v),
     }
     if !v.is_empty() { v.push(menu::Entry::Sep); }
-    if deleted { v.push(menu::Item::new("copy-message", "Nachricht kopieren").icon("copy-regular").entry()); } else { v.extend(msg_items); }
+    if deleted { v.push(menu::Item::new("copy-message", tr("Copy message")).icon("copy-regular").entry()); } else { v.extend(msg_items); }
     v.extend(plugin_entries(plugin));
     tidy(v)
 }
@@ -138,8 +139,8 @@ impl App {
     }
 
     /// Draws the open message menu `k` (the plugins' entries come with `items` already, see `context_entries`; the "···" menu
-    /// adds them here with `add_plugins`) and its submenus: "Reaktion hinzufügen" opens the reaction picker beside its entry,
-    /// "Mich erinnern in" the reminder choices. Runs those and the plugins' entries itself; returns any other pick.
+    /// adds them here with `add_plugins`) and its submenus: "Add reaction" opens the reaction picker beside its entry,
+    /// "Remind me in" the reminder choices. Runs those and the plugins' entries itself; returns any other pick.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn message_menu_show(&mut self, ctx: &egui::Context, t: &Th, id: &str, m: &Message, k: &str, anchor: Rect, side: menu::Side, align: menu::Align, caret: bool,
         mut items: Vec<menu::Entry>, add_plugins: bool) -> Option<String> {
@@ -173,7 +174,7 @@ impl App {
                 menu::menu_close(ctx, k);
                 match a.strip_prefix("react:") {
                     Some(name) => self.toggle_reaction(&m.id, name),
-                    None => self.open_reaction_picker(ctx, &m.id, at), // "Weitere Reaktionen"
+                    None => self.open_reaction_picker(ctx, &m.id, at), // "More reactions"
                 }
             }
         }
@@ -208,7 +209,7 @@ impl App {
         if ![k.clone(), remind_key(&k), react_key(&k)].iter().any(|x| menu::menu_is_open(&ctx, x)) { return; }
         let hit: Hit = ctx.data(|d| d.get_temp(k_hit)).unwrap_or(Hit::Row);
         let at = ctx.data(|d| d.get_temp::<egui::Pos2>(k_at)).unwrap_or(row.min);
-        // The text selection of this message (Kopieren) and the text for Alles auswählen.
+        // The text selection of this message (Copy) and the text for Select all.
         let k_sel = Id::new("msg-sel");
         let text = ct.text.as_ref().map(|g| g.job.text.clone()).unwrap_or_default();
         let total = text.chars().count();
@@ -242,16 +243,16 @@ mod tests {
         v.iter().map(|e| match e { menu::Entry::Item(i) => i.id.clone(), menu::Entry::Sep => "-".into(), _ => "?".into() }).collect()
     }
     fn labels(v: &[menu::Entry]) -> Vec<String> { v.iter().filter_map(|e| match e { menu::Entry::Item(i) => Some(i.label.clone()), _ => None }).collect() }
-    fn msg(mine: bool) -> Message { Message { id: "m1".into(), text: "Hallo".into(), mine, ..Default::default() } }
+    fn msg(mine: bool) -> Message { Message { id: "m1".into(), text: "Hello".into(), mine, ..Default::default() } }
 
     #[test]
     fn the_message_entries_follow_the_webex_menu() {
-        assert_eq!(labels(&crate::ui::msg_actions::message_items(&msg(true), false)), ["Nachricht kopieren", "Nachricht bearbeiten", "Thread starten",
-            "Reaktion hinzufügen", "Nachricht weiterleiten", "Mich erinnern in", "Nachricht anheften", "Nachricht zitieren", "Nachricht übersetzen",
-            "Nachricht markieren", "Nachricht löschen"]);
+        assert_eq!(labels(&crate::ui::msg_actions::message_items(&msg(true), false)), [tr("Copy message"), tr("Edit message"), tr("Start a thread"),
+            tr("Add reaction"), tr("Forward message"), tr("Remind me in"), tr("Pin message"), tr("Quote message"), tr("Translate message"),
+            tr("Flag message"), tr("Delete message")]);
         let other = crate::ui::msg_actions::message_items(&Message { parent: "root".into(), ..msg(false) }, true);
-        assert_eq!(labels(&other), ["Nachricht kopieren", "Auf Thread antworten", "Reaktion hinzufügen", "Nachricht weiterleiten", "Mich erinnern in",
-            "Nachricht anheften", "Nachricht zitieren", "Nachricht übersetzen", "Nachrichtenmarkierung aufheben", "Als ungelesen markieren"]);
+        assert_eq!(labels(&other), [tr("Copy message"), tr("Reply to thread"), tr("Add reaction"), tr("Forward message"), tr("Remind me in"),
+            tr("Pin message"), tr("Quote message"), tr("Translate message"), tr("Unflag message"), tr("Mark as unread")]);
         let sub: Vec<&str> = other.iter().filter_map(|e| match e { menu::Entry::Item(i) if i.submenu => Some(i.id.as_str()), _ => None }).collect();
         assert_eq!(sub, ["react", "remind"]);
     }
@@ -260,7 +261,7 @@ mod tests {
     fn the_reaction_submenu_lists_the_official_reactions() {
         let m = Message { reactions: vec![cloud::Reaction { name: "heart".into(), count: 1, mine: Some("r1".into()), ..Default::default() }], ..msg(false) };
         let v = react_entries(&m);
-        assert_eq!(labels(&v), ["Feiern", "Liebe", "Gefällt mir", "Lächeln", "Haha", "Wow!", "Traurig", "Weitere Reaktionen"]);
+        assert_eq!(labels(&v), [tr("Celebrate"), tr("Love"), tr("Like"), tr("Smile"), tr("Haha"), tr("Wow"), tr("Sad"), tr("More reactions")]);
         let checked: Vec<String> = v.iter().filter_map(|e| match e { menu::Entry::Item(i) if i.checked => Some(i.id.clone()), _ => None }).collect();
         assert_eq!(checked, ["react:heart"]);
     }
@@ -270,7 +271,7 @@ mod tests {
         let base = || crate::ui::msg_actions::message_items(&msg(false), false);
         let n = base().len();
         let tail = ids(&base());
-        let with = |hit: Hit, sel: bool| ids(&context_entries(&hit, sel, false, vec![menu::Item::new("file-open", "Öffnen").entry()], base(), &[]));
+        let with = |hit: Hit, sel: bool| ids(&context_entries(&hit, sel, false, vec![menu::Item::new("file-open", tr("Open")).entry()], base(), &[]));
         // The empty part of the row, the header, the avatar: exactly the "···" menu.
         assert_eq!(with(Hit::Row, false), tail);
         let top = |v: Vec<String>| v[..v.len() - n].to_vec();
@@ -285,12 +286,12 @@ mod tests {
 
     #[test]
     fn a_kept_deleted_message_copies_and_shows_the_plugins_entries() {
-        let plug = [PluginItem { plugin: "dev.x".into(), id: "forget".into(), label: "Gelöschte Nachricht entfernen".into(), icon: "delete-regular".into(), danger: true },
-            PluginItem { plugin: "dev.x".into(), id: "clear".into(), label: "Protokoll dieses Bereichs leeren".into(), icon: "no-such-icon".into(), danger: false }];
+        let plug = [PluginItem { plugin: "dev.x".into(), id: "forget".into(), label: "Remove deleted message".into(), icon: "delete-regular".into(), danger: true },
+            PluginItem { plugin: "dev.x".into(), id: "clear".into(), label: "Clear this space's history".into(), icon: "no-such-icon".into(), danger: false }];
         let v = context_entries(&Hit::Text { link: None }, false, true, vec![], crate::ui::msg_actions::message_items(&msg(true), false), &plug);
         assert_eq!(ids(&v), ["select-all", "-", "copy-message", "-", "plug:0", "plug:1"]);
         let menu::Entry::Item(p0) = &v[4] else { panic!() };
-        assert_eq!((p0.label.as_str(), p0.icon, p0.danger), ("Gelöschte Nachricht entfernen", Some("delete-regular"), true));
+        assert_eq!((p0.label.as_str(), p0.icon, p0.danger), ("Remove deleted message", Some("delete-regular"), true));
         let menu::Entry::Item(p1) = &v[5] else { panic!() };
         assert_eq!(p1.icon, None, "an unknown icon name draws no icon");
         // A picture of a kept deleted message still has its picture actions.
@@ -301,7 +302,7 @@ mod tests {
 
     #[test]
     fn a_menu_never_ends_in_a_separator() {
-        // A kept deleted message right-clicked on its text, no plugin entries: the text actions, one separator, "Nachricht kopieren".
+        // A kept deleted message right-clicked on its text, no plugin entries: the text actions, one separator, "Copy message".
         assert_eq!(ids(&context_entries(&Hit::Text { link: None }, false, true, vec![], vec![], &[])), ["select-all", "-", "copy-message"]);
         // Whatever the parts give, no separator is left at either end or doubled.
         let sep = || menu::Entry::Sep;
@@ -337,7 +338,7 @@ mod tests {
         out
     }
 
-    /// An edited message with logged history: earlier-text lines above the text and the clickable "(bearbeitet)" tag below it
+    /// An edited message with logged history: earlier-text lines above the text and the clickable "(edited)" tag below it
     /// (a click-sensing widget, as `edit_tag_click` adds), right-clicked at `at`.
     fn right_click_on_edited(at: egui::Pos2) -> Option<Hit> {
         let ctx = egui::Context::default();
@@ -368,7 +369,7 @@ mod tests {
     fn an_edited_message_with_history_opens_its_menu_everywhere() {
         assert_eq!(right_click_on_edited(egui::pos2(350.0, 60.0)), Some(Hit::Row), "the empty right side");
         assert_eq!(right_click_on_edited(egui::pos2(100.0, 20.0)), Some(Hit::Row), "an earlier-text line");
-        assert_eq!(right_click_on_edited(egui::pos2(80.0, 80.0)), Some(Hit::Row), "the (bearbeitet) tag");
+        assert_eq!(right_click_on_edited(egui::pos2(80.0, 80.0)), Some(Hit::Row), "the (edited) tag");
         assert_eq!(right_click_on_edited(egui::pos2(100.0, 60.0)), Some(Hit::Text { link: None }), "the text");
     }
 

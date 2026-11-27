@@ -4,11 +4,11 @@
 //!
 //! Official: `ParticipantList/ParticipantItemDelegate.qml` (row 48, avatar 32, control buttons 28, second line),
 //! `PhoneWidget/ParticipantsPopup.qml` ("Remove from call", width 278), `ParticipantList/InvitePeopleAndDevicePage.qml`.
-//! German from the language pack: "Teilnehmer ({{0}})", "Teilnehmerbereich", "Personen hinzufügen", "Personen anhand von Name oder
-//! E-Mail-Adresse hinzufügen", "Einladen", "Einladung gesendet", "Ich", "Gastgeber", "Gastgeber, ich", "Anrufen ...",
-//! "Stummgeschaltet", "Stummschalten", "Hand heben", "Hand senken", "Gehobene Hand", "Aus Anruf entfernen",
-//! "{{0}} entfernen?", "Entfernen", "Abbrechen", "{{MEETING_TYPE}} für alle beenden", "Meeting für alle beenden?".
-//! Webox's own: the panel width (`PANEL_W`), "Stummschaltung aufheben" for someone else (pack: "Stumm. aus").
+//! From the language pack: "Participants ({{0}})", "Participants panel", "Add People", "Add people by name or email
+//! address", "Invite", "Invite sent", "Me", "Host", "Host, me", "Calling...",
+//! "Muted", "Mute", "Unmute", "Raise hand", "Lower hand", "Raised hand", "Remove from call",
+//! "Remove {{0}}?", "Remove", "Cancel".
+//! Webox's own: the panel width (`PANEL_W`) and the end-for-everyone texts (assets/i18n/webox).
 use super::*;
 use crate::cloud::locus::controls::{Ctl, Member, Roster};
 use crate::cloud::locus::CallReq;
@@ -36,10 +36,10 @@ enum Confirm { Remove(String, String), EndAll }
 /// Second line of a roster row.
 pub(crate) fn second_line(m: &Member) -> &'static str {
     match (m.me, m.host) {
-        _ if !m.joined() => "Anrufen ...",
-        (true, true) => "Gastgeber, ich",
-        (true, false) => "Ich",
-        (false, true) => "Gastgeber",
+        _ if !m.joined() => tr("Calling..."),
+        (true, true) => tr("Host, me"),
+        (true, false) => tr("Me"),
+        (false, true) => tr("Host"),
         _ => "",
     }
 }
@@ -48,12 +48,12 @@ pub(crate) fn second_line(m: &Member) -> &'static str {
 pub(crate) fn member_actions(r: &Roster, m: &Member) -> Vec<(&'static str, &'static str, bool)> {
     let mut v = Vec::new();
     if m.me {
-        if r.group { v.push(if m.hand { ("hand-down", "Hand senken", false) } else { ("hand-up", "Hand heben", false) }); }
+        if r.group { v.push(if m.hand { ("hand-down", tr("Lower hand"), false) } else { ("hand-up", tr("Raise hand"), false) }); }
         return v;
     }
-    if m.joined() { v.push(if m.muted { ("unmute", "Stummschaltung aufheben", false) } else { ("mute", "Stummschalten", false) }); }
-    if m.hand && r.me_host { v.push(("hand-down", "Hand senken", false)); }
-    if r.may_remove() { v.push(("remove", "Aus Anruf entfernen", true)); }
+    if m.joined() { v.push(if m.muted { ("unmute", tr("Unmute"), false) } else { ("mute", tr("Mute"), false) }); }
+    if m.hand && r.me_host { v.push(("hand-down", tr("Lower hand"), false)); }
+    if r.may_remove() { v.push(("remove", tr("Remove from call"), true)); }
     v
 }
 
@@ -82,7 +82,7 @@ pub(crate) fn sample_roster() -> Roster {
         id: id.into(), name: name.into(), email: format!("{}@example.com", id), state: state.into(), muted, hand, host, me };
     let mut r = Roster { members: vec![
         m("p3", "Erika Beispiel", "JOINED", false, true, false, false),
-        m("me", "Ich Selbst", "JOINED", false, false, true, true),
+        m("me", "Me Myself", "JOINED", false, false, true, true),
         m("p1", "Max Muster", "JOINED", true, false, false, false),
         m("p2", "Lea Probe", "JOINED", false, false, false, false),
         m("p4", "Jonas Test", "NOTIFIED", false, false, false, false),
@@ -117,15 +117,15 @@ impl App {
     pub(super) fn roster_button(&mut self, ui: &mut egui::Ui, t: &Th, center: egui::Pos2) {
         let on = self.call.win.roster.open;
         if round_at(ui, &mut self.icons, "bar-roster", center, 40.0, "participant-list-regular", if on { t.accent } else { t.selected }, Color32::WHITE, t.focus)
-            .on_hover_text(if on { "Teilnehmerbereich ausblenden" } else { "Teilnehmerbereich" }).clicked() { self.call.win.roster.open = !on; }
+            .on_hover_text(if on { tr("Hide participants panel") } else { tr("Participants panel") }).clicked() { self.call.win.roster.open = !on; }
     }
 
-    /// "Hand heben" / "Hand senken" in the control bar (group calls only).
+    /// "Raise hand" / "Lower hand" in the control bar (group calls only).
     pub(super) fn hand_button(&mut self, ui: &mut egui::Ui, t: &Th, center: egui::Pos2, now: f64) {
         let Some(me) = self.call.roster.me().cloned() else { return };
         if !self.call.roster.group { return; }
         if round_at(ui, &mut self.icons, "bar-hand", center, 40.0, if me.hand { "lower-hand-regular" } else { "raise-hand-regular" }, if me.hand { t.accent } else { t.selected }, Color32::WHITE, t.focus)
-            .on_hover_text(if me.hand { "Hand senken" } else { "Hand heben" }).clicked() { self.send_control(Ctl::Hand(me.id, !me.hand), now); }
+            .on_hover_text(if me.hand { tr("Lower hand") } else { tr("Raise hand") }).clicked() { self.send_control(Ctl::Hand(me.id, !me.hand), now); }
     }
 
     /// Sends a roster control (the offline sample applies it to its made-up roster).
@@ -136,7 +136,7 @@ impl App {
         let invite = matches!(c, Ctl::Invite(_));
         let Some(cl) = &self.client else { return };
         cl.req(Req::Call(CallReq::Control(c)));
-        if invite { self.toast("Einladung gesendet", now); }
+        if invite { self.toast(tr("Invite sent"), now); }
     }
 
     /// The panel in `r` (right side of the call window body).
@@ -145,19 +145,19 @@ impl App {
         ui.painter().rect_filled(r, 0.0, t.card);
         ui.painter().line_segment([r.left_top(), r.left_bottom()], Stroke::new(1.0_f32, t.sep));
         let roster = self.call.roster.clone();
-        // Header: "Teilnehmer (n)" and close.
+        // Header: "Participants (n)" and close.
         let head = Rect::from_min_size(r.min, Vec2::new(r.width(), HEAD_H));
-        crate::ui::chrome::fit_text(ui.painter(), head.left() + 16.0, head.center().y, &format!("Teilnehmer ({})", roster.joined()), semibold(14.0), t.text1, head.width() - 64.0);
+        crate::ui::chrome::fit_text(ui.painter(), head.left() + 16.0, head.center().y, &crate::trq!("Participants ({{0}})", roster.joined()), semibold(14.0), t.text1, head.width() - 64.0);
         let close = Rect::from_center_size(pos2(head.right() - 12.0 - BTN / 2.0, head.center().y), Vec2::splat(BTN));
-        if icon_btn(ui, &mut self.icons, t, "roster-close", close, "cancel-regular", t.text1, "Teilnehmerbereich ausblenden").clicked() { self.call.win.roster.open = false; }
-        // Invite: a field, known people matching it, "Einladen".
+        if icon_btn(ui, &mut self.icons, t, "roster-close", close, "cancel-regular", t.text1, tr("Hide participants panel")).clicked() { self.call.win.roster.open = false; }
+        // Invite: a field, known people matching it, "Invite".
         let inv = Rect::from_min_size(pos2(r.left() + 12.0, head.bottom()), Vec2::new(r.width() - 24.0, 32.0));
         let mut field = ui.new_child(egui::UiBuilder::new().max_rect(inv).layout(egui::Layout::left_to_right(egui::Align::Center)));
-        let te = field.add(egui::TextEdit::singleline(&mut self.call.win.roster.invite).hint_text("Personen hinzufügen").desired_width(inv.width() - BTN - 8.0))
-            .on_hover_text("Personen anhand von Name oder E-Mail-Adresse hinzufügen");
+        let te = field.add(egui::TextEdit::singleline(&mut self.call.win.roster.invite).hint_text(tr("Add People")).desired_width(inv.width() - BTN - 8.0))
+            .on_hover_text(tr("Add people by name or email address"));
         let enter = te.lost_focus() && vctx.input(|i| i.key_pressed(egui::Key::Enter));
         let add = Rect::from_center_size(pos2(inv.right() - BTN / 2.0, inv.center().y), Vec2::splat(BTN));
-        let add_clicked = icon_btn(ui, &mut self.icons, t, "roster-invite", add, "people-add-regular", t.text1, "Einladen").clicked();
+        let add_clicked = icon_btn(ui, &mut self.icons, t, "roster-invite", add, "people-add-regular", t.text1, tr("Invite")).clicked();
         let typed = self.call.win.roster.invite.trim().to_string();
         let sugg: Vec<(String, String)> = invite_suggestions(&self.people, &typed, &roster).into_iter().map(|p| (p.name.clone(), p.email.clone())).collect();
         let mut y = inv.bottom() + 6.0;
@@ -166,7 +166,7 @@ impl App {
             let resp = ui.interact(row, ui.id().with(("roster-sugg", i)), Sense::click());
             if resp.hovered() { ui.painter().rect_filled(row, 0.0, t.hover); }
             crate::ui::chrome::fit_text(ui.painter(), row.left() + 16.0, row.center().y, &format!("{name} · {email}"), FontId::proportional(13.0), t.text1, row.width() - 32.0);
-            if resp.on_hover_text("Einladen").clicked() { ctl = Some(Ctl::Invite(email.clone())); }
+            if resp.on_hover_text(tr("Invite")).clicked() { ctl = Some(Ctl::Invite(email.clone())); }
             y += 32.0;
         }
         if (enter || add_clicked) && !typed.is_empty() {
@@ -194,7 +194,7 @@ impl App {
                 let mut slot = || { x -= BTN; Rect::from_min_size(pos2(x, row.center().y - BTN / 2.0), Vec2::splat(BTN)) };
                 if !actions.is_empty() {
                     let b = slot();
-                    if icon_btn(ui, &mut self.icons, t, ("roster-more", &m.id), b, "more-regular", t.text1, &format!("Weitere Optionen für {}", m.name)).clicked() {
+                    if icon_btn(ui, &mut self.icons, t, ("roster-more", &m.id), b, "more-regular", t.text1, &crate::trq!("More options for %1", m.name)).clicked() {
                         self.call.win.roster.menu_for = Some(m.id.clone());
                         menu_toggle(vctx, MENU);
                     }
@@ -208,12 +208,12 @@ impl App {
                 }
                 if m.joined() {
                     let b = slot();
-                    let (icon, col, tip) = if m.muted { ("microphone-muted-regular", t.badge, "Stummgeschaltet") } else { ("microphone-regular", t.text2, "") };
+                    let (icon, col, tip) = if m.muted { ("microphone-muted-regular", t.badge, tr("Muted")) } else { ("microphone-regular", t.text2, "") };
                     t_icon(ui, &mut self.icons, b, icon, col, tip, ("roster-mic", &m.id));
                 }
                 if m.hand {
                     let b = slot();
-                    t_icon(ui, &mut self.icons, b, "raise-hand-filled", t.accent, "Gehobene Hand", ("roster-hand", &m.id));
+                    t_icon(ui, &mut self.icons, b, "raise-hand-filled", t.accent, tr("Raised hand"), ("roster-hand", &m.id));
                 }
                 let tx = ar.right() + 12.0;
                 let w = (x - tx - 4.0).max(20.0);
@@ -231,13 +231,13 @@ impl App {
             let b = Rect::from_center_size(pos2(r.center().x, r.bottom() - foot_h / 2.0), Vec2::new(r.width() - 32.0, 36.0));
             let resp = ui.interact(b, ui.id().with("roster-end-all"), Sense::click());
             ui.painter().rect_filled(b, 18.0, if resp.hovered() { t.badge.gamma_multiply(0.85) } else { t.badge });
-            ui.painter().text(b.center(), egui::Align2::CENTER_CENTER, "Anruf für alle beenden", semibold(13.0), Color32::WHITE);
+            ui.painter().text(b.center(), egui::Align2::CENTER_CENTER, tr("End call for everyone"), semibold(13.0), Color32::WHITE);
             if resp.has_focus() { ui.painter().rect_stroke(b.expand(1.5), 19.5, Stroke::new(2.0_f32, t.focus), egui::StrokeKind::Inside); }
             if resp.clicked() { self.call.win.roster.confirm = Some(Confirm::EndAll); }
         }
         // Confirmation (remove / end for all) over the panel's bottom.
         if let Some(cf) = self.call.win.roster.confirm.clone() {
-            let (q, ok) = match &cf { Confirm::Remove(_, n) => (format!("{n} entfernen?"), "Entfernen"), Confirm::EndAll => ("Anruf für alle beenden?".to_string(), "Für alle beenden") };
+            let (q, ok) = match &cf { Confirm::Remove(_, n) => (crate::trq!("Remove {{0}}?", n), tr("Remove")), Confirm::EndAll => (tr("End the call for everyone?").to_string(), tr("End for everyone")) };
             let bx = Rect::from_min_max(pos2(r.left() + 8.0, r.bottom() - 112.0), pos2(r.right() - 8.0, r.bottom() - 8.0));
             ui.painter().rect_filled(bx, 8.0, t.win_b);
             ui.painter().rect_stroke(bx, 8.0, Stroke::new(1.0_f32, t.sep), egui::StrokeKind::Inside);
@@ -246,7 +246,7 @@ impl App {
             let bw = 120.0;
             let yes = Rect::from_min_size(pos2(bx.right() - 16.0 - bw, bx.bottom() - 16.0 - 32.0), Vec2::new(bw, 32.0));
             let no = yes.translate(Vec2::new(-bw - 8.0, 0.0));
-            for (rect, label, danger) in [(no, "Abbrechen", false), (yes, ok, true)] {
+            for (rect, label, danger) in [(no, tr("Cancel"), false), (yes, ok, true)] {
                 let resp = ui.interact(rect, ui.id().with(("roster-confirm", label)), Sense::click());
                 let fill = if danger { t.badge } else { t.selected };
                 ui.painter().rect_filled(rect, 16.0, if resp.hovered() { fill.gamma_multiply(0.85) } else { fill });
@@ -290,10 +290,10 @@ mod tests {
 
     #[test]
     fn second_line_says_role_and_ringing() {
-        assert_eq!(second_line(&mem("x", true, true, false, false, true)), "Gastgeber, ich");
-        assert_eq!(second_line(&mem("x", true, true, false, false, false)), "Ich");
-        assert_eq!(second_line(&mem("x", false, true, false, false, true)), "Gastgeber");
-        assert_eq!(second_line(&mem("x", false, false, false, false, false)), "Anrufen ...");
+        assert_eq!(second_line(&mem("x", true, true, false, false, true)), tr("Host, me"));
+        assert_eq!(second_line(&mem("x", true, true, false, false, false)), tr("Me"));
+        assert_eq!(second_line(&mem("x", false, true, false, false, true)), tr("Host"));
+        assert_eq!(second_line(&mem("x", false, false, false, false, false)), tr("Calling..."));
     }
 
     #[test]

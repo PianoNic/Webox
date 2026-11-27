@@ -143,7 +143,9 @@ impl Plugin {
         let mut open_tile: Option<Tile> = None;
         let mut fav_toggle: Option<usize> = None;
         let mut clear_query = false;
-        let favs = self.favs.clone().unwrap_or_default();
+        // Borrowed, not cloned: this runs every frame while the popup is open (`self.favs` was filled above).
+        let no_favs = super::favs::Favs::default();
+        let favs = self.favs.as_ref().unwrap_or(&no_favs);
         let st = &mut self.picker;
         let tx = st.tx.clone();
 
@@ -211,7 +213,7 @@ impl Plugin {
             let centre = grid.center();
             if st.view == View::Home {
                 // Home screen: tiles (looping thumbnail darkened behind a bold centred label).
-                let cats: Vec<Category> = st.cats.clone().unwrap_or_default();
+                let cats: &[Category] = st.cats.as_deref().unwrap_or(&[]);
                 let tl = home_tiles(cats.len());
                 let mut gui = ui.new_child(egui::UiBuilder::new().max_rect(grid));
                 gui.spacing_mut().scroll = egui::style::ScrollStyle { bar_width: 8.0, bar_inner_margin: 1.0, bar_outer_margin: 0.0, ..egui::style::ScrollStyle::solid() };
@@ -284,7 +286,7 @@ impl Plugin {
                         let r = rel.translate(area.min.to_vec2());
                         if st.sel == Some(i) && st.scroll_to_sel { ui.scroll_to_rect(r.expand2(Vec2::new(0.0, 6.0)), None); st.scroll_to_sel = false; }
                         if rel.bottom() < vp.top() - 120.0 || rel.top() > vp.bottom() + 120.0 { continue }
-                        let g = st.gifs[i].clone();
+                        let g = &st.gifs[i];
                         want(&mut st.thumbs, tx.as_ref(), &g.id, &g.thumb_url);
                         if rel.bottom() < vp.top() || rel.top() > vp.bottom() { continue }
                         let resp = ui.interact(r, egui::Id::new(("gif-tile-extras", &g.id)), Sense::click());

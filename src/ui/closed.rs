@@ -1,12 +1,10 @@
-//! The read-only notice of a closed conversation: "Diese Unterhaltung ist geschlossen." over "Dieser Bereich ist nicht mehr
-//! aktiv, weil die Kommunikation zwischen bestimmten Gruppen gemäß der Richtlinie untersagt ist." with "Auf Updates prüfen" at
-//! the right. It replaces the composer.
+//! The read-only notice of a closed conversation: "This conversation is closed" over "This space is no longer active because
+//! communication between certain groups is prohibited by policy." with "Check for updates" at the right. It replaces the composer.
 //!
 //! Layout (pt): 96 high, background a vertical #121212 -> #0F0F0F, title (#F7F7F7) centred on the card, paragraph
-//! (#B2B2B2, 22.4 pt line pitch), link "Auf Updates prüfen" semibold #64B4FA (= button-hyperlink-text) with a pop-out glyph,
+//! (#B2B2B2, 22.4 pt line pitch), link "Check for updates" semibold #64B4FA (= button-hyperlink-text) with a pop-out glyph,
 //! 23 pt from the card's right edge, vertically centred on the paragraph.
-//! "Auf Updates prüfen" is an app update check. Webox has no updater; the link opens the update check dialog, which answers
-//! "Sie sind auf dem neuesten Stand" (ui/app_dialogs.rs).
+//! "Check for updates" is an app update check; the link opens the update check dialog (ui/update_dialog.rs).
 use crate::*;
 
 /// Height of the notice (pt).
@@ -51,7 +49,7 @@ impl App {
         self.icons.paint(ui, "pop-out-bold", Rect::from_center_size(pos2(glyph_c, pmid), Vec2::splat(16.0)), c_link);
     }
 
-    /// The announcement notice: "Das ist ein Ankündigungsbereich" over "In diesem Bereich können nur Moderatoren ..." (both
+    /// The announcement notice: "This is an announcement space" over "Only moderators can post content ..." (both
     /// text-primary, 16 px, centred, the body word-wrapped). Placed like the closed notice.
     pub(crate) fn announcement_notice(&mut self, ui: &mut egui::Ui, t: &Th, r: Rect) {
         let light = super::menu::light(t);

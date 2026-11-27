@@ -1,7 +1,7 @@
-//! The contact card of a person: the "Profil" tab of a direct chat and the card popup opened from the people list / global search.
+//! The contact card of a person: the "Profile" tab of a direct chat and the card popup opened from the people list / global search.
 //!
-//! Strings from the German pack: "Nachricht", "E-Mail", "E-Mail kopieren", "E-Mail-Adresse kopiert!", "Verfügbarkeit", "Mehr",
-//! "Anrufen" / "Videoanruf", "Kontakt hinzufügen", "Organisation anzeigen". Sizes: photo 96, pills 32 high, fields 13/15 pt.
+//! Pack strings: "Message", "Email", "Copy email", "Email copied", "Availability", "More",
+//! "Call" / "Video call", "Add a contact", "Show organization". Sizes: photo 96, pills 32 high, fields 13/15 pt.
 //! Only fields the data layer really has are shown (name, email, presence); phone / department / manager / organisation are
 //! not fetched.
 use crate::*;
@@ -82,31 +82,31 @@ impl App {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             if !me {
-                if pill(ui, &mut self.icons, t, "handset-regular", "Anrufen", Pill::Green).clicked() {
-                    if p.email.is_empty() { self.toast("Calls work in direct spaces", now) } else { self.start_call(&p.email, &p.name, now) }
+                if pill(ui, &mut self.icons, t, "handset-regular", tr("Call"), Pill::Green).clicked() {
+                    if p.email.is_empty() { self.toast(tr("Calls work in direct spaces"), now) } else { self.start_call(&p.email, &p.name, now) }
                 }
-                if pill(ui, &mut self.icons, t, "video-regular", "Videoanruf", Pill::Green).clicked() {
-                    if p.email.is_empty() { self.toast("Calls work in direct spaces", now) } else { self.start_call_with(&p.email, &p.name, now, true) }
+                if pill(ui, &mut self.icons, t, "video-regular", tr("Video call"), Pill::Green).clicked() {
+                    if p.email.is_empty() { self.toast(tr("Calls work in direct spaces"), now) } else { self.start_call_with(&p.email, &p.name, now, true) }
                 }
-                if pill(ui, &mut self.icons, t, "chat-regular", "Nachricht", Pill::Outline).clicked() {
+                if pill(ui, &mut self.icons, t, "chat-regular", tr("Message"), Pill::Outline).clicked() {
                     // Opens the 1:1 (or creates it, see `open_or_create_direct`).
                     if self.open_or_create_direct(&p, now) { ctx.data_mut(|d| d.remove::<(String, String, String, String)>(card_key())); }
                 }
             }
-            let more = pill(ui, &mut self.icons, t, "more-regular", "Mehr", Pill::Outline);
+            let more = pill(ui, &mut self.icons, t, "more-regular", tr("More"), Pill::Outline);
             more_anchor = more.rect;
             if more.clicked() { menu::menu_toggle(&ctx, "contact-more"); }
         });
-        // "Kontakt hinzufügen" (a contacts-service write) and "Organisation anzeigen" (org-chart data) are not implemented: both
+        // "Add a contact" (a contacts-service write) and "Show organization" (org-chart data) are not implemented: both
         // shown disabled, not as no-ops.
         let items = vec![
-            Item::new("add", "Kontakt hinzufügen").icon("participant-add-regular").disabled().entry(),
-            Item::new("org", "Organisation anzeigen").icon("people-regular").disabled().entry(),
+            Item::new("add", tr("Add a contact")).icon("participant-add-regular").disabled().entry(),
+            Item::new("org", tr("Show organization")).icon("people-regular").disabled().entry(),
             Entry::Sep,
-            Item::new("copy", "E-Mail kopieren").icon("copy-regular").enabled(!p.email.is_empty()).entry(),
+            Item::new("copy", tr("Copy email")).icon("copy-regular").enabled(!p.email.is_empty()).entry(),
         ];
         if let Some(a) = menu::webex_menu(&ctx, &mut self.icons, t, "contact-more", more_anchor, Side::Below, Align::Left, true, &items) {
-            if a == "copy" { ctx.copy_text(p.email.clone()); self.toast("E-Mail-Adresse kopiert!", now); }
+            if a == "copy" { ctx.copy_text(p.email.clone()); self.toast(tr("Email copied"), now); }
         }
         ui.add_space(22.0);
         let field = |ui: &mut egui::Ui, label: &str, value: &str| {
@@ -116,7 +116,7 @@ impl App {
             ui.add_space(14.0);
         };
         if !p.email.is_empty() {
-            ui.label(RichText::new("E-Mail").size(13.0).color(t.text2));
+            ui.label(RichText::new(tr("Email")).size(13.0).color(t.text2));
             ui.add_space(1.0);
             ui.horizontal(|ui| {
                 let r = ui.add(egui::Label::new(RichText::new(&p.email).size(15.0).color(t.link)).sense(Sense::click()));
@@ -125,12 +125,12 @@ impl App {
                 let (cr, cresp) = ui.allocate_exact_size(Vec2::splat(24.0), Sense::click());
                 if cresp.hovered() { ui.painter().circle_filled(cr.center(), 12.0, t.hover); }
                 self.icons.paint(ui, "copy-regular", Rect::from_center_size(cr.center(), Vec2::splat(15.0)), t.text2);
-                if cresp.on_hover_text("E-Mail kopieren").clicked() { ctx.copy_text(p.email.clone()); self.toast("E-Mail-Adresse kopiert!", now); }
+                if cresp.on_hover_text(tr("Copy email")).clicked() { ctx.copy_text(p.email.clone()); self.toast(tr("Email copied"), now); }
             });
             ui.add_space(14.0);
         }
         let avail = presence_text(&p.status);
-        if !avail.is_empty() { field(ui, "Verfügbarkeit", avail); }
+        if !avail.is_empty() { field(ui, tr("Availability"), avail); }
     }
 
     /// The card popup (a person picked in the people list or the global search): modal-primary balloon, closes on Esc / click outside / X.
@@ -166,13 +166,13 @@ impl App {
         if close { ctx.data_mut(|d| d.remove::<(String, String, String, String)>(card_key())); }
     }
 
-    /// The "Profil" tab of a direct chat: the same card, in the chat body.
+    /// The "Profile" tab of a direct chat: the same card, in the chat body.
     pub(crate) fn profile_tab(&mut self, b: &mut egui::Ui, t: &Th, person: Option<&Person>, now: f64) {
         crate::ui::widgets::vscroll().auto_shrink([false; 2]).show(b, |ui| {
             egui::Frame::default().inner_margin(egui::Margin { left: 32, right: 32, top: 28, bottom: 20 }).show(ui, |ui| {
                 match person {
                     Some(p) => self.contact_content(ui, t, p, now),
-                    None => { ui.label(RichText::new("Keine Profilinformationen verfügbar").size(15.0).color(t.text2)); }
+                    None => { ui.label(RichText::new(tr("No profile information available")).size(15.0).color(t.text2)); }
                 }
             });
         });

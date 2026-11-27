@@ -40,8 +40,11 @@ pub fn handle(msg: &Value, open: &mut dyn FnMut(&str)) -> Value {
     match (kind.as_str(), url) {
         ("ping", _) | ("version", _) => json!({"result": "success", "version": env!("CARGO_PKG_VERSION"), "installed": true}),
         (k, Some(u)) if k.contains("join") || k.contains("launch") || k.contains("start") || k.is_empty() => {
-            if u.starts_with("https://") { open(u); json!({"result": "success", "joined": true}) }
-            else { json!({"result": "failure", "reason": "only https meeting links are opened"}) }
+            // Parsed and handed on in its normalised form: no raw spaces, quotes or control characters reach the system's opener.
+            match url::Url::parse(u).ok().filter(|p| u.starts_with("https://") && p.host_str().is_some_and(|h| !h.is_empty())) {
+                Some(p) => { open(p.as_str()); json!({"result": "success", "joined": true}) }
+                None => json!({"result": "failure", "reason": "only https meeting links are opened"}),
+            }
         }
         _ => json!({"result": "failure", "reason": format!("unsupported message '{kind}'")}),
     }

@@ -74,8 +74,8 @@ pub(crate) struct CopyRow {
     pub stamp: String,
     /// The row is grouped under the previous one.
     pub grouped: bool,
-    /// The message content as HTML.
-    pub body: String,
+    /// The message content as HTML (shared with the row's cached layout: recording a row each frame copies no text).
+    pub body: std::sync::Arc<str>,
 }
 
 /// The selection as HTML: rows oldest first; per selected row `<p>`, then `"%1 %2 %3 "` with name, time stamp and `&bull;`
@@ -161,7 +161,7 @@ fn decode_entities(s: &str) -> String {
     while let Some(i) = rest.find('&') {
         out.push_str(&rest[..i]);
         let tail = &rest[i..];
-        let end = tail.find(';').filter(|e| *e <= 10);
+        let end = tail.bytes().take(11).position(|b| b == b';'); // within 10 bytes: no rescan of the rest per `&`
         let ent = end.map(|e| &tail[1..e]);
         let ch = ent.and_then(|e| match e {
             "amp" => Some('&'), "lt" => Some('<'), "gt" => Some('>'), "quot" => Some('"'), "apos" => Some('\''), "nbsp" => Some('\u{a0}'), "bull" => Some('•'),
@@ -204,7 +204,8 @@ impl App {
     /// After the rows were drawn: a press on a row (selection with the modifier), dragging onto other rows without a modifier
     /// (range), Esc (clear) and Ctrl+C (copy).
     pub(super) fn multi_select_input(&mut self, ctx: &egui::Context, ui: &egui::Ui, space: &str, list: Rect) {
-        let order: Vec<String> = ctx.data(|d| d.get_temp::<Vec<CopyRow>>(Id::new("msg-copyrows"))).unwrap_or_default().into_iter().map(|r| r.id).collect();
+        // Only the ids, read in place (`get_temp` would clone every row first).
+        let order: Vec<String> = ctx.data_mut(|d| d.get_temp_mut_or_default::<Vec<CopyRow>>(Id::new("msg-copyrows")).iter().map(|r| r.id.clone()).collect());
         let mut s = msel(ctx, space);
         let before = s.clone();
         let mods = SelMod::from(ctx.input(|i| i.modifiers));
