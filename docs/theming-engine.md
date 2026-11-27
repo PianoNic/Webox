@@ -671,7 +671,7 @@ Move `decor::chrome`'s panel lookups to solved rects.
 `message_list` and `composer` behind `ComponentSpec`s. Keep the composite. Move the `customize.rs` groups into slots plus
 the user patch, with the stored keys unchanged.
 
-**Phase 6: variants (8–10 d).** `message_list` bubbles and compact, avatar shapes, the `space_list` row variants, the
+**Phase 6: variants (8–10 d).** *Part 1 done:* variants reach the components (`layout::main::Main::variant`, the contract's first option as default): `space_list.row = one_line` forces the compact one-line rows and `rail.labels = never | always` fixes the labelled rail; `WEBOX_SHOT_LAYOUT=<file>` renders any layout file in screenshot runs (fixture `tests/fixtures/layouts/variants.json`). Planned: `message_list` bubbles and compact, avatar shapes, the `space_list` row variants, the
 rail's horizontal and server-bar modes, the chat header bar, composer toolbar positions and button styles. Each variant
 gets parity shots of its own (new baselines) and runs in the behaviour suite.
 

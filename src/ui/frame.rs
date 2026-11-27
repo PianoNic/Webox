@@ -196,6 +196,9 @@ impl eframe::App for App {
             if self.frames == 30 { if let Ok(id) = std::env::var("WEBOX_SHOT_OPEN") { self.open_space(id); } }
             // WEBOX_SHOT_DRAFT=<space id> gives that (sample) space an unsent draft (the list row's draft icon; not saved).
             if self.frames == 2 { if let Ok(id) = std::env::var("WEBOX_SHOT_DRAFT") { self.drafts.insert(id, "Draft".into()); } }
+            // WEBOX_SHOT_LAYOUT=<file> renders a layout file (webox-ui-layout/1) instead of the built-in one; a file that does not
+            // load prints its findings and leaves the built-in layout.
+            if self.frames == 1 { if let Ok(p) = std::env::var("WEBOX_SHOT_LAYOUT") { self.load_layout_file(&p); } }
             // WEBOX_SHOT_THEME=light|dark|<theme id, e.g. MomentumJadeLight> renders that theme (not saved).
             if self.frames == 1 { if let Ok(v) = std::env::var("WEBOX_SHOT_THEME") { self.settings["theme"] = json!(v); } }
             // WEBOX_SHOT_MENU=gear|status|filters|more|row opens that menu (row needs the first list row's dots; opens for s1).

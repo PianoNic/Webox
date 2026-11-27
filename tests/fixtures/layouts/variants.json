@@ -1,0 +1,20 @@
+{
+  "schema": "webox-ui-layout/1",
+  "id": "variant-check",
+  "name": "Variant check",
+  "surfaces": { "main": {
+    "dock": "top", "id": "header", "size": { "pref": "{metrics.header_h}" },
+    "child": { "slot": "header" },
+    "rest": {
+      "dock": "left", "id": "rail", "size": { "pref": "{rail.width}" },
+      "child": { "slot": "rail", "variants": { "labels": "always" } },
+      "rest": { "switch": "nav.page", "cases": {
+        "messaging": { "split": "row", "gap": 4, "items": [
+          { "size": { "min": 280, "pref": "{list.width}", "max": 400 },
+            "node": { "card": "list", "child": { "slot": "space_list", "variants": { "row": "one_line" } } } },
+          { "size": { "min": 560 }, "node": { "card": "content", "child": { "slot": "conversation" } } } ] },
+        "settings": { "split": "row", "gap": 4, "items": [
+          { "size": { "pref": "{settings.nav_width}" }, "node": { "card": "list", "child": { "slot": "settings_nav" } } },
+          { "node": { "card": "content", "child": { "slot": "settings_page" } } } ] },
+        "*": { "slot": "page" } } } } } }
+}

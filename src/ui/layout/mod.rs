@@ -220,7 +220,8 @@ enum CNode {
     Stack { axis: Axis, gap: f32, children: Vec<(CSize, bool, usize)> },
     Switch { on: usize, cases: Vec<(String, usize)>, default: Option<usize> },
     Card { child: usize },
-    Slot { component: Component },
+    /// A component and its variant choices (validated, so the values point into the contract's option lists).
+    Slot { component: Component, variants: Vec<(&'static str, &'static str)> },
 }
 
 /// A compiled layout: nodes by index (0 is the root), the state keys and named lengths it reads.
@@ -234,7 +235,11 @@ pub(crate) struct Compiled {
 
 /// A visible leaf of a solve: a component in its rect, or a card's rect (painted before what it holds).
 #[derive(Clone, Copy, PartialEq, Debug)]
-pub(crate) enum Placed { Component(Component, Rect), Card(Rect) }
+pub(crate) enum Placed {
+    /// A component in its rect, with the index of the node that placed it (for its variants, [`Compiled::variant`]).
+    Component(Component, Rect, u32),
+    Card(Rect),
+}
 
 pub(crate) fn compile(l: &Layout) -> Compiled {
     let mut c = Compiled { nodes: vec![], keys: vec![], lens: vec![] };
@@ -279,10 +284,18 @@ impl Compiled {
                 CNode::Switch { on, cases, default }
             }
             Node::Card { child, .. } => CNode::Card { child: self.add(child) },
-            Node::Slot { component, .. } => CNode::Slot { component: *component },
+            Node::Slot { component, variants } => CNode::Slot { component: *component, variants: variants.iter().filter_map(|(k, v)| {
+                component.variants().iter().find(|(id, _)| id == k).and_then(|(id, opts)| opts.iter().find(|o| *o == v).map(|o| (*id, *o)))
+            }).collect() },
         };
         self.nodes[at] = c;
         at
+    }
+
+    /// The option a placement chose for `variant`, or the contract's default (its first option).
+    pub(crate) fn variant(&self, node: u32, c: Component, variant: &str) -> &'static str {
+        let chosen = match self.nodes.get(node as usize) { Some(CNode::Slot { variants, .. }) => variants.iter().find(|(k, _)| *k == variant).map(|x| x.1), _ => None };
+        chosen.or_else(|| c.variants().iter().find(|(k, _)| *k == variant).and_then(|(_, o)| o.first().copied())).unwrap_or("")
     }
 
     /// The rects of the visible leaves in draw order, written into `out` (cleared first; its capacity is reused).
@@ -307,7 +320,7 @@ impl Compiled {
 
     fn place(&self, i: usize, r: Rect, env: &dyn Env, out: &mut Vec<Placed>) {
         match &self.nodes[i] {
-            CNode::Slot { component } => out.push(Placed::Component(*component, r)),
+            CNode::Slot { component, .. } => out.push(Placed::Component(*component, r, i as u32)),
             CNode::Card { child } => { out.push(Placed::Card(r)); self.place(*child, r, env, out); }
             CNode::Switch { on, cases, default } => {
                 let v = env.key(*on);
