@@ -22,11 +22,11 @@
 //!
 //! SSRCs: with more than one m-line webrtc-rs takes RTP only from SSRCs the answer declares, and Webex media servers send
 //! from SSRCs their answer does not name. The ICE socket notes the SSRCs Opus and H.264 really arrive from
-//! (`ice_socket::Seen`), and `redeclare` declares them in a renegotiation that stays on our side: a new local offer
+//! (`ice_socket::Seen`; only from the media server's addresses, `ice_socket::Peers`), and `redeclare` declares them in a renegotiation that stays on our side: a new local offer
 //! (same ICE credentials, same DTLS, same lines) and the server's last answer again, with the SSRCs put in. The server
 //! sees nothing of it. Received video is decoded off the UI thread (`share_rx::Decode`, into `video_rx::MAIN` for the
 //! camera and `share_rx::SHARE` for a share); sent video is encoded on the camera's own thread (`media::camera::send`).
-use super::ice_socket::SeenSsrc;
+use super::ice_socket::{Peers, SeenSsrc};
 use super::{dbg_conn, sdp, sdp_compat};
 use crate::media::audio::{self, Io, FRAME};
 use crate::media::jitter::{self, Adjust, Jitter, Play};
@@ -97,6 +97,9 @@ pub struct Media {
     audio_ssrc: AtomicU32,
     /// Audio packets taken when `redeclare` last looked (a stall with another SSRC on the wire means a switch).
     rx_mark: AtomicU64,
+    /// The media server's addresses (the UDP candidates of every remote description applied): only RTP from these is
+    /// noted in `seen_video` / `seen_audio`.
+    peers: Arc<Peers>,
     /// What the far end sends as the locus has it (`EXPECT_SHARE`, `EXPECT_VIDEO`): which line an undeclared SSRC
     /// seen on the wire is declared on (`redeclare`).
     pub expect: Arc<AtomicU8>,
@@ -269,7 +272,7 @@ pub fn route_ip(host: &str) -> Option<IpAddr> {
 }
 
 /// Needs the tokio runtime (the ICE socket is registered with it).
-fn settings(net: Net, seen: super::ice_socket::Seen) -> Result<SettingEngine, String> {
+fn settings(net: Net, seen: super::ice_socket::Seen, peers: Arc<Peers>) -> Result<SettingEngine, String> {
     let mut s = SettingEngine::default();
     // a short network gap only disconnects (and recovers); Failed, the media gone for good, after a minute without checks
     s.set_ice_timeouts(Some(Duration::from_secs(5)), Some(Duration::from_secs(60)), Some(Duration::from_secs(1)));
@@ -284,7 +287,7 @@ fn settings(net: Net, seen: super::ice_socket::Seen) -> Result<SettingEngine, St
     let ip = keep.unwrap_or(IpAddr::from([0, 0, 0, 0]));
     s.set_network_types(vec![if ip.is_ipv4() { NetworkType::Udp4 } else { NetworkType::Udp6 }]);
     if let Some(ip) = keep { s.set_ip_filter(Box::new(move |a| a == ip)); }
-    s.set_udp_network(super::ice_socket::mux(ip, seen).map_err(|e| format!("ICE socket: {e}"))?);
+    s.set_udp_network(super::ice_socket::mux(ip, seen, peers).map_err(|e| format!("ICE socket: {e}"))?);
     Ok(s)
 }
 
@@ -453,6 +456,8 @@ impl Media {
         let (decoded_share, decoded_main) = (Arc::new(AtomicU64::new(0)), Arc::new(AtomicU64::new(0)));
         let (seen_video, seen_audio) = (Arc::new(SeenSsrc::default()), Arc::new(SeenSsrc::default()));
         let seen = super::ice_socket::Seen { video: seen_video.clone(), video_pt: SLIDES_PT, audio: seen_audio.clone(), audio_pt: AUDIO_PT };
+        let peers = Arc::new(Peers::default());
+        let peers_ice = peers.clone();
         let live = Arc::new(super::media_stats::Live::default());
         let pc = {
             let (state, io, rxp, stop, rx_ssrc, rx_video, live) = (state.clone(), io.clone(), rx_packets.clone(), stop.clone(), rx_ssrc.clone(), rx_video.clone(), live.clone());
@@ -463,7 +468,7 @@ impl Media {
                 m.register_codec(RTCRtpCodecParameters { capability: opus_cap(), payload_type: AUDIO_PT, ..Default::default() }, RTPCodecType::Audio).map_err(|e| e.to_string())?;
                 m.register_codec(RTCRtpCodecParameters { capability: h264_cap(), payload_type: SLIDES_PT, ..Default::default() }, RTPCodecType::Video).map_err(|e| e.to_string())?;
                 let registry = register_default_interceptors(Registry::new(), &mut m).map_err(|e| e.to_string())?;
-                let api = APIBuilder::new().with_media_engine(m).with_interceptor_registry(registry).with_setting_engine(settings(net, seen)?).build();
+                let api = APIBuilder::new().with_media_engine(m).with_interceptor_registry(registry).with_setting_engine(settings(net, seen, peers_ice)?).build();
                 let ice_servers = turn.filter(|t| !t.url.is_empty()).map(|t| vec![RTCIceServer { urls: vec![t.url], username: t.username, credential: t.password, ..Default::default() }]).unwrap_or_default();
                 let pc = Arc::new(api.new_peer_connection(RTCConfiguration { ice_servers, ..Default::default() }).await.map_err(|e| e.to_string())?);
                 let (s2, t0) = (state.clone(), Instant::now());
@@ -520,7 +525,7 @@ impl Media {
                 Ok::<_, String>(pc)
             })?
         };
-        let me = Media { rt, pc, state, muted, rx_packets, tx_frames, stop, v6, rx_ssrc, rx_video, rx_main, decoded_share, decoded_main, rx_slides_ssrc, rx_main_ssrc, seen_video, seen_audio,
+        let me = Media { rt, pc, state, muted, rx_packets, tx_frames, stop, v6, rx_ssrc, rx_video, rx_main, decoded_share, decoded_main, rx_slides_ssrc, rx_main_ssrc, seen_video, seen_audio, peers,
             last_answer: std::sync::Mutex::new(String::new()), audio_ssrc: AtomicU32::new(0), rx_mark: AtomicU64::new(0),
             expect: Arc::new(AtomicU8::new(0)), share: std::sync::Mutex::new(None), camera: std::sync::Mutex::new(None), lines_negotiated: AtomicBool::new(false), live };
         me.start_sender(io)?;
@@ -639,6 +644,7 @@ impl Media {
         let pc = self.pc.clone();
         let mid = self.rt.block_on(pc.local_description()).map_or(String::new(), |d| sdp_compat::first_mid(&d.sdp));
         let sdp = usable(&sdp, self.v6, lookup, &mid);
+        self.peers.allow(sdp::udp_candidate_addrs(&sdp));
         self.state.store(1, Ordering::SeqCst);
         let desc = RTCSessionDescription::answer(sdp.clone()).map_err(|e| e.to_string())?;
         let r = self.rt.block_on(async move { pc.set_remote_description(desc).await.map_err(|e| e.to_string()) });
@@ -655,6 +661,7 @@ impl Media {
         let local = self.rt.block_on(pc.local_description()).map(|d| d.sdp).unwrap_or_default();
         let (mids, share) = (mids_of(&local), self.has_lines());
         let offer_sdp = usable(&offer_sdp, self.v6, lookup, mids.first().map_or("", |s| s.as_str()));
+        self.peers.allow(sdp::udp_candidate_addrs(&offer_sdp));
         let offer_sdp = if share {
             let (slides, main) = self.declared_video();
             let sdp = share_answer_sdp(&offer_sdp, &mids, self.audio_ssrc.load(Ordering::Relaxed), slides, main);
@@ -787,6 +794,9 @@ impl Media {
         let pc = self.pc.clone();
         let local = self.rt.block_on(pc.local_description()).map(|d| d.sdp).unwrap_or_default();
         let mids = mids_of(&local);
+        // every answer set here (a new one, an ICE restart's, or the last one again in `redeclare` / `abandon_offer`): its
+        // UDP candidates are where the server's RTP comes from
+        self.peers.allow(sdp::udp_candidate_addrs(clean));
         let (slides, main) = self.declared_video();
         let sdp = share_answer_sdp(clean, &mids, self.audio_ssrc.load(Ordering::Relaxed), slides, main);
         // our `audio/slides` is recvonly in webrtc-rs (see prepare_lines): its answer must read sendonly, whatever the

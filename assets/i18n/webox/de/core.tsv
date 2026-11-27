@@ -346,3 +346,4 @@ The staging file is not where it was expected	Staging-Datei liegt nicht am erwar
 the old version cannot be moved: {{0}}	alte Version kann nicht verschoben werden: {{0}}
 Installation failed: {{0}}	Installation fehlgeschlagen: {{0}}
 The folder cannot be deleted: {{0}}	Ordner kann nicht gelöscht werden: {{0}}
+The repository's plugin list is not signed or its signature is wrong; it can only be installed when unsigned repositories are allowed (Settings > Plugins).	Die Plugin-Liste des Repositorys ist nicht signiert oder ihre Signatur ist falsch; es kann nur installiert werden, wenn unsignierte Repositorys erlaubt sind (Einstellungen > Plugins).

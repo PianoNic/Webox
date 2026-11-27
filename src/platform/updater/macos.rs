@@ -62,12 +62,17 @@ pub fn run_install(rel: &Release, done: &AtomicU64, total: &AtomicU64) -> Result
         let zip = stage.join(&asset.name);
         super::net::download(&asset.url, &zip, asset.size, done, total).map_err(|f| f.text())?;
         super::set(|s| s.phase = super::Phase::Installing);
-        let got = super::swap::sha256_file(&zip)?;
-        if !got.eq_ignore_ascii_case(sha.trim()) { return Err(crate::trq!("Checksum (SHA-256) does not match; update discarded").into_owned()); }
-        run(Command::new("/usr/bin/ditto").arg("-x").arg("-k").arg(&zip).arg(&stage), &crate::trq!("Unpacking"))?;
+        // Checked in memory, then unpacked from a private copy of exactly those bytes (no check-then-use race on `zip`).
+        let (private, checked) = super::swap::verified_private_copy(&zip, &sha)?;
+        let _ = std::fs::remove_file(&zip);
+        let unpacked = run(Command::new("/usr/bin/ditto").arg("-x").arg("-k").arg(&checked).arg(&stage), &crate::trq!("Unpacking"));
+        let _ = std::fs::remove_dir_all(&private);
+        unpacked?;
         let new = stage.join("Webox.app");
         if !new.join("Contents/MacOS/webox").is_file() { return Err("Im Download fehlt Webox.app".into()); }
         let _ = run(Command::new("/usr/bin/xattr").args(["-dr", "com.apple.quarantine"]).arg(&new), "xattr");
+        // Only a consistency check of the unpacked bundle (the release is signed ad hoc, so this proves nothing about who
+        // made it); the SHA-256 against the release's checksum file above is the actual check.
         run(Command::new("/usr/bin/codesign").args(["--verify", "--deep", "--strict"]).arg(&new), &crate::trq!("Signature check"))?;
         super::swap::probe_version(&new.join("Contents/MacOS/webox"), &version)?;
         if super::IN_CALL.load(std::sync::atomic::Ordering::Relaxed) { return Err(crate::trq!("No update during a call.").into_owned()); }

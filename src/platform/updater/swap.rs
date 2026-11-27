@@ -9,12 +9,35 @@ pub const EXE_NAME: &str = "webox.exe";
 /// Upper bound for the unpacked program (bytes).
 const EXE_MAX: u64 = 512 << 20;
 
-#[cfg(any(test, target_os = "macos"))]
+#[cfg(test)]
 pub fn sha256_file(p: &Path) -> Result<String, String> {
     let mut f = std::fs::File::open(p).map_err(|e| crate::trq!("File not readable: {{0}}", e))?;
     let mut h = Sha256::new();
     std::io::copy(&mut f, &mut h).map_err(|e| crate::trq!("File not readable: {{0}}", e))?;
     Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// The macOS update zip is unpacked by `ditto`, which reads the file by its path: checking the downloaded file and then
+/// unpacking that same path leaves a window in which it can change. Instead the download is read into memory once, those
+/// bytes are checked against `want_sha`, and only then written to a new private folder (0700, a random name created
+/// exclusively in the temp folder) that `ditto` unpacks. Returns (that folder, the zip in it); the caller deletes the folder.
+/// Nothing is written when the checksum differs.
+#[cfg(any(test, target_os = "macos"))]
+pub fn verified_private_copy(zip: &Path, want_sha: &str) -> Result<(PathBuf, PathBuf), String> {
+    let bytes = std::fs::read(zip).map_err(|e| crate::trq!("Download not readable: {{0}}", e))?;
+    let got: String = Sha256::digest(&bytes).iter().map(|b| format!("{b:02x}")).collect();
+    if !got.eq_ignore_ascii_case(want_sha.trim()) { return Err(crate::trq!("Checksum (SHA-256) does not match; update discarded").into_owned()); }
+    let dir = std::env::temp_dir().join(format!("webox-update-{:016x}", rand::random::<u64>()));
+    #[allow(unused_mut)] // only Unix sets the mode
+    let mut b = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut b, 0o700);
+    b.create(&dir).map_err(|e| crate::trq!("The new version can't be stored: {{0}}", e))?; // fails if the name exists
+    let copy = dir.join(zip.file_name().unwrap_or_else(|| std::ffi::OsStr::new("update.zip")));
+    let res = std::fs::OpenOptions::new().write(true).create_new(true).open(&copy)
+        .and_then(|mut f| std::io::Write::write_all(&mut f, &bytes));
+    if let Err(e) = res { let _ = std::fs::remove_dir_all(&dir); return Err(crate::trq!("The new version can't be stored: {{0}}", e)); }
+    Ok((dir, copy))
 }
 
 /// `webox.exe` -> `webox.exe.old` (the running file, kept until the next start deletes it).

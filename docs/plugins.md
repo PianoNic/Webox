@@ -26,6 +26,12 @@ updates unasked.
 
 The official repository is always there. Other repositories have **Remove**.
 
+Each repository's status line says whether its list is **signed**. Webox checks the minisign signature next to the index
+(`index.min.json.minisig`) against the official repository's key built into Webox. The list carries every binary's SHA-256,
+so the signature covers the downloads too. Plugins from a list that is **not signed** or whose **signature is invalid**
+show a warning and can only be installed with **Allow unsigned repositories** (under **Signatures**) turned on. While a
+Webox build has no key yet, signatures read "not checked" and nothing is blocked.
+
 > [!TIP]
 > A loose `.dll` / `.so` also works: **Open plugin folder**, copy the file in, click **Reload**.
 

@@ -138,6 +138,32 @@ pub fn fetch_index(url: &str, cache_dir: &Path, p: Policy) -> Result<String, Str
     Ok(body)
 }
 
+fn sig_cache_file(dir: &Path, url: &str) -> std::path::PathBuf { cache_file(dir, url).with_extension("minisig") }
+/// The cached signature of the index at `url` (stored with the cached index).
+pub fn read_cached_signature(dir: &Path, url: &str) -> Option<String> { std::fs::read_to_string(sig_cache_file(dir, url)).ok() }
+
+/// Fetches the index's signature (`sign::sig_url`), right after the index. `None` when the repository has none (404); on a
+/// network error the cached copy (the index may have come from the cache too). A fetched one replaces the cached one.
+pub fn fetch_signature(url: &str, cache_dir: &Path, p: Policy) -> Option<String> {
+    let u = parse_url(&super::sign::sig_url(url), p).ok()?;
+    let got = get(&u, &[], p, Duration::from_secs(20), |resp| {
+        let mut body = vec![];
+        read_capped(resp.into_reader(), super::sign::SIG_MAX, |b| { body.extend_from_slice(b); Ok(()) }, None)?;
+        Ok(Got { status: 200, etag: None, last_modified: None, body, len: None })
+    });
+    let file = sig_cache_file(cache_dir, url);
+    match got {
+        Ok(g) if g.status == 200 => {
+            let s = String::from_utf8(g.body).ok()?;
+            let _ = std::fs::create_dir_all(cache_dir);
+            let _ = super::store::write_atomic(&file, s.as_bytes());
+            Some(s)
+        }
+        Err(e) if e == crate::trq!("The server answered with HTTP {{0}}", 404) => { let _ = std::fs::remove_file(&file); None }
+        _ => std::fs::read_to_string(&file).ok(),
+    }
+}
+
 /// Downloads `url` into `dest`, hashing on the fly. On any mismatch with `want` (sha256, size) `dest` is deleted and the
 /// download fails: an unverified file is never left where it could be loaded.
 pub fn download(url: &Url, want: &FileRef, dest: &Path, p: Policy, progress: &AtomicU64, total: &AtomicU64) -> Result<(), String> {

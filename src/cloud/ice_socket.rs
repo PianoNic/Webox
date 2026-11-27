@@ -11,6 +11,8 @@
 //! and with several m-lines webrtc-rs drops a stream whose SSRC the answer didn't declare. The same for Opus (the
 //! audio lines' payload type): the call offers all four m-lines from the start, so the server's audio is taken only once
 //! its SSRC is declared (`Media::redeclare`).
+//! Only packets from the media server count (`Peers`: the UDP candidates of the remote descriptions applied): the
+//! socket's port is reachable by anyone, and unauthenticated RTP from elsewhere must not plant or replace those SSRCs.
 use std::future::Future;
 use std::io::ErrorKind;
 use std::net::{IpAddr, SocketAddr};
@@ -23,11 +25,34 @@ use webrtc::util::{Conn, Error};
 
 type Fut<'a, T> = Pin<Box<dyn Future<Output = Result<T, Error>> + Send + 'a>>;
 
-pub struct IceSocket { sock: tokio::net::UdpSocket, seen: Seen, errs: Errs }
+pub struct IceSocket { sock: tokio::net::UdpSocket, seen: Seen, peers: Arc<Peers>, errs: Errs }
 
 /// What the socket notes about arriving RTP: the SSRCs of the video lines' payload type and of the audio lines' (Opus).
 #[derive(Clone)]
 pub struct Seen { pub video: Arc<SeenSsrc>, pub video_pt: u8, pub audio: Arc<SeenSsrc>, pub audio_pt: u8 }
+
+/// The addresses the Webex media server sends from: the UDP candidates of the remote descriptions applied
+/// (`Media::apply_answer` and the others; host names already resolved). Empty until the first answer: nothing is noted.
+#[derive(Debug, Default)]
+pub struct Peers(std::sync::RwLock<Vec<SocketAddr>>);
+
+/// At most this many server addresses are kept (ICE restarts add theirs; the oldest go first).
+const MAX_PEERS: usize = 64;
+
+impl Peers {
+    /// Adds the addresses of a remote description (the call's server may change with an ICE restart).
+    pub fn allow(&self, addrs: impl IntoIterator<Item = SocketAddr>) {
+        let Ok(mut v) = self.0.write() else { return };
+        for a in addrs.into_iter().map(canonical) { if !v.contains(&a) { v.push(a); } }
+        let over = v.len().saturating_sub(MAX_PEERS);
+        v.drain(..over);
+    }
+    /// A packet from `from` comes from the media server (address and port).
+    pub fn allows(&self, from: SocketAddr) -> bool { self.0.read().is_ok_and(|v| v.contains(&canonical(from))) }
+}
+
+/// An IPv4-mapped IPv6 address as plain IPv4, so the two spellings compare equal.
+fn canonical(a: SocketAddr) -> SocketAddr { SocketAddr::new(a.ip().to_canonical(), a.port()) }
 
 /// The read errors in a row and when one was last logged (at most once a second).
 #[derive(Default)]
@@ -65,11 +90,11 @@ impl SeenSsrc {
 }
 
 /// A UDP mux on `ip` (an ephemeral port; the unspecified address = every interface). Needs a running tokio runtime.
-/// RTP of the video and audio payload types leaves its SSRC in `seen`.
-pub fn mux(ip: IpAddr, seen: Seen) -> std::io::Result<UDPNetwork> {
+/// RTP of the video and audio payload types from one of `peers` leaves its SSRC in `seen`.
+pub fn mux(ip: IpAddr, seen: Seen, peers: Arc<Peers>) -> std::io::Result<UDPNetwork> {
     let s = std::net::UdpSocket::bind(SocketAddr::new(ip, 0))?;
     s.set_nonblocking(true)?;
-    let conn = IceSocket { sock: tokio::net::UdpSocket::from_std(s)?, seen, errs: Errs::default() };
+    let conn = IceSocket { sock: tokio::net::UdpSocket::from_std(s)?, seen, peers, errs: Errs::default() };
     Ok(UDPNetwork::Muxed(UDPMuxDefault::new(UDPMuxParams::new(conn))))
 }
 
@@ -87,9 +112,13 @@ pub fn rtp_ssrc(b: &[u8], pt: u8) -> Option<u32> {
 }
 
 impl IceSocket {
-    fn note(&self, b: &[u8]) {
+    /// A packet arrived from `from` (`None`: the peer of a connected socket, unknown). SSRCs only count from the server.
+    fn note(&self, b: &[u8], from: Option<SocketAddr>) {
         if self.errs.row.swap(0, Ordering::Relaxed) > 0 { if let Ok(mut s) = self.errs.since.lock() { *s = None; } }
-        if let Some(s) = rtp_ssrc(b, self.seen.video_pt) { self.seen.video.note(s); } else if let Some(s) = rtp_ssrc(b, self.seen.audio_pt) { self.seen.audio.note(s); }
+        let video = rtp_ssrc(b, self.seen.video_pt);
+        let audio = if video.is_none() { rtp_ssrc(b, self.seen.audio_pt) } else { None };
+        if (video.is_none() && audio.is_none()) || !from.is_some_and(|f| self.peers.allows(f)) { return; }
+        if let Some(s) = video { self.seen.video.note(s); } else if let Some(s) = audio { self.seen.audio.note(s); }
     }
 
     /// A read error that is read past: logged at most every `ERR_LOG_EVERY` (the kind only); after a few in a row the next
@@ -112,10 +141,10 @@ impl Conn for IceSocket {
         Box::pin(async move { Ok(self.sock.connect(addr).await?) })
     }
     fn recv<'a, 'c, 'b>(&'a self, buf: &'c mut [u8]) -> Fut<'b, usize> where 'a: 'b, 'c: 'b, Self: 'b {
-        Box::pin(async move { loop { match self.sock.recv(buf).await { Err(e) if transient(&e) => self.skip(&e).await, Ok(n) => { self.note(&buf[..n]); return Ok(n) } Err(e) => return Err(e.into()) } } })
+        Box::pin(async move { loop { match self.sock.recv(buf).await { Err(e) if transient(&e) => self.skip(&e).await, Ok(n) => { self.note(&buf[..n], self.sock.peer_addr().ok()); return Ok(n) } Err(e) => return Err(e.into()) } } })
     }
     fn recv_from<'a, 'c, 'b>(&'a self, buf: &'c mut [u8]) -> Fut<'b, (usize, SocketAddr)> where 'a: 'b, 'c: 'b, Self: 'b {
-        Box::pin(async move { loop { match self.sock.recv_from(buf).await { Err(e) if transient(&e) => self.skip(&e).await, Ok((n, a)) => { self.note(&buf[..n]); return Ok((n, a)) } Err(e) => return Err(e.into()) } } })
+        Box::pin(async move { loop { match self.sock.recv_from(buf).await { Err(e) if transient(&e) => self.skip(&e).await, Ok((n, a)) => { self.note(&buf[..n], Some(a)); return Ok((n, a)) } Err(e) => return Err(e.into()) } } })
     }
     fn send<'a, 'c, 'b>(&'a self, buf: &'c [u8]) -> Fut<'b, usize> where 'a: 'b, 'c: 'b, Self: 'b {
         Box::pin(async move { Ok(self.sock.send(buf).await?) })
@@ -155,6 +184,60 @@ mod tests {
         assert_eq!(s.candidates(&[9]), vec![7], "the stream webrtc-rs takes already is no candidate");
         s.note(5);
         assert_eq!(s.candidates(&[]), vec![5, 9]);
+    }
+
+    /// RTP from anywhere but the media server's addresses in the answer leaves no SSRC: a stranger who learns the call's
+    /// port can't plant or replace the SSRCs that get declared for the far end's camera, share and audio.
+    #[test]
+    fn only_the_media_server_can_note_an_ssrc() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let (seen, audio) = (Arc::new(SeenSsrc::default()), Arc::new(SeenSsrc::default()));
+        let peers = Arc::new(Peers::default());
+        let sock = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        sock.set_nonblocking(true).unwrap();
+        let me = sock.local_addr().unwrap();
+        let ice = rt.block_on(async { IceSocket { sock: tokio::net::UdpSocket::from_std(sock).unwrap(),
+            seen: Seen { video: seen.clone(), video_pt: 102, audio: audio.clone(), audio_pt: 111 }, peers: peers.clone(), errs: Errs::default() } });
+        let rtp = |pt: u8, ssrc: u32| { let mut b = [0u8; 12]; b[0] = 0x80; b[1] = pt; b[8..12].copy_from_slice(&ssrc.to_be_bytes()); b };
+        let send = |from: &std::net::UdpSocket, pt: u8, ssrc: u32| {
+            from.send_to(&rtp(pt, ssrc), me).unwrap();
+            let mut buf = [0u8; 64];
+            rt.block_on(ice.recv_from(&mut buf)).unwrap().1
+        };
+        let recv = |from: &std::net::UdpSocket, ssrc: u32| send(from, 102, ssrc);
+        let (server, stranger) = (std::net::UdpSocket::bind("127.0.0.1:0").unwrap(), std::net::UdpSocket::bind("127.0.0.1:0").unwrap());
+        assert_eq!(recv(&server, 7), server.local_addr().unwrap(), "the packet itself is still delivered");
+        assert!(!seen.any(), "no answer yet: nothing noted");
+        peers.allow([server.local_addr().unwrap()]);
+        recv(&stranger, 666);
+        assert!(!seen.any(), "a stranger's packet is not noted");
+        recv(&server, 7);
+        assert_eq!(seen.candidates(&[]), vec![7]);
+        recv(&stranger, 666);
+        assert_eq!(seen.candidates(&[]), vec![7], "a stranger can't replace it");
+        // same address, another port: not the server
+        let other_port = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        recv(&other_port, 9);
+        assert_eq!(seen.candidates(&[]), vec![7]);
+        // audio (Opus) the same way
+        send(&stranger, 111, 555);
+        assert!(!audio.any(), "a stranger's audio SSRC is not noted");
+        send(&server, 111, 42);
+        assert_eq!(audio.newest(), 42);
+        send(&stranger, 111, 555);
+        assert_eq!(audio.newest(), 42, "a stranger can't replace the audio SSRC");
+        // an IPv4-mapped spelling of the server's address is the same address
+        let v4 = server.local_addr().unwrap();
+        assert!(peers.allows(SocketAddr::new(match v4.ip() { IpAddr::V4(a) => IpAddr::V6(a.to_ipv6_mapped()), x => x }, v4.port())));
+    }
+
+    #[test]
+    fn peers_keep_the_newest_addresses() {
+        let p = Peers::default();
+        let a = |i: u16| SocketAddr::from(([192, 0, 2, 1], 1000 + i));
+        p.allow((0..MAX_PEERS as u16 + 3).map(a));
+        p.allow([a(5)]);
+        assert!(!p.allows(a(0)) && !p.allows(a(2)) && p.allows(a(3)) && p.allows(a(MAX_PEERS as u16 + 2)));
     }
 
     #[test]

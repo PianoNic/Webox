@@ -98,7 +98,7 @@ impl App {
         // "Exit %1" (%1 = this app's name). No icons. Menu width 318. Availability holds the presence entries, Help the
         // app-wide help entries.
         if self.cover.is_none() {
-            if let Some(img) = self.cover_bytes.take().and_then(|b| image::load_from_memory(&b).ok()) {
+            if let Some(img) = self.cover_bytes.take().and_then(|b| crate::assets::photos::decode_net(&b).ok()) {
                 let img = img.to_rgba8();
                 let ci = egui::ColorImage::from_rgba_unmultiplied([img.width() as usize, img.height() as usize], img.as_raw());
                 self.cover = Some(ctx.load_texture("cover", ci, egui::TextureOptions::LINEAR));

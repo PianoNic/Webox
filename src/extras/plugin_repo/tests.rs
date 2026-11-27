@@ -205,7 +205,7 @@ fn install_update_uninstall() {
     let d = tmp("install");
     let root = d.join("data");
     let mut plugins = crate::extras::plugins::Plugins::with_root(&d, root.clone());
-    let mut r = Repos::new(&d, root.clone(), false).with_policy(LOOPBACK);
+    let mut r = Repos::new(&d, root.clone(), false).with_policy(LOOPBACK).with_key("");
     r.add_repo(&f.url("/repo/index.json")).unwrap();
     wait(&mut r, &[], |r, _| !r.states.iter().any(|s| s.loading));
     let a = r.available().into_iter().find(|a| a.plugin.pkg == pkg).expect("listed");
@@ -267,7 +267,7 @@ fn installs_from_a_generated_repo() {
     let d = tmp("e2e");
     let root = d.join("data");
     let mut plugins = crate::extras::plugins::Plugins::with_root(&d, root.clone());
-    let mut r = Repos::new(&d, root.clone(), false).with_policy(LOOPBACK);
+    let mut r = Repos::new(&d, root.clone(), false).with_policy(LOOPBACK).with_key("");
     r.add_repo(&f.url("/index.min.json")).unwrap();
     wait(&mut r, &[], |r, _| !r.states.iter().any(|s| s.loading));
     let st = r.states.iter().find(|s| !r.is_official(&s.url)).unwrap();
@@ -308,4 +308,54 @@ fn sample_repos_show_compatibility() {
     let a = r.available();
     assert!(a.iter().any(|a| a.compat.is_ok()) && a.iter().any(|a| a.compat.is_err()));
     assert!(!d.join("plugin-repos.json").exists(), "sample mode writes nothing");
+}
+
+/// Index signatures (sign.rs) with a test key: a signed index reads as signed (also from the cache), a missing or wrong
+/// signature as unsigned / badly signed, and plugins of those are only installed once unsigned repositories are allowed.
+#[test]
+fn unsigned_or_badly_signed_repositories_need_the_persons_permission() {
+    use sign::tests::{INDEX, INDEX_SIG, TEST_KEY};
+    let f = Fixture::start();
+    f.put("/signed/index.json", 200, &[], INDEX);
+    f.put("/signed/index.json.minisig", 200, &[], INDEX_SIG);
+    f.put("/bad/index.json", 200, &[], INDEX.replace("Signed", "Changed"));
+    f.put("/bad/index.json.minisig", 200, &[], INDEX_SIG);
+    let bytes = b"plugin".to_vec();
+    let file = format!("u.{}", std::env::consts::DLL_EXTENSION);
+    f.put("/unsigned/index.json", 200, &[], format!("[{}]", plugin_json("dev.webox.u", "1.0.0", "1.0", &file, &bytes)));
+    f.put(&format!("/unsigned/{file}"), 200, &[], bytes.clone());
+    let d = tmp("sign");
+    let mut r = Repos::new(&d, d.join("root"), false).with_policy(LOOPBACK).with_key(TEST_KEY);
+    assert!(r.signatures_checked());
+    for p in ["/signed/index.json", "/bad/index.json", "/unsigned/index.json"] { r.add_repo(&f.url(p)).unwrap(); }
+    wait(&mut r, &[], |r, _| !r.states.iter().any(|s| s.loading));
+    let trust = |r: &Repos, p: &str| r.states.iter().find(|s| s.url == f.url(p)).unwrap().trust.clone();
+    assert_eq!(trust(&r, "/signed/index.json"), sign::Trust::Signed);
+    assert_eq!(trust(&r, "/bad/index.json"), sign::Trust::BadSignature);
+    assert_eq!(trust(&r, "/unsigned/index.json"), sign::Trust::Unsigned);
+    let a = r.available().into_iter().find(|a| a.plugin.pkg == "dev.webox.u").unwrap();
+    assert!(!a.installable && a.trust == sign::Trust::Unsigned);
+    // refused even with a stale `Avail` that claims otherwise
+    assert!(r.start_install(&Avail { installable: true, trust: sign::Trust::Signed, ..a.clone() }).is_err() && r.job("dev.webox.u").is_none());
+    assert!(r.update_for("dev.webox.u", "0.9.0", &a.repo).is_none(), "no update offered from an unsigned repository");
+    r.set_allow_unsigned(true);
+    assert!(r.available().into_iter().find(|a| a.plugin.pkg == "dev.webox.u").unwrap().installable);
+    assert!(r.update_for("dev.webox.u", "0.9.0", &a.repo).is_some());
+    if !crate::system::side_loading_protection() {
+        r.start_install(&a).unwrap(); // the same plugin downloads now
+        assert!(matches!(wait(&mut r, &[], |_, e| !e.is_empty()).first(), Some(Event::Downloaded(..))));
+    }
+    // the signature is cached with the index: offline, the cached copy still reads as signed
+    let r2 = Repos::new(&d, d.join("root"), false).with_policy(LOOPBACK).with_key(TEST_KEY);
+    assert!(r2.cfg.allow_unsigned, "the permission is saved");
+    assert_eq!(trust(&r2, "/signed/index.json"), sign::Trust::Signed);
+    assert_eq!(trust(&r2, "/unsigned/index.json"), sign::Trust::Unsigned);
+    // a signature that disappears from the server is forgotten
+    f.put("/signed/index.json.minisig", 404, &[], vec![]);
+    r.refresh();
+    wait(&mut r, &[], |r, _| !r.states.iter().any(|s| s.loading));
+    assert_eq!(trust(&r, "/signed/index.json"), sign::Trust::Unsigned);
+    // no key built in: nothing is checked, everything installs (warn only)
+    let r3 = Repos::new(&d, d.join("root"), false).with_policy(LOOPBACK).with_key("");
+    assert!(!r3.signatures_checked() && r3.states.iter().all(|s| s.trust == sign::Trust::NotChecked));
 }

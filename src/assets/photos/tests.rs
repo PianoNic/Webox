@@ -128,3 +128,51 @@ fn deleted_images_get_a_grey_copy() {
     assert_eq!(p.image_gray(&ctx, "g").unwrap().0, id2); // made once, then cached
     assert!(p.image_gray(&ctx, "missing").is_none());
 }
+
+/// A PNG whose header claims `w` x `h` RGBA pixels (8 bit) with an empty image stream: a few dozen bytes.
+fn png_header_only(w: u32, h: u32) -> Vec<u8> {
+    fn crc32(b: &[u8]) -> u32 {
+        let mut c = 0xffff_ffffu32;
+        for &x in b { c ^= x as u32; for _ in 0..8 { c = if c & 1 != 0 { 0xedb8_8320 ^ (c >> 1) } else { c >> 1 }; } }
+        !c
+    }
+    let chunk = |t: &[u8], d: &[u8]| { let mut v = (d.len() as u32).to_be_bytes().to_vec(); let td = [t, d].concat(); v.extend(&td); v.extend(crc32(&td).to_be_bytes()); v };
+    let ihdr = [w.to_be_bytes().as_slice(), &h.to_be_bytes(), &[8, 6, 0, 0, 0]].concat();
+    [b"\x89PNG\r\n\x1a\n".as_slice(), &chunk(b"IHDR", &ihdr), &chunk(b"IDAT", &[]), &chunk(b"IEND", &[])].concat()
+}
+
+#[test]
+fn picture_decode_bomb_is_refused_from_its_header() {
+    // 11000 x 11000 RGBA = ~484 MB: under the image crate's default 512 MB, so without our limits the decoder would allocate it.
+    let bomb = png_header_only(11000, 11000);
+    assert!(matches!(decode_net(&bomb), Err(image::ImageError::Limits(_))));
+    // a side over the limit is refused too, even when its memory would fit
+    assert!(matches!(decode_net(&png_header_only(NET_IMAGE_SIDE + 1, 1)), Err(image::ImageError::Limits(_))));
+    // as a message picture and as a profile picture: nothing to show, no crash
+    let ctx = egui::Context::default();
+    let mut p = Photos::default();
+    p.add_images(vec![("bomb".into(), bomb.clone())]);
+    assert!(p.image(&ctx, "bomb").is_none());
+    assert!(p.image_gray(&ctx, "bomb").is_none());
+    p.add(vec![("person".into(), bomb)]);
+    assert!(p.texture(&ctx, "person").is_none());
+    // profile pictures have the tighter limit: 5000 x 5000 is a message picture's size, not an avatar's
+    assert!(matches!(decode_limited(&png_header_only(5000, 5000), AVATAR_SIDE, AVATAR_ALLOC), Err(image::ImageError::Limits(_))));
+    // the GIF canvas check applies to the still decode as well
+    let gif_bomb = [b"GIF89a".as_slice(), &[0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00], &[0x3b]].concat();
+    assert!(matches!(decode_net(&gif_bomb), Err(image::ImageError::Limits(_))));
+}
+
+#[test]
+fn normal_pictures_still_decode_within_the_limits() {
+    let mut png = std::io::Cursor::new(Vec::new());
+    image::RgbaImage::from_pixel(300, 200, image::Rgba([1, 2, 3, 255])).write_to(&mut png, image::ImageFormat::Png).unwrap();
+    let png = png.into_inner();
+    assert_eq!(decode_net(&png).map(|i| (i.width(), i.height())).ok(), Some((300, 200)));
+    let ctx = egui::Context::default();
+    let mut p = Photos::default();
+    p.add_images(vec![("ok".into(), png.clone())]);
+    assert_eq!(p.image(&ctx, "ok").map(|i| i.1), Some([300, 200]));
+    p.add(vec![("person".into(), png)]);
+    assert!(p.texture(&ctx, "person").is_some());
+}

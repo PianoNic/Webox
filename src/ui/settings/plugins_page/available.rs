@@ -2,7 +2,7 @@
 //! repository and compatibility (an incompatible one is drawn greyed with the reason), and Install / Update / a download
 //! progress bar. Below: the repository list (official + added, add / remove like Aniyomi's extension repos) and the daily check.
 use super::{kit, PUi};
-use crate::extras::plugin_repo::index;
+use crate::extras::plugin_repo::{index, sign::Trust};
 use crate::*;
 
 impl App {
@@ -45,7 +45,7 @@ impl App {
                                 Some(_) => (tr("Installed"), false),
                                 None => (tr("Install"), true),
                             };
-                            if kit::pill(ui, t, label, true, enabled && !blocked && !self.repos.sample).clicked() { clicked = Some(a.clone()); }
+                            if kit::pill(ui, t, label, true, enabled && a.installable && !blocked && !self.repos.sample).clicked() { clicked = Some(a.clone()); }
                         }
                         ui.vertical(|ui| {
                             ui.horizontal_wrapped(|ui| {
@@ -59,6 +59,7 @@ impl App {
                             // the source line is the trust signal, so it only shows for plugins from unofficial repositories
                             if !a.official { ui.label(RichText::new(crate::trq!("%1 (not official)", a.repo_title)).size(kit::SECOND).color(t.tk("listitem-textmissed"))); }
                             if let Err(why) = &a.compat { kit::text_block(ui, &crate::trq!("Not compatible: %1", why), kit::SECOND, t.text2, 0.0); }
+                            if let Some(w) = trust_warning(&a.trust, a.installable) { kit::text_block(ui, &w, kit::SECOND, t.tk("listitem-textmissed"), 0.0); }
                         });
                     });
                 });
@@ -120,6 +121,14 @@ impl App {
             if kit::check(ui, &mut self.icons, t, tr("Check for updates automatically"), &mut on, true, false) { self.repos.set_auto_update(on); }
             kit::check_desc(ui, t, tr("Once a day. Updates are only shown, not installed automatically."));
         });
+        // Only once Webox checks signatures (a key is built in, sign.rs): before that nothing is blocked.
+        if self.repos.signatures_checked() {
+            kit::section(ui, t, tr("Signatures"), "", false, |ui| {
+                let mut on = self.repos.cfg.allow_unsigned;
+                if kit::check(ui, &mut self.icons, t, tr("Allow unsigned repositories"), &mut on, true, false) { self.repos.set_allow_unsigned(on); }
+                kit::check_desc(ui, t, tr("Installs plugins from repositories whose list is not signed with the Webox key, or whose signature is wrong. Anyone who can change such a list can deliver any code."));
+            });
+        }
     }
 }
 
@@ -134,10 +143,30 @@ fn repo_status(st: &crate::extras::plugin_repo::RepoState) -> String {
         return format!("{e}{}", if st.index.is_some() { tr(" - showing the last loaded list") } else { "" });
     }
     match &st.index {
-        Some(i) => format!("{}{}", if i.plugins.len() == 1 { tr("1 plugin").to_string() } else { crate::trq!("%1 plugins", i.plugins.len()) },
-            if i.skipped > 0 { crate::trq!(", %1 invalid entries skipped", i.skipped) } else { String::new() }),
+        Some(i) => format!("{}{} · {}", if i.plugins.len() == 1 { tr("1 plugin").to_string() } else { crate::trq!("%1 plugins", i.plugins.len()) },
+            if i.skipped > 0 { crate::trq!(", %1 invalid entries skipped", i.skipped) } else { String::new() }, trust_label(&st.trust)),
         None => tr("Not loaded yet").into(),
     }
+}
+
+/// How a repository's index signature reads in its status line.
+fn trust_label(t: &Trust) -> &'static str {
+    match t {
+        Trust::Signed => tr("signed"),
+        Trust::Unsigned => tr("not signed"),
+        Trust::BadSignature => tr("signature invalid"),
+        Trust::NotChecked => tr("signature not checked"),
+    }
+}
+
+/// The warning under a plugin whose repository index is not signed with Webox's key (none while signatures aren't checked).
+fn trust_warning(t: &Trust, installable: bool) -> Option<String> {
+    let what = match t {
+        Trust::Signed | Trust::NotChecked => return None,
+        Trust::Unsigned => tr("Unsigned repository: Webox can't check that this list comes from its publisher."),
+        Trust::BadSignature => tr("The repository's signature is invalid: the list may have been changed by someone else."),
+    };
+    Some(if installable { what.to_string() } else { format!("{what} {}", tr("Allow unsigned repositories below to install it anyway.")) })
 }
 
 #[cfg(test)]
@@ -149,5 +178,16 @@ mod tests {
         assert_eq!(super::repo_status(&st), crate::trq!("Repository not reachable (HTTP %1)", 404));
         let st = RepoState { error: Some("Connection failed: Dns".into()), ..Default::default() };
         assert_eq!(super::repo_status(&st), crate::trq!("Error: {{0}}", "Connection failed: Dns"));
+    }
+
+    #[test]
+    fn unsigned_repositories_are_flagged() {
+        use crate::extras::plugin_repo::{index, sign::Trust};
+        let st = RepoState { index: index::parse("[]").ok(), trust: Trust::BadSignature, ..Default::default() };
+        assert!(super::repo_status(&st).ends_with(&*crate::tr("signature invalid")));
+        assert!(super::trust_warning(&Trust::Signed, true).is_none() && super::trust_warning(&Trust::NotChecked, true).is_none());
+        let blocked = super::trust_warning(&Trust::Unsigned, false).unwrap();
+        assert!(blocked.ends_with(&*crate::tr("Allow unsigned repositories below to install it anyway.")));
+        assert!(!super::trust_warning(&Trust::BadSignature, true).unwrap().contains(&*crate::tr("Allow unsigned repositories below to install it anyway.")));
     }
 }

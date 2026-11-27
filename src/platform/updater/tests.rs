@@ -221,3 +221,26 @@ fn install_location_match() {
     assert!(super::registry::same_folder(r"c:\users\someone\appdata\local\programs\webox", exe));
     assert!(!super::registry::same_folder(r"C:\Other\Webox\", exe));
 }
+
+#[test]
+fn macos_zip_is_unpacked_from_a_private_copy_of_the_checked_bytes() {
+    let d = tmp("private-copy");
+    let zp = d.join("webox-9.9.9-macos-universal.zip");
+    std::fs::write(&zp, b"the release zip").unwrap();
+    let sha = swap::sha256_file(&zp).unwrap();
+    // a wrong checksum writes nothing
+    assert_eq!(swap::verified_private_copy(&zp, &"0".repeat(64)).unwrap_err(), crate::trq!("Checksum (SHA-256) does not match; update discarded"));
+    let (dir, copy) = swap::verified_private_copy(&zp, &sha.to_uppercase()).unwrap();
+    assert!(copy.starts_with(&dir) && dir != d);
+    // the download changing after the check doesn't reach what is unpacked
+    std::fs::write(&zp, b"swapped by someone else").unwrap();
+    assert_eq!(std::fs::read(&copy).unwrap(), b"the release zip");
+    #[cfg(unix)]
+    { use std::os::unix::fs::PermissionsExt; assert_eq!(std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777, 0o700); }
+    // every call gets a new folder
+    let (dir2, _) = swap::verified_private_copy(&copy, &sha).unwrap();
+    assert_ne!(dir, dir2);
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&dir2);
+    let _ = std::fs::remove_dir_all(&d);
+}

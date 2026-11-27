@@ -51,7 +51,7 @@ impl App {
     /// thumbnail).
     pub(super) fn image_copy(&mut self, ctx: &egui::Context, key: &str) {
         let bytes = self.photos.image_bytes(&format!("full:{key}")).or_else(|| self.photos.image_bytes(key)).map(|b| b.to_vec());
-        if let Some(img) = bytes.and_then(|b| image::load_from_memory(&b).ok()) {
+        if let Some(img) = bytes.and_then(|b| crate::assets::photos::decode_net(&b).ok()) {
             let rgba = img.into_rgba8();
             ctx.copy_image(egui::ColorImage::from_rgba_unmultiplied([rgba.width() as usize, rgba.height() as usize], rgba.as_raw()));
         }

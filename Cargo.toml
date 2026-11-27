@@ -40,6 +40,8 @@ sha2 = { version = "0.10", features = ["oid"] }
 aes-gcm = "0.10"
 hkdf = "0.12"
 hmac = "0.12"
+# plugin repository index signatures (minisign format, Ed25519); verification only, no dependencies of its own
+minisign-verify = "0.3"
 resvg = { version = "0.45", default-features = false }
 # glyph outlines for the taskbar unread badge (already in the tree through egui)
 ab_glyph = "0.2"
