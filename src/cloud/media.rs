@@ -195,6 +195,31 @@ pub fn share_answer_sdp(sdp: &str, mids: &[String], audio_ssrc: u32, slides_ssrc
     s
 }
 
+/// What a description says about its video lines, for the call log (no addresses): per line `main` / `slides`, the
+/// port (0 = refused), the direction and the H.264 the far end takes (payload type, profile-level-id,
+/// packetization-mode), e.g. `slides port=5004 sendrecv H264 pt=102 profile-level-id=42e028 packetization-mode=1`.
+/// Shows whether the server accepts the share's level 4.0 (42e028) on `video/slides`.
+pub fn video_summary(sdp: &str) -> String {
+    let mut out = vec![];
+    for (n, sec) in sdp.split("\nm=").skip(1).filter(|s| s.starts_with("video")).enumerate() {
+        let lines: Vec<&str> = sec.lines().map(str::trim).collect();
+        let port = lines[0].split_whitespace().nth(1).unwrap_or("?");
+        let dir = lines.iter().find_map(|l| l.strip_prefix("a=").filter(|d| matches!(*d, "sendrecv" | "sendonly" | "recvonly" | "inactive"))).unwrap_or("sendrecv");
+        let pt = lines.iter().find_map(|l| l.strip_prefix("a=rtpmap:").filter(|r| r.to_ascii_uppercase().contains("H264/")).and_then(|r| r.split_whitespace().next()));
+        let h264 = match pt {
+            Some(pt) => {
+                let fmtp = lines.iter().find_map(|l| l.strip_prefix(&format!("a=fmtp:{pt} ") as &str)).unwrap_or("");
+                let keep: Vec<&str> = fmtp.split(';').map(str::trim).filter(|p| p.starts_with("profile-level-id") || p.starts_with("packetization-mode") || p.starts_with("max-")).collect();
+                format!("H264 pt={pt} {}", keep.join(" "))
+            }
+            None => "no H264".into(),
+        };
+        let cont = lines.iter().find_map(|l| l.strip_prefix("a=content:")).unwrap_or(if n == 0 { "main" } else { "slides" });
+        out.push(format!("{cont} port={port} {dir} {}", h264.trim()));
+    }
+    if out.is_empty() { "none".into() } else { out.join(" | ") }
+}
+
 /// The index of the `n`-th (1-based) m-line of `kind` ("audio" / "video").
 pub fn section_of_kind(sdp: &str, kind: &str, n: usize) -> Option<usize> {
     sdp.lines().filter(|l| l.starts_with("m=")).enumerate().filter(|(_, l)| l[2..].starts_with(kind)).nth(n.checked_sub(1)?).map(|(i, _)| i)
@@ -563,23 +588,46 @@ impl Media {
         match section_of_kind(&sdp, "audio", 2) { Some(i) => with_direction(&sdp, i, "inactive"), None => sdp }
     }
 
-    /// An OFFER with new ICE credentials on the same session (the media path broke: Disconnected / Failed), with all
-    /// candidates gathered anew. The same four lines with the same directions: only the ICE credentials change.
-    pub fn ice_restart_offer(&self) -> Result<String, String> {
-        let sdp = self.local_offer(Some(RTCOfferOptions { ice_restart: true, ..Default::default() }), true)?;
-        // the restart gathers again; the promise may have seen the first gathering's Complete: wait for the new candidates
+    /// Starts an ICE restart on the same session (the media path broke): a new local offer with new ICE credentials is
+    /// set, its candidates gather on the media runtime. Returns at once; `ice_restart_ready` hands out the OFFER once the
+    /// gathering is done, so the call's thread never waits for it (ROAP answers, hang-up and the keep-alive go on).
+    pub fn begin_ice_restart(&self) -> Result<(), String> {
         let pc = self.pc.clone();
-        let sdp = self.rt.block_on(async move {
-            let t0 = Instant::now();
-            loop {
-                let now = pc.local_description().await.map(|d| d.sdp).unwrap_or_default();
-                let done = pc.ice_gathering_state() == webrtc::ice_transport::ice_gathering_state::RTCIceGatheringState::Complete;
-                if (done && now.contains("a=candidate:")) || t0.elapsed() > Duration::from_secs(5) { break if now.is_empty() { sdp } else { now }; }
-                tokio::time::sleep(Duration::from_millis(20)).await;
-            }
-        });
-        if !sdp.contains("a=candidate:") { return Err("ICE gathering timed out".into()); }
-        Ok(if self.has_lines() { Self::share_layout(sdp) } else { sdp })
+        self.rt.block_on(async move {
+            let offer = pc.create_offer(Some(RTCOfferOptions { ice_restart: true, ..Default::default() })).await.map_err(|e| e.to_string())?;
+            pc.set_local_description(offer).await.map_err(|e| e.to_string())
+        })
+    }
+
+    /// The ICE restart OFFER once its gathering is complete (same four lines and directions, only the ICE credentials and
+    /// candidates are new); None while it still gathers. Never waits.
+    pub fn ice_restart_ready(&self) -> Option<String> {
+        use webrtc::ice_transport::ice_gathering_state::RTCIceGatheringState;
+        if self.pc.ice_gathering_state() != RTCIceGatheringState::Complete { return None; }
+        let sdp = self.rt.block_on(self.pc.local_description()).map(|d| d.sdp).filter(|s| s.contains("a=candidate:"))?;
+        Some(if self.has_lines() { Self::share_layout(sdp) } else { sdp })
+    }
+
+    /// Our OFFER is given up (its gathering timed out, it could not be sent, or no ANSWER came): back to a stable session
+    /// with the server's last answer, so later rounds and `redeclare` work again.
+    pub fn abandon_offer(&self) -> Result<(), String> {
+        use webrtc::peer_connection::signaling_state::RTCSignalingState;
+        if self.pc.signaling_state() == RTCSignalingState::Stable { return Ok(()); }
+        let answer = self.last_answer.lock().map(|a| a.clone()).unwrap_or_default();
+        if answer.is_empty() { return Err("no answer to go back to".into()); }
+        self.set_lines_answer(&answer)
+    }
+
+    /// `begin_ice_restart` and `ice_restart_ready`, waiting up to 5 s (the loopback tests).
+    #[cfg(test)]
+    pub fn ice_restart_offer(&self) -> Result<String, String> {
+        self.begin_ice_restart()?;
+        let t0 = Instant::now();
+        loop {
+            if let Some(s) = self.ice_restart_ready() { return Ok(s); }
+            if t0.elapsed() > Duration::from_secs(5) { return Err("ICE gathering timed out".into()); }
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 
     /// The server's ANSWER to an OFFER of ours (the join's, an ICE restart's).
@@ -726,8 +774,11 @@ impl Media {
         let mids = self.rt.block_on(self.pc.local_description()).map(|d| mids_of(&d.sdp)).unwrap_or_default();
         let clean = usable(&sdp, self.v6, lookup, mids.first().map_or("", |s| s.as_str()));
         self.state.store(self.state.load(Ordering::SeqCst).max(1), Ordering::SeqCst);
-        if let Ok(mut a) = self.last_answer.lock() { *a = clean.clone(); }
-        self.set_lines_answer(&clean)
+        dbg_conn(&format!("call: answer video lines: {}", video_summary(&clean)));
+        self.set_lines_answer(&clean)?;
+        // kept only once webrtc-rs took it: `redeclare` / `abandon_offer` apply it again
+        if let Ok(mut a) = self.last_answer.lock() { *a = clean; }
+        Ok(())
     }
 
     /// A server answer for the four lines (cleaned by `usable`) made fit for webrtc-rs and set: our mids, the SSRCs the
@@ -966,6 +1017,8 @@ mod tests {
         let stub = |n: &str| if n == "media.example.com" { vec![IpAddr::from([127, 0, 0, 1])] } else { vec![] };
         a.apply_answer_with(answer, &stub).unwrap();
         assert!(a.lines_negotiated(), "the first answer negotiates all four lines");
+        let vs = video_summary(&a.last_answer.lock().unwrap());
+        assert_eq!(vs, "main port=5004 sendrecv H264 pt=102 profile-level-id=42e028 packetization-mode=1 | slides port=5004 sendrecv H264 pt=102 profile-level-id=42e028 packetization-mode=1", "the call log's line on the server's H.264");
         let tone = audio::tone(440.0, 20000, 0.5);
         let mut fed = 0;
         let feed_tone = |fed: &mut usize| for io in [&io1, &io2] { if io.captured.lock().unwrap().len() < 4800 && *fed + FRAME <= tone.len() { io.captured.lock().unwrap().extend(tone[*fed..*fed + FRAME].iter()); } };

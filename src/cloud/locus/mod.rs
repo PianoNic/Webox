@@ -432,6 +432,10 @@ struct Active {
     /// ICE recovery: since when the media is not connected after having been up, and when the last ICE restart OFFER
     /// went out (`ice_tick`).
     media_down_at: Option<Instant>, ice_restart_at: Option<Instant>,
+    /// An ICE restart whose candidates are gathering (since then); its OFFER goes out from a later tick.
+    restart_pending: Option<Instant>,
+    /// "Reconnecting…" was sent to the call window (`Resp::CallReconnecting`).
+    reconnecting: bool,
     /// The last ROAP ERROR the server sent for this call (its cause fields, for the end reason in the call log).
     roap_error: String,
     /// The Locus media keep-alive (`keepAliveUrl`, every `keepAliveSecs`; `keepalive_tick`) and when it last went out.
@@ -444,7 +448,7 @@ impl Active {
             media: None, roap_seq: 0, roap_done: false, roap_applied: 0, media_warned: false, view: None, seq: 0, read_at: None, stale: false, stats_at: None,
             locus: Value::Null, joined_at: None, media_up_at: None, offer_at: None, share: None,
             remote_share: None, remote_since: None, rx_warned: false, mute_info: None, space: None, roster_sent: None,
-            video: Default::default(), gone_since: None, fresh_at: None, media_down_at: None, ice_restart_at: None, roap_error: String::new(), keep_alive: None, keep_alive_at: None }
+            video: Default::default(), gone_since: None, fresh_at: None, media_down_at: None, ice_restart_at: None, restart_pending: None, reconnecting: false, roap_error: String::new(), keep_alive: None, keep_alive_at: None }
     }
 }
 
@@ -453,9 +457,22 @@ impl Active {
 pub const MEDIA_TIMEOUT: Duration = Duration::from_secs(15);
 /// Media is up but not one RTP packet came from the server.
 pub const RTP_TIMEOUT: Duration = Duration::from_secs(8);
-/// Media that was up and is down this long gets an ICE restart (`ice_tick`), repeated at most this often.
-pub const ICE_RESTART_AFTER: Duration = Duration::from_secs(4);
+/// Media that was up and is down this long (or whose ICE failed) gets an ICE restart (`ice_tick`), repeated at most this
+/// often. The official client never restarts ICE (it switches transport, UDP -> TCP -> TLS 443), so this is Webox's own
+/// recovery: late, so webrtc-rs doesn't drop a pair that would have come back by itself.
+pub const ICE_RESTART_AFTER: Duration = Duration::from_secs(10);
 pub const ICE_RESTART_EVERY: Duration = Duration::from_secs(15);
+/// The restart's candidates must be gathered by then, or it is not sent.
+pub const ICE_GATHER_TIMEOUT: Duration = Duration::from_secs(5);
+/// The switch for the ICE restart. Off at runtime with `WEBOX_NO_ICE_RESTART=1` (in case real calls show the server
+/// doesn't answer it).
+pub const ICE_RESTART: bool = true;
+pub fn ice_restart_enabled() -> bool {
+    static OFF: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    ICE_RESTART && !*OFF.get_or_init(|| std::env::var("WEBOX_NO_ICE_RESTART").is_ok_and(|v| v == "1"))
+}
+/// The call window says "Reconnecting…" once media that was up is down this long.
+pub const RECONNECTING_AFTER: Duration = Duration::from_secs(5);
 /// Our ROAP OFFER got no ANSWER.
 pub const ROAP_TIMEOUT: Duration = Duration::from_secs(10);
 

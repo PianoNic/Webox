@@ -31,7 +31,17 @@ pub struct Seen { pub video: Arc<SeenSsrc>, pub video_pt: u8, pub audio: Arc<See
 
 /// The read errors in a row and when one was last logged (at most once a second).
 #[derive(Default)]
-struct Errs { row: AtomicU32, logged: std::sync::Mutex<Option<std::time::Instant>> }
+struct Errs { row: AtomicU32, logged: std::sync::Mutex<Option<std::time::Instant>>, since: std::sync::Mutex<Option<std::time::Instant>> }
+
+/// A read error is logged at most this often (the call log is always on).
+const ERR_LOG_EVERY: std::time::Duration = std::time::Duration::from_secs(10);
+/// Errors in a row for this long (the network is gone): the socket is read only once a second until a datagram arrives.
+const ERR_BACKOFF_AFTER: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// How long to wait before the next read after `row` errors in a row, for `for_` (10 ms after a few, 1 s after 30 s).
+pub fn err_pause(row: u32, for_: std::time::Duration) -> Option<std::time::Duration> {
+    if for_ >= ERR_BACKOFF_AFTER { Some(std::time::Duration::from_secs(1)) } else if row >= 5 { Some(std::time::Duration::from_millis(10)) } else { None }
+}
 
 /// The last two different SSRCs a payload type arrived from (0 = none). Two streams arriving interleaved leave both.
 #[derive(Debug, Default)]
@@ -78,18 +88,21 @@ pub fn rtp_ssrc(b: &[u8], pt: u8) -> Option<u32> {
 
 impl IceSocket {
     fn note(&self, b: &[u8]) {
-        self.errs.row.store(0, Ordering::Relaxed);
+        if self.errs.row.swap(0, Ordering::Relaxed) > 0 { if let Ok(mut s) = self.errs.since.lock() { *s = None; } }
         if let Some(s) = rtp_ssrc(b, self.seen.video_pt) { self.seen.video.note(s); } else if let Some(s) = rtp_ssrc(b, self.seen.audio_pt) { self.seen.audio.note(s); }
     }
 
-    /// A read error that is read past: logged at most once a second (the kind only), and after a few in a row the next
-    /// read waits 10 ms so a socket that keeps failing doesn't spin.
+    /// A read error that is read past: logged at most every `ERR_LOG_EVERY` (the kind only); after a few in a row the next
+    /// read waits 10 ms so a socket that keeps failing doesn't spin, and after `ERR_BACKOFF_AFTER` of nothing but errors
+    /// (the network is gone) it waits 1 s. Reading never stops: webrtc-ice would never read the socket again, and the media
+    /// could not recover once the network is back.
     async fn skip(&self, e: &std::io::Error) {
         let row = self.errs.row.fetch_add(1, Ordering::Relaxed) + 1;
         let now = std::time::Instant::now();
-        let log = self.errs.logged.lock().map(|mut l| { let due = l.is_none_or(|t| now.duration_since(t).as_secs() >= 1); if due { *l = Some(now); } due }).unwrap_or(false);
-        if log { super::dbg_conn(&format!("call: ice socket read error skipped ({:?}, {} in a row)", e.kind(), row)); }
-        if row >= 5 { tokio::time::sleep(std::time::Duration::from_millis(10)).await; }
+        let since = self.errs.since.lock().map(|mut s| *s.get_or_insert(now)).unwrap_or(now);
+        let log = self.errs.logged.lock().map(|mut l| { let due = l.is_none_or(|t| now.duration_since(t) >= ERR_LOG_EVERY); if due { *l = Some(now); } due }).unwrap_or(false);
+        if log { super::dbg_conn(&format!("call: ice socket read error skipped ({:?}, {} in a row for {} s)", e.kind(), row, now.duration_since(since).as_secs())); }
+        if let Some(p) = err_pause(row, now.duration_since(since)) { tokio::time::sleep(p).await; }
     }
 }
 
@@ -142,6 +155,14 @@ mod tests {
         assert_eq!(s.candidates(&[9]), vec![7], "the stream webrtc-rs takes already is no candidate");
         s.note(5);
         assert_eq!(s.candidates(&[]), vec![5, 9]);
+    }
+
+    #[test]
+    fn read_errors_back_off_hard_after_30_s() {
+        use std::time::Duration as D;
+        assert_eq!(err_pause(1, D::from_secs(0)), None, "one error: read again at once");
+        assert_eq!(err_pause(5, D::from_secs(1)), Some(D::from_millis(10)), "a few in a row: no spinning");
+        assert_eq!(err_pause(5000, D::from_secs(30)), Some(D::from_secs(1)), "the network is gone: once a second");
     }
 
     #[test]
