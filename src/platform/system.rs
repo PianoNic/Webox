@@ -258,6 +258,7 @@ pub fn load_settings(dir: &std::path::Path) -> Value {
 }
 
 pub fn save_settings(dir: &std::path::Path, v: &Value) {
+    crate::extras::data::note_settings_saved(); // the data API sees what the UI changed
     let _ = write_private(&dir.join("settings.json"), serde_json::to_string_pretty(v).unwrap_or_default().as_bytes());
 }
 

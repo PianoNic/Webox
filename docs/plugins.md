@@ -154,9 +154,9 @@ The authoritative description of the plugin API. Code comments link to the secti
 </details>
 
 <details>
-<summary><b>Plugin API contract</b> (currently 1.6)</summary>
+<summary><b>Plugin API contract</b> (currently 1.7)</summary>
 
-`plugin-api` has a contract version `CONTRACT_MAJOR.CONTRACT_MINOR` (`CONTRACT` as a string, crate version 1.6.1).
+`plugin-api` has a contract version `CONTRACT_MAJOR.CONTRACT_MINOR` (`CONTRACT` as a string, crate version 1.7.0).
 
 History:
 - 1.0 — the first interface.
@@ -165,6 +165,7 @@ History:
 - 1.3 — accent themes.
 - 1.4 — decorations (washes, host-drawn decorations, effects).
 - 1.6 — named events and methods. After 1.6, new capabilities are names, not table entries. (There is no 1.5.)
+- 1.7 — the data API (`data.*` methods, `data.changed`). No table change; the minor marks plugins that need it.
 
 Checks:
 - A plugin exports `collabhost_plugin_contract() -> u32` = `(major << 16) | minor` (added by `export_plugin!`). Plugins
@@ -294,6 +295,8 @@ payload version.
 - **`i18n.strings`** (1) — the plugin's translations are wanted: before it starts and after every language change.
   Payload `{"lang", "fallbacks"}`. Answer `{"strings": {"English source": "translation"}}`. See
   [Translations](#reference).
+- **`data.changed`** (1) — a data subscription's result changed. Payload `{"sub", "rev", "ops"}`. Answer ignored. See
+  [Data API](#reference).
 
 </details>
 
@@ -372,6 +375,125 @@ Call with `host.call(name, json)`. Results are JSON; `{}` means done. The number
   [Camera pictures](#reference). Safe from any thread.
 - **`i18n.language`** (1) — `{}` → `{"lang": "de", "fallbacks": ["de_CH", "de"]}`: the active Webox language, as
   `i18n.strings` sends it. See [Translations](#reference). Safe from any thread.
+- **`data.model`**, **`data.get`**, **`data.query`**, **`data.subscribe`**, **`data.unsubscribe`** (1) — the typed data
+  model and its query language, see [Data API](#reference). Safe from any thread.
+
+</details>
+
+<details>
+<summary><b>Data API</b> (contract 1.7; methods <code>data.*</code>, event <code>data.changed</code>)</summary>
+
+Everything Webox keeps in memory, as one typed model (`webox-data/1`) with stable ids: me, people and their presence,
+spaces, teams, loaded messages (reactions, files, link previews, quotes, read receipts, kept deleted messages), the
+current call and its participants, call history, meetings and calendar events, toasts on screen, display settings,
+message reminders and scheduled messages, and the plugin list. No call makes a Webex request. The design, the full
+inventory and the theme side are in [data-api.md](data-api.md); the generated field list is
+[data-model.json](data-model.json) (also the answer of `data.model`).
+
+**Model rules.** Times are Unix milliseconds. Images are opaque handles (`"img:person:<id>"`), never URLs or tokens.
+A field that is not known is absent (left out of the item). Fields, kinds and enum values are only ever added within
+`webox-data/1`; treat unknown enum values as "other". A person's id is the Webex person id, or `"email:<address>"` while
+only the e-mail is known; when the id arrives, subscriptions get a `rekey`. Relations hold the target's id and can be
+followed in queries and `fields` with a dot: `peer.presence.state`.
+
+| Collection | Entity | Contents |
+|---|---|---|
+| `people`, `contacts` | `person` | everyone Webox knows / the people of my spaces |
+| `presence` | `presence` | presence per person (same id as the person) |
+| `spaces`, `teams` | `space`, `team` | my spaces (hidden ones only when the query names `hidden`), my teams |
+| `messages(space)`, `thread(message)` | `message` | loaded messages of a space, oldest first / a thread root and its replies |
+| `calls`, `call_history` | `call`, `call_record` | the current call (0 or 1), call history once loaded |
+| `meetings`, `notifications` | `meeting`, `notification` | running meetings and calendar events, toasts on screen |
+| `settings`, `reminders`, `plugins` | `setting`, `reminder`, `plugin` | display settings (a whitelist: no token, ids, paths or e-mail), reminders and scheduled messages, plugins |
+| `me`, `app` | `me`, `app` | one item each: the signed-in user, the window's state |
+
+**Queries** are text (or the same as JSON, `{"from", "where", "search", "group", "sort", "limit", "offset"}`):
+
+```text
+people where presence.online and name ~ $q sort name limit 50
+spaces where kind == 'direct' or team == null sort -last_activity
+messages($space) where author == @me and at > now() - days(7) sort -at
+contacts search $q in name, email, presence.text
+spaces where len(members) >= 3 and any(members, presence.in_call)
+teams sort name; spaces where favorite and team == null sort title
+```
+
+- Clauses: `where`, `search <value> in <fields>` (matches only, prefix matches first), `group by`, `sort a, -b` (`-` =
+  descending; absent values sort last), `limit` (default 500, at most 5000), `offset`. `;` joins queries; each item
+  then carries `"entity"`.
+- Operators: `== != < <= > >=`, `in` (in a list), `contains`, `starts_with`, `~` (contains, ignoring case and accents),
+  `and`, `or`, `not`, parentheses, `+` / `-` on numbers. Values: fields, `'text'` / `"text"`, numbers, `true`, `false`,
+  `null`, `[lists]`, `$params` (from `params`; `$space.selected` and `$nav.page` read the window when not given), `@me`
+  (my person id; `@me.person.name`).
+- Functions: `len` / `count`, `any(list, expr)`, `all(list, expr)` (inside, fields are the item's; `it` is the item),
+  `now()`, `minutes(n)`, `hours(n)`, `days(n)`, `lower(s)`.
+- Every query is checked against the model before it runs. Errors say what and where:
+  `query: column 14: 'nmae' is not a field of person (did you mean 'name'?); fields: id, name, ...`.
+
+**Methods** (each answers `{"error": "..."}` when it cannot do its work):
+
+- **`data.model`** — `{}` → `{"version": "webox-data/1", "entities": {...}, "collections": [...], "types": {...}, "functions": [...]}`.
+- **`data.get`** — one entity by id. `fields` optional (default: every stored field).
+  ```json
+  {"entity": "person", "id": "8f0c…", "fields": ["name", "presence.state", "presence.until"]}
+  → {"item": {"id": "8f0c…", "name": "Anna Berg", "presence": {"state": "meeting", "until": 1764082800000}}, "rev": 42}
+  ```
+- **`data.query`** — `{"query", "params"?, "fields"?, "limit"?, "cursor"?}` → `{"items", "total", "rev", "cursor"?, "groups"?}`.
+  `limit` is the page size (default 100, at most 5000); pass `cursor` back for the next page. `total` counts the result
+  before paging; `groups` (with `group by`) lists `{"key", "count", "start"}`.
+  ```json
+  {"query": "spaces where unread sort -last_activity", "fields": ["title", "peer.name"], "limit": 20}
+  → {"items": [{"id": "Y2lz…", "title": "Anna Berg", "peer": {"name": "Anna Berg"}}], "total": 1, "rev": 9}
+  ```
+- **`data.subscribe`** — `{"id", "query", "params"?, "fields"?, "limit"?}` → the first page like `data.query` plus
+  `{"sub": id}`. The plugin must list `data.changed` in its `EVENTS`. `limit` is how many items it follows (default 500,
+  at most 5000). The same `id` again replaces the subscription. At most 32 per plugin.
+- **`data.unsubscribe`** — `{"id"}` → `{}`.
+
+**Event `data.changed`** (1) — what changed in one subscription's result, only the subscribed fields:
+
+```json
+{"sub": "online", "rev": 10, "ops": [
+  {"op": "insert", "at": 3, "item": {"id": "…", "name": "…", "presence": {"state": "active"}}},
+  {"op": "update", "id": "…", "set": {"presence.state": "meeting", "presence.until": 1764082800000}},
+  {"op": "move", "id": "…", "to": 0},
+  {"op": "remove", "id": "…"},
+  {"op": "rekey", "from": "email:a@b.c", "to": "8f0c…"}]}
+```
+
+Apply the ops in order: `remove` drops the item, `insert` puts it at index `at`, `move` takes it out and puts it at `to`
+(indices of the list as it is at that op), `update.set` replaces the named fields (dotted names as in `fields`). A
+change to a field the subscription does not select sends nothing. `rev` goes up by one per event: after a gap (a busy
+plugin), call `data.query` again; more than 1000 ops arrive as `{"op": "reset"}` (query again). Events come on the UI
+thread after the frame's work, at most 10 per second per subscription.
+
+**Limits and cost.** 5000 items per query part and subscription, 32 subscriptions per plugin, a query text of at most
+4096 characters. The store exists only while a plugin uses it (calls a `data.*` method or lists `data.changed`); it is
+dropped when the last such plugin is switched off. It is updated only where Webox's state changed, and a subscription
+runs again only when a field it reads changed. A call from a plugin thread right after the store was switched on waits
+up to 2 s for its first fill; on the UI thread (`start`, `on_event`) it answers at once, with `"ready": false` while the
+store is still empty (a subscription made there gets the items as `insert` ops). Device lists (`me.cameras`,
+`me.audio.inputs` / `outputs`), `me.features` and `call.stats` are read when asked (device lists never on the UI thread),
+cannot be filtered or sorted, and are not followed by `data.changed`. Typing indicators that expire without a "stopped
+typing" event update with the next change.
+
+**Permissions.** Plugins are native code with full access, so no scope refuses them. Webox records which scopes of
+[data-api.md section 6](data-api.md#6-privacy-and-permissions) a plugin's reads used (for example `messages.content`),
+so Settings > Plugins can show "reads message content". Themes get the scope checks; plugins do not.
+
+```rust
+const EVENTS: &'static str = "data.changed";
+fn start(&mut self, host: Host) {
+    // people who are in a call or meeting right now, with their status line
+    let first = host.call("data.subscribe", r#"{"id": "busy", "query": "people where presence.in_call sort name",
+        "fields": ["name", "presence.state", "presence.until"]}"#);
+    // first: {"sub": "busy", "items": [...], "total": n, "rev": r}
+}
+fn on_event(&mut self, name: &str, payload: &str) -> Option<String> {
+    // name == "data.changed": {"sub": "busy", "rev": …, "ops": [...]}; apply the ops to the list kept from `first`
+    None
+}
+```
 
 </details>
 

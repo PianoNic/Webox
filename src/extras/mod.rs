@@ -2,6 +2,7 @@
 //! favourites of Giphy and uploaded GIFs, stars), the plugin host (`plugins`), plugin settings (`plugin_settings`) and plugin
 //! repositories (`plugin_repo`).
 pub mod gif_extras;
+pub mod data;
 pub mod giphy;
 pub mod plugins;
 pub mod plugin_repo;

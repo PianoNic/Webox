@@ -38,9 +38,11 @@ pub const CONTRACT_MAJOR: u16 = 1;
 /// background washes, host-drawn decorations and effects.
 /// 1.6: named events and methods (`events` / `on_event` at the end of [`PluginVTable`], `call` at the end of [`HostApi`]):
 /// later capabilities are added as names, not as table entries.
-pub const CONTRACT_MINOR: u16 = 6;
+/// 1.7: the data API (`data.model` / `data.get` / `data.query` / `data.subscribe` / `data.unsubscribe`, event `data.changed`).
+/// No table change: the minor marks plugins that need these names, so older hosts refuse them up front.
+pub const CONTRACT_MINOR: u16 = 7;
 /// "major.minor", as written into a plugin repository index (`contract`).
-pub const CONTRACT: &str = "1.6";
+pub const CONTRACT: &str = "1.7";
 /// `(major << 16) | minor`, returned by the [`CONTRACT_SYMBOL`] function.
 pub const CONTRACT_PACKED: u32 = ((CONTRACT_MAJOR as u32) << 16) | CONTRACT_MINOR as u32;
 pub const ENTRY_SYMBOL: &[u8] = b"collabhost_plugin\0";

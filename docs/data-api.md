@@ -1,6 +1,9 @@
 # Data API for themes and plugins (design)
 
-Status: **design, phase 1**. No code changes yet. This document extends [theming-engine.md](theming-engine.md): it
+Status: **D0 (the store) and D3 (plugin access) are implemented** (`src/extras/data/`, plugin reference in
+[plugins.md, "Data API"](plugins.md#reference), generated field list in [data-model.json](data-model.json)); the theme
+side (D1, D2, D4–D7) is design. See [Implementation notes](#implementation-notes-d0--d3) at the end for what the code adds
+to or decides beyond this design. This document extends [theming-engine.md](theming-engine.md): it
 defines the data a theme or a plugin can read, how a data-only layout binds to it, the actions it can trigger, and the
 permissions around both. The first theme built on it is "Night Chat", a server-bar layout (section 9).
 
@@ -1094,3 +1097,36 @@ Total for D0–D5 and D7: about 29–37 agent-days on top of the theming engine,
    wants early.
 3. **The `activity` collection and `Space.mentioned`** also help the built-in UI (an "active now" hint in the contacts
    page, a mention badge in the space list).
+
+---
+
+## Implementation notes (D0 + D3)
+
+What `src/extras/data/` adds to or decides beyond the design above. All additions follow the additive-only rule.
+
+- **Store.** Per entity kind a table of rows (one value per model field, in the model's order) with a revision per row.
+  `App::poll` marks the kinds each `Resp` touches (`src/app/data_sync.rs`); a cheap fingerprint of the window's own state
+  (page, selection, unread / favourite / hidden flags, drafts, flags, settings, call controls, toasts, plugins) catches
+  what the UI changes without a `Resp`. Only marked kinds are rebuilt and compared field by field; the change list holds
+  inserted, removed and updated entities with a field mask, and rekeys. A frame where nothing changed does no store
+  work, and nothing at all happens while no plugin uses the data API (the store is empty then).
+- **Additional fields:** `person.contact`, `person.directory`, `person.me`; `message.author_name`, `message.kept`;
+  `call.peer_name`, `call.remote_share_name`, `call.remote_video`; `meeting.source`; `app.status`, `app.team`;
+  `plugin.settings`. `message.author` is optional (system lines have none). `space.archived`, `space.unread_count`,
+  `person.title` / `department` / `phone` / `external`, `app.width_class` and `app.focus_mode` are **reserved**: in the
+  model, always absent for now.
+- **Additional collections and entities:** `presence` (all presence entries), `reminders` (entity `reminder`: message
+  reminders and scheduled messages, item 1.5 "Reminders, scheduled messages"), `plugins` (entity `plugin`: item 1.8
+  "Plugin list, enabled state, plugin settings"; password settings are left out).
+- **Read when asked (volatile):** `me.cameras`, `me.audio.inputs` / `outputs` (device enumeration blocks, so never on the
+  UI thread, cached 10 s), `me.features` and `call.stats` (present while the call statistics view runs). They can be
+  selected, not filtered or sorted, and `data.changed` does not follow them.
+- **Not yet followed live:** typing indicators that expire without a "stopped typing" event (they update with the next
+  change). `notifications` lists the toasts on screen, not unread spaces (use `spaces where unread`).
+- **Ids:** a person's id is `Person.id` as Webox has it (the participant id the space list uses), or
+  `email:<address>` for message authors and reactors no list knows yet; when a list brings the id, subscriptions get a
+  `rekey`. A message without an id (offline samples) gets `<space>#<index>`. Meetings of the loci poll use
+  `loci:<join link>`; the current call `call:<e-mail>:<start>`.
+- **Plugin permissions.** As section 4 says, no scope refuses a plugin; each read is recorded by scope per plugin
+  (`Hub::scopes_used`). Showing it on Settings > Plugins is a follow-up in `src/ui/`.
+- **Contract 1.7** marks plugins that need the `data.*` names; there is no table change.

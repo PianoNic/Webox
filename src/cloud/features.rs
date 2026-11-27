@@ -67,6 +67,19 @@ impl Features {
     }
 }
 
+/// Every toggle as (key, value), user over developer over entitlement (the data API's `me.features`).
+pub fn all() -> Vec<(String, Value)> {
+    let Ok(s) = STORE.read() else { return vec![] };
+    let Some(f) = s.as_ref() else { return vec![] };
+    let mut m: std::collections::BTreeMap<String, Value> = Default::default();
+    for t in ["entitlement", "developer", "user"] {
+        for (k, v) in f.toggles.get(t).into_iter().flatten() {
+            m.insert(k.clone(), match v { FeatureValue::Bool(b) => Value::Bool(*b), FeatureValue::Num(n) => serde_json::json!(n), FeatureValue::Str(s) => Value::String(s.clone()) });
+        }
+    }
+    m.into_iter().collect()
+}
+
 /// The session's registration arrived: replace the snapshot.
 pub fn store(f: Features) { if let Ok(mut s) = STORE.write() { *s = Some(f); } }
 /// A live toggle change (mercury `featureToggle_update`, `data.featureToggle`).
