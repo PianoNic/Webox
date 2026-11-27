@@ -53,10 +53,10 @@ impl App {
     pub(crate) fn run_command(&mut self, idx: usize, ctx: &egui::Context) {
         let c = &registry().cmds[idx];
         let now = ctx.input(|i| i.time);
-        match c.kind {
-            Kind::Run(a) => self.act(a, ctx),
+        match &c.kind {
+            Kind::Run(a) => { let _ = self.dispatch(a.clone(), crate::app::bus::Origin::Shortcut, ctx); }
             Kind::Cmd => self.run_cmd(c.id, ctx),
-            Kind::Composer => self.act(Act::Composer(c.id), ctx),
+            Kind::Composer => { let _ = self.dispatch(Act::Composer(c.id), crate::app::bus::Origin::Shortcut, ctx); }
             Kind::Native => {}
             Kind::Stub => self.toast(format!("{}: {}", c.label, crate::trq!("unavailable")), now),
         }

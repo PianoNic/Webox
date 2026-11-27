@@ -439,7 +439,7 @@ impl App {
         self.row_draft = shows_draft_icon(self.drafts.get(&s.id).map_or("", |d| d.as_str()), sel, s.unread);
         let resp = self.row(ui, t, &s.title, &sub, col, sel, s.unread, !s.direct, av, status.as_deref(), photo);
         self.row_draft = false;
-        if resp.clicked() { self.open_space(s.id.clone()) }
+        if resp.clicked() { self.act(Act::SpaceOpen(s.id.clone()), ui.ctx()) }
         // Right-click opens the row menu at the pointer (see space_menu.rs).
         if resp.secondary_clicked() {
             let at = Rect::from_min_size(ui.ctx().input(|i| i.pointer.interact_pos()).unwrap_or(resp.rect.center()), Vec2::splat(1.0));

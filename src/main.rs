@@ -89,18 +89,19 @@ const RAIL: [(Tab, &str, &str, &str); 6] = [
     (Tab::Teams, "webex-teams-filled", "webex-teams-filled", "Teams"),
 ];
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum ListTab { All, Direct, Spaces, Public }
 #[derive(Clone, Copy, PartialEq)]
 enum ConvTab { Messages, Profile, People, Content, Meetings, Apps }
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 enum Filter { None, Notifications, Drafts, Unread, Favorites, MentionMe, MentionAll, Flags }
 const FILTERS: [(Filter, &str); 8] = [
     (Filter::None, "No filter"), (Filter::Notifications, "Notifications"), (Filter::Drafts, "Drafts"), (Filter::Unread, "Unread"),
     (Filter::Favorites, "Favorites"), (Filter::MentionMe, "@Mentions to me"), (Filter::MentionAll, "@Mentions to all"), (Filter::Flags, "Flags"),
 ];
 
-#[derive(Clone, Copy)]
+/// An action on the bus (`App::dispatch`, src/app/bus.rs); each has a stable id (`Act::id`).
+#[derive(Clone, PartialEq, Debug)]
 enum Act {
     AddPeople, LeaveSpace, ToggleRail, Tab(Tab), Search, Prefs, Shortcuts, Prev, Next, Back, Forward, CreateSpace, Contact, Quit, ZoomIn, ZoomOut, List(ListTab), Filter(Filter), Favorite, Reload, CopyInfo,
     // Composer formatting commands (registry ids "ToggleBold", "ToggleItalic", "ToggleUnderline", "AddLink", "ToggleMarkdown",
@@ -108,6 +109,15 @@ enum Act {
     // "ToggleSuperscript", "ToggleInlineCode", "PasteMatchStyle", "InsertPMR", "EditLastMessage"): `App::act` pushes the id onto
     // `app.sc.composer_events`; the composer drains that Vec each frame and applies the formatting. The shortcut registry itself implements no formatting.
     Composer(&'static str),
+    /// Opens a space (`space.open`).
+    SpaceOpen(String),
+    /// Favourite on / off (`space.favorite`).
+    SpaceFavorite(String, bool),
+    /// Calls a person (`call.start`), with the camera on when `video`.
+    CallStart { email: String, name: String, video: bool },
+    CallHangUp, CallMute, CallVideo,
+    /// Opens or closes a panel of the layout (`panel.toggle`).
+    PanelToggle(app::bus::Panel),
 }
 
 struct App {

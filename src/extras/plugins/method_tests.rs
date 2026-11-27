@@ -124,6 +124,20 @@ fn settings_set_and_clipboard_go_to_the_outbox() {
 }
 
 #[test]
+fn ui_dispatch_queues_known_actions_and_refuses_the_rest() {
+    let (p, dir) = load_in_process::<Reader>(6);
+    assert_eq!(call(&p, "ui.dispatch", json!({ "action": "space.open", "space": "s1" })), json!({}));
+    assert_eq!(call(&p, "ui.dispatch", json!({ "action": "nav.page", "page": "contacts" })), json!({}));
+    assert!(call(&p, "ui.dispatch", json!({ "action": "space.open" })).get("error").is_some());
+    assert!(call(&p, "ui.dispatch", json!({ "action": "app.quit" })).get("error").is_some());
+    assert!(call(&p, "ui.dispatch", json!({})).get("error").is_some());
+    let out = std::mem::take(&mut *p.out.lock().unwrap());
+    assert_eq!(out.dispatches, [crate::Act::SpaceOpen("s1".into()), crate::Act::Tab(crate::Tab::Contacts)]);
+    drop(p);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
 fn ui_confirm_waits_for_the_answer_and_never_blocks_the_ui_thread() {
     let (p, dir) = load_in_process::<Reader>(6);
     // On the window's thread (here: the thread that made `Plugins`) it would wait for itself: refused at once.

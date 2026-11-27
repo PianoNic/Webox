@@ -361,6 +361,7 @@ Call with `host.call(name, json)`. Results are JSON; `{}` means done. The number
   At most 50 tabs. Does not block, so it may be called from `on_event`. A new one replaces the one shown. It closes with
   "Close", the X or Esc, and when its plugin is switched off.
 - **`clipboard.write`** (1) — `{"text": "..."}`. Puts the text on the clipboard on the next frame.
+- **`ui.dispatch`** (1) — `{"action": "space.open", "space": "..."}`. Runs a UI action on the next frame with the same guards as the built-in UI (see "Actions and state keys"); a refusal shows its toast. Unknown actions and missing arguments are answered with `{"error"}`.
 - **`message.keep`** (2) — `{"deleted": [...], "edited": [...], "replace": bool}`. Gives again what the answers to
   `message.deleted` / `message.edited` keep, e.g. after a restart. `deleted` entries are `message.deleted` payloads plus
   the answer's fields (`"style"`, `"collapsed"`, `"attachments"`); `edited` entries are
@@ -921,5 +922,46 @@ Run `cargo build` (it builds the example plugins), then `cargo test`.
   and ctx), the RGBA conversions, scaling, a picture as camera source and `media.read` clip.
 - `src/media/video/tests.rs` (`file_source_loops`) — a video as camera source starting over at the end, paced at its own
   rate.
+
+</details>
+
+<details>
+<summary><b>Actions and state keys</b> (unstable until theme packages ship)</summary>
+
+Every change the UI makes to app state goes through one action bus (`App::dispatch`, `src/app/bus.rs`), whatever started
+it: a shortcut, a built-in button, and later a plugin (`ui.dispatch`) or a theme's widget. The same guards apply to every
+caller, and a refusal shows the same toast as the built-in path. The ids below are published early so plugin authors can
+plan with them (docs/theming-engine.md, decision 7); they may still change until theming-engine phase 7.
+
+| Action | Arguments | Guards |
+| --- | --- | --- |
+| `nav.page` | `page`: `messaging` / `meetings` / `calls` / `whiteboards` / `contacts` / `teams` / `voicemail` / `settings` | |
+| `nav.back`, `nav.forward` | | |
+| `nav.prev_space`, `nav.next_space` | | |
+| `search.open`, `settings.open`, `shortcuts.toggle`, `contacts.open` | | |
+| `space.new` | | |
+| `space.open` | `space` | the space is known |
+| `space.favorite` | `space`, `on` | the space is known |
+| `space.favorite_toggle`, `space.add_people`, `space.leave`, `space.reload`, `space.copy_info` | | act on the selected space |
+| `list.tab` | `tab`: `all` / `direct` / `spaces` / `public` | |
+| `ui.rail_wide` | | toggles the labelled rail |
+| `panel.toggle` | `panel`: `list` | |
+| `call.start` | `email`, `name`?, `video`? | no call in progress; `locus::call_allowed`; connected |
+| `call.hang_up`, `call.mute`, `call.video` | | a call is in progress |
+| `app.zoom_in`, `app.zoom_out` | | |
+
+Built-in only (not dispatchable from outside): `app.quit`, `list.filter` and `composer.command` (formatting keys).
+
+State keys (read-only):
+
+| Key | Value |
+| --- | --- |
+| `nav.page` | the page id (as in `nav.page`) |
+| `space.selected` | the selected space's id, or none |
+| `space.selected.direct`, `space.selected.closed` | bool |
+| `call.active` | bool |
+| `ui.rail_wide`, `ui.list_hidden` | bool |
+| `unread.count` | number of unread spaces |
+| `window.width_class` | `narrow` (< 720 pt), `medium` (< 1100 pt), `wide`; layout conditions only |
 
 </details>

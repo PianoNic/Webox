@@ -4,7 +4,7 @@
 use crate::{Act, Filter, ListTab, Tab};
 
 /// What a command does in Webox.
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) enum Kind {
     /// An existing in-app action (`App::act`).
     Run(Act),
