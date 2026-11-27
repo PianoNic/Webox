@@ -217,8 +217,8 @@ impl App {
                     ui.horizontal(|ui| { ui.add_space(16.0); ui.scope(|ui| { ui.set_max_width(248.0); ui.add(egui::Label::new(RichText::new(text).font(font).color(t.text1)).wrap()); }); });
                     ui.add_space(bottom);
                 };
-                wrap(ui, tr("Markdown Formats"), semibold(16.0), 12.0, 0.0);
-                wrap(ui, tr("Add special characters around your text to apply formatting"), FontId::proportional(14.0), 4.0, 8.0);
+                wrap(ui, tr("Markdown Formats"), F::Title.semibold(), 12.0, 0.0);
+                wrap(ui, tr("Add special characters around your text to apply formatting"), F::Body.font(), 4.0, 8.0);
                 ui.painter().hline(ui.max_rect().x_range(), ui.cursor().top() + 0.5, Stroke::new(1.0_f32, div));
                 ui.add_space(1.0);
                 crate::ui::widgets::vscroll().id_salt("md-legend-scroll").max_height(200.0).auto_shrink([false, true]).show(ui, |ui| {

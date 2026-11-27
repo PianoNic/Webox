@@ -32,7 +32,7 @@ pub(crate) fn kind_text(k: CallKind) -> &'static str { tr(match k { CallKind::In
 pub(crate) fn kind_icon(k: CallKind) -> &'static str { match k { CallKind::Incoming => "call-incoming-regular", CallKind::Outgoing => "call-outgoing-regular", CallKind::Missed => "call-missed-regular" } }
 pub(crate) fn duration_text(s: u32) -> String { if s >= 3600 { format!("{}:{:02}:{:02}", s / 3600, s % 3600 / 60, s % 60) } else { format!("{}:{:02}", s / 60, s % 60) } }
 /// listitem-textmissed (#FC8B98 / #AB0A15).
-pub(crate) fn missed_color(t: &Th) -> Color32 { t.tk("listitem-textmissed") }
+pub(crate) fn missed_color(t: &Th) -> Color32 { t.at(tok!("listitem-textmissed")) }
 
 const KEYS: [(&str, &str); 12] = [("1", ""), ("2", "ABC"), ("3", "DEF"), ("4", "GHI"), ("5", "JKL"), ("6", "MNO"), ("7", "PQRS"), ("8", "TUV"), ("9", "WXYZ"), ("*", ""), ("0", "+"), ("#", "")];
 
@@ -202,7 +202,7 @@ impl App {
             if shown == 0 {
                 ui.add_space(40.0);
                 let (title, body) = if st.calls_tab == 1 { (tr("No missed calls"), "") } else { (tr("No calls"), "") }; // Webox's own wording
-                ui.vertical_centered(|ui| { ui.label(RichText::new(title).font(semibold(15.0)).color(t.text1)); ui.label(RichText::new(body).color(t.text2)); });
+                ui.vertical_centered(|ui| { ui.label(RichText::new(title).font(F::Subtitle.semibold()).color(t.text1)); ui.label(RichText::new(body).color(t.text2)); });
             }
         });
         self.set_pst(&ctx, st);
@@ -216,7 +216,7 @@ impl App {
         ui.painter().rect_filled(r, 18.0, t.ink_a(0.07));
         self.icons.paint(ui, "search-regular", Rect::from_center_size(r.left_center() + Vec2::new(20.0, 0.0), Vec2::splat(16.0)), t.text2);
         let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(r.min + Vec2::new(38.0, 0.0), r.max - Vec2::new(40.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-        let resp = inner.add(egui::TextEdit::singleline(&mut self.dial).hint_text(RichText::new(tr("Search or dial a number")).color(t.text2).size(15.0)).font(FontId::proportional(18.0)).frame(false).desired_width(r.width() - 80.0));
+        let resp = inner.add(egui::TextEdit::singleline(&mut self.dial).hint_text(RichText::new(tr("Search or dial a number")).color(t.text2).size(15.0)).font(F::Heading.font()).frame(false).desired_width(r.width() - 80.0));
         if !self.dial.is_empty() {
             let br = Rect::from_center_size(r.right_center() - Vec2::new(20.0, 0.0), Vec2::splat(24.0));
             let bresp = ui.interact(br, ui.id().with("dial-back"), Sense::click());
@@ -252,7 +252,7 @@ impl App {
             let fill = if kresp.is_pointer_button_down_on() { t.ink_a(0.2) } else if kresp.hovered() { t.ink_a(0.14) } else { t.ink_a(0.07) };
             if kresp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
             ui.painter().rect_filled(kr, 14.0, fill);
-            ui.painter().text(kr.center() - Vec2::new(0.0, if letters.is_empty() { 0.0 } else { 6.0 }), egui::Align2::CENTER_CENTER, k, FontId::proportional(22.0), t.text1);
+            ui.painter().text(kr.center() - Vec2::new(0.0, if letters.is_empty() { 0.0 } else { 6.0 }), egui::Align2::CENTER_CENTER, k, F::Display.font(), t.text1);
             if !letters.is_empty() { ui.painter().text(kr.center() + Vec2::new(0.0, 14.0), egui::Align2::CENTER_CENTER, letters, FontId::proportional(10.0), t.text2); }
             if kresp.clicked() { self.dial.push_str(k); }
         }
@@ -268,7 +268,7 @@ impl App {
         let rr = Rect::from_center_size(pos2(x0 + total_w / 2.0, by + 90.0), Vec2::new(220.0, 22.0));
         let rresp = ui.interact(rr, ui.id().with("dial-return"), Sense::click());
         if rresp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        ui.painter().text(rr.center(), egui::Align2::CENTER_CENTER, tr("Return to main view"), semibold(13.5), t.link);
+        ui.painter().text(rr.center(), egui::Align2::CENTER_CENTER, tr("Return to main view"), F::Label.semibold(), t.link);
         if rresp.clicked() { st.dial_open = false; }
     }
 
@@ -300,17 +300,17 @@ impl App {
             }
         });
         c.add_space(22.0);
-        c.label(RichText::new(tr("Call details")).font(semibold(15.0)).color(t.text1));
+        c.label(RichText::new(tr("Call details")).font(F::Subtitle.semibold()).color(t.text1));
         c.add_space(6.0);
         let nowms = super::chrome::now_ms();
         for h in log.iter().filter(|x| x.name == e.name && !st.call_deleted.contains(&x.key())) {
             let (r, _) = c.allocate_exact_size(Vec2::new(c.available_width().min(520.0), 34.0), Sense::hover());
             let col = if h.kind == CallKind::Missed { missed_color(t) } else { t.text1 };
             self.icons.paint(&c, kind_icon(h.kind), Rect::from_center_size(r.left_center() + Vec2::new(10.0, 0.0), Vec2::splat(16.0)), col);
-            c.painter().text(r.left_center() + Vec2::new(30.0, 0.0), egui::Align2::LEFT_CENTER, kind_text(h.kind), FontId::proportional(14.5), col);
+            c.painter().text(r.left_center() + Vec2::new(30.0, 0.0), egui::Align2::LEFT_CENTER, kind_text(h.kind), F::BodyLarge.font(), col);
             let when = if h.at_ms > 0 { when_text(h.at_ms, nowms) } else { String::new() };
             let right = if h.secs > 0 { format!("{when}   {}", crate::trq!("Duration %1", duration_text(h.secs))) } else { when };
-            c.painter().text(r.right_center(), egui::Align2::RIGHT_CENTER, right, FontId::proportional(13.5), t.text2);
+            c.painter().text(r.right_center(), egui::Align2::RIGHT_CENTER, right, F::Label.font(), t.text2);
             c.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0_f32, t.ink_a(0.08)));
         }
     }

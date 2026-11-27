@@ -76,7 +76,7 @@ impl App {
                     SecretAt::File => (tr("Saved in the settings file, NOT encrypted: no keyring available."), true),
                 };
                 ui.add_space(2.0);
-                kit::text_block(ui, note, kit::SECOND, if warn { t.tk("listitem-textmissed") } else { t.text2 }, 0.0);
+                kit::text_block(ui, note, kit::SECOND, if warn { t.at(tok!("listitem-textmissed")) } else { t.text2 }, 0.0);
             }
             Kind::Number { min, max, step, .. } => {
                 label(ui);
@@ -127,7 +127,7 @@ impl App {
                 if !f.description.is_empty() { ui.add_space(2.0); kit::text_block(ui, &f.description, kit::SECOND, t.text2, 0.0); }
             }
         }
-        if let Some(err) = s.errors.get(&k) { ui.add_space(2.0); kit::text_block(ui, err, kit::SECOND, t.tk("listitem-textmissed"), 0.0); }
+        if let Some(err) = s.errors.get(&k) { ui.add_space(2.0); kit::text_block(ui, err, kit::SECOND, t.at(tok!("listitem-textmissed")), 0.0); }
     }
 
     /// A settings button of a built-in plugin.

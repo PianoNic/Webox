@@ -22,7 +22,7 @@ impl App {
 
     /// The drag handle in the 4 px gap between the list card and the chat card: resize cursor, a thin line on hover, double-click resets.
     pub(crate) fn list_splitter(&mut self, ctx: &egui::Context, t: &Th, card_w: f32) {
-        let rail_w = super::chrome::RAIL_NARROW + (RAIL_WIDE - super::chrome::RAIL_NARROW) * ctx.animate_bool_with_time(egui::Id::new("rail-open"), self.rail_wide, 0.18);
+        let rail_w = super::chrome::RAIL_NARROW + (RAIL_WIDE - super::chrome::RAIL_NARROW) * ctx.animate_bool_with_time(egui::Id::new("rail-open"), self.rail_wide, M::RailExpand.secs());
         let e = super::chrome::edge_inset(ctx); // the not-maximised margin around all content
         let x = e + rail_w + card_w + 2.0;
         let screen = ctx.screen_rect();
@@ -60,7 +60,7 @@ impl App {
                 let card = ui.available_rect_before_wrap();
                 let _ = ui.allocate_rect(card, Sense::hover());
                 let crect = card;
-                vgrad(ui.painter(), crect, 10.0, t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), crect, 10.0, true);
+                vgrad(ui.painter(), crect, L::CardRadius.get(), t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), crect, L::CardRadius.get(), true);
                 let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(
                     pos2(crect.left() + 8.0, crect.top() + crate::ui::theme::density::m().list_top), pos2(crect.right() - 6.0, crect.bottom()))));
                 c.set_min_size(c.available_size());

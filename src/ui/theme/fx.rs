@@ -2,7 +2,7 @@
 //! a ripple on a reaction you add, a "Happy Pride!" sparkle once in June. Painted on a layer above the window that takes no
 //! input, so they never block anything. The window repaints only while one is running (request_repaint_after), and nothing
 //! starts while the OS asks for reduced motion.
-use eframe::egui::{self, pos2, vec2, Color32, FontId, Id, LayerId, Order, Pos2, Rect, Stroke};
+use eframe::egui::{self, pos2, vec2, Color32, Id, LayerId, Order, Pos2, Rect, Stroke};
 use std::cell::RefCell;
 
 const BURST_S: f64 = 0.9;
@@ -107,7 +107,7 @@ pub(crate) fn paint(ctx: &egui::Context) {
                     p.rect_filled(box_r, 32.0, crate::alpha(Color32::from_rgb(18, 18, 18), 0.85 * a));
                     let cols: Vec<Color32> = fx.colours.iter().map(|x| crate::alpha(*x, a)).collect();
                     super::decor::outline(&p, box_r, 32.0, 3.0, &cols, 0.0);
-                    p.text(box_r.center(), egui::Align2::CENTER_CENTER, "Happy Pride!", FontId::proportional(26.0), crate::alpha(Color32::WHITE, a));
+                    p.text(box_r.center(), egui::Align2::CENTER_CENTER, "Happy Pride!", crate::F::Hero.font(), crate::alpha(Color32::WHITE, a));
                     for i in 0..14u32 {
                         let q = pos2(box_r.left() - 40.0 + (box_r.width() + 80.0) * rnd(fx.seed, i), box_r.top() - 30.0 + (box_r.height() + 60.0) * rnd(fx.seed, i + 50));
                         let tw = ((t as f32 * 6.0 + i as f32).sin() * 0.5 + 0.5) * a;

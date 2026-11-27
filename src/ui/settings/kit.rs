@@ -15,10 +15,10 @@ pub(crate) fn is_dark(t: &Th) -> bool { !t.light }
 pub(crate) struct Tok { pub input_bg: Color32, pub outline: Color32, pub outline_hover: Color32, pub focus: Color32, pub item_hover: Color32, pub item_pressed: Color32,
     pub btn_hover: Color32, pub btn_press: Color32, pub border: Color32, pub popup_bg: Color32 }
 pub(crate) fn tok(t: &Th) -> Tok {
-    Tok { input_bg: t.tk("inputBackground"), outline: t.tk("inputOutline"), outline_hover: t.tk("inputOutline:hovered"), focus: t.tk("input-focusRing"),
-        item_hover: t.tk("listItem-primary:hovered"), item_pressed: t.tk("listItem-primary:pressed"), btn_hover: t.tk("button-secondary:hovered"),
-        btn_press: t.tk("button-secondary:pressed"), border: t.tk("wx-default-border"),
-        popup_bg: t.tk("wx-menuList-background") /* the settings search popup */ }
+    Tok { input_bg: t.at(tok!("inputBackground")), outline: t.at(tok!("inputOutline")), outline_hover: t.at(tok!("inputOutline:hovered")), focus: t.at(tok!("input-focusRing")),
+        item_hover: t.at(tok!("listItem-primary:hovered")), item_pressed: t.at(tok!("listItem-primary:pressed")), btn_hover: t.at(tok!("button-secondary:hovered")),
+        btn_press: t.at(tok!("button-secondary:pressed")), border: t.at(tok!("wx-default-border")),
+        popup_bg: t.at(tok!("wx-menuList-background")) /* the settings search popup */ }
 }
 
 /// Three-state colour (normal / hovered / pressed) of a component token.
@@ -45,13 +45,13 @@ pub(crate) struct Ctl {
     pub handle_border: Color32,
 }
 pub(crate) fn ctl(t: &Th) -> Ctl {
-    Ctl { checked_bg: St::of(t.tk("checkbox-checked-background"), t.tk("checkbox-checked-background:hovered"), t.tk("checkbox-checked-background:pressed")),
-        checked_icon: t.tk("checkbox-checked-icon"),
-        unchecked_bg: St::of(t.tk("checkbox-unchecked-background"), t.tk("checkbox-unchecked-background:hovered"), t.tk("checkbox-unchecked-background:pressed")),
-        unchecked_border: t.tk("checkbox-unchecked-border"),
-        track_empty: t.tk("slider-track-empty-background"), track_indicator: t.tk("slider-track-indicator-background"),
-        handle_bg: St::of(t.tk("slider-handle-background"), t.tk("slider-handle-background:hovered"), t.tk("slider-handle-background:pressed")),
-        handle_border: t.tk("slider-handle-border") }
+    Ctl { checked_bg: St::of(t.at(tok!("checkbox-checked-background")), t.at(tok!("checkbox-checked-background:hovered")), t.at(tok!("checkbox-checked-background:pressed"))),
+        checked_icon: t.at(tok!("checkbox-checked-icon")),
+        unchecked_bg: St::of(t.at(tok!("checkbox-unchecked-background")), t.at(tok!("checkbox-unchecked-background:hovered")), t.at(tok!("checkbox-unchecked-background:pressed"))),
+        unchecked_border: t.at(tok!("checkbox-unchecked-border")),
+        track_empty: t.at(tok!("slider-track-empty-background")), track_indicator: t.at(tok!("slider-track-indicator-background")),
+        handle_bg: St::of(t.at(tok!("slider-handle-background")), t.at(tok!("slider-handle-background:hovered")), t.at(tok!("slider-handle-background:pressed"))),
+        handle_border: t.at(tok!("slider-handle-border")) }
 }
 
 pub(crate) const BODY: f32 = 14.0;
@@ -70,7 +70,7 @@ pub(crate) fn text_block(ui: &mut egui::Ui, text: &str, size: f32, col: Color32,
 /// Settings section: header (semibold), optional description (secondary), then the content.
 pub(crate) fn section(ui: &mut egui::Ui, t: &Th, title: &str, desc: &str, first: bool, add: impl FnOnce(&mut egui::Ui)) {
     if !first { ui.add_space(crate::ui::theme::density::m().settings_section_gap); } // Standard 16
-    if !title.is_empty() { ui.label(RichText::new(title).font(semibold(16.0)).color(t.text1)); ui.add_space(4.0); }
+    if !title.is_empty() { ui.label(RichText::new(title).font(F::Title.semibold()).color(t.text1)); ui.add_space(4.0); }
     if !desc.is_empty() { text_block(ui, desc, SECOND, t.text2, 0.0); ui.add_space(4.0); }
     add(ui);
 }

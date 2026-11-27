@@ -443,7 +443,7 @@ impl App {
             ui.horizontal(|ui| {
                 avatar_photo(ui, &mut self.icons, t, &v.name, 48.0, false, None, None, v.photo);
                 ui.vertical(|ui| {
-                    ui.label(RichText::new(&v.name).font(semibold(15.0)).color(t.text1));
+                    ui.label(RichText::new(&v.name).font(F::Subtitle.semibold()).color(t.text1));
                     ui.label(RichText::new(state_text(&v.state, 0)).size(13.0).color(t.text2));
                 });
             });
@@ -468,12 +468,12 @@ impl App {
         if share {
             // the other side's screen on top of the card (the in-window fallback of the call window's stage)
             let who = self.call.remote_share.clone().filter(|n| !n.is_empty()).unwrap_or_else(|| v.name.clone());
-            ui.label(RichText::new(crate::trq!("%1 is sharing the screen", who)).font(semibold(13.0)).color(t.text1));
+            ui.label(RichText::new(crate::trq!("%1 is sharing the screen", who)).font(F::Secondary.semibold()).color(t.text1));
             let (r, _) = ui.allocate_exact_size(Vec2::new(480.0, 270.0), Sense::hover());
             ui.painter().rect_filled(r, 4.0, Color32::BLACK);
             match self.remote_share_picture(&ctx) {
                 Some((id, size)) => { ui.painter().image(id, Rect::from_center_size(r.center(), crate::ui::call_win::fit_size(size, r.size())), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE); }
-                None => { ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, tr("Loading share…"), FontId::proportional(14.0), t.text2); }
+                None => { ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, tr("Loading share…"), F::Body.font(), t.text2); }
             }
             ui.add_space(14.0);
         }
@@ -483,7 +483,7 @@ impl App {
             let ar = Rect::from_center_size(pos2(ui.max_rect().center().x, top + 48.0), Vec2::splat(96.0));
             if v.state == CallState::Connected && !v.ended { self.peer_muted_badge(ui, t, ar); }
             ui.add_space(14.0);
-            ui.label(RichText::new(&v.name).font(semibold(20.0)).color(t.text1));
+            ui.label(RichText::new(&v.name).font(F::Banner.semibold()).color(t.text1));
             ui.add_space(4.0);
             ui.label(RichText::new(v.status()).size(14.0).color(t.text2));
             ui.add_space(22.0);

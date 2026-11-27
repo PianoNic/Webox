@@ -12,10 +12,10 @@ pub(crate) const CREDITS: [(&str, &str, &str); 2] = [
 impl App {
     /// The credits section (use inside any page or dialog).
     pub(crate) fn credits_ui(&self, ui: &mut egui::Ui, t: &Th) {
-        ui.label(RichText::new(tr("Open source licenses and legal notices")).font(semibold(14.5)).color(t.text1));
+        ui.label(RichText::new(tr("Open source licenses and legal notices")).font(F::BodyLarge.semibold()).color(t.text1));
         ui.add_space(6.0);
         for (what, who, lic) in CREDITS {
-            ui.label(RichText::new(tr(what)).font(semibold(13.5)).color(t.text1));
+            ui.label(RichText::new(tr(what)).font(F::Label.semibold()).color(t.text1));
             ui.label(RichText::new(tr(who)).size(13.0).color(t.text2));
             ui.label(RichText::new(tr(lic)).size(12.5).color(t.text2));
             ui.add_space(8.0);

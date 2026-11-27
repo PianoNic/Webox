@@ -16,8 +16,8 @@ fn every_field_follows_its_token_in_all_themes() {
     for pair in ThemeId::ALL.chunks(2) {
         let (d, l) = (Th::of(pair[0]), Th::of(pair[1]));
         for (f, tok) in FIELDS {
-            assert_eq!(d.field(f), super::tok(pair[0], tok), "{f}");
-            assert_eq!(l.field(f), super::tok(pair[1], tok), "{f}");
+            assert_eq!(d.field(f), super::token(pair[0], tok), "{f}");
+            assert_eq!(l.field(f), super::token(pair[1], tok), "{f}");
             if raw(pair[0], tok) != raw(pair[1], tok) { assert_ne!(d.field(f), l.field(f), "{f} ({tok}) has the dark value in {:?}", pair[1]); }
         }
     }
@@ -36,8 +36,8 @@ fn light_matches_the_official_light_screenshot() {
     assert_eq!(t.avatar, crate::hex(0x545454)); // letter avatars
     assert_eq!(t.star, crate::hex(0x7D4705)); // favourites star
     assert_eq!(over(t.white_btn, 0xFB), 0x0D); // dark "+" of the list card
-    assert_eq!(t.tk("modal-decorativeTitle-slate"), crate::hex(0x8C91BD)); // "Public"
-    assert_eq!(t.tk("wx-leftpane-shortcut-app-icon-orange"), crate::hex(0x914017)); // team text
+    assert_eq!(t.at(tok!("modal-decorativeTitle-slate")), crate::hex(0x8C91BD)); // "Public"
+    assert_eq!(t.at(tok!("wx-leftpane-shortcut-app-icon-orange")), crate::hex(0x914017)); // team text
 }
 
 #[test]

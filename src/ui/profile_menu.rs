@@ -207,7 +207,7 @@ impl App {
                 let field = egui::Frame::default().stroke(Stroke::new(1.0_f32, alpha(t.text1, 0.9))).corner_radius(8.0).inner_margin(egui::Margin { left: 12, right: 12, top: 8, bottom: 6 });
                 field.show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.add(egui::TextEdit::singleline(&mut text).hint_text(crate::trq!("What's your status?").into_owned()).frame(false).font(FontId::proportional(16.0)).desired_width(ui.available_width() - 24.0).char_limit(MAX_CHARS));
+                        ui.add(egui::TextEdit::singleline(&mut text).hint_text(crate::trq!("What's your status?").into_owned()).frame(false).font(F::Title.font()).desired_width(ui.available_width() - 24.0).char_limit(MAX_CHARS));
                         // The field's clear "x", only while it holds text (clearing disables the combo again).
                         if !text.is_empty() {
                             let (r, resp) = ui.allocate_exact_size(Vec2::splat(20.0), Sense::click());
@@ -244,7 +244,7 @@ impl App {
                 for (i, p) in presets.iter().enumerate() {
                     let (row, resp) = ui.allocate_exact_size(Vec2::new(ui.available_width() - 12.0, 46.0), Sense::click());
                     if resp.hovered() { ui.painter().rect_filled(row, 8.0, alpha(t.text1, 0.07)); }
-                    super::welcome::emoji_line(ui, icons, pos2(row.left() + 12.0, row.center().y), p, FontId::proportional(16.0), t.text1);
+                    super::welcome::emoji_line(ui, icons, pos2(row.left() + 12.0, row.center().y), p, F::Title.font(), t.text1);
                     let x = Rect::from_center_size(pos2(row.right() - 12.0 - 7.0, row.center().y), Vec2::splat(14.0));
                     if resp.hovered() || ui.rect_contains_pointer(x) {
                         icons.paint(ui, "cancel_16", x, t.text1);

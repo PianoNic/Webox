@@ -190,7 +190,7 @@ impl App {
         ui.painter().rect_filled(r, 8.0, bg);
         let (title, text, action) = fail_text(f);
         let w = r.width() - 48.0;
-        let tg = ui.painter().layout(title, semibold(16.0), t.text1, w);
+        let tg = ui.painter().layout(title, F::Title.semibold(), t.text1, w);
         let xg = ui.painter().layout(text, FontId::proportional(kit::SECOND), t.text1, w);
         let h = 40.0 + 4.0 + tg.size().y.max(24.0) + 4.0 + xg.size().y.max(20.0) + if action { 12.0 + 32.0 } else { 0.0 };
         let mut y = r.center().y - h / 2.0;

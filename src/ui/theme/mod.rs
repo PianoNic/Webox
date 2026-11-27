@@ -5,14 +5,15 @@
 //! resolved through that chain into the generated `tokens.rs`. The ids are the stored theme names
 //! ("MomentumDark", ...); the display names come from the language pack ("Default Dark", "Bronze Dark", ...).
 //!
-//! Colours: `Th` fields are tokens (table below, one line per field); everything else asks `t.tk("token")` /
-//! `t.tk("token:state")`. Alpha tokens (`#FFFFFF` at 7 %, ...) come back premultiplied, composited like Qt does (`crate::alpha`).
+//! Colours: `Th` fields are tokens (table below, one line per field); everything else asks `t.at(tok!("token"))` /
+//! `t.at(tok!("token:state"))`. Alpha tokens (`#FFFFFF` at 7 %, ...) come back premultiplied, composited like Qt does (`crate::alpha`).
 use eframe::egui::Color32;
 
 pub(crate) mod accents;
 pub(crate) mod decor;
 pub(crate) mod density;
 pub(crate) mod fx;
+pub(crate) mod values;
 mod tokens;
 #[cfg(test)]
 mod tests;
@@ -69,19 +70,57 @@ impl ThemeId {
     pub(crate) fn preview(self) -> [Color32; 5] { tokens::PREVIEW[self.idx().min(tokens::PREVIEW.len() - 1)].map(crate::hex) }
 }
 
+/// A core token by its index in the generated table: `tok!("text-primary")` gives it at compile time, so a misspelt name
+/// does not build and a read is one array index instead of a binary search.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub(crate) struct TokenId(u16);
+
+impl TokenId {
+    /// The id of `name` ("token" or "token:state"); panics (at compile time inside `tok!`) for a name that is not generated.
+    pub(crate) const fn of(name: &str) -> TokenId {
+        let mut i = 0;
+        while i < tokens::TOKENS.len() {
+            if str_eq(tokens::TOKENS[i].0, name) { return TokenId(i as u16); }
+            i += 1;
+        }
+        panic!("theme token missing from tokens.rs")
+    }
+    pub(crate) const fn name(self) -> &'static str { tokens::TOKENS[self.0 as usize].0 }
+}
+
+const fn str_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() { return false; }
+    let mut i = 0;
+    while i < a.len() { if a[i] != b[i] { return false; } i += 1; }
+    true
+}
+
+/// `tok!("text-primary")`: the [`TokenId`] of a core token, checked at compile time.
+macro_rules! tok {
+    ($name:literal) => {{ const ID: $crate::ui::theme::TokenId = $crate::ui::theme::TokenId::of($name); ID }};
+}
+pub(crate) use tok;
+
+/// A token of `theme` by id (see [`tok`] for names).
+fn tok_id(theme: ThemeId, id: TokenId) -> Color32 {
+    let (name, cols) = tokens::TOKENS[id.0 as usize];
+    if theme == ThemeId::HighContrast {
+        if let Ok(j) = tokens::SYS.binary_search_by(|(n, _)| (*n).cmp(name)) {
+            let s = tokens::SYS[j].1;
+            return if s == 255 { rgba32(cols[ThemeId::Light.idx()]) } else { hc::sys_colour(tokens::SYS_NAMES[s as usize]) };
+        }
+    }
+    rgba32(cols[theme.idx()])
+}
+
 /// A token of `theme`, `name` = "token" (normal state) or "token:state". Unknown names (not generated) are magenta.
-pub(crate) fn tok(theme: ThemeId, name: &str) -> Color32 {
+pub(crate) fn token(theme: ThemeId, name: &str) -> Color32 {
     let Ok(i) = tokens::TOKENS.binary_search_by(|(n, _)| (*n).cmp(name)) else {
         debug_assert!(false, "theme token {name} missing from tokens.rs");
         return Color32::from_rgb(255, 0, 255);
     };
-    if theme == ThemeId::HighContrast {
-        if let Ok(j) = tokens::SYS.binary_search_by(|(n, _)| (*n).cmp(name)) {
-            let s = tokens::SYS[j].1;
-            return if s == 255 { rgba32(tokens::TOKENS[i].1[ThemeId::Light.idx()]) } else { hc::sys_colour(tokens::SYS_NAMES[s as usize]) };
-        }
-    }
-    rgba32(tokens::TOKENS[i].1[theme.idx()])
+    tok_id(theme, TokenId(i as u16))
 }
 
 // Accent-theme plugins (plugin-api 1.3 `Accents`) replace a few tokens and may give a gradient for the composer's focus line.
@@ -153,7 +192,7 @@ macro_rules! th {
         #[derive(Clone, Copy, PartialEq, Debug)]
         pub(crate) struct Th { pub(crate) id: ThemeId, pub(crate) light: bool, $($(#[$m])* pub(crate) $f: Color32,)* }
         impl Th {
-            pub(crate) fn of(id: ThemeId) -> Th { Th { id, light: !id.is_dark(), $($f: tok(id, $tok),)* } }
+            pub(crate) fn of(id: ThemeId) -> Th { Th { id, light: !id.is_dark(), $($f: tok_id(id, { const I: TokenId = TokenId::of($tok); I }),)* } }
         }
         /// (field, token) of every colour field, for the tests.
         #[cfg(test)]
@@ -215,7 +254,10 @@ th! {
 
 impl Th {
     /// Any token of the active theme ("token" or "token:state").
-    pub(crate) fn tk(&self, name: &str) -> Color32 { over(name).unwrap_or_else(|| tok(self.id, name)) }
+    pub(crate) fn tk(&self, name: &str) -> Color32 { over(name).unwrap_or_else(|| token(self.id, name)) }
+    /// A core token of the active theme by id (`t.at(tok!("text-primary"))`); accent overrides apply as with [`Th::tk`].
+    #[inline]
+    pub(crate) fn at(&self, id: TokenId) -> Color32 { over(id.name()).unwrap_or_else(|| tok_id(self.id, id)) }
     /// Black in light themes, white in dark ones: the base of the many "white / black at n %" tokens.
     pub(crate) fn ink(&self) -> Color32 { if self.light { Color32::BLACK } else { Color32::WHITE } }
     /// `ink()` at opacity `a` (the `white-100-alpha-N` / `black-100-alpha-N` token pairs).

@@ -31,7 +31,7 @@ pub(crate) fn compact_widths(avail: f32, header_w: f32, sub_w: f32, has_sub: boo
 pub(crate) fn one_line(p: &egui::Painter, x: f32, cy: f32, avail: f32, title: &str, tf: FontId, title_col: Color32, sub: &str, sub_col: Color32, dot_col: Color32) {
     let title = title.trim_end();
     let sub = sub.replace('\n', " ");
-    let sub_font = FontId::proportional(13.0); // as in the two-line rows
+    let sub_font = F::Secondary.font(); // as in the two-line rows
     let nat = |s: &str, f: FontId| p.layout_no_wrap(s.to_string(), f, Color32::WHITE).size().x.ceil() + 2.0;
     let has_sub = !sub.trim().is_empty();
     let (hw, sw) = compact_widths(avail, nat(title, tf.clone()), if has_sub { nat(&sub, sub_font.clone()) } else { 0.0 }, has_sub);

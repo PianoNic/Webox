@@ -100,27 +100,27 @@ fn mc(t: &Th) -> Mc {
     let dark = !t.light;
     let f = if dark { Color32::WHITE } else { Color32::BLACK };
     Mc {
-        body: t.tk("message-bodyText-primary-text"),
-        head: t.tk("message-headerText-default-text"), // = message-bodyText-secondary-text
+        body: t.at(tok!("message-bodyText-primary-text")),
+        head: t.at(tok!("message-headerText-default-text")), // = message-bodyText-secondary-text
         hover_bg: wa(f, 0.07),      // message-background hovered
-        accent: t.tk("message-bodyText-mention-self-text"), // = hyperlink-accent-text / reactions-count-has-self-reaction
+        accent: t.at(tok!("message-bodyText-mention-self-text")), // = hyperlink-accent-text / reactions-count-has-self-reaction
         chip_border: wa(f, 0.5),    // dualbutton-standard-border
         chip_hover: wa(f, 0.07),    // dualbutton-standard-button-background hovered
-        ring: t.tk("avatar-chat-bubble-border"),
-        bubble: t.tk("avatar-chat-bubble-icon-normal"),
+        ring: t.at(tok!("avatar-chat-bubble-border")),
+        bubble: t.at(tok!("avatar-chat-bubble-icon-normal")),
         tile: wa(f, 0.11),          // attachment-file-default-sent-background / attachment-unfurl-background / thumbnail background
         tile_hover: wa(f, 0.2),     // ... hovered
         tile_border: wa(f, 0.2),    // attachment-file-default-sent-border
-        file_icon_bg: t.tk("attachment-file-default-sent-previewBox-background"),
-        mention_other: t.tk("message-bodyText-mention-other-text"), code_bg: wa(f, 0.11), // inline code / pre
+        file_icon_bg: t.at(tok!("attachment-file-default-sent-previewBox-background")),
+        mention_other: t.at(tok!("message-bodyText-mention-other-text")), code_bg: wa(f, 0.11), // inline code / pre
         // text-highlight is #064157 / #91EBFF in dark; light uses a 30 % blue (the selected text keeps its colour).
-        select: if dark { t.tk("text-highlight") } else { wa(hex(0x1170CF), 0.3) },
-        pill_bg: t.tk("wx-menuList-background"), // hover toolbar background
-        pill_hover: t.tk("wx-menuList-background:hovered"),
-        pill_border: t.tk("wx-default-border"),
+        select: if dark { t.at(tok!("text-highlight")) } else { wa(hex(0x1170CF), 0.3) },
+        pill_bg: t.at(tok!("wx-menuList-background")), // hover toolbar background
+        pill_hover: t.at(tok!("wx-menuList-background:hovered")),
+        pill_border: t.at(tok!("wx-default-border")),
         day: t.text2, // text-secondary
-        bar: t.tk("legacy-separator-primary"), // reply bar
-        white: t.tk("message-bodyText-primary-text"),
+        bar: t.at(tok!("legacy-separator-primary")), // reply bar
+        white: t.at(tok!("message-bodyText-primary-text")),
         checked: wa(f, 0.11), // message-background checked: #FFFFFF/0.11 dark, #000000/0.11 light
         danger: if t.light { hex(0xD43519) } else { hex(0xF55868) }, // as the menus' danger entries
         added: if t.light { hex(0x1A7F37) } else { hex(0x85E89D) },

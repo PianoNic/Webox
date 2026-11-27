@@ -129,13 +129,13 @@ impl App {
                             Rect::from_min_max(pos2(view.min.x, s.min.y), pos2(s.min.x, s.max.y)), Rect::from_min_max(pos2(s.max.x, s.min.y), pos2(view.max.x, s.max.y))] { p.rect_filled(r, 0.0, dim); }
                         p.rect_stroke(s, 0.0, Stroke::new(2.0_f32, hex(0x07C1F5)), egui::StrokeKind::Outside);
                         let (_, _, pw, ph) = crop_px(s, view, (iw, ih));
-                        p.text(s.left_top() - Vec2::new(0.0, 6.0), egui::Align2::LEFT_BOTTOM, format!("{pw} × {ph}"), FontId::proportional(13.0), Color32::WHITE);
+                        p.text(s.left_top() - Vec2::new(0.0, 6.0), egui::Align2::LEFT_BOTTOM, format!("{pw} × {ph}"), F::Secondary.font(), Color32::WHITE);
                     }
                     None => { p.rect_filled(view, 0.0, dim); }
                 }
                 // Hint at the top.
                 let hint = format!("{}\n{}", tr("Select a portion of the screen to capture,"), tr("press Enter to capture the full screen"));
-                let g2 = ui.fonts(|f| f.layout(hint.into(), FontId::proportional(15.0), Color32::WHITE, 700.0));
+                let g2 = ui.fonts(|f| f.layout(hint.into(), F::Subtitle.font(), Color32::WHITE, 700.0));
                 let hr = Rect::from_center_size(pos2(view.center().x, view.top() + 40.0 + g2.size().y / 2.0), g2.size() + Vec2::new(32.0, 20.0));
                 if sel.is_none_or(|s| !s.intersects(hr)) {
                     ui.painter().rect_filled(hr, 10.0, Color32::from_black_alpha(200));
@@ -147,9 +147,9 @@ impl App {
                     let (a, b) = (ui.interact(can_r, egui::Id::new("cap-cancel"), Sense::click()), ui.interact(cap_r, egui::Id::new("cap-ok"), Sense::click()));
                     ui.painter().rect_filled(can_r, 17.0, if a.hovered() { hex(0x3B3B3B) } else { hex(0x262626) });
                     ui.painter().rect_stroke(can_r, 17.0, Stroke::new(1.0_f32, hex(0x7F7F7F)), egui::StrokeKind::Inside);
-                    ui.painter().text(can_r.center(), egui::Align2::CENTER_CENTER, tr("Cancel"), semibold(14.0), Color32::WHITE);
+                    ui.painter().text(can_r.center(), egui::Align2::CENTER_CENTER, tr("Cancel"), F::Body.semibold(), Color32::WHITE);
                     ui.painter().rect_filled(cap_r, 17.0, if b.hovered() { hex(0xDEDEDE) } else { hex(0xF2F3F1) });
-                    ui.painter().text(cap_r.center(), egui::Align2::CENTER_CENTER, tr("Screen Capture"), semibold(14.0), hex(0x121212));
+                    ui.painter().text(cap_r.center(), egui::Align2::CENTER_CENTER, tr("Screen Capture"), F::Body.semibold(), hex(0x121212));
                     if a.clicked() { finish = Some(None); }
                     if b.clicked() { finish = Some(Some(crop_png(img, crop_px(s, view, (iw, ih))))); }
                 }

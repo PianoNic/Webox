@@ -17,7 +17,7 @@ impl App {
             });
             if blocked {
                 ui.add_space(4.0);
-                kit::text_block(ui, &crate::trq!("Installing is turned off: %1.", crate::extras::plugins::policy_block_reason()), kit::SECOND, t.tk("listitem-textmissed"), 0.0);
+                kit::text_block(ui, &crate::trq!("Installing is turned off: %1.", crate::extras::plugins::policy_block_reason()), kit::SECOND, t.at(tok!("listitem-textmissed")), 0.0);
             }
         });
         let mut list = self.repos.available();
@@ -49,7 +49,7 @@ impl App {
                         }
                         ui.vertical(|ui| {
                             ui.horizontal_wrapped(|ui| {
-                                ui.label(RichText::new(&p.name).font(semibold(15.0)).color(t.text1));
+                                ui.label(RichText::new(&p.name).font(F::Subtitle.semibold()).color(t.text1));
                                 let authors = if p.authors.is_empty() { String::new() } else { format!(" · {}", p.authors.join(", ")) };
                                 ui.label(RichText::new(format!("v{}{authors}", p.version)).size(kit::SECOND).color(t.text2));
                                 // the button already says "Installiert"; the installed version only matters next to an update
@@ -57,9 +57,9 @@ impl App {
                             });
                             if !p.description.is_empty() { kit::text_block(ui, &p.description, kit::BODY, t.text2, 0.0); }
                             // the source line is the trust signal, so it only shows for plugins from unofficial repositories
-                            if !a.official { ui.label(RichText::new(crate::trq!("%1 (not official)", a.repo_title)).size(kit::SECOND).color(t.tk("listitem-textmissed"))); }
+                            if !a.official { ui.label(RichText::new(crate::trq!("%1 (not official)", a.repo_title)).size(kit::SECOND).color(t.at(tok!("listitem-textmissed")))); }
                             if let Err(why) = &a.compat { kit::text_block(ui, &crate::trq!("Not compatible: %1", why), kit::SECOND, t.text2, 0.0); }
-                            if let Some(w) = trust_warning(&a.trust, a.installable) { kit::text_block(ui, &w, kit::SECOND, t.tk("listitem-textmissed"), 0.0); }
+                            if let Some(w) = trust_warning(&a.trust, a.installable) { kit::text_block(ui, &w, kit::SECOND, t.at(tok!("listitem-textmissed")), 0.0); }
                         });
                     });
                 });
@@ -89,9 +89,9 @@ impl App {
                     let top = ui.cursor().min;
                     ui.vertical(|ui| {
                         ui.set_width((w - 110.0).max(80.0));
-                        ui.label(RichText::new(st.title()).font(semibold(14.0)).color(t.text1));
+                        ui.label(RichText::new(st.title()).font(F::Body.semibold()).color(t.text1));
                         kit::text_block(ui, &st.url, kit::SECOND, t.text2, 0.0);
-                        let col = if st.error.is_some() { t.tk("listitem-textmissed") } else { t.text2 };
+                        let col = if st.error.is_some() { t.at(tok!("listitem-textmissed")) } else { t.text2 };
                         ui.label(RichText::new(repo_status(&st)).size(kit::SECOND).color(col));
                     });
                     let slot = Rect::from_min_size(pos2(top.x + w - 104.0, top.y), Vec2::new(104.0, 24.0));
@@ -113,7 +113,7 @@ impl App {
                     match self.repos.check_repo_url(&s.add_url) { Ok(u) => { s.confirm_repo = Some(u); s.add_error = None; } Err(e) => s.add_error = Some(e) }
                 }
             });
-            if let Some(e) = &s.add_error { ui.add_space(4.0); kit::text_block(ui, e, kit::SECOND, t.tk("listitem-textmissed"), 0.0); }
+            if let Some(e) = &s.add_error { ui.add_space(4.0); kit::text_block(ui, e, kit::SECOND, t.at(tok!("listitem-textmissed")), 0.0); }
         });
         if let Some(u) = remove { self.repos.remove_repo(&u); }
         kit::section(ui, t, tr("Updates"), "", false, |ui| {

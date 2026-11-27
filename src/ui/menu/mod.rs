@@ -67,9 +67,9 @@ struct Pal { bg: Color32, border: Color32, hover: Color32, pressed: Color32, tex
 /// menulistbackground-primary-* (#000000 / #FFFFFF, border 20 %), listitem-background hovered / pressed, label-primary / -secondary
 /// text. `danger`: #F55868 dark, #D43519 light.
 fn pal(t: &Th) -> Pal {
-    Pal { bg: t.tk("menulistbackground-primary-background"), border: t.tk("menulistbackground-primary-border"), hover: t.tk("listitem-background:hovered"),
-          pressed: t.tk("listitem-background:pressed"), text: t.tk("label-primary-text"), text2: t.tk("label-secondary-text"),
-          dim: t.tk("label-primary-text:disabled"), sep: t.tk("menulistbackground-primary-border"), danger: if t.light { hex(0xD43519) } else { hex(0xF55868) } }
+    Pal { bg: t.at(tok!("menulistbackground-primary-background")), border: t.at(tok!("menulistbackground-primary-border")), hover: t.at(tok!("listitem-background:hovered")),
+          pressed: t.at(tok!("listitem-background:pressed")), text: t.at(tok!("label-primary-text")), text2: t.at(tok!("label-secondary-text")),
+          dim: t.at(tok!("label-primary-text:disabled")), sep: t.at(tok!("menulistbackground-primary-border")), danger: if t.light { hex(0xD43519) } else { hex(0xF55868) } }
 }
 
 fn key(k: &str) -> egui::Id { egui::Id::new(("webex-menu-open", k)) }
@@ -129,8 +129,8 @@ pub(crate) fn menu_impl(ctx: &egui::Context, icons: &mut icons::Icons, t: &Th, k
     // Width: 284, widened when a label (plus icon, shortcut, check) needs more.
     let need = items.iter().map(|e| match e {
         Entry::Item(it) => {
-            let lw = ctx.fonts(|f| f.layout_no_wrap(it.label.clone(), FontId::proportional(16.0), p.text).size().x);
-            let sw = it.shortcut.as_ref().map_or(0.0, |s| ctx.fonts(|f| f.layout_no_wrap(s.clone(), FontId::proportional(13.0), p.text2).size().x) + 24.0);
+            let lw = ctx.fonts(|f| f.layout_no_wrap(it.label.clone(), F::Title.font(), p.text).size().x);
+            let sw = it.shortcut.as_ref().map_or(0.0, |s| ctx.fonts(|f| f.layout_no_wrap(s.clone(), F::Secondary.font(), p.text2).size().x) + 24.0);
             PAD * 2.0 + 12.0 + if it.icon.is_some() || it.dot.is_some() || it.avatar.is_some() { 36.0 } else { 0.0 } + lw + sw.max(if it.checked || it.submenu { 36.0 } else { 8.0 }) + 8.0
         }
         _ => 0.0,
@@ -213,7 +213,7 @@ pub(crate) fn menu_impl(ctx: &egui::Context, icons: &mut icons::Icons, t: &Th, k
             if overflow && moved && sel == Some(i) { want_off = scroll_into_view(off, yy + off - (body.top() + PAD), h, view_h, max_off); }
             match e {
                 Entry::Sep => { pt.hline((row.left() + 4.0)..=(row.right() - 4.0), row.center().y, Stroke::new(1.0_f32, p.sep)); }
-                Entry::Title(s) => { pt.text(pos2(row.left() + 12.0, row.center().y), egui::Align2::LEFT_CENTER, s, FontId::proportional(13.0), p.text2); }
+                Entry::Title(s) => { pt.text(pos2(row.left() + 12.0, row.center().y), egui::Align2::LEFT_CENTER, s, F::Secondary.font(), p.text2); }
                 Entry::Profile(c) => { // the avatar menu's header card, edge to edge from the balloon top
                     let card = Rect::from_min_size(pos2(body.left(), yy - PAD), Vec2::new(body.width(), CARD_H));
                     let banner = Rect::from_min_size(card.min, Vec2::new(card.width(), CARD_BANNER));
@@ -236,7 +236,7 @@ pub(crate) fn menu_impl(ctx: &egui::Context, icons: &mut icons::Icons, t: &Th, k
                         crate::ui::theme::decor::flag(&pt, fr, &crate::ui::theme::decor::stripes());
                         pt.rect_stroke(fr, 1.5, Stroke::new(1.0_f32, p.text2), egui::StrokeKind::Outside);
                     }
-                    pt.text(pos2(card.center().x, card.top() + 193.0), egui::Align2::CENTER_CENTER, &c.email, FontId::proportional(14.0), p.text2);
+                    pt.text(pos2(card.center().x, card.top() + 193.0), egui::Align2::CENTER_CENTER, &c.email, F::Body.font(), p.text2);
                 }
                 Entry::Item(it) => {
                     let resp = ui.interact(row, egui::Id::new(("webex-menu-item", k, i)), if it.enabled { Sense::click() } else { Sense::hover() });
@@ -255,15 +255,15 @@ pub(crate) fn menu_impl(ctx: &egui::Context, icons: &mut icons::Icons, t: &Th, k
                     }
                     if let Some(c) = it.dot { pt.circle_filled(pos2(row.left() + 12.0 + 12.0, row.center().y), 6.0, c); tx = row.left() + 12.0 + 24.0 + 12.0; }
                     if let Some(ic) = it.icon { icons.paint(ui, ic, Rect::from_center_size(pos2(row.left() + 12.0 + 12.0, row.center().y), Vec2::splat(16.0)), col); tx = row.left() + 12.0 + 24.0 + 12.0; }
-                    let right_pad = if it.checked || it.submenu { 36.0 } else if let Some(s) = &it.shortcut { ctx.fonts(|f| f.layout_no_wrap(s.clone(), FontId::proportional(13.0), p.text2).size().x) + 24.0 } else { 8.0 };
+                    let right_pad = if it.checked || it.submenu { 36.0 } else if let Some(s) = &it.shortcut { ctx.fonts(|f| f.layout_no_wrap(s.clone(), F::Secondary.font(), p.text2).size().x) + 24.0 } else { 8.0 };
                     match &it.sub { // two-line row: label #F3F3F3, sub-line text2
                         Some(s) => {
-                            super::chrome::fit_text(&pt, tx, row.center().y - 9.0, &it.label, FontId::proportional(16.0), col, row.right() - right_pad - tx);
-                            super::chrome::fit_text(&pt, tx, row.center().y + 11.0, s, FontId::proportional(14.0), p.text2, row.right() - right_pad - tx);
+                            super::chrome::fit_text(&pt, tx, row.center().y - 9.0, &it.label, F::Title.font(), col, row.right() - right_pad - tx);
+                            super::chrome::fit_text(&pt, tx, row.center().y + 11.0, s, F::Body.font(), p.text2, row.right() - right_pad - tx);
                         }
                         None => { super::chrome::fit_text(&pt, tx, row.center().y, &it.label, FontId::proportional(if combo { 14.0 } else { 16.0 }), col, row.right() - right_pad - tx); }
                     }
-                    if let Some(sc) = &it.shortcut { pt.text(pos2(row.right() - 10.0, row.center().y), egui::Align2::RIGHT_CENTER, sc, FontId::proportional(13.0), p.text2); }
+                    if let Some(sc) = &it.shortcut { pt.text(pos2(row.right() - 10.0, row.center().y), egui::Align2::RIGHT_CENTER, sc, F::Secondary.font(), p.text2); }
                     if it.submenu { icons.paint(ui, "arrow-right-regular", Rect::from_center_size(pos2(row.right() - 18.0, row.center().y), Vec2::splat(14.0)), col); }
                     rects.push((it.id.clone(), row));
                     if it.checked { icons.paint(ui, "check-bold", Rect::from_center_size(pos2(row.right() - 18.0, row.center().y), Vec2::splat(16.0)), col); }
@@ -309,7 +309,7 @@ pub(crate) fn webex_dialog(ctx: &egui::Context, t: &Th, k: &str, title: &str, bo
 }
 
 /// `background-primary` of a plain dialog: #121212 dark, white light.
-pub(crate) fn background_primary(t: &Th) -> Color32 { t.tk("background-primary") }
+pub(crate) fn background_primary(t: &Th) -> Color32 { t.at(tok!("background-primary")) }
 
 /// Gives dialog `k` a fixed card width (e.g. 568 for the status dialog); call before `webex_dialog*`.
 pub(crate) fn set_dialog_width(ctx: &egui::Context, k: &str, w: f32) { ctx.data_mut(|d| d.insert_temp(dialog_width_id(k), w)); }

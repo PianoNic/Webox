@@ -649,7 +649,10 @@ known-flaky scenes (animations) are rendered at a fixed frame.
 calls, `set_accent_overrides`, the decor conversion and `density::set_from` into the rebuild, triggered by settings or
 plugin changes. Remove the per-frame clones. This brings an immediate CPU win with no visual change.
 
-**Phase 2: token ids and the full theme value set (8–10 d).** Generate `TokenId` consts and `tok!`. Move the ~250
+**Phase 2: token ids and the full theme value set (8–10 d).** *Started:* `TokenId` / `tok!` (a `const fn` lookup in the
+generated table, so no generator change was needed; misspelt names do not compile), `Th::at`, and the value registries of
+`src/ui/theme/values.rs`: font roles (`F`, a 12-step type scale whose defaults are today's sizes; 316 call sites moved),
+component colours (`C`), lengths (`L`) and motion (`M`), overridable by name. Planned: Generate `TokenId` consts and `tok!`. Move the ~250
 literal `hex(0x…)` colours to component tokens whose defaults equal the literals (for example the emerald call buttons in
 `conversation.rs`). Move the ~380 font literals to `FontRole`s, and radii, strokes, shadows and motion to tokens. Fold
 `Metrics` into the theme. Mechanical but wide, so it is done component by component in this order: chrome/header → rail

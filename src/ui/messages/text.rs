@@ -319,10 +319,10 @@ mod tests {
         use crate::extras::plugins::kept::{SPAN_ADDED, SPAN_OLD, SPAN_PLAIN, SPAN_REMOVED};
         let c = mc(&crate::dark());
         let sp = |v: &[(&str, u8)]| v.iter().map(|(t, k)| (t.to_string(), *k)).collect::<Vec<_>>();
-        let j = spans_job(&sp(&[(" Hallo ", SPAN_PLAIN), ("Welt", SPAN_REMOVED), ("Leute ", SPAN_ADDED)]), FontId::proportional(12.0), c.head, c.added, c.danger, 300.0);
+        let j = spans_job(&sp(&[(" Hallo ", SPAN_PLAIN), ("Welt", SPAN_REMOVED), ("Leute ", SPAN_ADDED)]), F::Caption.font(), c.head, c.added, c.danger, 300.0);
         assert_eq!(j.text, "Hallo WeltLeute");
         assert_eq!(j.sections.iter().map(|s| (s.format.color, s.format.strikethrough.width > 0.0)).collect::<Vec<_>>(), [(c.head, false), (c.danger, true), (c.added, false)]);
-        assert!(spans_job(&sp(&[("alt", SPAN_OLD)]), FontId::proportional(12.0), c.head, c.added, c.danger, 300.0).sections[0].format.strikethrough.width > 0.0);
+        assert!(spans_job(&sp(&[("alt", SPAN_OLD)]), F::Caption.font(), c.head, c.added, c.danger, 300.0).sections[0].format.strikethrough.width > 0.0);
         // The current text: the added part of a plain message turns green, the rest keeps its colour.
         let (mut job, _, _) = body_job("Hallo liebe Leute", &c, "", 300.0, false);
         mark_spans(&mut job, &sp(&[("Hallo ", SPAN_PLAIN), ("liebe ", SPAN_ADDED), ("Leute", SPAN_PLAIN)]), &c);

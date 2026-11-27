@@ -68,17 +68,17 @@ impl App {
         let pill = Rect::from_min_size(pos2(full.right() - RIGHT - PILL.0, full.top() + HEAD_Y - PILL.1 / 2.0), Vec2::new(PILL.0, PILL.1));
         let cresp = ui.interact(pill, egui::Id::new("newmsg-cancel"), Sense::click());
         if cresp.hovered() { ui.painter().rect_filled(pill, PILL.1 / 2.0, t.hover); ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-        ui.painter().rect_stroke(pill, PILL.1 / 2.0, Stroke::new(1.0_f32, t.tk("button-secondary-border")), egui::StrokeKind::Inside);
-        ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, crate::tr!("NewMessageWidget", "Cancel"), semibold(15.0), t.text1);
+        ui.painter().rect_stroke(pill, PILL.1 / 2.0, Stroke::new(1.0_f32, t.at(tok!("button-secondary-border"))), egui::StrokeKind::Inside);
+        ui.painter().text(pill.center(), egui::Align2::CENTER_CENTER, crate::tr!("NewMessageWidget", "Cancel"), F::Subtitle.semibold(), t.text1);
         if cresp.clicked() { self.new_message_close(&ctx); return; }
 
         // "An:" + field (recipients as chips at the start of the field).
-        ui.painter().text(at(32.0, FIELD_Y + FIELD_H / 2.0), egui::Align2::LEFT_CENTER, crate::tr!("NewMessageWidget", "To:"), semibold(14.0), t.text1);
+        ui.painter().text(at(32.0, FIELD_Y + FIELD_H / 2.0), egui::Align2::LEFT_CENTER, crate::tr!("NewMessageWidget", "To:"), F::Body.semibold(), t.text1);
         let field = Rect::from_min_max(at(FIELD_X, FIELD_Y), pos2(full.right() - RIGHT, full.top() + FIELD_Y + FIELD_H));
         let tid = egui::Id::new("newmsg-field");
         let focused = ctx.memory(|m| m.has_focus(tid));
         // inputBackground; border #A6A6A6 / #E6E6E6 focused = 60 % / 90 % ink.
-        ui.painter().rect_filled(field, FIELD_H / 2.0, t.tk("inputBackground"));
+        ui.painter().rect_filled(field, FIELD_H / 2.0, t.at(tok!("inputBackground")));
         ui.painter().rect_stroke(field, FIELD_H / 2.0, Stroke::new(1.0_f32, if focused || !s.query.is_empty() { t.ink_a(0.9) } else { t.ink_a(0.6) }), egui::StrokeKind::Inside);
         self.icons.paint(ui, "search-regular", Rect::from_center_size(pos2(field.left() + 11.2, field.center().y + 1.0), Vec2::splat(16.0)), t.text1);
         // Recipients as chips: height 24, 16 px / 400, colours button-secondary-background / -border / -text (dark: transparent,
@@ -91,7 +91,7 @@ impl App {
         let chip_clip = Rect::from_min_max(field.min, pos2(field.right() - 120.0, field.bottom()));
         for (i, p) in s.to.iter().enumerate() {
             let label = if p.name.is_empty() { p.email.clone() } else { p.name.clone() };
-            let w = ui.fonts(|f| f.layout_no_wrap(label.clone(), FontId::proportional(16.0), t.text1).size().x) + 12.0 + 26.0;
+            let w = ui.fonts(|f| f.layout_no_wrap(label.clone(), F::Title.font(), t.text1).size().x) + 12.0 + 26.0;
             let chip = Rect::from_min_size(pos2(x, field.center().y - 12.0), Vec2::new(w, 24.0));
             x = chip.right() + 6.0;
             if chip.right() > chip_clip.right() { continue; }
@@ -99,7 +99,7 @@ impl App {
             let fill = if cresp.is_pointer_button_down_on() { alpha(cb, 0.2) } else if cresp.hovered() { alpha(cb, 0.07) } else { Color32::TRANSPARENT };
             ui.painter().rect_filled(chip, 12.0, fill);
             ui.painter().rect_stroke(chip, 12.0, Stroke::new(1.0_f32, alpha(cb, 0.5)), egui::StrokeKind::Inside);
-            ui.painter().text(pos2(chip.left() + 12.0, chip.center().y), egui::Align2::LEFT_CENTER, &label, FontId::proportional(16.0), alpha(ct, 0.95));
+            ui.painter().text(pos2(chip.left() + 12.0, chip.center().y), egui::Align2::LEFT_CENTER, &label, F::Title.font(), alpha(ct, 0.95));
             self.icons.paint(ui, "cancel-bold", Rect::from_center_size(pos2(chip.right() - 13.0 + 4.0 - 4.0, chip.center().y + 1.0), Vec2::splat(10.0)), alpha(ct, 0.95));
             // A click on the chip's icon or the chip removes it ("%1, To remove press spacebar").
             if cresp.on_hover_text(crate::tr!("NewMessageWidget", "%1, To remove press spacebar", label)).clicked() { remove = Some(i); }
@@ -112,7 +112,7 @@ impl App {
         let hint = if s.to.is_empty() { crate::tr!("QObject", "Add by name, number, or email").into_owned() } else { crate::tr!("NewMessageWidget", "Add people by name or email").into_owned() };
         let before = s.query.clone();
         let te = c.add(egui::TextEdit::singleline(&mut s.query).id(tid).hint_text(RichText::new(hint).color(t.text2).size(16.0))
-            .frame(false).margin(Vec2::ZERO).font(FontId::proportional(16.0)).desired_width(f32::INFINITY));
+            .frame(false).margin(Vec2::ZERO).font(F::Title.font()).desired_width(f32::INFINITY));
         if std::mem::take(&mut s.focus) { te.request_focus(); }
         if s.query != before { s.sel = None; }
         if !s.query.is_empty() {
@@ -175,8 +175,8 @@ impl App {
                 ui.set_clip_rect(drop);
                 ui.allocate_exact_size(drop.size(), Sense::hover());
                 let p = ui.painter().clone();
-                p.rect_filled(drop, 0.0, t.tk("background-primary"));
-                p.rect_stroke(drop, 0.0, Stroke::new(1.0_f32, t.tk("listitem-background:pressed")), egui::StrokeKind::Inside); // listitem-background:pressed (11 %)
+                p.rect_filled(drop, 0.0, t.at(tok!("background-primary")));
+                p.rect_stroke(drop, 0.0, Stroke::new(1.0_f32, t.at(tok!("listitem-background:pressed"))), egui::StrokeKind::Inside); // listitem-background:pressed (11 %)
                 let mut y = drop.top();
                 for (i, l) in ls.iter().enumerate() {
                     let r = Rect::from_min_size(pos2(drop.left(), y), Vec2::new(drop.width(), l.h()));
@@ -184,16 +184,16 @@ impl App {
                     if r.top() > drop.bottom() { break; }
                     let inner = Rect::from_min_max(r.min + Vec2::new(5.6, 5.6), r.max - Vec2::new(5.6, 5.6));
                     let resp = l.pickable().then(|| ui.interact(r, egui::Id::new(("newmsg-line", i)), Sense::click()));
-                    if ring == Some(i) || resp.as_ref().is_some_and(|r| r.hovered()) { p.rect_filled(inner, 8.0, t.tk("listitem-background:pressed")); }
+                    if ring == Some(i) || resp.as_ref().is_some_and(|r| r.hovered()) { p.rect_filled(inner, 8.0, t.at(tok!("listitem-background:pressed"))); }
                     if ring == Some(i) {
                         p.rect_stroke(r.shrink(0.8), 10.0, Stroke::new(2.0_f32, FOCUS), egui::StrokeKind::Inside);
-                        p.rect_stroke(r.shrink(2.8), 9.0, Stroke::new(2.0_f32, t.tk("global-focus-innerline")), egui::StrokeKind::Inside);
+                        p.rect_stroke(r.shrink(2.8), 9.0, Stroke::new(2.0_f32, t.at(tok!("global-focus-innerline"))), egui::StrokeKind::Inside);
                     }
                     match l {
-                        Line::Header(h) => { p.text(pos2(r.left() + 14.4, r.center().y + 1.2), egui::Align2::LEFT_CENTER, tr(h), FontId::proportional(16.0), t.text2); }
+                        Line::Header(h) => { p.text(pos2(r.left() + 14.4, r.center().y + 1.2), egui::Align2::LEFT_CENTER, tr(h), F::Title.font(), t.text2); }
                         Line::Empty(msg) => {
                             self.icons.art(ui, "desert-open-results-192-cobalt-lime", Rect::from_center_size(pos2(r.left() + 48.4, r.center().y), Vec2::splat(81.0))); // drawing 78 x 70 pt
-                            p.text(pos2(r.left() + 114.4, r.center().y - 0.6), egui::Align2::LEFT_CENTER, tr(msg), FontId::proportional(16.0), t.text1);
+                            p.text(pos2(r.left() + 114.4, r.center().y - 0.6), egui::Align2::LEFT_CENTER, tr(msg), F::Title.font(), t.text1);
                         }
                         Line::Person(pi) => {
                             let pp = pool[*pi].clone();
@@ -206,7 +206,7 @@ impl App {
                             let ny = if sub.is_empty() { r.center().y } else { r.top() + 14.2 };
                             let g = ui.fonts(|f| f.layout_job(hl_job(&name, &s.query, 16.0, t.text1)));
                             p.galley(pos2(r.left() + 52.8, ny - g.size().y / 2.0), g, t.text1);
-                            if !sub.is_empty() { p.text(pos2(r.left() + 52.8, r.top() + 36.2), egui::Align2::LEFT_CENTER, sub, FontId::proportional(14.0), t.text2); }
+                            if !sub.is_empty() { p.text(pos2(r.left() + 52.8, r.top() + 36.2), egui::Align2::LEFT_CENTER, sub, F::Body.font(), t.text2); }
                         }
                         Line::Space(si) => {
                             let sp = self.spaces[*si].clone();

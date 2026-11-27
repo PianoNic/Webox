@@ -210,7 +210,7 @@ impl App {
         egui::Area::new(egui::Id::new("local-share-card")).anchor(egui::Align2::LEFT_BOTTOM, [20.0, -20.0]).order(egui::Order::Foreground).show(ctx, |ui| {
             super::menu::toast_frame(t).show(ui, |ui| {
                 ui.set_max_width(420.0);
-                ui.label(RichText::new("Local share test (nothing is sent)").font(semibold(14.0)).color(t.text1));
+                ui.label(RichText::new("Local share test (nothing is sent)").font(F::Body.semibold()).color(t.text1));
                 ui.label(RichText::new(line).size(13.0).color(t.text2));
                 if ui.button(crate::trq!("Stop sharing")).clicked() { stop = true; }
             });

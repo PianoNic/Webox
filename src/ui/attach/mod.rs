@@ -298,7 +298,7 @@ impl App {
         }
         // Name (bottom-aligned, elided at the right) and size (top-aligned) in 16 px, between the box + 10 and the card's right - 20.
         let (tx, tw) = (ibox.right() + 9.0, card.right() - 20.0 - (ibox.right() + 9.0));
-        let font = FontId::proportional(16.0);
+        let font = F::Title.font();
         let one_line = |s: &str, c: Color32| {
             let mut job = egui::text::LayoutJob::single_section(s.to_string(), egui::TextFormat::simple(font.clone(), c));
             job.wrap = egui::text::TextWrapping { max_width: tw, max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
@@ -400,10 +400,10 @@ impl App {
                 let tx = r.left() + 36.0;
                 let right_w = if failed.is_some() { 150.0 } else { 220.0 };
                 let mut job = egui::text::LayoutJob::default();
-                if failed.is_none() && !before.is_empty() { job.append(&before, 0.0, egui::TextFormat::simple(FontId::proportional(13.0), t.text1)); }
-                job.append(&name, 0.0, egui::TextFormat::simple(semibold(13.0), t.text1));
-                if let Some(e) = &failed { job.append(&format!(" – {}", crate::trq!("Failed: %1", e)), 0.0, egui::TextFormat::simple(FontId::proportional(13.0), hex(0xFC8B98))); }
-                else { job.append(&rest, 0.0, egui::TextFormat::simple(FontId::proportional(13.0), t.text1)); }
+                if failed.is_none() && !before.is_empty() { job.append(&before, 0.0, egui::TextFormat::simple(F::Secondary.font(), t.text1)); }
+                job.append(&name, 0.0, egui::TextFormat::simple(F::Secondary.semibold(), t.text1));
+                if let Some(e) = &failed { job.append(&format!(" – {}", crate::trq!("Failed: %1", e)), 0.0, egui::TextFormat::simple(F::Secondary.font(), hex(0xFC8B98))); }
+                else { job.append(&rest, 0.0, egui::TextFormat::simple(F::Secondary.font(), t.text1)); }
                 job.wrap = egui::text::TextWrapping { max_width: r.width() - 36.0 - right_w, max_rows: 1, break_anywhere: true, overflow_character: Some('…') };
                 let g = ui.fonts(|f| f.layout_job(job));
                 ui.painter().galley(pos2(tx, r.center().y - g.size().y / 2.0), g, t.text1);
@@ -416,7 +416,7 @@ impl App {
                     let rs = ui.interact(rr, id.with("retry"), Sense::click());
                     ui.painter().rect_stroke(rr, 13.0, Stroke::new(1.0_f32, t.text2), egui::StrokeKind::Inside);
                     if rs.hovered() { ui.painter().rect_filled(rr, 13.0, t.hover); ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-                    ui.painter().text(rr.center(), egui::Align2::CENTER_CENTER, tr("Retry"), semibold(13.0), t.text1);
+                    ui.painter().text(rr.center(), egui::Align2::CENTER_CENTER, tr("Retry"), F::Secondary.semibold(), t.text1);
                     if rs.clicked() { self.upload_retry(&u.id, space, now); }
                     if xs.on_hover_text(tr("Close")).clicked() {
                         fs_::upload_remove(&u.id);
@@ -428,7 +428,7 @@ impl App {
                     ui.painter().rect_filled(br, 2.0, bar_track(light));
                     ui.painter().rect_filled(Rect::from_min_size(br.min, Vec2::new(br.width() * pct as f32 / 100.0, br.height())), 2.0, BAR_FILL);
                     let label = if matches!(phase, Phase::Sharing) { "100 %".to_string() } else { format!("{pct} %") };
-                    ui.painter().text(pos2(xr.left() - 10.0, r.center().y), egui::Align2::RIGHT_CENTER, label, FontId::proportional(12.0), t.text2);
+                    ui.painter().text(pos2(xr.left() - 10.0, r.center().y), egui::Align2::RIGHT_CENTER, label, F::Caption.font(), t.text2);
                     if xs.on_hover_text(tr("Cancel")).clicked() { fs_::upload_cancel(&u.id); }
                 }
             });

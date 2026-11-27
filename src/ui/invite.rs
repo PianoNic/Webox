@@ -61,7 +61,7 @@ impl App {
         let cx = full.center().x;
         let y = |v: f32| full.top() + v;
         let p = ui.painter().clone();
-        p.text(pos2(cx, y(TITLE_Y)), egui::Align2::CENTER_CENTER, super::header_plus::label("Invite to {{APP_NAME}}"), semibold(26.0), t.text1);
+        p.text(pos2(cx, y(TITLE_Y)), egui::Align2::CENTER_CENTER, super::header_plus::label("Invite to {{APP_NAME}}"), F::Hero.semibold(), t.text1);
         let sub = crate::trq!("Start a conversation with someone you\u{2019}re inviting to collaborate.").into_owned();
         // Secondary text: 13.6 pt with this font gives a 368 pt first line, so the label wraps at 440 (narrower than the 480 pt
         // field) before "Zusammenarbeit".
@@ -74,13 +74,13 @@ impl App {
         // Field with the search icon.
         let field = Rect::from_min_size(pos2(cx - FIELD_W / 2.0, y(FIELD_TOP)), Vec2::new(FIELD_W, FIELD_H));
         let tid = egui::Id::new("invite-field");
-        p.rect_filled(field, 8.0, t.tk("modal-primary-background")); // the dialog's own colour (#000000 dark)
+        p.rect_filled(field, 8.0, t.at(tok!("modal-primary-background"))); // the dialog's own colour (#000000 dark)
         p.rect_stroke(field, 8.0, Stroke::new(1.0_f32, t.ink_a(0.9)), egui::StrokeKind::Inside); // ink 90 % (focused field)
         self.icons.paint(ui, "search-regular", Rect::from_center_size(pos2(field.left() + 15.6, field.center().y), Vec2::splat(16.0)), t.text1);
         let clear_w = if s.email.is_empty() { 0.0 } else { 30.0 };
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(pos2(field.left() + 33.6, field.top()), pos2(field.right() - 10.0 - clear_w, field.bottom()))).layout(egui::Layout::left_to_right(egui::Align::Center)));
         let te = c.add(egui::TextEdit::singleline(&mut s.email).id(tid).hint_text(RichText::new(crate::trq!("Enter email address")).color(t.text2).size(15.0))
-            .frame(false).margin(Vec2::ZERO).font(FontId::proportional(15.0)).desired_width(f32::INFINITY));
+            .frame(false).margin(Vec2::ZERO).font(F::Subtitle.font()).desired_width(f32::INFINITY));
         if std::mem::take(&mut s.focus) { te.request_focus(); }
         if !s.email.is_empty() {
             let xr = Rect::from_center_size(pos2(field.right() - 20.0, field.center().y), Vec2::splat(22.0));
@@ -97,7 +97,7 @@ impl App {
         // Pills: "Send invite" (primary L) + "Close" (secondary L), centred as a pair.
         let send_label = crate::trq!("Send invite").into_owned();
         let close_label = crate::tr!("InviteToWebexDialog", "Close").into_owned();
-        let w_of = |s: &str| ui.fonts(|f| f.layout_no_wrap(s.to_string(), semibold(16.0), t.text1).size().x) + 28.0; // widths 152.8 / 92.8 pt
+        let w_of = |s: &str| ui.fonts(|f| f.layout_no_wrap(s.to_string(), F::Title.semibold(), t.text1).size().x) + 28.0; // widths 152.8 / 92.8 pt
         let (w1, w2) = (w_of(&send_label), w_of(&close_label));
         let left = cx - (w1 + BTN_GAP + w2) / 2.0;
         let b1 = Rect::from_min_size(pos2(left, y(BTN_TOP)), Vec2::new(w1, BTN_H));
@@ -105,13 +105,13 @@ impl App {
         let ok = looks_like_email(&s.email);
         let r1 = ui.interact(b1, egui::Id::new("invite-send"), if ok { Sense::click() } else { Sense::hover() });
         // button-primary-background / -text (disabled = 20 % / 40 %).
-        let fill1 = if !ok { t.tk("button-primary-background:disabled") } else if r1.is_pointer_button_down_on() { t.tk("button-primary-background:pressed") } else if r1.hovered() { t.tk("button-primary-background:hovered") } else { t.white_btn };
+        let fill1 = if !ok { t.at(tok!("button-primary-background:disabled")) } else if r1.is_pointer_button_down_on() { t.at(tok!("button-primary-background:pressed")) } else if r1.hovered() { t.at(tok!("button-primary-background:hovered")) } else { t.white_btn };
         p.rect_filled(b1, BTN_H / 2.0, fill1);
-        p.text(b1.center(), egui::Align2::CENTER_CENTER, &send_label, semibold(16.0), if ok { t.white_btn_text } else { t.tk("button-primary-text:disabled") });
+        p.text(b1.center(), egui::Align2::CENTER_CENTER, &send_label, F::Title.semibold(), if ok { t.white_btn_text } else { t.at(tok!("button-primary-text:disabled")) });
         let r2 = ui.interact(b2, egui::Id::new("invite-close"), Sense::click());
         if r2.hovered() { p.rect_filled(b2, BTN_H / 2.0, t.hover); }
-        p.rect_stroke(b2, BTN_H / 2.0, Stroke::new(1.0_f32, t.tk("button-secondary-border")), egui::StrokeKind::Inside);
-        p.text(b2.center(), egui::Align2::CENTER_CENTER, &close_label, semibold(16.0), t.text1);
+        p.rect_stroke(b2, BTN_H / 2.0, Stroke::new(1.0_f32, t.at(tok!("button-secondary-border"))), egui::StrokeKind::Inside);
+        p.text(b2.center(), egui::Align2::CENTER_CENTER, &close_label, F::Title.semibold(), t.text1);
         if r1.hovered() || r2.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
 
         let enter = te.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));

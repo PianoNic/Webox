@@ -197,7 +197,7 @@ impl App {
         let mut layouter = |ui: &egui::Ui, text: &str, wrap: f32| {
             let mut job = egui::text::LayoutJob::default();
             job.wrap.max_width = wrap;
-            let font = FontId::proportional(16.0);
+            let font = F::Title.font();
             let efont = if sys { FontId::new(16.0, egui::FontFamily::Name(super::super::emoji_text::FAMILY.into())) } else { font.clone() };
             // (start byte, end byte, kind) kind 0 = mention, 1 = emoji with picture, 2 = emoji drawn by the font
             let mut spans: Vec<(usize, usize, u8)> = Vec::new();
@@ -235,7 +235,7 @@ impl App {
         // The box grows to 6 rows; longer text scrolls inside it (the TextEdit keeps the caret in view).
         let out = egui::ScrollArea::vertical().id_salt(("composer-scroll", &id)).max_height(mr.height()).auto_shrink([false, true]).show(&mut e, |ui| {
             egui::TextEdit::multiline(draft).id(cid).hint_text(RichText::new(ph).color(t.text2).size(16.0)).layouter(&mut layouter)
-                .lock_focus(mn_open || em_open).desired_rows(1).desired_width(mr.width() - 12.0).frame(false).margin(Vec2::ZERO).font(FontId::proportional(16.0)).show(ui)
+                .lock_focus(mn_open || em_open).desired_rows(1).desired_width(mr.width() - 12.0).frame(false).margin(Vec2::ZERO).font(F::Title.font()).show(ui)
         }).inner;
         let mut focused = out.response.has_focus();
         // A press on one of the composer's own popups (emoji suggestions, mention list: rows or their scroll bar) must not take the

@@ -21,7 +21,7 @@ impl App {
                     self.icons.paint(ui, "apps-regular", Rect::from_center_size(r.center(), Vec2::splat(48.0)), t.text2);
                     ui.add_space(8.0);
                     let (r, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 24.0), Sense::hover());
-                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, tr("The organization that owns this space hasn't enabled apps yet"), FontId::proportional(15.0), t.text2);
+                    ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, tr("The organization that owns this space hasn't enabled apps yet"), F::Subtitle.font(), t.text2);
                 });
             }
             ConvTab::Messages => {}
@@ -44,18 +44,18 @@ impl App {
         b.painter().rect_filled(sr, 16.0, t.search);
         self.icons.paint(b, "search-regular", Rect::from_center_size(sr.left_center() + Vec2::new(18.0, 0.0), Vec2::splat(16.0)), hex(0xEDEDED));
         let mut c = b.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(sr.min + Vec2::new(34.0, 0.0), sr.max - Vec2::new(12.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-        c.add(egui::TextEdit::singleline(&mut s.people_q).hint_text(RichText::new(tr("Search")).color(t.text2).size(14.5)).font(FontId::proportional(14.5)).frame(false).desired_width(sr.width() - 50.0));
+        c.add(egui::TextEdit::singleline(&mut s.people_q).hint_text(RichText::new(tr("Search")).color(t.text2).size(14.5)).font(F::BodyLarge.font()).frame(false).desired_width(sr.width() - 50.0));
         put(&ctx, s.clone());
         if !space.direct {
             let label = tr("Add people");
-            let tw = b.fonts(|f| f.layout_no_wrap(label.into(), semibold(14.0), t.white_btn_text).size().x);
+            let tw = b.fonts(|f| f.layout_no_wrap(label.into(), F::Body.semibold(), t.white_btn_text).size().x);
             let br = Rect::from_min_size(pos2(head.right() - tw - 52.0, head.top()), Vec2::new(tw + 52.0, 32.0));
             let resp = b.interact(br, egui::Id::new("people-add-btn"), Sense::click());
             let fill = if resp.is_pointer_button_down_on() { alpha(t.white_btn, 0.75) } else if resp.hovered() { alpha(t.white_btn, 0.88) } else { t.white_btn };
             if resp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
             b.painter().rect_filled(br, 16.0, fill);
             self.icons.paint(b, "participant-add-regular", Rect::from_center_size(pos2(br.left() + 21.0, br.center().y), Vec2::splat(16.0)), t.white_btn_text);
-            b.painter().text(pos2(br.left() + 36.0, br.center().y), egui::Align2::LEFT_CENTER, label, semibold(14.0), t.white_btn_text);
+            b.painter().text(pos2(br.left() + 36.0, br.center().y), egui::Align2::LEFT_CENTER, label, F::Body.semibold(), t.white_btn_text);
             if resp.clicked() { self.add_people = true; }
         }
         let body = Rect::from_min_max(pos2(area.left(), head.bottom() + 12.0), area.max);
@@ -74,7 +74,7 @@ impl App {
                 let resp = self.row(ui, t, &title, &sub, t.text2, false, false, false, None, Some(&pp.status), ph);
                 // "Moderator" tag at the right of a moderator's row.
                 if !space.direct && self.is_moderator(&space.id, &pp) && !ui.rect_contains_pointer(resp.rect) {
-                    ui.painter().text(resp.rect.right_center() - Vec2::new(24.0, 0.0), egui::Align2::RIGHT_CENTER, "Moderator", FontId::proportional(13.0), t.text2);
+                    ui.painter().text(resp.rect.right_center() - Vec2::new(24.0, 0.0), egui::Align2::RIGHT_CENTER, "Moderator", F::Secondary.font(), t.text2);
                 }
                 if resp.clicked() { Self::contact_card_open(&ctx, &pp); }
                 if resp.secondary_clicked() { ctx_target = Some((pp.clone(), Rect::from_min_size(ctx.input(|i| i.pointer.interact_pos()).unwrap_or(resp.rect.center()), Vec2::splat(1.0)))); }
@@ -178,9 +178,9 @@ impl App {
         ui.painter().circle_filled(disc.center(), 16.0, t.avatar);
         self.icons.paint(ui, icon, Rect::from_center_size(disc.center(), Vec2::splat(16.0)), t.avatar_text);
         let right_w = if hot { 190.0 } else { 0.0 };
-        super::super::chrome::fit_text(ui.painter(), r.left() + 56.0, r.center().y - 9.0, title, FontId::proportional(15.0), title_col, r.width() - 56.0 - right_w - 12.0);
-        super::super::chrome::fit_text(ui.painter(), r.left() + 56.0, r.center().y + 11.0, sub, FontId::proportional(13.0), t.text2, r.width() - 56.0 - right_w - 12.0);
-        if hot { ui.painter().text(lr.right_center(), egui::Align2::RIGHT_CENTER, tr("Show in conversation"), FontId::proportional(13.5), t.link); }
+        super::super::chrome::fit_text(ui.painter(), r.left() + 56.0, r.center().y - 9.0, title, F::Subtitle.font(), title_col, r.width() - 56.0 - right_w - 12.0);
+        super::super::chrome::fit_text(ui.painter(), r.left() + 56.0, r.center().y + 11.0, sub, F::Secondary.font(), t.text2, r.width() - 56.0 - right_w - 12.0);
+        if hot { ui.painter().text(lr.right_center(), egui::Align2::RIGHT_CENTER, tr("Show in conversation"), F::Label.font(), t.link); }
         (resp.clicked() && !lresp.hovered(), lresp.clicked())
     }
     /// One file row of "Files": icon disc, name, "Author · when · size"; on hover the actions "Download", "Show in folder"
@@ -206,7 +206,7 @@ impl App {
         if hot_area {
             ui.painter().rect_filled(r, 12.0, t.ink_a(0.05));
             for (id, label) in &acts {
-                let g = ui.painter().layout_no_wrap(label.to_string(), FontId::proportional(13.5), t.link);
+                let g = ui.painter().layout_no_wrap(label.to_string(), F::Label.font(), t.link);
                 let lr = Rect::from_min_max(pos2(x - g.size().x, r.top() + 10.0), pos2(x, r.bottom() - 10.0));
                 let lresp = ui.interact(lr, ui.id().with(("file-row-act", i, *id)), Sense::click());
                 if lresp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); ui.painter().hline(lr.x_range(), r.center().y + 9.0, Stroke::new(1.0_f32, t.link)); }
@@ -221,8 +221,8 @@ impl App {
         ui.painter().circle_filled(disc.center(), 16.0, t.avatar);
         self.icons.paint(ui, if f.image { "file-image-regular" } else { file_icon(&f.name) }, Rect::from_center_size(disc.center(), Vec2::splat(16.0)), t.avatar_text);
         let sub = match busy { Some(d) => crate::trq!("Downloading… %1 %", super::super::attach::percent(d.got, d.total)), None => sub.to_string() };
-        super::super::chrome::fit_text(ui.painter(), r.left() + 56.0, r.center().y - 9.0, &f.name, FontId::proportional(15.0), t.text1, r.width() - 56.0 - used - 12.0);
-        super::super::chrome::fit_text(ui.painter(), r.left() + 56.0, r.center().y + 11.0, &sub, FontId::proportional(13.0), t.text2, r.width() - 56.0 - used - 12.0);
+        super::super::chrome::fit_text(ui.painter(), r.left() + 56.0, r.center().y - 9.0, &f.name, F::Subtitle.font(), t.text1, r.width() - 56.0 - used - 12.0);
+        super::super::chrome::fit_text(ui.painter(), r.left() + 56.0, r.center().y + 11.0, &sub, F::Secondary.font(), t.text2, r.width() - 56.0 - used - 12.0);
         let k_menu = format!("file-row-menu-{i}-{}", f.key);
         if resp.secondary_clicked() && !f.key.is_empty() {
             if let Some(pp) = resp.interact_pointer_pos() { ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new(("file-row-at", &k_menu)), pp)); }
@@ -256,13 +256,13 @@ impl App {
         let area = b.max_rect();
         // "Start meeting" top right: a placeholder toast.
         let label = tr("Start meeting");
-        let tw = b.fonts(|f| f.layout_no_wrap(label.into(), semibold(14.0), Color32::WHITE).size().x);
+        let tw = b.fonts(|f| f.layout_no_wrap(label.into(), F::Body.semibold(), Color32::WHITE).size().x);
         let br = Rect::from_min_size(pos2(area.right() - 24.0 - tw - 52.0, area.top() + 14.0), Vec2::new(tw + 52.0, 32.0));
         let resp = b.interact(br, egui::Id::new("meeting-start-btn"), Sense::click());
         if resp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
         b.painter().rect_filled(br, 16.0, if resp.is_pointer_button_down_on() { hex(0x17422C) } else if resp.hovered() { hex(0x1C5E3D) } else { hex(0x248052) });
         self.icons.paint(b, "video-regular", Rect::from_center_size(pos2(br.left() + 21.0, br.center().y), Vec2::splat(16.0)), Color32::WHITE);
-        b.painter().text(pos2(br.left() + 36.0, br.center().y), egui::Align2::LEFT_CENTER, label, semibold(14.0), Color32::WHITE);
+        b.painter().text(pos2(br.left() + 36.0, br.center().y), egui::Align2::LEFT_CENTER, label, F::Body.semibold(), Color32::WHITE);
         if resp.clicked() { self.toast(tr("Starting meetings is not available in this version"), now); }
         let body = Rect::from_min_max(pos2(area.left(), br.bottom() + 10.0), area.max);
         let mut lst = b.new_child(egui::UiBuilder::new().max_rect(body).layout(egui::Layout::top_down(egui::Align::Min)));
@@ -279,14 +279,14 @@ impl App {
                 ui.painter().circle_filled(disc.center(), 16.0, t.avatar);
                 self.icons.paint(ui, "calendar-month-regular", Rect::from_center_size(disc.center(), Vec2::splat(16.0)), t.avatar_text);
                 let jw = 92.0;
-                super::super::chrome::fit_text(ui.painter(), r.left() + 54.0, r.center().y - 9.0, &m.title, FontId::proportional(15.0), t.text1, r.width() - 54.0 - jw - 24.0);
-                super::super::chrome::fit_text(ui.painter(), r.left() + 54.0, r.center().y + 10.0, &m.start, FontId::proportional(13.0), t.text2, r.width() - 54.0 - jw - 24.0);
+                super::super::chrome::fit_text(ui.painter(), r.left() + 54.0, r.center().y - 9.0, &m.title, F::Subtitle.font(), t.text1, r.width() - 54.0 - jw - 24.0);
+                super::super::chrome::fit_text(ui.painter(), r.left() + 54.0, r.center().y + 10.0, &m.start, F::Secondary.font(), t.text2, r.width() - 54.0 - jw - 24.0);
                 let jr = Rect::from_center_size(pos2(r.right() - 11.0 - jw / 2.0, r.center().y), Vec2::new(jw, 28.0));
                 let jresp = ui.interact(jr, ui.id().with(("meeting-join", &m.title, &m.start)), if m.link.is_empty() { Sense::hover() } else { Sense::click() });
                 let fill = if m.link.is_empty() { t.ink_a(0.12) } else if jresp.is_pointer_button_down_on() { hex(0x17422C) } else if jresp.hovered() { hex(0x1C5E3D) } else { hex(0x248052) };
                 if jresp.hovered() && !m.link.is_empty() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                 ui.painter().rect_filled(jr, 14.0, fill);
-                ui.painter().text(jr.center(), egui::Align2::CENTER_CENTER, tr("Join"), semibold(14.0), if m.link.is_empty() { t.text2 } else { Color32::WHITE });
+                ui.painter().text(jr.center(), egui::Align2::CENTER_CENTER, tr("Join"), F::Body.semibold(), if m.link.is_empty() { t.text2 } else { Color32::WHITE });
                 if jresp.clicked() { system::open(&m.link); }
             }
         });

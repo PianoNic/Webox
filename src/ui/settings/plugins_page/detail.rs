@@ -30,7 +30,7 @@ impl App {
                 toggled = ui.add_enabled(err.is_none(), toggle(&mut on, t)).on_hover_text(if on { tr("Turn off") } else { tr("Turn on") }).changed();
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(&name).font(semibold(20.0)).color(t.text1));
+                        ui.label(RichText::new(&name).font(F::Banner.semibold()).color(t.text1));
                         if builtin { badge(ui, t, "Built-in"); }
                     });
                     if !meta.is_empty() { ui.label(RichText::new(&meta).size(kit::SECOND).color(t.text2)); }
@@ -43,7 +43,7 @@ impl App {
         if !cmds.is_empty() { ui.label(RichText::new(&cmds).size(kit::SECOND).color(t.link)); }
         if design { kit::text_block(ui, tr("Design plugin: overrides the colors of the chosen theme (Appearance)."), kit::SECOND, t.text2, 0.0); }
         kit::text_block(ui, &origin, kit::SECOND, t.text2, 0.0);
-        if let Some(x) = &err { kit::text_block(ui, &crate::trq!("Can't be loaded: %1", x), kit::SECOND, t.tk("listitem-textmissed"), 0.0); }
+        if let Some(x) = &err { kit::text_block(ui, &crate::trq!("Can't be loaded: %1", x), kit::SECOND, t.at(tok!("listitem-textmissed")), 0.0); }
         if src.is_some() {
             ui.add_space(8.0);
             ui.horizontal(|ui| {
@@ -66,7 +66,7 @@ impl App {
             });
             if s.detail.is_none() { return; }
         }
-        if let Some(x) = &schema_err { kit::section(ui, t, tr("Settings"), "", false, |ui| { kit::text_block(ui, &crate::trq!("The settings of this plugin are broken: %1", x), kit::SECOND, t.tk("listitem-textmissed"), 0.0); }); }
+        if let Some(x) = &schema_err { kit::section(ui, t, tr("Settings"), "", false, |ui| { kit::text_block(ui, &crate::trq!("The settings of this plugin are broken: %1", x), kit::SECOND, t.at(tok!("listitem-textmissed")), 0.0); }); }
         else if !has_settings { kit::section(ui, t, tr("Settings"), "", false, |ui| { kit::text_block(ui, tr("This plugin has no settings."), kit::BODY, t.text2, 0.0); }); }
         else { self.plugin_form(ui, t, s, i, now); }
     }

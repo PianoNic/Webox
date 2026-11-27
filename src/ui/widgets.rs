@@ -245,7 +245,7 @@ pub(crate) fn round_fill(ui: &mut egui::Ui, ic: &mut icons::Icons, icon: &'stati
 /// Pill tab (list filters, conversation tabs): selected = semibold on a rounded fill, unselected = dimmer regular text
 /// (#BEBEBE on dark).
 pub(crate) fn text_tab(ui: &mut egui::Ui, label: &str, on: bool, t: &Th, on_bg: Color32) -> egui::Response {
-    let font = if on { semibold(14.0) } else { FontId::proportional(14.0) };
+    let font = if on { F::Body.semibold() } else { F::Body.font() };
     let col = if on { t.text1 } else { t.tab_off };
     let w = ui.fonts(|f| f.layout_no_wrap(label.to_string(), font.clone(), col).size().x) + 22.0;
     let (r, resp) = ui.allocate_exact_size(Vec2::new(w, 28.0), Sense::click());

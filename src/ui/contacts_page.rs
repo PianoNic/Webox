@@ -54,7 +54,7 @@ impl App {
             }
             if empty {
                 ui.add_space(30.0);
-                ui.vertical_centered(|ui| { ui.label(RichText::new(tr("No results")).font(semibold(15.0)).color(t.text1)); });
+                ui.vertical_centered(|ui| { ui.label(RichText::new(tr("No results")).font(F::Subtitle.semibold()).color(t.text1)); });
             }
         });
         self.set_pst(&ctx, st);
@@ -85,15 +85,15 @@ impl App {
             }
         });
         c.add_space(24.0);
-        c.label(RichText::new(tr("Profile")).font(semibold(15.0)).color(t.text1));
+        c.label(RichText::new(tr("Profile")).font(F::Subtitle.semibold()).color(t.text1));
         c.add_space(6.0);
         let w = c.available_width().min(520.0);
         let nowms = super::chrome::now_ms();
         for (label, value) in [(tr("Name"), p.name.clone()), (tr("Email address"), p.email.clone()), (tr("Status"), self.person_line(&p, nowms))] {
             if value.is_empty() { continue; }
             let (r, _) = c.allocate_exact_size(Vec2::new(w, 34.0), Sense::hover());
-            c.painter().text(r.left_center(), egui::Align2::LEFT_CENTER, label, FontId::proportional(13.5), t.text2);
-            c.painter().text(r.left_center() + Vec2::new(150.0, 0.0), egui::Align2::LEFT_CENTER, value, FontId::proportional(14.5), t.text1);
+            c.painter().text(r.left_center(), egui::Align2::LEFT_CENTER, label, F::Label.font(), t.text2);
+            c.painter().text(r.left_center() + Vec2::new(150.0, 0.0), egui::Align2::LEFT_CENTER, value, F::BodyLarge.font(), t.text1);
             c.painter().hline(r.x_range(), r.bottom(), Stroke::new(1.0_f32, t.ink_a(0.08)));
         }
     }

@@ -51,7 +51,7 @@ impl App {
             egui::CentralPanel::default().frame(egui::Frame::default().inner_margin(gap)).show(ctx, |ui| {
                 let card = ui.available_rect_before_wrap();
                 let _ = ui.allocate_rect(card, Sense::hover());
-                vgrad(ui.painter(), card, 10.0, t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), card, 10.0, true);
+                vgrad(ui.painter(), card, L::CardRadius.get(), t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), card, L::CardRadius.get(), true);
                 let (dx, dy) = if self.tab == Tab::Whiteboards { (24.0, 20.0) } else { (24.0, 24.0) };
                 let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(card.min + Vec2::new(dx, dy), card.max - Vec2::splat(24.0))));
                 c.set_min_size(c.available_size());
@@ -64,7 +64,7 @@ impl App {
             .frame(egui::Frame::default().inner_margin(gap)).show(ctx, |ui| {
             let card = ui.available_rect_before_wrap();
             let _ = ui.allocate_rect(card, Sense::hover());
-            vgrad(ui.painter(), card, 10.0, t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), card, 10.0, true);
+            vgrad(ui.painter(), card, L::CardRadius.get(), t.card, t.card_b); crate::ui::theme::decor::card(ui.painter(), card, L::CardRadius.get(), true);
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(pos2(card.left() + 8.0, card.top() + 18.0), pos2(card.right() - 6.0, card.bottom()))));
             c.set_min_size(c.available_size());
             self.page_list(&mut c, t, now);
@@ -73,7 +73,7 @@ impl App {
         egui::CentralPanel::default().frame(egui::Frame::default().inner_margin(gap)).show(ctx, |ui| {
             let card = ui.available_rect_before_wrap();
             let _ = ui.allocate_rect(card, Sense::hover());
-            vgrad(ui.painter(), card, 10.0, t.conv, t.conv_b); crate::ui::theme::decor::card(ui.painter(), card, 10.0, false);
+            vgrad(ui.painter(), card, L::CardRadius.get(), t.conv, t.conv_b); crate::ui::theme::decor::card(ui.painter(), card, L::CardRadius.get(), false);
             let mut c = ui.new_child(egui::UiBuilder::new().max_rect(card));
             c.set_min_size(card.size());
             self.page_detail(&mut c, t, now);
@@ -147,7 +147,7 @@ impl App {
 
     /// A pill button: Join = green, Primary = light, Secondary = outlined.
     pub(crate) fn pill(&mut self, ui: &mut egui::Ui, t: &Th, label: &str, kind: Pill, icon: Option<&'static str>) -> egui::Response {
-        let font = semibold(14.0);
+        let font = F::Body.semibold();
         let tw = ui.fonts(|f| f.layout_no_wrap(label.to_string(), font.clone(), t.text1).size().x);
         let iw = if icon.is_some() { 22.0 } else { 0.0 };
         let (r, resp) = ui.allocate_exact_size(Vec2::new(tw + iw + 32.0, 32.0), Sense::click());
@@ -174,7 +174,7 @@ impl App {
         if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
         ui.painter().circle_filled(c, 24.0, f);
         self.icons.paint(ui, icon, Rect::from_center_size(c, Vec2::splat(24.0)), icon_col);
-        fit_label(ui, pos2(r.center().x, r.top() + 48.0 + 8.0 + 9.0), label, semibold(13.0), t.text1, w);
+        fit_label(ui, pos2(r.center().x, r.top() + 48.0 + 8.0 + 9.0), label, F::Secondary.semibold(), t.text1, w);
         resp
     }
 
@@ -207,7 +207,7 @@ impl App {
             let sc = s.sub_col.unwrap_or(t.text2);
             let mut sx = tx;
             if let Some(ic) = s.sub_icon { self.icons.paint(ui, ic, Rect::from_center_size(pos2(sx + 7.0, r.center().y + 10.0), Vec2::splat(14.0)), sc); sx += 19.0; }
-            super::chrome::fit_text(ui.painter(), sx, r.center().y + 10.0, &s.sub.replace('\n', " "), FontId::proportional(13.0), sc, max_w - (sx - tx));
+            super::chrome::fit_text(ui.painter(), sx, r.center().y + 10.0, &s.sub.replace('\n', " "), F::Secondary.font(), sc, max_w - (sx - tx));
         }
         if show_actions {
             let more = Rect::from_center_size(r.right_center() - Vec2::new(26.0, 0.0), Vec2::splat(24.0));
@@ -223,7 +223,7 @@ impl App {
                 if aresp.on_hover_text(tip).clicked() { out.action = true; out.clicked = false; }
             }
         } else {
-            if !s.right.is_empty() { ui.painter().text(pos2(r.right() - 12.0, r.center().y), egui::Align2::RIGHT_CENTER, s.right, FontId::proportional(12.5), t.text2); }
+            if !s.right.is_empty() { ui.painter().text(pos2(r.right() - 12.0, r.center().y), egui::Align2::RIGHT_CENTER, s.right, F::Small.font(), t.text2); }
             if s.dot { ui.painter().circle_filled(r.right_center() - Vec2::new(if s.right.is_empty() { 20.0 } else { 6.0 }, if s.right.is_empty() { 0.0 } else { 14.0 }), 5.0, t.unread); }
         }
         if resp.secondary_clicked() { out.menu = ui.ctx().input(|i| i.pointer.interact_pos()).map(|p| Rect::from_center_size(p, Vec2::splat(2.0))); out.clicked = false; }
@@ -236,7 +236,7 @@ impl App {
         ui.painter().rect_filled(r, 16.0, t.ink_a(0.07));
         self.icons.paint(ui, "search-regular", Rect::from_center_size(r.left_center() + Vec2::new(18.0, 0.0), Vec2::splat(16.0)), t.text2);
         let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_max(r.min + Vec2::new(34.0, 0.0), r.max - Vec2::new(34.0, 0.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-        inner.add(egui::TextEdit::singleline(text).hint_text(RichText::new(hint).color(t.text2).size(14.5)).font(FontId::proportional(14.5)).frame(false).desired_width(r.width() - 68.0));
+        inner.add(egui::TextEdit::singleline(text).hint_text(RichText::new(hint).color(t.text2).size(14.5)).font(F::BodyLarge.font()).frame(false).desired_width(r.width() - 68.0));
         if !text.is_empty() {
             let cr = Rect::from_center_size(r.right_center() - Vec2::new(18.0, 0.0), Vec2::splat(22.0));
             let resp = ui.interact(cr, ui.id().with("search-clear"), Sense::click());
@@ -252,8 +252,8 @@ impl App {
     pub(crate) fn empty_state(&mut self, ui: &mut egui::Ui, t: &Th, art: &'static str, art_size: f32, title: &str, body: &str, link: Option<&str>) -> bool {
         let area = ui.available_rect_before_wrap();
         let w = (area.width() - 48.0).clamp(120.0, 420.0);
-        let g_title = ui.fonts(|f| f.layout(title.to_string(), semibold(18.0), t.text1, w));
-        let g_body = ui.fonts(|f| f.layout(body.to_string(), FontId::proportional(14.5), t.text2, w));
+        let g_title = ui.fonts(|f| f.layout(title.to_string(), F::Heading.semibold(), t.text1, w));
+        let g_body = ui.fonts(|f| f.layout(body.to_string(), F::BodyLarge.font(), t.text2, w));
         let link_h = if link.is_some() { 34.0 } else { 0.0 };
         let total = art_size + 18.0 + g_title.size().y + if body.is_empty() { 0.0 } else { 8.0 + g_body.size().y } + link_h;
         let mut y = (area.center().y - total / 2.0).max(area.top() + 8.0);
@@ -270,11 +270,11 @@ impl App {
         }
         let mut clicked = false;
         if let Some(l) = link {
-            let lw = ui.fonts(|f| f.layout_no_wrap(l.to_string(), semibold(14.0), t.link).size().x);
+            let lw = ui.fonts(|f| f.layout_no_wrap(l.to_string(), F::Body.semibold(), t.link).size().x);
             let lr = Rect::from_min_size(pos2(cx - lw / 2.0, y + 10.0), Vec2::new(lw, 20.0));
             let resp = ui.interact(lr, ui.id().with(("empty-link", l)), Sense::click());
             if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
-            ui.painter().text(lr.left_center(), egui::Align2::LEFT_CENTER, l, semibold(14.0), t.link);
+            ui.painter().text(lr.left_center(), egui::Align2::LEFT_CENTER, l, F::Body.semibold(), t.link);
             if resp.hovered() { ui.painter().hline(lr.x_range(), lr.bottom() - 1.0, Stroke::new(1.0_f32, t.link)); }
             clicked = resp.clicked();
         }

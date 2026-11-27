@@ -78,7 +78,7 @@ impl App {
         let (r, resp) = ui.allocate_exact_size(Vec2::new(280.0, 36.0), Sense::click());
         ui.painter().rect_filled(r, 8.0, if resp.hovered() { t.hover } else { t.selected });
         ui.painter().rect_stroke(r, 8.0, Stroke::new(1.0_f32, t.sep), egui::StrokeKind::Inside);
-        crate::ui::chrome::fit_text(ui.painter(), r.left() + 12.0, r.center().y, shown, FontId::proportional(14.0), t.text1, r.width() - 48.0);
+        crate::ui::chrome::fit_text(ui.painter(), r.left() + 12.0, r.center().y, shown, F::Body.font(), t.text1, r.width() - 48.0);
         self.icons.paint(ui, "arrow-down-regular", Rect::from_center_size(pos2(r.right() - 18.0, r.center().y), Vec2::splat(14.0)), t.text2);
         if resp.clicked() { menu_toggle(&ctx, key); }
         webex_menu(&ctx, &mut self.icons, t, key, r, Side::Below, Align::Left, false, &entries)

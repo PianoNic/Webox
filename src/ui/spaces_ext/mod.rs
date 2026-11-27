@@ -255,7 +255,7 @@ impl App {
                         let c = pos2(r.left() + 12.0, r.center().y);
                         ui.painter().circle_stroke(c, 8.0, Stroke::new(1.0_f32, if *sel == i { text } else { text2 }));
                         if *sel == i { ui.painter().circle_filled(c, 4.5, text); }
-                        ui.painter().text(pos2(r.left() + 28.0, r.center().y), egui::Align2::LEFT_CENTER, label, FontId::proportional(14.5), text);
+                        ui.painter().text(pos2(r.left() + 28.0, r.center().y), egui::Align2::LEFT_CENTER, label, F::BodyLarge.font(), text);
                         if resp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); }
                         if resp.clicked() { *sel = i; }
                     };
@@ -302,8 +302,8 @@ impl App {
                         if on || resp.hovered() { ui.painter().rect_filled(r, 8.0, t.ink_a(if on { 0.14 } else { 0.07 })); }
                         let c = pos2(r.left() + 20.0, r.center().y);
                         ui.painter().circle_filled(c, 12.0, team_tones(t, tm.color, &tm.id).0);
-                        ui.painter().text(c, egui::Align2::CENTER_CENTER, tm.name.chars().next().unwrap_or('#').to_uppercase().to_string(), semibold(12.0), Color32::WHITE);
-                        ui.painter().text(pos2(r.left() + 42.0, r.center().y), egui::Align2::LEFT_CENTER, &tm.name, FontId::proportional(14.5), text);
+                        ui.painter().text(c, egui::Align2::CENTER_CENTER, tm.name.chars().next().unwrap_or('#').to_uppercase().to_string(), F::Caption.semibold(), Color32::WHITE);
+                        ui.painter().text(pos2(r.left() + 42.0, r.center().y), egui::Align2::LEFT_CENTER, &tm.name, F::BodyLarge.font(), text);
                         if resp.clicked() { pick = Some(tm.id.clone()); }
                     }
                 };

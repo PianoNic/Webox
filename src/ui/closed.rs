@@ -21,12 +21,12 @@ impl App {
         if light { ui.painter().rect_filled(r, 0.0, t.composer); } else { vgrad(ui.painter(), r, 0.0, hex(0x121212), hex(0x0F0F0F)); }
         // text-primary / text-secondary (dark #F7F7F7 / #B2B2B2; light #121212 / #545454).
         let (c_title, c_text, c_link) = (t.text1, t.text2, t.link);
-        let body = FontId::proportional(16.0);
+        let body = F::Title.font();
         // Title: one line, centred on the card.
         let g = ui.painter().layout_no_wrap(crate::trq!("This conversation is closed").into_owned(), body.clone(), c_title);
         ui.painter().galley(pos2(r.center().x - g.size().x / 2.0, r.top() + 16.0), g, c_title);
         // Link at the right: text + launch glyph, 23 from the right edge.
-        let lg = ui.painter().layout_no_wrap(crate::trq!("Check for updates").into_owned(), semibold(16.0), c_link);
+        let lg = ui.painter().layout_no_wrap(crate::trq!("Check for updates").into_owned(), F::Title.semibold(), c_link);
         // Launch glyph 12 wide, its right edge 23.2 from the card edge, 11.2 after the text; the svg's glyph fills ~3/4 of its box,
         // hence a 16 box.
         let glyph_c = r.right() - 23.2 - 6.0;
@@ -55,7 +55,7 @@ impl App {
         let light = super::menu::light(t);
         if light { ui.painter().rect_filled(r, 0.0, t.composer); } else { vgrad(ui.painter(), r, 0.0, hex(0x121212), hex(0x0F0F0F)); }
         let c = t.text1;
-        let body = FontId::proportional(16.0);
+        let body = F::Title.font();
         let g = ui.painter().layout_no_wrap(tr!("ConversationRenderer", "This is an announcement space").into_owned(), body.clone(), c);
         ui.painter().galley(pos2(r.center().x - g.size().x / 2.0, r.top() + 16.0), g, c);
         let mut job = egui::text::LayoutJob::simple(tr!("ConversationRenderer", "Only moderators can post content, start calls, schedule meetings, or use whiteboards in this space.").into_owned(), body, c, (r.width() - 48.0).max(80.0));

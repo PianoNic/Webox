@@ -166,7 +166,7 @@ fn header_chip_fill(ui: &egui::Ui, t: &Th, resp: &egui::Response, rect: Rect, fo
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
         // globalHeader-buttonStatus-background / -buttonIcon-background / -buttonDevice-background: hover white 7 %, pressed 20 %
         // (black 7 % / 20 % in light themes, where the header is light).
-        let c = if resp.is_pointer_button_down_on() { t.tk("globalHeader-buttonStatus-background:pressed") } else { t.tk("globalHeader-buttonStatus-background:hovered") };
+        let c = if resp.is_pointer_button_down_on() { t.at(tok!("globalHeader-buttonStatus-background:pressed")) } else { t.at(tok!("globalHeader-buttonStatus-background:hovered")) };
         ui.painter().rect_filled(rect, rect.height() / 2.0, c);
     }
 }
@@ -209,9 +209,9 @@ impl App {
             // Own avatar (40) with presence badge, then "Set a status".
             let (me, st) = (self.me.name.clone(), self.me.status.clone());
             let label = if self.client.is_some() || self.status.starts_with("Offline (sample") { self.status_label(ctx) } else { self.status.clone() };
-            let lw = ui.fonts(|f| f.layout_no_wrap(label.clone(), semibold(14.0), t.text1).size().x);
+            let lw = ui.fonts(|f| f.layout_no_wrap(label.clone(), F::Body.semibold(), t.text1).size().x);
             let dev_txt = tr("Connect to a device");
-            let gw = ui.fonts(|f| f.layout_no_wrap(dev_txt.to_string(), semibold(14.0), t.text1).size().x);
+            let gw = ui.fonts(|f| f.layout_no_wrap(dev_txt.to_string(), F::Body.semibold(), t.text1).size().x);
             // Shared by all header items: narrow windows elide the status and device labels instead of overlapping.
             let hl = header_layout::header_layout(full, cy, lw, gw);
             // Header avatar: 32 pt, photo 29 pt inside a thin light ring, presence dot 11.6 pt centred 0.356 / 0.28 of the diameter
@@ -226,7 +226,7 @@ impl App {
             if let Some(chip) = hl.status {
                 let cresp = ui.interact(chip, egui::Id::new("status-chip"), Sense::click());
                 header_chip_fill(ui, t, &cresp, chip, forced == "status");
-                let shown = fit_text(ui.painter(), chip.left() + 15.0, cy, &label, semibold(14.0), t.tk("globalHeader-buttonStatus-text"), chip.width() - 30.0);
+                let shown = fit_text(ui.painter(), chip.left() + 15.0, cy, &label, F::Body.semibold(), t.at(tok!("globalHeader-buttonStatus-text")), chip.width() - 30.0);
                 let cresp = if shown.width() + 0.5 < lw { cresp.on_hover_text(&label) } else { cresp };
                 if cresp.clicked() { let cs = self.custom_status(ctx); super::profile_menu::open_status_dialog(ctx, &cs); }
             }
@@ -245,7 +245,7 @@ impl App {
                 let resp = ui.interact(rect, egui::Id::new(id), Sense::click());
                 if on { header_chip_fill(ui, t, &resp, Rect::from_center_size(rect.center(), Vec2::splat(28.0)), false); }
                 // globalHeader-buttonIcon-icon / :disabled.
-                s.icons.paint(ui, icon, Rect::from_center_size(rect.center(), Vec2::splat(14.0)), if on { t.tk("globalHeader-buttonIcon-icon") } else { t.tk("globalHeader-buttonIcon-icon:disabled") });
+                s.icons.paint(ui, icon, Rect::from_center_size(rect.center(), Vec2::splat(14.0)), if on { t.at(tok!("globalHeader-buttonIcon-icon")) } else { t.at(tok!("globalHeader-buttonIcon-icon:disabled")) });
                 resp
             };
             if chev(self, ui, "nav-back", "arrow-left-optical_10", hl.back, can_back).on_hover_text(tr("Back")).clicked() { self.act(Act::Back, ctx) }
@@ -255,14 +255,14 @@ impl App {
             // Settings > Customize the interface can hide the search field, +, the device button and the AI mark (Ctrl+F still searches).
             use crate::ui::customize::HEADER as HG;
             if self.ui_shown(&HG, "search") {
-                let sfill = if ui.rect_contains_pointer(sr) { if ui.input(|i| i.pointer.primary_down()) { t.tk("globalHeader-SearchEditField-background:checked") } else { t.tk("globalHeader-SearchEditField-background:hovered") } } else { t.search };
+                let sfill = if ui.rect_contains_pointer(sr) { if ui.input(|i| i.pointer.primary_down()) { t.at(tok!("globalHeader-SearchEditField-background:checked")) } else { t.at(tok!("globalHeader-SearchEditField-background:hovered")) } } else { t.search };
                 ui.painter().rect_filled(sr, 14.0, sfill);
-                ui.painter().rect_stroke(sr, 14.0, Stroke::new(1.0_f32, t.tk("appHeader-searchBar-outline-active")), egui::StrokeKind::Inside);
-                self.icons.paint(ui, "search-regular", Rect::from_center_size(sr.left_center() + Vec2::new(24.0, 0.0), Vec2::splat(16.0)), t.tk("globalHeader-textfield-searchIcon"));
+                ui.painter().rect_stroke(sr, 14.0, Stroke::new(1.0_f32, t.at(tok!("appHeader-searchBar-outline-active"))), egui::StrokeKind::Inside);
+                self.icons.paint(ui, "search-regular", Rect::from_center_size(sr.left_center() + Vec2::new(24.0, 0.0), Vec2::splat(16.0)), t.at(tok!("globalHeader-textfield-searchIcon")));
                 // The shortcut hint only while the field has its full width (a zoomed UI below the minimum window shrinks it).
-                let hint = if sr.width() >= header_layout::SEARCH_W { ui.painter().text(sr.right_center() - Vec2::new(11.0, 0.0), egui::Align2::RIGHT_CENTER, crate::shortcuts::native_hint(&tr("Ctrl+F")), FontId::proportional(14.0), t.text2).width() + 19.0 } else { 12.0 };
+                let hint = if sr.width() >= header_layout::SEARCH_W { ui.painter().text(sr.right_center() - Vec2::new(11.0, 0.0), egui::Align2::RIGHT_CENTER, crate::shortcuts::native_hint(&tr("Ctrl+F")), F::Body.font(), t.text2).width() + 19.0 } else { 12.0 };
                 // The pill is a button; a click / Ctrl+F opens the global search popup (ui/global_search.rs).
-                fit_text(ui.painter(), sr.left() + 40.0, cy, tr("Search, meet, and call"), FontId::proportional(14.5), t.text2, sr.width() - 40.0 - hint);
+                fit_text(ui.painter(), sr.left() + 40.0, cy, tr("Search, meet, and call"), F::BodyLarge.font(), t.text2, sr.width() - 40.0 - hint);
                 let sresp = ui.interact(sr, egui::Id::new("search-pill"), Sense::click());
                 if sresp.clicked() { super::global_search::toggle(ctx); }
             }
@@ -273,9 +273,9 @@ impl App {
             if self.ui_shown(&HG, "plus") {
                 let presp = ui.interact(pr, egui::Id::new("top-plus"), Sense::click());
                 // globalHeader-buttonIcon-background: hovered 7 %, pressed 20 %. Ring #CFCFCF dark, #454545 light.
-                if presp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); ui.painter().circle_filled(pr.center(), 13.0, if presp.is_pointer_button_down_on() { t.tk("globalHeader-buttonIcon-background:pressed") } else { t.tk("globalHeader-buttonIcon-background:hovered") }); }
-                ui.painter().circle_stroke(pr.center(), 12.4, Stroke::new(1.2_f32, if t.light { hex(0x454545) } else { hex(0xCFCFCF) }));
-                self.icons.paint(ui, "plus-regular", Rect::from_center_size(pr.center(), Vec2::splat(14.0)), t.tk("globalHeader-buttonIcon-icon"));
+                if presp.hovered() { ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand); ui.painter().circle_filled(pr.center(), 13.0, if presp.is_pointer_button_down_on() { t.at(tok!("globalHeader-buttonIcon-background:pressed")) } else { t.at(tok!("globalHeader-buttonIcon-background:hovered")) }); }
+                ui.painter().circle_stroke(pr.center(), 12.4, Stroke::new(1.2_f32, t.c(C::HeaderAvatarRing)));
+                self.icons.paint(ui, "plus-regular", Rect::from_center_size(pr.center(), Vec2::splat(14.0)), t.at(tok!("globalHeader-buttonIcon-icon")));
                 // The + opens the global menu (ui/header_plus.rs); tooltip "Start a conversation".
                 let plus_open = super::menu::menu_is_open(ctx, super::header_plus::KEY);
                 let presp = if plus_open { presp } else { presp.on_hover_text(crate::trq!("Start a conversation")) };
@@ -300,10 +300,10 @@ impl App {
                     resp.clicked()
                 }).inner
             };
-            let (mm_hover, mm_glyph) = (t.tk("globalHeader-maxMinButton-background:hovered"), t.tk("globalHeader-maxMinButton-text"));
-            if btn(ui, "win-close", wc(1.0), t.tk("globalHeader-closeButton-background:hovered"), &|p, c, hov| {
+            let (mm_hover, mm_glyph) = (t.at(tok!("globalHeader-maxMinButton-background:hovered")), t.at(tok!("globalHeader-maxMinButton-text")));
+            if btn(ui, "win-close", wc(1.0), t.at(tok!("globalHeader-closeButton-background:hovered")), &|p, c, hov| {
                 let d = 4.4;
-                let g = if hov { t.tk("globalHeader-closeButton-text:hovered") } else { t.tk("globalHeader-closeButton-text") };
+                let g = if hov { t.at(tok!("globalHeader-closeButton-text:hovered")) } else { t.at(tok!("globalHeader-closeButton-text")) };
                 p.line_segment([c - Vec2::new(d, d), c + Vec2::new(d, d)], Stroke::new(1.0_f32, g));
                 p.line_segment([c + Vec2::new(-d, d), c + Vec2::new(d, -d)], Stroke::new(1.0_f32, g));
             }) { ctx.send_viewport_cmd(egui::ViewportCommand::Close); }
@@ -323,9 +323,9 @@ impl App {
             if self.ui_shown(&HG, "device") {
                 let resp = ui.interact(tr_rect, egui::Id::new("connect-device"), Sense::click());
                 header_chip_fill(ui, t, &resp, tr_rect, forced == "device");
-                let dev_ink = t.tk("globalHeader-buttonDevice-text-inactive");
+                let dev_ink = t.at(tok!("globalHeader-buttonDevice-text-inactive"));
                 let (icon_c, full_label) = if hl.device_label {
-                    let shown = fit_text(ui.painter(), tr_rect.left() + 32.0, cy, dev_txt, semibold(14.0), dev_ink, tr_rect.width() - 44.0);
+                    let shown = fit_text(ui.painter(), tr_rect.left() + 32.0, cy, dev_txt, F::Body.semibold(), dev_ink, tr_rect.width() - 44.0);
                     (pos2(tr_rect.left() + 20.0, cy), shown.width() + 0.5 >= gw)
                 } else { (tr_rect.center(), false) };
                 self.icons.paint(ui, "device-connection-regular", Rect::from_center_size(icon_c, Vec2::splat(16.0)), dev_ink);
@@ -350,7 +350,7 @@ impl App {
         let r = Rect::from_min_max(full.min + Vec2::new(ROW_INSET_L, 0.0), pos2(full.max.x - ROW_INSET_R, full.min.y + g.h));
         let resp = ui.interact(r, ui.id().with(("row", title, sub, self.row_salt.clone())), Sense::click());
         let rad = g.h / 2.0;
-        if selected { ui.painter().rect_filled(r, rad, t.selected); if crate::ui::theme::decor::on(collabhost_plugin_api::deco::SELECTED_ROW) { crate::ui::theme::decor::outline(ui.painter(), r, rad, 1.5, &crate::ui::theme::decor::stripes(), 0.0); } } else if resp.is_pointer_button_down_on() { ui.painter().rect_filled(r, rad, t.tk("listitem-background:pressed")); } else if resp.hovered() { ui.painter().rect_filled(r, rad, t.tk("listitem-background:hovered")); } // listitem-background: 7 % hover, 11 % pressed
+        if selected { ui.painter().rect_filled(r, rad, t.selected); if crate::ui::theme::decor::on(collabhost_plugin_api::deco::SELECTED_ROW) { crate::ui::theme::decor::outline(ui.painter(), r, rad, 1.5, &crate::ui::theme::decor::stripes(), 0.0); } } else if resp.is_pointer_button_down_on() { ui.painter().rect_filled(r, rad, t.at(tok!("listitem-background:pressed"))); } else if resp.hovered() { ui.painter().rect_filled(r, rad, t.at(tok!("listitem-background:hovered"))); } // listitem-background: 7 % hover, 11 % pressed
         let mut c = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_center_size(pos2(r.left() + (g.avatar_left + g.avatar / 2.0), r.center().y), Vec2::splat(g.avatar))));
         avatar_photo(&mut c, &mut self.icons, t, title, g.avatar, space, av_bg, status, photo);
         let tx = r.left() + g.text_x;
@@ -368,7 +368,7 @@ impl App {
             fit_text(ui.painter(), tx, r.center().y, title, tf, title_col, max_w);
         } else {
             fit_text(ui.painter(), tx, r.center().y - 9.5, title, tf, title_col, max_w);
-            fit_text(ui.painter(), tx, r.center().y + 10.0, &sub.replace('\n', " "), FontId::proportional(13.0), sub_color, max_w);
+            fit_text(ui.painter(), tx, r.center().y + 10.0, &sub.replace('\n', " "), F::Secondary.font(), sub_color, max_w);
         }
         if let Some(c) = draft_at {
             let col = if super::menu::light(t) { hex(0x000000) } else { hex(0x949494) }; // gray-50 / black-100
@@ -402,8 +402,8 @@ impl App {
         let resp = ui.interact(r, ui.id().with(("section", key)), Sense::click());
         // The chevron glyph is 12.8 x 6.4 pt centred at x 32, 0.8 pt below the label's centre.
         let icon_r = Rect::from_center_size(r.left_center() + Vec2::new(12.0, 2.0), Vec2::splat(18.0));
-        self.icons.paint(ui, if open { "arrow-down-regular" } else { "arrow-right-regular" }, icon_r, t.tk("listitem-icon")); // listitem-icon
-        let g = ui.painter().text(r.left_center() + Vec2::new(28.0, 0.0), egui::Align2::LEFT_CENTER, tr(label), FontId::proportional(14.0), t.text2);
+        self.icons.paint(ui, if open { "arrow-down-regular" } else { "arrow-right-regular" }, icon_r, t.at(tok!("listitem-icon"))); // listitem-icon
+        let g = ui.painter().text(r.left_center() + Vec2::new(28.0, 0.0), egui::Align2::LEFT_CENTER, tr(label), F::Body.font(), t.text2);
         if star { self.icons.paint(ui, "favorite-filled", Rect::from_center_size(pos2(g.right() + 9.0, r.center().y), Vec2::splat(14.0)), t.star) }
         if resp.clicked() { if open { self.collapsed.insert(key); } else { self.collapsed.remove(key); } }
         open
@@ -427,7 +427,7 @@ impl App {
         let (sub, col) = match (&person, &team) {
             (Some(p), _) => (self.person_line(p, now_ms), t.text2),
             (None, Some(name)) => (name.clone(), team_tones(t, tcol, &s.team).1),
-            _ if s.public => (tr("Public").to_string(), t.tk("modal-decorativeTitle-slate")),
+            _ if s.public => (tr("Public").to_string(), t.at(tok!("modal-decorativeTitle-slate"))),
             _ => (String::new(), t.text2),
         };
         let av = team.as_ref().map(|_| team_tones(t, tcol, &s.team).0);

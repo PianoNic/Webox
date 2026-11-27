@@ -37,8 +37,8 @@ impl App {
             } else { self.video_spinner(ui, &c, r.center(), None, now); }
             if (!playing || ended) && tid.is_some() {
                 let br = Rect::from_center_size(r.center(), Vec2::splat(PLAY_XL * 1.5));
-                ui.painter().circle_filled(br.center(), br.width() / 2.0, t.tk("button-primary-background"));
-                self.icons.paint(ui, "play-filled", Rect::from_center_size(br.center() + Vec2::new(2.0, 0.0), Vec2::splat(30.0)), t.tk("button-primary-text"));
+                ui.painter().circle_filled(br.center(), br.width() / 2.0, t.at(tok!("button-primary-background")));
+                self.icons.paint(ui, "play-filled", Rect::from_center_size(br.center() + Vec2::new(2.0, 0.0), Vec2::splat(30.0)), t.at(tok!("button-primary-text")));
             }
             let bar = self.video_bar(ui, t, r, true, now);
             let close = Rect::from_min_size(pos2(r.right() - 52.0, r.top() + 14.0), Vec2::splat(36.0));

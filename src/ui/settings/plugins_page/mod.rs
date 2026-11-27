@@ -144,7 +144,7 @@ impl App {
                         if r.changed() { action = Some((i, Act2::Enable(on))); }
                         ui.vertical(|ui| {
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new(&name).font(semibold(15.0)).color(t.text1));
+                                ui.label(RichText::new(&name).font(F::Subtitle.semibold()).color(t.text1));
                                 if builtin { badge(ui, t, "Built-in"); }
                                 if !meta.is_empty() { ui.label(RichText::new(&meta).size(kit::SECOND).color(t.text2)); }
                             });
@@ -158,7 +158,7 @@ impl App {
                                 None => tr("Installed manually (plugin folder)").to_string(),
                             };
                             ui.label(RichText::new(origin).size(kit::SECOND).color(t.text2));
-                            if let Some(x) = &err { kit::text_block(ui, &crate::trq!("Can't be loaded: %1", x), kit::SECOND, t.tk("listitem-textmissed"), 0.0); }
+                            if let Some(x) = &err { kit::text_block(ui, &crate::trq!("Can't be loaded: %1", x), kit::SECOND, t.at(tok!("listitem-textmissed")), 0.0); }
                             ui.add_space(6.0);
                             ui.horizontal(|ui| {
                                 if kit::pill(ui, t, if has_settings { tr("Settings") } else { "Details" }, true, true).clicked() { action = Some((i, Act2::Open)); }

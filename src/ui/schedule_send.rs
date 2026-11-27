@@ -242,13 +242,13 @@ impl App {
         ui.painter().rect_stroke(frame, 8.0, Stroke::new(1.0_f32, border), egui::StrokeKind::Inside);
         let cy = frame.top() + head_h / 2.0;
         self.icons.paint(ui, "schedule-send-bold", Rect::from_center_size(pos2(frame.left() + 8.0 + 8.0, cy), Vec2::splat(16.0)), text);
-        let tg = ui.painter().layout_no_wrap(title, FontId::proportional(16.0), text);
+        let tg = ui.painter().layout_no_wrap(title, F::Title.font(), text);
         let tx = frame.left() + 8.0 + 16.0 + 12.0;
         let tw = tg.size().x.min(frame.width() - 36.0 - 260.0);
         ui.painter().with_clip_rect(Rect::from_min_size(pos2(tx, frame.top()), Vec2::new(tw, head_h))).galley(pos2(tx, cy - tg.size().y / 2.0), tg, text);
         let mut toggle = false;
         if !link_t.is_empty() {
-            let lg = ui.painter().layout_no_wrap(link_t.into(), FontId::proportional(16.0), link);
+            let lg = ui.painter().layout_no_wrap(link_t.into(), F::Title.font(), link);
             let lr = Rect::from_min_size(pos2(tx + tw + 6.0, cy - lg.size().y / 2.0), lg.size());
             let lresp = ui.interact(lr, Id::new(("sched-link", space)), Sense::click());
             if lresp.hovered() { ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }
@@ -267,8 +267,8 @@ impl App {
             let r = Rect::from_min_size(pos2(frame.left() + 40.0, frame.top() + head_h + 4.0 + i as f32 * 64.0), Vec2::new(frame.width() - 52.0, 58.0));
             let resp = ui.interact(r, Id::new(("sched-row", &s.id)), Sense::hover());
             ui.painter().rect_filled(r, 8.0, if resp.hovered() { row_hover } else { row_bg });
-            super::chrome::fit_text(ui.painter(), r.left() + 12.0, r.top() + 16.0, &format!("{}  {}", tr("You"), row_time(now, s.due_ms)), FontId::proportional(14.0), head_c, r.width() - 24.0);
-            super::chrome::fit_text(ui.painter(), r.left() + 12.0, r.top() + 39.0, s.text.lines().next().unwrap_or(""), FontId::proportional(16.0), text, r.width() - 24.0);
+            super::chrome::fit_text(ui.painter(), r.left() + 12.0, r.top() + 16.0, &format!("{}  {}", tr("You"), row_time(now, s.due_ms)), F::Body.font(), head_c, r.width() - 24.0);
+            super::chrome::fit_text(ui.painter(), r.left() + 12.0, r.top() + 39.0, s.text.lines().next().unwrap_or(""), F::Title.font(), text, r.width() - 24.0);
             // Actions toolbar on hover: send now, reschedule, discard.
             let hot = resp.hovered() || ctx.data(|d| d.get_temp::<String>(Id::new("sched-hot"))).as_deref() == Some(s.id.as_str());
             if hot {

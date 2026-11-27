@@ -198,8 +198,8 @@ impl App {
             p.rect_filled(Rect::from_min_size(pos2(card.left() + 10.0, card.top() + 8.0), Vec2::new(3.0, card.height() - 16.0)), 1.5, bar_c);
             let tx = card.left() + 22.0;
             let maxw = card.width() - 22.0 - 40.0;
-            super::chrome::fit_text(&p, tx, card.top() + 15.0, &q.author, semibold(13.0), t.text1, maxw);
-            super::chrome::fit_text(&p, tx, card.top() + 34.0, &Some(quote_preview(&q.text)).filter(|l| !l.is_empty() && !l.starts_with('📎')).or_else(|| crate::cloud::Shared::of(&q.files).map(|s| s.label())).unwrap_or_default(), FontId::proportional(14.0), t.text2, maxw);
+            super::chrome::fit_text(&p, tx, card.top() + 15.0, &q.author, F::Secondary.semibold(), t.text1, maxw);
+            super::chrome::fit_text(&p, tx, card.top() + 34.0, &Some(quote_preview(&q.text)).filter(|l| !l.is_empty() && !l.starts_with('📎')).or_else(|| crate::cloud::Shared::of(&q.files).map(|s| s.label())).unwrap_or_default(), F::Body.font(), t.text2, maxw);
             let xr = Rect::from_center_size(pos2(card.right() - 20.0, card.center().y), Vec2::splat(24.0));
             let xresp = ui.interact(xr, Id::new("quote-banner-x"), Sense::click());
             if xresp.hovered() { p.circle_filled(xr.center(), 12.0, t.hover); ctx.set_cursor_icon(egui::CursorIcon::PointingHand); }

@@ -105,12 +105,12 @@ impl App {
             *y = rect.bottom();
             rect
         };
-        put(self, ui, &crate::trq!("Say hi to start chatting 👋"), semibold(26.0), c_head, false, (area.width() - 32.0).max(100.0), &mut y);
+        put(self, ui, &crate::trq!("Say hi to start chatting 👋"), F::Hero.semibold(), c_head, false, (area.width() - 32.0).max(100.0), &mut y);
         y += SPACING;
         let wrap = MAX_W.min(area.width() - 32.0).max(100.0);
-        put(self, ui, &crate::trq!("This is where you two can get things done together. Start with a message or even a fun GIF."), FontId::proportional(16.0), c_desc, false, wrap, &mut y);
+        put(self, ui, &crate::trq!("This is where you two can get things done together. Start with a message or even a fun GIF."), F::Title.font(), c_desc, false, wrap, &mut y);
         y += SPACING;
-        let sec = put(self, ui, &crate::trq!("🔒 This conversation is protected by strong encryption using a unique key. Click to learn more."), FontId::proportional(16.0), c_link, true, wrap, &mut y);
+        let sec = put(self, ui, &crate::trq!("🔒 This conversation is protected by strong encryption using a unique key. Click to learn more."), F::Title.font(), c_link, true, wrap, &mut y);
         ui.interact(sec, ui.id().with("welcome-security"), Sense::hover()).on_hover_text(crate::trq!("Learn more about {{APP_NAME}} encryption").into_owned()); // service encryption: {{APP_NAME}} = Webex (docs/naming.md)
         y += 2.0 * SPACING + SPACING;
 
@@ -120,7 +120,7 @@ impl App {
             ("gif_16", tr!("WelcomeMessageItemDelegate", "Send a GIF").into_owned(), 1),
             ("calendar-add-bold", tr!("WelcomeMessageItemDelegate", "Schedule a meeting").into_owned(), 2),
         ];
-        let font = semibold(16.0);
+        let font = F::Title.semibold();
         let widths: Vec<f32> = btns.iter().map(|b| ui.fonts(|f| f.layout_no_wrap(b.1.clone(), font.clone(), ink).size().x) + 16.0 + 8.0 + 2.0 * 2.0 * SPACING).collect();
         let total: f32 = widths.iter().sum::<f32>() + 5.0 * (btns.len() as f32 - 1.0);
         let row = area.width() > total;
@@ -164,7 +164,7 @@ mod tests {
     }
     #[test]
     fn emoji_become_placeholders() {
-        let (job, marks) = emoji_job("Hello 👋", FontId::proportional(16.0), Color32::WHITE, false, 100.0);
+        let (job, marks) = emoji_job("Hello 👋", F::Title.font(), Color32::WHITE, false, 100.0);
         assert_eq!(marks.len(), 1);
         assert_eq!(marks[0].0, 6);
         assert!(job.text.ends_with(super::super::emoji_text::PLACEHOLDER));

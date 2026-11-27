@@ -19,7 +19,7 @@ impl App {
         ui.painter().rect_filled(own, 0.0, t.composer);
         let draft = self.drafts.get(&crate::app::actions::edit_stash_key(&space.id)).cloned().unwrap_or_default();
         let (txt, col) = match draft.lines().find(|l| !l.trim().is_empty()) { Some(l) => (l.to_string(), t.text1), None => (crate::trq!("Write a message to {{0}}", &space.title), t.text2) };
-        ui.painter().text(pos2(own.left() + 20.0, own.bottom() - 34.0), egui::Align2::LEFT_CENTER, txt, FontId::proportional(16.0), col);
+        ui.painter().text(pos2(own.left() + 20.0, own.bottom() - 34.0), egui::Align2::LEFT_CENTER, txt, F::Title.font(), col);
         // wx-overlay-background over everything; it takes the clicks and the wheel.
         egui::Area::new(egui::Id::new("edit-overlay-scrim")).order(egui::Order::Middle).fixed_pos(area.min).interactable(true).show(&ctx, |ui| {
             let (r, _) = ui.allocate_exact_size(area.size(), Sense::click_and_drag());
