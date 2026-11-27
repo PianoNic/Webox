@@ -51,6 +51,57 @@ jobs:
 
       - run: cargo test --locked
 
+  # docs/theming-engine.md phase 0: the sample scenes of the pull request render pixel-identical to its base branch. Linux,
+  # because the software OpenGL of xvfb (Mesa llvmpipe) renders deterministically; GitHub's Windows runners have no OpenGL 2.
+  # A pull request that changes the look on purpose carries the label "look-change"; the job then only reports.
+  parity:
+    name: Pixel parity (Linux)
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    steps:
+      - uses: useblacksmith/checkout@75c49b6ed30ce59336e9252425796cfcfac155f8 # v1
+        with:
+          fetch-depth: 0
+
+      - name: Install the Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libasound2-dev \
+            libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            libxkbcommon-x11-0 libgl1 libegl1 fonts-dejavu-core xvfb xdotool
+
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+
+      # The base first, then the pull request in the same target folder: only the app crate compiles twice.
+      - name: Build the base and the pull request
+        run: |
+          git worktree add ../base "origin/${{ github.base_ref }}"
+          (cd ../base && cargo build --locked -p webox -p collabhost_pride_theme --target-dir "$GITHUB_WORKSPACE/target")
+          mkdir -p ../bin-base ../bin-head
+          cp target/debug/webox target/debug/libcollabhost_pride_theme.so ../bin-base/
+          cargo build --locked -p webox -p collabhost_pride_theme
+          cp target/debug/webox target/debug/libcollabhost_pride_theme.so ../bin-head/
+
+      - name: Render and compare
+        run: |
+          # One large virtual screen with the pointer parked in its far corner: the scene windows share that pointer, and it
+          # must hover none of them (the base build may predate the screenshot input filter in ui/frame.rs).
+          xvfb-run -a -s "-screen 0 4000x3000x24" sh -c 'xdotool mousemove 3999 2999 && pwsh scripts/parity.ps1 -BaseExe ../bin-base/webox -Exe ../bin-head/webox -Out parity' \
+            || { if ${{ contains(github.event.pull_request.labels.*.name, 'look-change') }}; then echo "::warning::look changed (label look-change)"; else exit 1; fi; }
+
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: parity
+          path: parity
+          if-no-files-found: ignore
+
   windows:
     name: Build and test (Windows)
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}

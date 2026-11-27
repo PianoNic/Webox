@@ -635,7 +635,10 @@ The rule is that the engine never costs frames. Concretely:
 Each phase is one or more PRs. Each PR keeps the default look **pixel-identical** and all tests green before merge.
 Effort is in agent-days of focused work, including tests and screenshots.
 
-**Phase 0: parity harness (2–3 d).** Add `scripts/parity.ps1`, which renders a fixed scene list with `--sample
+**Phase 0: parity harness (2–3 d).** *Done:* `scripts/parity.ps1` (scene list, `-BaseExe` / `-Exe` render and compare, diff
+pictures) and the CI job "Pixel parity (Linux)", which renders the base branch and the pull request under xvfb and fails on
+any differing pixel unless the pull request has the label `look-change`. Scenes that follow the wall clock run with `-All`
+only. Planned: Add `scripts/parity.ps1`, which renders a fixed scene list with `--sample
 --screenshot`. The list is everything in `shots.ps1` plus themes (dark, light, jade light), densities (standard,
 compact, compact view), zooms (1.0, 1.25), menus, call states (`WEBOX_SHOT_CALL`), settings pages, pride shots and the
 wide rail. The script compares the results against a baseline built from `main` and reports any differing pixel with
