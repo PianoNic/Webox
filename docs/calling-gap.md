@@ -130,7 +130,7 @@ Read-only inventory, 2026-11-24. Webox is at `main` 2a9cd2a (PR #20, screen shar
 | C40 | Active speaker indication / speaking bubble | `MeetingViewLayout/ActiveSpeakerWave.qml`, `CallSpeakingBubble.qml` | **missing** | media (audio level), UI | S (1:1) / M (group) | 2 |
 | C41 | Step away (mute + video off + "Stepped away" status) | `TopButtonsInPip` "Step away from meeting", `SettingsMeetingGeneralPage` | **missing** | locus, UI | S | 3 |
 | C42 | Far-end camera control | `FECC/*`, `MeetingViewButtons` "Far end camera control" | **missing** | locus/media | M | 3 |
-| C43 | **Media recovery** (ICE restart / rejoin, "Call is recovering...", "Call lost connection to audio or video.") | dll `call_reconnect`, `[reconnectCall]`, `onMediaDisconnected`, `desktop-locus-resilience-enabled-dev` | **partial**: `media_stall` warns and keeps the call; no ICE restart or rejoin; the `Reconnect` sound is unused | locus, media | M | 1 |
+| C43 | **Media recovery** (ICE restart / rejoin, "Call is recovering...", "Call lost connection to audio or video.") | dll `call_reconnect`, `[reconnectCall]`, `onMediaDisconnected`, `desktop-locus-resilience-enabled-dev` | **done** (the official reconnect: a new media connection, at most 5 tries, then the call ends; offline wait; network-change trigger; `call-parity-audit.md` 4.7); the `Reconnect` sound is unused | locus, media | M | 1 |
 | C44 | TCP / TLS-443 media fallback | `call-flow-spec.md` §2 (`ice-options:cisco+tls+fqdn`, TCP 5004, xTLS 443) | **partial**: UDP only (`sdp::udp_only`) | media | L | 2 |
 | C45 | In-call keyboard shortcuts (mute, video, end, hold, share, raise hand) | `SettingsKeyboardShortcutsPage`, "Hold/Resume Call", dll `getButtonShortcutType` | **partial**: AnswerCall, DeclineCall, EndCall and ToggleAudioMute work (`shortcuts/commands.rs`); hold, transfer and reactions are stubs | UI | S per action | 2 |
 | C46 | Auto-hide call controls | "Automatically hide controls", flag `desktop-auto-hide-call-control-enabled` | **done**: `call_autohide_controls` in `call_win/call.rs` | – | – | 2 |
@@ -285,7 +285,7 @@ The notes are grouped by mechanism, because many features share one. Endpoint sh
   * Add a `Media::stats()` snapshot (replacing the debug log), a small panel in `call_win`, and a "poor network" banner when loss is above 5 % or RTT above 400 ms.
 * **C43 recovery.**
   * The official client keeps the call through `IceFailure`/`Lost`/`Reconnected` (dll `[reconnectCall]`, `call_reconnect`).
-  * Implement an ICE restart: a re-OFFER with new ufrag on the same `mediaId`. If that fails after N seconds, rejoin (`POST {locusUrl}/participant` with a fresh offer) while self is still in the locus.
+  * Done the official way (`call-parity-audit.md` 4.7, Batch 1): the media connection is rebuilt (new peer connection, ICE, DTLS, a new ROAP OFFER on the same participant), at most 5 times, then the call ends; no ICE restart, no rejoin.
   * Play the existing `Reconnect` sound and show "Reconnecting…".
 * **C44 TCP/TLS fallback.** webrtc-rs has no ICE-TCP/TLS-443. This needs a custom transport (`ice_socket.rs`), so it is L and only worth it on UDP-blocked networks.
 * **C28 / C29 audio.**

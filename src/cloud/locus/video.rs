@@ -39,7 +39,7 @@ pub struct VideoInfo {
 /// The video side of the current call.
 #[derive(Default)]
 pub struct CallVideo {
-    feed: Option<CamSend>,
+    pub(super) feed: Option<CamSend>,
     /// Locus knows our camera as on (`videoMuted: false` sent).
     unmuted: bool,
     /// The far end's camera is on.

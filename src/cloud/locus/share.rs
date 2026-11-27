@@ -51,6 +51,12 @@ impl Share {
         if let Ok(s) = self.stream.lock() { s.cancel(); }
         if let Some(f) = self.feed { f.stop(); }
     }
+    /// The media connection is being rebuilt (`Session::media_rebuild`): the feed into the old one's track stops; the
+    /// capture and the floor stay, and `share_tick` feeds the new connection once its lines are answered.
+    pub fn detach(&mut self) {
+        if let Some(f) = self.feed.take() { f.stop(); }
+        self.tx_checked = true;
+    }
 }
 
 /// The url of the locus' `content` media share (the floor a screen share asks for).
@@ -143,8 +149,12 @@ impl Session {
         let Some(c) = self.calls.cur.as_ref() else { return };
         let Some(s) = c.share.as_ref() else { return };
         let (phase, status, age, granted) = (s.phase, s.stream.lock().map(|x| x.status()).unwrap_or(Status::Ended), s.since.elapsed(), s.granted);
-        // another ROAP round (an ICE restart) runs: the share's lines wait for the next tick
+        // another ROAP round (a media reconnect) runs: the share's lines wait for the next tick
         let (busy, tx_due) = (!c.roap_done, phase == Phase::Sharing && !s.tx_checked && age > TX_CHECK);
+        // a media reconnect replaced the connection: the running share goes on in the new one (same floor, no request)
+        if phase == Phase::Sharing && s.feed.is_none() && !busy && c.media.as_ref().is_some_and(|m| m.state() == MediaState::Connected && m.lines_negotiated()) {
+            return self.share_refeed();
+        }
         if tx_due {
             // `write_sample` succeeds even when nothing goes out: what the share line really sent since this feed began decides
             let sent = c.media.as_ref().map_or(0, |m| m.share_tx_packets()).saturating_sub(s.tx_base);
@@ -203,6 +213,20 @@ impl Session {
     }
 
     /// The locus changed: our floor granted, or taken / released elsewhere; the far end's share starts or ends.
+    /// The share's pictures into the new media connection after a reconnect (`Share::detach`).
+    fn share_refeed(&mut self) {
+        let Some(c) = self.calls.cur.as_mut() else { return };
+        let (Some(m), Some(s)) = (c.media.as_ref(), c.share.as_mut()) else { return };
+        let base = m.share_tx_packets();
+        match m.feed_share(s.stream.clone()) {
+            Ok(f) => {
+                (s.feed, s.since, s.tx_base, s.tx_checked) = (Some(f), Instant::now(), base, false);
+                dbg_conn("call: share: sharing again on the reconnected media");
+            }
+            Err(e) => self.share_failed(&crate::trq!("Sharing failed: {{0}}", e)),
+        }
+    }
+
     pub(super) fn share_locus(&mut self, l: &Value) {
         let Some(c) = self.calls.cur.as_mut() else { return };
         let (disp, ben) = content_floor(l);

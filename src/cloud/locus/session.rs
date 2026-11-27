@@ -147,17 +147,27 @@ impl Session {
     }
 
     fn open_media(&mut self, c: &audio::Choice) -> Result<(Media, String), String> {
-        // ICE binds only where the system routes to Webex (the locus host stands in for the media servers)
-        let host = self.url("locus", "").split("://").nth(1).and_then(|r| r.split(['/', ':']).next()).unwrap_or_default().to_string();
         let engine = self.calls.engine.get_or_insert_with(audio::Engine::new);
         let info = engine.open(&c.input, &c.output).map_err(|e| { dbg_conn(&format!("call: audio devices failed: {}", scrub(&e))); e })?;
         engine.io.set_volume(c.volume);
         c.apply_smart(&engine.io);
         engine.io.set_call(true); // echo cancellation and gain control on the call microphone
         dbg_conn(&format!("call: audio open ({} chars)", info.len()));
-        let ip = route_ip(&host);
+        self.new_media()
+    }
+
+    /// A new media connection (peer connection, ICE, DTLS) on the open audio devices, and its OFFER (all four lines,
+    /// every candidate): the join's, and each media reconnect's. Remembers where the system routes to Webex from
+    /// (`Calls::route`), for the network-change check.
+    fn new_media(&mut self) -> Result<(Media, String), String> {
+        // ICE binds only where the system routes to Webex (the locus host stands in for the media servers)
+        let host = self.url("locus", "").split("://").nth(1).and_then(|r| r.split(['/', ':']).next()).unwrap_or_default().to_string();
+        let io = self.calls.engine.as_ref().map(|e| e.io.clone()).ok_or("no audio devices")?;
+        let target = route_target(&host);
+        let ip = route_ip(target);
+        self.calls.route = (target, target.and_then(route_probe));
         dbg_conn(&format!("call: route interface {}", ip.map_or("unknown (all interfaces)", |i| if i.is_ipv4() { "found (IPv4)" } else { "found (IPv6)" })));
-        let m = Media::new(engine.io.clone(), None, Net::Route(ip)).map_err(|e| { dbg_conn(&format!("call: media setup failed: {}", scrub(&e))); e })?;
+        let m = Media::new(io, None, Net::Route(ip)).map_err(|e| { dbg_conn(&format!("call: media setup failed: {}", scrub(&e))); e })?;
         m.muted.store(self.calls.muted, Ordering::Relaxed);
         let offer = m.offer().map_err(|e| { dbg_conn(&format!("call: offer failed: {}", scrub(&e))); e })?;
         dbg_conn(&format!("call: offer ready ({} bytes) {}", offer.len(), crate::cloud::sdp::summary(&offer)));
@@ -273,14 +283,17 @@ impl Session {
         self.evaluate(&v)
     }
 
-    /// PUT {self.url}/media with a ROAP message (OK / ANSWER / a re-OFFER).
-    pub(super) fn send_roap(&mut self, message_type: &str, sdp: Option<&str>, seq: u32) -> Result<(), String> {
-        let (url, media_id, corr) = match &self.calls.cur { Some(c) => (c.self_url.clone(), c.media_id.clone(), c.correlation_id.clone()), None => return Ok(()) };
+    /// PUT {self.url}/media with a ROAP message (OK / ANSWER / a reconnect's OFFER).
+    pub(super) fn send_roap(&mut self, message_type: &str, sdp: Option<&str>, seq: u32) -> Result<(), String> { self.send_roap_v(message_type, sdp, seq).map(|_| ()) }
+
+    /// `send_roap` with Locus' answer.
+    fn send_roap_v(&mut self, message_type: &str, sdp: Option<&str>, seq: u32) -> Result<Value, String> {
+        let (url, media_id, corr) = match &self.calls.cur { Some(c) => (c.self_url.clone(), c.media_id.clone(), c.correlation_id.clone()), None => return Ok(Value::Null) };
         if !webex_host(&url) { return Err(crate::trq!("Invalid media address.").into_owned()); }
         if media_id.is_empty() { return Err("no media id".into()); } // like the original client: no ROAP message without it
         let body = json!({"device": self.device_body(), "correlationId": corr, "clientMediaPreferences": {"preferTranscoding": true},
             "localMedias": [{"localSdp": roap_local_sdp_av(message_type, sdp, seq, self.calls.muted, self.video_muted()), "mediaId": media_id}]});
-        self.http_signal("PUT", &format!("{url}/media"), Some(body)).map(|_| ())
+        self.http_signal("PUT", &format!("{url}/media"), Some(body))
     }
 
     /// A ROAP message from the server (mercury event or inline in a response).
@@ -300,7 +313,7 @@ impl Session {
                 let (Some(sdp), Some(m)) = (sdp, c.media.as_ref()) else { dbg_conn("call: ANSWER without SDP or media"); return };
                 match m.apply_answer(sdp) {
                     Ok(()) => {
-                        dbg_conn(&format!("call: roap ANSWER seq={seq} applied"));
+                        dbg_conn(&format!("call: roap ANSWER seq={seq} applied{}", if c.recovery.attempt_at.is_some() { " (media reconnect)" } else { "" }));
                         if let Some(c) = self.calls.cur.as_mut() { c.roap_done = true; c.roap_applied = seq; c.offer_at = None; }
                         let r = self.send_roap("OK", None, seq);
                         dbg_conn(&format!("call: roap OK seq={seq} sent -> {}", r.as_ref().map_or_else(|e| format!("failed: {}", scrub(e)), |_| "ok".into())));
@@ -310,8 +323,8 @@ impl Session {
                     }
                     Err(e) => {
                         dbg_conn(&format!("call: roap ANSWER seq={seq} not applied: {}", scrub(&e)));
-                        // the round is over either way: a later OFFER (ICE restart) may go out
-                        if let Some(c) = self.calls.cur.as_mut() { (c.roap_done, c.offer_at) = (true, None); }
+                        // the round is over either way; a media reconnect's attempt failed
+                        if let Some(c) = self.calls.cur.as_mut() { (c.roap_done, c.offer_at) = (true, None); if c.recovery.attempt_at.is_some() { c.recovery.attempt_failed = true; } }
                         if let Some(m) = self.calls.cur.as_ref().and_then(|c| c.media.as_ref()) { let _ = m.abandon_offer(); }
                         self.media_trouble(&crate::trq!("Media negotiation failed: the media server's answer wasn't accepted.").into_owned());
                     }
@@ -337,9 +350,10 @@ impl Session {
             // like the original client: an error report (glare, sequence) is logged, the call stays
             "ERROR" => {
                 dbg_conn("call: roap ERROR, call kept");
-                if let Some(c) = self.calls.cur.as_mut().filter(|c| !c.roap_done && c.roap_seq == seq && c.restart_pending.is_none()) {
-                    // our own OFFER (an ICE restart) refused: back to the last answer, the next one may go out
+                if let Some(c) = self.calls.cur.as_mut().filter(|c| !c.roap_done && c.roap_seq == seq) {
+                    // our own OFFER refused: back to the last answer; a media reconnect's attempt failed
                     (c.roap_done, c.offer_at) = (true, None);
+                    if c.recovery.attempt_at.is_some() { c.recovery.attempt_failed = true; dbg_conn(&format!("call: media reconnect: roap ERROR for OFFER seq={seq}, attempt failed")); }
                     if let Some(m) = c.media.as_ref() { let _ = m.abandon_offer(); }
                 }
             }
@@ -355,69 +369,106 @@ impl Session {
         let _ = self.out.send(Resp::Error(why.into()));
     }
 
-    /// Every tick: media that was up and dropped (Wi-Fi roam, VPN, sleep) gets an ICE restart through a ROAP OFFER once
-    /// ICE failed or it stays down for `ICE_RESTART_AFTER`, again every `ICE_RESTART_EVERY` while it does (off with
-    /// `WEBOX_NO_ICE_RESTART=1`). The candidates gather on the media runtime and the OFFER goes out from a later tick, so
-    /// this thread never waits. Without it the peer connection is failed for good; meanwhile the keep-alive keeps us in
-    /// the call.
-    pub(super) fn ice_tick(&mut self) {
+    /// Every tick once the call's media was up: the official media reconnect (`recover_step`). A media connection that
+    /// failed, stays down `MEDIA_RECONNECT_AFTER`, or whose local network address changed is torn down and a new one is
+    /// built (`media_rebuild`), at most `MEDIA_RECONNECT_MAX` times, then the call ends (`media_lost_end`). Offline it
+    /// waits, and reconnects once the network is back. The network check (`route_probe`) asks the routing table only.
+    pub(super) fn recovery_tick(&mut self) {
         let now = Instant::now();
-        let Some(c) = self.calls.cur.as_mut() else { return };
-        let Some(m) = c.media.as_ref().filter(|_| c.answered && c.media_up_at.is_some()) else { return };
-        let connected = m.state() == MediaState::Connected;
+        let (target, base) = self.calls.route;
+        let Some(c) = self.calls.cur.as_mut().filter(|c| c.answered && c.was_up) else { return };
+        // no media connection: the last reconnect couldn't build one (it counts as failed)
+        let (state, held) = (c.media.as_ref().map_or(MediaState::Failed, |m| m.state()), false); // Webox has no hold yet (call-parity-audit Batch 6)
+        let connected = state == MediaState::Connected;
         if connected {
             if let Some(d) = c.media_down_at.take() { dbg_conn(&format!("call: media up again after {} s", now.saturating_duration_since(d).as_secs())); }
-            c.ice_restart_at = None;
-            if c.restart_pending.take().is_some() {
-                // recovered on its own while the restart gathered: the restart is dropped, never sent
-                if let Err(e) = m.abandon_offer() { dbg_conn(&format!("call: ice restart dropped, session not restored: {}", scrub(&e))); }
-                c.roap_done = true;
-                dbg_conn("call: ice restart dropped, media recovered on its own");
+        } else { c.media_down_at.get_or_insert(now); }
+        let probe = target.map(route_probe);
+        let route = match probe {
+            Some(None) => Route::Offline,
+            Some(Some(ip)) if base.is_some_and(|b| b != ip) => Route::Changed,
+            _ => Route::Same,
+        };
+        match recover_step(&c.recovery, now, c.was_up, connected, state == MediaState::Failed, c.media_down_at, route, held) {
+            Recover::Nothing => {}
+            Recover::Recovered => {
+                dbg_conn(&format!("call: media reconnect: connected again after attempt {}/{MEDIA_RECONNECT_MAX}, counter cleared", c.recovery.attempts));
+                c.recovery = Recovery::default();
             }
-            return;
+            Recover::WaitOffline => if !std::mem::replace(&mut c.recovery.offline_wait, true) {
+                dbg_conn("call: media reconnect: network is offline, waiting for it before reconnecting the media");
+            },
+            Recover::Rebuild(t) => {
+                if route == Route::Changed { dbg_conn("call: media reconnect: the local network address changed"); }
+                if t == Trigger::NetworkRestored { dbg_conn("call: media reconnect: network is available again"); }
+                self.media_rebuild(t);
+            }
+            Recover::End => self.media_lost_end(),
         }
-        let down = *c.media_down_at.get_or_insert(now);
-        if !ice_restart_enabled() { return; }
-        // the restart's candidates are gathering on the media runtime: the OFFER goes out from a later tick
-        if let Some(t0) = c.restart_pending {
-            let Some(sdp) = m.ice_restart_ready() else {
-                if now.saturating_duration_since(t0) > ICE_GATHER_TIMEOUT {
-                    dbg_conn("call: ice restart gathering timed out, not sent");
-                    let _ = m.abandon_offer();
-                    (c.restart_pending, c.roap_done) = (None, true);
-                }
+    }
+
+    /// One official media reconnect: the counter goes up, the current media connection is removed ("remove media
+    /// connection"), a new one (new peer connection, ICE and DTLS) sends its OFFER with the next ROAP seq on the same
+    /// participant (`PUT {self.url}/media`, the join's `mediaId`), and its ANSWER comes like the join's (`handle_roap`). The
+    /// call's mute state, the camera the user wants and a running share stay: the camera and the share feed into the new
+    /// connection once its lines are answered (`video_tick`, `share_tick`).
+    fn media_rebuild(&mut self, why: Trigger) {
+        let now = Instant::now();
+        let Some(c) = self.calls.cur.as_mut() else { return };
+        c.recovery.attempts += 1;
+        let n = c.recovery.attempts;
+        (c.recovery.attempt_at, c.recovery.attempt_failed, c.recovery.offline_wait) = (Some(now), false, false);
+        let down = c.media_down_at.map_or(0, |d| now.saturating_duration_since(d).as_secs());
+        dbg_conn(&format!("call: media reconnect attempt {n}/{MEDIA_RECONNECT_MAX} ({}, media down {down} s): remove media connection, new peer connection, ICE and DTLS", why.text()));
+        // the camera's and the share's feeds write into the old connection's tracks
+        c.video.feed = None;
+        if let Some(s) = c.share.as_mut() { s.detach(); }
+        let old = c.media.take();
+        let expect = old.as_ref().map_or(0, |m| m.expect.load(Ordering::Relaxed));
+        (c.roap_done, c.offer_at, c.media_up_at) = (false, None, None);
+        if let Some(m) = old { m.close(); }
+        let (media, offer) = match self.new_media() {
+            Ok(x) => x,
+            Err(e) => {
+                dbg_conn(&format!("call: media reconnect attempt {n}/{MEDIA_RECONNECT_MAX}: new media connection failed: {}", scrub(&e)));
+                if let Some(c) = self.calls.cur.as_mut() { (c.recovery.attempt_failed, c.roap_done) = (true, true); }
                 return;
-            };
-            c.restart_pending = None;
-            let seq = c.roap_seq + 1;
-            c.roap_seq = seq;
-            let r = self.send_roap("OFFER", Some(&sdp), seq);
-            dbg_conn(&format!("call: ice restart OFFER seq={seq} (media down {} s) -> {}", now.saturating_duration_since(down).as_secs(), r.as_ref().map_or_else(|e| format!("failed: {}", scrub(e)), |_| "sent".into())));
-            let Some(c) = self.calls.cur.as_mut() else { return };
-            if r.is_ok() { c.offer_at = Some(Instant::now()); } else {
-                (c.roap_done, c.offer_at) = (true, None);
-                if let Some(m) = c.media.as_ref() { let _ = m.abandon_offer(); }
             }
-            return;
-        }
-        // our restart OFFER got no ANSWER: that round is over (the session goes back to the last answer)
-        if !c.roap_done && c.ice_restart_at.is_some() && c.offer_at.is_some_and(|t| now.saturating_duration_since(t) > ROAP_TIMEOUT) {
-            dbg_conn("call: ice restart OFFER unanswered, given up");
-            let _ = m.abandon_offer();
-            (c.roap_done, c.offer_at) = (true, None);
-        }
-        // only when ICE really failed, or the media stayed down long: webrtc-rs may drop a pair that would have recovered
-        let failed = m.state() == MediaState::Failed;
-        if !(failed || now.saturating_duration_since(down) >= ICE_RESTART_AFTER) || !c.roap_done { return; }
-        if c.ice_restart_at.is_some_and(|t| now.saturating_duration_since(t) < ICE_RESTART_EVERY) { return; }
-        c.ice_restart_at = Some(now);
-        match m.begin_ice_restart() {
-            Ok(()) => {
-                (c.restart_pending, c.roap_done) = (Some(now), false); // no other ROAP round meanwhile
-                dbg_conn(&format!("call: ice restart started ({}, media down {} s), gathering", if failed { "ICE failed" } else { "down too long" }, now.saturating_duration_since(down).as_secs()));
+        };
+        media.expect.store(expect, Ordering::Relaxed);
+        let Some(c) = self.calls.cur.as_mut() else { return media.close() };
+        c.media = Some(media);
+        c.roap_seq += 1;
+        let seq = c.roap_seq;
+        let r = self.send_roap_v("OFFER", Some(&offer), seq);
+        dbg_conn(&format!("call: media reconnect attempt {n}/{MEDIA_RECONNECT_MAX}: roap OFFER seq={seq} sent -> {}", r.as_ref().map_or_else(|e| format!("failed: {}", scrub(e)), |_| "ok".into())));
+        let device = self.device.clone();
+        let Some(c) = self.calls.cur.as_mut() else { return };
+        match r {
+            Ok(r) => {
+                c.offer_at = Some(Instant::now());
+                // a new media connection id in the answer replaces the join's (ROAP OK needs the current one)
+                let id = media_id_of(&r, &device);
+                if !id.is_empty() && id != c.media_id { dbg_conn("call: media reconnect: Locus gave the new connection a new media id"); c.media_id = id; }
+                if let Some(m) = remote_roap(&r) { self.handle_roap(m); }
             }
-            Err(e) => dbg_conn(&format!("call: ice restart offer failed: {}", scrub(&e))),
+            Err(_) => (c.recovery.attempt_failed, c.roap_done) = (true, true),
         }
+    }
+
+    /// `MEDIA_RECONNECT_MAX` media reconnects failed: like the official client ("Media fail to reconnect after Terminated
+    /// for 5 times, end meeting/call and report media drop events", end reason `MediaReconnectMaxRetry`) the call ends:
+    /// we leave the locus and say why.
+    fn media_lost_end(&mut self) {
+        let Some(c) = self.calls.cur.as_ref() else { return };
+        let (url, id) = (c.url.clone(), c.self_id.clone());
+        dbg_conn(&format!("call: media reconnect failed {MEDIA_RECONNECT_MAX} times, ending the call (end reason why=media-lost MediaReconnectMaxRetry)"));
+        let _ = self.out.send(Resp::Error(crate::trq!("The call was terminated because of a lost connection.").into_owned()));
+        self.end_call("media-lost");
+        if !webex_host(&url) { return; }
+        let leave = json!({"device": self.device_body(), "usingResource": null, "correlationId": jose::uuid()});
+        let r = self.http_signal("PUT", &format!("{url}/participant/{id}/leave"), Some(leave));
+        dbg_conn(&format!("call: leave after media loss -> {}", r.as_ref().map_or_else(|e| format!("failed: {}", scrub(e)), |_| "ok".into())));
     }
 
     /// Every tick, between ROAP rounds: the far end's audio, camera or share arriving from an SSRC webrtc-rs doesn't take
@@ -509,14 +560,19 @@ impl Session {
             dbg_conn("call: the other side's devices stayed LEFT, ending");
         } else if !matches!(s, CallState::Ended(_)) { c.gone_since = None; }
         if s == CallState::Connected { c.joined_at.get_or_insert(now); }
-        if media == Some(MediaState::Connected) { c.media_up_at.get_or_insert(now); }
-        let stall = if answered { media_stall(now, c.offer_at, c.joined_at, c.media_up_at, rx, media) } else { None };
-        let recovering = c.media_up_at.is_some() && media != Some(MediaState::Failed);
+        if media == Some(MediaState::Connected) { c.media_up_at.get_or_insert(now); c.was_up = true; }
+        // once the media was up, only the "no RTP on a connected media" notice is left: drops are `recovery_tick`'s
+        let stall = match (answered, c.was_up) {
+            (false, _) => None,
+            (true, false) => media_stall(now, c.offer_at, c.joined_at, c.media_up_at, rx, media),
+            (true, true) => media_stall(now, None, None, c.media_up_at, rx, media).filter(|_| media == Some(MediaState::Connected)),
+        };
+        let recovering = c.was_up;
         let down_at = c.media_down_at;
         let (end_locus, roap_error) = if matches!(s, CallState::Ended(_)) { (c.locus.clone(), c.roap_error.clone()) } else { (Value::Null, String::new()) };
         if let Some(why) = stall { self.media_trouble(&crate::trq!(why)); }
         // "Connected" only with the peer connection up (ICE + DTLS); before that "Connecting…". A call
-        // whose media was up stays "Connected" while ICE recovers from a blip (`ice_tick`).
+        // whose media was up stays "Connected" while it is reconnected (`recovery_tick`), until that gives up.
         if s == CallState::Connected && media != Some(MediaState::Connected) && !recovering { s = CallState::Connecting; }
         // connected, but the media is down a while: the call window says "Reconnecting…" instead of a silent "Connected"
         let reconnecting = s == CallState::Connected && media != Some(MediaState::Connected)
@@ -553,7 +609,7 @@ impl Session {
             return Ok(());
         }
         let (tick, now) = (d["tick"].as_bool() == Some(true), Instant::now());
-        if tick { self.calls.tick_queued.store(false, Ordering::SeqCst); self.share_tick(); self.share_rx_tick(); self.video_tick(); self.ice_tick(); self.media_tick(); self.locus_keepalive_tick(); }
+        if tick { self.calls.tick_queued.store(false, Ordering::SeqCst); self.share_tick(); self.share_rx_tick(); self.video_tick(); self.recovery_tick(); self.media_tick(); self.locus_keepalive_tick(); }
         // any locus event with its state: a group space's meeting starting / ending shows on the space
         else if full_locus(d).is_some() { self.space_meeting_locus(locus_of(d), &locus_url_of(d)); }
         let (url, carried) = match self.calls.cur.as_mut() {

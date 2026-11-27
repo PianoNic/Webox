@@ -402,7 +402,7 @@ fn roap_error_carries_its_type() {
 #[test]
 fn media_drop_after_it_was_up_is_no_stall() {
     let t0 = Instant::now();
-    // media was up once, ICE now recovering: no "no connection" notice (`ice_tick` restarts ICE instead)
+    // media was up once, now down: no "no connection" notice (`recovery_tick` reconnects the media instead)
     assert!(media_stall(t0 + Duration::from_secs(60), None, Some(t0), Some(t0), 500, Some(MediaState::Connecting)).is_none());
     // but a failed peer connection is still reported
     assert!(media_stall(t0 + Duration::from_secs(60), None, Some(t0), Some(t0), 500, Some(MediaState::Failed)).is_some());
@@ -441,4 +441,88 @@ fn keep_alive_from_the_join_answer() {
     assert_eq!(keep_alive_of(&json!({"locus": locus("JOINED", "IDLE", true)}), "d1"), None);
     assert_eq!(keep_alive_every(20), Duration::from_millis(6_270), "the official interval for keepAliveSecs 20");
     assert_eq!(keep_alive_every(1), Duration::from_millis(330));
+}
+
+/// Applies one `recover_step` outcome the way `Session::recovery_tick` / `media_rebuild` do (no network, no media).
+fn recover_apply(r: &mut Recovery, step: Recover, now: Instant) {
+    match step {
+        Recover::Rebuild(_) => { r.attempts += 1; (r.attempt_at, r.attempt_failed, r.offline_wait) = (Some(now), false, false); }
+        Recover::Recovered => *r = Recovery::default(),
+        Recover::WaitOffline => r.offline_wait = true,
+        Recover::Nothing | Recover::End => {}
+    }
+}
+
+/// The official counter (FUN_184ef4ff4, `if (reconnects < 5)`): a media connection that never comes back is rebuilt 5
+/// times, each new one given `MEDIA_RECONNECT_TIMEOUT`, and the next failure ends the call.
+#[test]
+fn five_failed_media_reconnects_end_the_call() {
+    let (t0, mut r) = (Instant::now(), Recovery::default());
+    let step = |r: &Recovery, t: Instant| recover_step(r, t, true, false, false, Some(t0), Route::Same, false);
+    assert_eq!(step(&r, t0 + Duration::from_secs(3)), Recover::Nothing, "a short gap: webrtc-rs may still recover it");
+    let mut t = t0 + MEDIA_RECONNECT_AFTER;
+    assert_eq!(step(&r, t), Recover::Rebuild(Trigger::DownTooLong));
+    recover_apply(&mut r, Recover::Rebuild(Trigger::DownTooLong), t);
+    for n in 2..=MEDIA_RECONNECT_MAX {
+        assert_eq!(step(&r, t + Duration::from_secs(5)), Recover::Nothing, "attempt {} is given its time", n - 1);
+        t += MEDIA_RECONNECT_TIMEOUT;
+        assert_eq!(step(&r, t), Recover::Rebuild(Trigger::AttemptFailed), "attempt {n}");
+        recover_apply(&mut r, Recover::Rebuild(Trigger::AttemptFailed), t);
+    }
+    assert_eq!(r.attempts, MEDIA_RECONNECT_MAX);
+    assert_eq!(step(&r, t + MEDIA_RECONNECT_TIMEOUT), Recover::End, "the 5th attempt failed: the call ends");
+    // a failed peer connection, or a refused offer, ends an attempt at once
+    let mut q = Recovery { attempts: 1, attempt_at: Some(t0), ..Default::default() };
+    assert_eq!(recover_step(&q, t0 + Duration::from_secs(1), true, false, true, Some(t0), Route::Same, false), Recover::Rebuild(Trigger::AttemptFailed));
+    q.attempt_failed = true;
+    assert_eq!(recover_step(&q, t0 + Duration::from_secs(1), true, false, false, Some(t0), Route::Same, false), Recover::Rebuild(Trigger::AttemptFailed));
+}
+
+#[test]
+fn a_reconnected_media_clears_the_counter() {
+    let t0 = Instant::now();
+    let r = Recovery { attempts: 3, attempt_at: Some(t0), ..Default::default() };
+    assert_eq!(recover_step(&r, t0 + Duration::from_secs(4), true, true, false, None, Route::Same, false), Recover::Recovered);
+    let mut r2 = r.clone();
+    recover_apply(&mut r2, Recover::Recovered, t0);
+    assert_eq!(r2, Recovery::default());
+    assert_eq!(recover_step(&r2, t0, true, true, false, None, Route::Same, false), Recover::Nothing, "up and nothing running");
+    // ICE failing outright doesn't wait for MEDIA_RECONNECT_AFTER
+    assert_eq!(recover_step(&r2, t0, true, false, true, Some(t0), Route::Same, false), Recover::Rebuild(Trigger::IceFailed));
+}
+
+/// "Network is offline, wait for network restored, before triggering media reconnect": no attempt is spent while
+/// offline; the network back is a reconnect at once ("Network restored, and wme session was terminated, reconnect media").
+#[test]
+fn offline_pauses_the_media_reconnect() {
+    let t0 = Instant::now();
+    let mut r = Recovery { attempts: 2, attempt_at: Some(t0), ..Default::default() };
+    let late = t0 + Duration::from_secs(600);
+    assert_eq!(recover_step(&r, late, true, false, true, Some(t0), Route::Offline, false), Recover::WaitOffline, "however long it is offline");
+    recover_apply(&mut r, Recover::WaitOffline, late);
+    assert_eq!(r.attempts, 2, "no attempt spent offline");
+    assert_eq!(recover_step(&r, late, true, false, false, Some(t0), Route::Same, false), Recover::Rebuild(Trigger::NetworkRestored));
+    recover_apply(&mut r, Recover::Rebuild(Trigger::NetworkRestored), late);
+    assert!(!r.offline_wait && r.attempts == 3);
+    // a media connection that still works while the route is gone is left alone
+    assert_eq!(recover_step(&Recovery::default(), late, true, true, false, None, Route::Offline, false), Recover::Nothing);
+}
+
+/// A new local address (Wi-Fi <-> LAN, VPN): the media is rebuilt at once, even while the old connection still looks up.
+#[test]
+fn a_network_change_rebuilds_the_media_at_once() {
+    let t0 = Instant::now();
+    assert_eq!(recover_step(&Recovery::default(), t0, true, true, false, None, Route::Changed, false), Recover::Rebuild(Trigger::NetworkChanged));
+    assert_eq!(recover_step(&Recovery::default(), t0, true, false, false, Some(t0), Route::Changed, false), Recover::Rebuild(Trigger::NetworkChanged), "no wait for the timer");
+    let spent = Recovery { attempts: MEDIA_RECONNECT_MAX, attempt_at: Some(t0), ..Default::default() };
+    assert_eq!(recover_step(&spent, t0, true, false, false, Some(t0), Route::Changed, false), Recover::End, "it counts like any attempt");
+}
+
+/// Before the media was ever up (the join) the reconnect doesn't run (`media_stall` reports that phase); on hold it
+/// doesn't either ("Call held. do not attempt to reconnect media").
+#[test]
+fn no_media_reconnect_before_the_media_was_up_or_on_hold() {
+    let t0 = Instant::now() + Duration::from_secs(120);
+    assert_eq!(recover_step(&Recovery::default(), t0, false, false, true, Some(Instant::now()), Route::Changed, false), Recover::Nothing);
+    assert_eq!(recover_step(&Recovery::default(), t0, true, false, true, Some(Instant::now()), Route::Same, true), Recover::Nothing);
 }

@@ -11,13 +11,13 @@ Audited 2026-11-27 against the official Windows client **46.11.0.36194**. The We
 | 1 | Setup: join, ringing, answer, decline | 16 | 9 | **56 %** | reachability `joinCookie`, `device` fields, alert `sequence`, call waiting |
 | 2 | SDP offer | 17 | 5 | **29 %** | line directions, Opus/H.264 fmtp, RTX/FEC, extmaps, multistream |
 | 3 | ROAP sequencing | 12 | 6 | **50 %** | OFFER_REQUEST, WAIT_RX_OK, glare, error types, re-OFFER on direction change |
-| 4 | ICE / DTLS / transport | 11 | 3 | **27 %** | no TCP/TLS-443 fallback, different recovery (no 5-try cap), no network-change trigger, no reachability |
+| 4 | ICE / DTLS / transport | 11 | 4 | **36 %** | no TCP/TLS-443 fallback, network-change trigger differs, no reachability |
 | 5 | Mute, camera, camera switch | 7 | 3 | **43 %** | no direction renegotiation, no video call / answer with video |
 | 6 | Share | 8 | 3 | **38 %** | floor body unconfirmed, no share type hints, slides line always sendrecv, receive without CSI |
 | 7 | Mid-call | 10 | 2 | **20 %** | hold/resume, escalation, call waiting, move media; several controls only in webex-js-sdk shape |
-| 8 | End and cleanup | 6 | 2 | **33 %** | leave `correlationId`, no "end after N failed reconnects", floor not released on end |
+| 8 | End and cleanup | 6 | 3 | **50 %** | leave `correlationId`, floor not released on end |
 | 9 | Stats and metrics to the server | – | – | n/a | Webox sends none, by design (listed in §9) |
-| | **All stages (1–8)** | **87** | **33** | **38 %** | |
+| | **All stages (1–8)** | **87** | **35** | **40 %** | |
 
 How the score works:
 
@@ -29,9 +29,7 @@ How the score works:
 The biggest real-call risks are all in stage 4:
 
 * **No transport fallback.** On a network that blocks UDP 5004/9000, Webox calls have no media. The official client goes UDP, then TCP 5004, then TLS 443 (through a proxy if needed).
-* **Different recovery.**
-  * Webox keeps ICE-restarting the same peer connection forever. Whether Webex media servers (ICE lite) answer an ICE-restart OFFER has **not been confirmed**.
-  * The official client tears the media connection down and rebuilds it. It stops after 5 failed attempts and ends the call with a media-drop report.
+* **Recovery** (fixed in Batch 1): like the official client, Webox tears the media connection down and rebuilds it, stops after 5 failed attempts and ends the call.
 
 ## Evidence base and method
 
@@ -128,8 +126,8 @@ Impact means the effect on a real call: high / med / low.
 | 4.4 | NoListen sockets for cloud calls: `SetICENoListen(true)` SWM 0x529b78 (S) | unconnected UDP socket on one IP | differs | low | optional: connect the socket to the selected pair |
 | 4.5 | Server is ICE lite, the client is controlling (L) | webrtc-rs controlling | match | – | – |
 | 4.6 | DTLS-SRTP (S, 2.15) | webrtc-rs | match | – | – |
-| 4.7 | **Media recovery.** On ICE failure: "time to reconnect media for ICE Failure during meeting" → `remove media connection [` → new connection. Capped at **5** (`if (*(ulong*)(call+0x2818) < 5)`), then "Media fail to reconnect after Terminated for 5 times, end meeting/call and report media drop events". Offline: "Network is offline, wait for network restored, before triggering media reconnect"; on hold: "Call held. do not attempt to reconnect media". All in FUN_184ef4ff4 (UI RVA 0x4ef4ff4, D; strings 0xbde59f8, 0xbde6330, 0xbde5990, 0xbde5930, 0xbde5870). WME also reconnects itself: `RtcpBasedReconnect`, `ReconnectByEvent`, `LogKeepAliveReconnect` (SWM/MS, S) | ICE restart on the **same** peer connection after 10 s down, every 15 s, **never gives up** (`session.rs:363-421`, `mod.rs:463-469`); no offline wait | differs | **high** (if Webex media servers don't honour an ICE-restart OFFER, which is **unconfirmed**, Webox shows "Reconnecting…" forever instead of recovering or ending) | Batch 1 |
-| 4.8 | Network change triggers reconnect and reachability: `network/ip-address-changed` UI 0xbdea698, `[reachability] retry reachability for reason: LocalNetworkChanged` 0xbde8120, `FastReconnectOnNwChg` SWM 0x4d7ff0 (S) | no network-change hook; waits until ICE notices | missing | med–high (Wi-Fi ↔ LAN, VPN on/off: 10–60 s of silence) | Batch 1 |
+| 4.7 | **Media recovery.** On ICE failure: "time to reconnect media for ICE Failure during meeting" → `remove media connection [` → new connection. Capped at **5** (`if (*(ulong*)(call+0x2818) < 5)`), then "Media fail to reconnect after Terminated for 5 times, end meeting/call and report media drop events" and the end event 0x12 (end reason `MediaReconnectMaxRetry`, UI 0xbd41df0). Offline: "Network is offline, wait for network restored, before triggering media reconnect" sets a flag; the network handler FUN_184ebbfc2 ("network/restored", "network/ip-address-changed") sees it: "Network restored, and wme session was terminated, reconnect media". On hold: "Call held. do not attempt to reconnect media". All in FUN_184ef4ff4 (UI RVA 0x4ef4ff4, D; strings 0xbde59f8, 0xbde6330, 0xbde5990, 0xbde5930, 0xbde5a30, 0xbde5870, 0xbdea650). `MediaManager::reconnectMedia` (fragment at 0x4f0738a, D) waits a random `rand(0, <setting>)` ms ("Waiting … ms before initiating reconnecting media"; the setting is not visible, U), then "Initiating media reconnect" (FUN_184f080f9) posts the `ReconnectMedia` state. WME first reconnects itself ("Connection disconnected, wme will try to reconnect", SWM 0x52e7f0) and fires `Terminated` "to ask SCF to reconnect media" when it gives up (SWM file offset 0x52eb68) | new peer connection + ROAP OFFER (seq+1, same participant and `mediaId`) when the connection failed or is down 10 s (Webox's stand-in for WME's `Terminated`), each attempt given 25 s, at most 5, then leave + "The call was terminated because of a lost connection." (UI RVA 0xa0ba060); waits while offline, reconnects when the network is back (`mod.rs` `recover_step`, `session.rs` `recovery_tick` / `media_rebuild` / `media_lost_end`). No hold in Webox yet | match | – | – |
+| 4.8 | Network change triggers reconnect and reachability: `network/ip-address-changed` UI 0xbdea698, `[reachability] retry reachability for reason: LocalNetworkChanged` 0xbde8120 (S); the media reconnect on it only when the media terminated while offline (FUN_184ebbfc2, D). `FastReconnectOnNwChg` is an iOS flag (`WEBEX-462031-FastReconnectOnNwChg-iOS-v3`, SWM) | the routing table is asked every tick of a call whose media was up (`route_probe`, a connected UDP socket, no packet); a new local address rebuilds the media at once, no route = offline wait | differs (Webox reconnects at once where the official client lets WME's own reconnect run; no reachability) | low | – |
 | 4.9 | Locus keep-alive `GET keepAliveUrl` every `(keepAliveSecs-1)*330 ms` while joined without media (`createKeepAliveTimer` 0x184b5d990, D; PR #49) | `session.rs:438-454`, `mod.rs:538-554` | match | – | – |
 | 4.10 | Reachability (calliope cluster discovery, STUN UDP 5004) (L, 1.6) | none | missing | med | Batch 4 |
 | 4.11 | No-media timers `setupNoMediaTimers`, `onNoMedia` (SWM 0x536428), `CheckSessionInactive` (MS 0x43d540): network warning in the UI (S) | `media_stall` notices (`mod.rs:481-489`), "Reconnecting…" after 5 s (`session.rs:522-528`) | differs (similar idea, different timers) | low | align once the official timer values are known (U) |
@@ -184,7 +182,7 @@ Network change and reconnect: see 4.7 and 4.8.
 | 8.2 | Local media stops whatever the server answers | `session.rs:464` (`end_call` before the request) | match | – | – |
 | 8.3 | 1:1 ends when the other side declined or left (`shouldDisconnectOne2OneCall`, S) | `mod.rs:284-307`, with an 8 s devices-gone grace (`session.rs:500-510`) | match | – | – |
 | 8.4 | Leave reason (`endMeetingReason`, U) | none | unconfirmed | low | – |
-| 8.5 | Ends the call after 5 failed media reconnects and reports a media drop (4.7, D) | never ends on media loss | missing | high (the call can hang without audio) | Batch 1 |
+| 8.5 | Ends the call after 5 failed media reconnects and reports a media drop (4.7, D) | leaves the locus and ends the call after the 5th failed reconnect, with "The call was terminated because of a lost connection." (no media-drop report: Webox sends no metrics, §9) | match | – | – |
 | 8.6 | Floor released when the sharer leaves (`floor_release` 0xbd62fd0, S; behaviour on leave U) | `end_call` stops the capture without a `RELEASED` request (`session.rs:127`) | differs | low (Locus releases the floor with the leave) | release the floor before the leave if sharing |
 
 ## 9. Stats and metrics the official client reports (for reference; Webox needs none)
@@ -219,7 +217,7 @@ These need a live trace of the official client, or a successful live Webox call 
    * The Opus values come from a local drone session only.
    * The official client's logs contain no cloud-call SDP.
 5. libroap retransmit and timeout timers.
-6. Whether Webex media servers (Homer/Linus) answer an **ICE-restart** OFFER. Webox's whole recovery path (4.7) depends on this.
+6. ~~Whether Webex media servers answer an ICE-restart OFFER.~~ No longer needed: Webox reconnects with a new connection like the official client (Batch 1). Still open: the `rand(0, X)` wait before a reconnect, and the time WME takes to fire `Terminated`.
 7. The `deviceCapabilities` content, the type of `supportsNativeLobby`, and the `alternateRedirect` query.
 8. Whether the official client sends silence or stops the audio track while muted.
 9. What Locus does with Webox's sendrecv video lines when `videoMuted` is true (2.2): whether `videoStatus` shows SENDRECV to the other side.
@@ -233,15 +231,13 @@ The UI DLL's Ghidra project is not auto-analysed, so the cited `FUN_…` decompi
 
 **Batch 1: media recovery like the official client** (4.7, 4.8, 8.5). High.
 
-1. First confirm, from `call.log` on a real call with a forced network drop, whether the server answers the ICE-restart OFFER (ANSWER vs ERROR / nothing).
-2. If it does not: implement the official "reconnect media".
-   * Close the peer connection and build a new `Media` (new ICE + DTLS).
-   * Send a new ROAP OFFER (seq+1) on `PUT {participant}/media`.
-   * Handle the ANSWER / OK as at join.
-3. In both cases:
-   * Cap at 5 attempts. Then leave and end the call with a "media lost" reason.
-   * Wait while the network is offline. Skip while on hold.
-4. A network-change hook: re-check `route_ip` every tick. If the local IP changed, reconnect now instead of waiting for ICE.
+**Done** (`fix/call-recovery`):
+
+1. The official "reconnect media": the peer connection is closed and a new `Media` is built (new ICE + DTLS), its ROAP OFFER (seq+1) goes out on `PUT {participant}/media`, the ANSWER / OK are handled as at join. Mute, the camera the user wants and a running share carry over.
+2. At most 5 attempts, then leave and end the call ("The call was terminated because of a lost connection.").
+3. Offline: wait, and reconnect once the network is back. Hold: Webox has none yet (Batch 6).
+4. A network-change check on the call's 1 s tick (routing table only): a new local address reconnects at once.
+5. Every step is in `call.log`: the trigger, attempt n/5, the OFFER sent, the ANSWER applied, the outcome.
 
 **Batch 2: TCP and TLS-443 media fallback** (4.2, 4.3, 2.14). High on restrictive networks.
 
