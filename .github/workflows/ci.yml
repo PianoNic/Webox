@@ -1,7 +1,10 @@
 name: CI
 
 on:
+  # Draft pull requests (agents' work in progress) build nothing: CI runs once a PR is marked ready, and on every push
+  # after that, so a failing run means a finished change is broken, not that work is still under way.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   workflow_call:
@@ -19,6 +22,7 @@ env:
 jobs:
   linux:
     name: Build and test (Linux)
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ${{ vars.LINUX_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 60
     steps:
@@ -49,6 +53,7 @@ jobs:
 
   windows:
     name: Build and test (Windows)
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -70,6 +75,7 @@ jobs:
 
   macos:
     name: Build and test (macOS)
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: macos-latest
     timeout-minutes: 60
     steps:
@@ -114,7 +120,7 @@ jobs:
     timeout-minutes: 90
     # Linux CI already compiles the same code: on pull requests only when the Nix packaging or the dependencies change; always
     # on main; never as a release gate.
-    if: ${{ github.event_name != 'release' }}
+    if: ${{ github.event_name != 'release' && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
     steps:
       - uses: useblacksmith/checkout@75c49b6ed30ce59336e9252425796cfcfac155f8 # v1
         with:
