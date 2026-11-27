@@ -1266,7 +1266,11 @@ mod tests {
         assert_ne!(line(&offer, "a=ice-ufrag:"), line(&first, "a=ice-ufrag:"), "new ICE credentials");
         assert_ne!(line(&offer, "a=fingerprint:"), line(&first, "a=fingerprint:"), "new DTLS certificate");
         assert_eq!(mids_of(&offer).len(), 4, "the same four lines as the join's offer");
-        a2.apply_answer(b2.answer(offer).unwrap()).unwrap();
+        let answer = b2.answer(offer).unwrap();
+        a2.apply_answer(answer.clone()).unwrap();
+        // the new connection takes SSRCs from the new far end's addresses (`ice_socket::Peers`), not the old one's
+        let new_far = sdp::udp_candidate_addrs(&answer);
+        assert!(!new_far.is_empty() && new_far.iter().all(|p| a2.peers.allows(*p)), "the rebuilt connection allows the new answer's candidates");
         run(&|| rx(&b2) > 40 && rx(&a2) > 40 && a2.state() == MediaState::Connected, 30);
         assert_eq!(a2.state(), MediaState::Connected);
         assert!(rx(&b2) > 40 && rx(&a2) > 40, "audio both ways on the rebuilt connection: {} / {}", rx(&b2), rx(&a2));
