@@ -70,7 +70,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends build-essential pkg-config \
             libwebkit2gtk-4.1-dev libgtk-3-dev libasound2-dev \
             libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-            libxkbcommon-x11-0 libgl1 libegl1 fonts-dejavu-core xvfb
+            libxkbcommon-x11-0 libgl1 libegl1 fonts-dejavu-core xvfb xdotool
 
       - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
         with:
@@ -90,7 +90,9 @@ jobs:
 
       - name: Render and compare
         run: |
-          xvfb-run -a -s "-screen 0 1920x1200x24" pwsh scripts/parity.ps1 -BaseExe ../bin-base/webox -Exe ../bin-head/webox -Out parity \
+          # One large virtual screen with the pointer parked in its far corner: the scene windows share that pointer, and it
+          # must hover none of them (the base build may predate the screenshot input filter in ui/frame.rs).
+          xvfb-run -a -s "-screen 0 4000x3000x24" sh -c 'xdotool mousemove 3999 2999 && pwsh scripts/parity.ps1 -BaseExe ../bin-base/webox -Exe ../bin-head/webox -Out parity' \
             || { if ${{ contains(github.event.pull_request.labels.*.name, 'look-change') }}; then echo "::warning::look changed (label look-change)"; else exit 1; fi; }
 
       - if: always()

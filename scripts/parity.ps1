@@ -133,9 +133,12 @@ function Render([string]$exe, [string]$out) {
         foreach ($k in $envs.Keys) { $psi.Environment[$k] = $envs[$k] }
         $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true
         $p = [Diagnostics.Process]::Start($psi)
-        $p.StandardOutput.ReadToEndAsync() | Out-Null; $p.StandardError.ReadToEndAsync() | Out-Null
+        $p.StandardOutput.ReadToEndAsync() | Out-Null; $err = $p.StandardError.ReadToEndAsync()
         if (-not $p.WaitForExit(180000)) { $p.Kill(); Write-Warning "$($s.Name): timed out" }
-        if (-not (Test-Path (Join-Path $out "$($s.Name).png"))) { Write-Warning "$($s.Name): no picture" }
+        if (-not (Test-Path (Join-Path $out "$($s.Name).png"))) {
+            Write-Warning "$($s.Name): no picture (exit $($p.ExitCode))"
+            ($err.Result -split "`n" | Select-Object -Last 5) | ForEach-Object { Write-Host "    $_" }
+        }
         Remove-Item -Recurse -Force $cfg -ErrorAction SilentlyContinue
     }
     Remove-Item -Recurse -Force $scratch -ErrorAction SilentlyContinue
