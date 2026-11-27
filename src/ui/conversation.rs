@@ -30,6 +30,24 @@ impl App {
         crate::ui::theme::decor::card(ui.painter(), Rect::from_min_max(full.min, pos2(full.max.x + 10.0, full.max.y)), L::CardRadius.get(), false);
         let dm = crate::ui::theme::density::m(); // banner geometry
         let banner = Rect::from_min_size(full.min, Vec2::new(full.width(), dm.banner_h));
+        self.chat_header(ui, t, &space, person.as_ref(), banner, now);
+        let pin_rect = self.space_tabs_row(ui, t, &space, banner, now);
+
+        // A closed chat has the read-only notice instead of the composer (ui/closed.rs).
+        // Editing a message: the live input box moves into the edit overlay at the top; the own one keeps its idle height (ui/edit_overlay.rs).
+        let editing = matches!(self.compose, Compose::Edit { .. }) && !space.closed && !space.announcement;
+        let composer_h = if space.closed || space.announcement { super::closed::CLOSED_BAR_H } else if editing { self.composer_idle_height() } else { self.composer_height(ui.ctx()) }; // grows with text rows / chips
+        if space.closed && self.conv_tab == ConvTab::Profile { self.conv_tab = ConvTab::Messages; }
+        let body = Rect::from_min_max(pos2(full.left(), banner.bottom()), pos2(full.right(), full.bottom() - composer_h));
+        self.conversation_body(ui, t, &space, person.as_ref(), &id, body, pin_rect, now);
+        self.composer_area(ui, t, &space, Rect::from_min_max(pos2(full.left(), banner.bottom()), full.max), composer_h, editing, now);
+        self.space_dialogs(ui.ctx(), t, &space);
+    }
+
+    /// The chat header (`chat_header`): the cover banner, the title with the favourite star, the status or team line and the
+    /// call / meeting actions, inside `banner`.
+    pub(crate) fn chat_header(&mut self, ui: &mut egui::Ui, t: &Th, space: &Space, person: Option<&Person>, banner: Rect, now: f64) {
+        let dm = crate::ui::theme::density::m();
         // The banner picture: in a direct chat the other person's own cover (their own, else the global default "@default", via
         // App::cover_for); in a group space only the space's own cover, never the user's; no cover = the flat header. Cropped to
         // fill; textures are cached by the app (photos.rs), nothing is decoded per frame.
@@ -134,6 +152,12 @@ impl App {
                 self.open_scheduler(&space.title, &inv);
             }
         }
+    }
+
+    /// The space tabs row (`space_tabs`): Messages / People / Content / Meetings / Apps and the space actions (settings with
+    /// its menu, search, pinned messages) on the banner. Returns the pin button's rect, which anchors the pinned-messages popover.
+    pub(crate) fn space_tabs_row(&mut self, ui: &mut egui::Ui, t: &Th, space: &Space, banner: Rect, now: f64) -> Rect {
+        let dm = crate::ui::theme::density::m();
         // Tabs: pills 28 px high centred 89 px below the card top; space actions at the right.
         let mut gear_rect = Rect::NOTHING;
         let mut pin_rect = Rect::NOTHING;
@@ -170,13 +194,14 @@ impl App {
         // The gear menu (German items), caret pointing up at the gear.
         let gear_items = self.gear_entries(&space);
         if let Some(a) = super::menu::webex_menu(ui.ctx(), &mut self.icons, t, "gear", gear_rect, super::menu::Side::Below, super::menu::Align::Right, true, &gear_items) { self.space_action(ui.ctx(), &a, &space, now); }
+        pin_rect
+    }
 
-        // A closed chat has the read-only notice instead of the composer (ui/closed.rs).
-        // Editing a message: the live input box moves into the edit overlay at the top; the own one keeps its idle height (ui/edit_overlay.rs).
-        let editing = matches!(self.compose, Compose::Edit { .. }) && !space.closed && !space.announcement;
-        let composer_h = if space.closed || space.announcement { super::closed::CLOSED_BAR_H } else if editing { self.composer_idle_height() } else { self.composer_height(ui.ctx()) }; // grows with text rows / chips
-        if space.closed && self.conv_tab == ConvTab::Profile { self.conv_tab = ConvTab::Messages; }
-        let body = Rect::from_min_max(pos2(full.left(), banner.bottom()), pos2(full.right(), full.bottom() - composer_h));
+    /// The conversation's body in `body`: the message list (`message_list`) with its find, loading and welcome states, or
+    /// the open space tab's page.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn conversation_body(&mut self, ui: &mut egui::Ui, t: &Th, space: &Space, person: Option<&Person>, id: &String, body: Rect, pin_rect: Rect, now: f64) {
+        let (space, id) = (space.clone(), id.clone());
         let mut b = ui.new_child(egui::UiBuilder::new().max_rect(body).layout(egui::Layout::top_down(egui::Align::Min)));
         let msgs = self.messages.get(&id).cloned().unwrap_or_default();
         // the tabs' bodies live in ui/space_tabs/ + ui/profile.rs
@@ -189,16 +214,22 @@ impl App {
                     _ => match self.welcome_for(&space) { Some(w) => self.welcome_item(&mut b, t, w, now), None => self.message_list(&mut b, t, &id, &msgs) },
                 }
             } }
-            _ => self.space_tab_body(&mut b, t, &space, person.as_ref(), &msgs, now),
+            _ => self.space_tab_body(&mut b, t, &space, person, &msgs, now),
         }
         self.pins_popover(ui.ctx(), t, pin_rect, &id);
+    }
 
+    /// The bottom of the conversation (`composer`): the composer, the read-only notice of a closed or announcement space, or
+    /// the edit overlay over `below_banner` while a message is edited. `composer_h` is the composer's height.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn composer_area(&mut self, ui: &mut egui::Ui, t: &Th, space: &Space, below_banner: Rect, composer_h: f32, editing: bool, now: f64) {
+        let (full, banner_bottom) = (below_banner, below_banner.top());
+        let space = space.clone();
         // the message box lives in ui/composer/ (toolbar, emoji/mention popups, markdown, drafts).
         if space.closed { let r = Rect::from_min_max(pos2(full.left(), full.bottom() - composer_h), full.max); self.closed_notice(ui, t, r); }
         else if space.announcement { let r = Rect::from_min_max(pos2(full.left(), full.bottom() - composer_h), full.max); self.announcement_notice(ui, t, r); } // announcement space
-        else if editing { self.edit_overlay(ui, t, &space, Rect::from_min_max(pos2(full.left(), banner.bottom()), full.max), composer_h, now); }
+        else if editing { self.edit_overlay(ui, t, &space, Rect::from_min_max(pos2(full.left(), banner_bottom), full.max), composer_h, now); }
         else { self.composer(ui, t, &space, now); }
-        self.space_dialogs(ui.ctx(), t, &space);
     }
 }
 
