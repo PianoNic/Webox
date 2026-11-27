@@ -22,7 +22,8 @@
 ///   3. Paste the second line of webox-plugins.pub below, e.g. `pub const OFFICIAL_PUBLIC_KEY: &str = "RWQ...";`, and release.
 ///      Publish once with the key before releasing a Webox that has it, or the official repository reads as unsigned.
 ///   Keep webox-plugins.key offline and backed up; never commit it. A new key needs a new Webox release.
-pub const OFFICIAL_PUBLIC_KEY: &str = "";
+/// Key id 46F5E8B43382860F, made 2026-11-27; the secret key is kept by the owner, never in this repository.
+pub const OFFICIAL_PUBLIC_KEY: &str = "RWQPhoIztOj1RqixB8FW/CTFM9h0s6BcKcXDS07UuMRkTudIXqQsgRBi";
 
 /// The signature file's URL for an index URL (`.../index.min.json` -> `.../index.min.json.minisig`).
 pub fn sig_url(index_url: &str) -> String { format!("{index_url}.minisig") }
