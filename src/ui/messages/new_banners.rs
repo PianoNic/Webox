@@ -118,7 +118,7 @@ impl App {
         let top = if from_top { y } else { y - PILL_H };
         let r = Rect::from_min_size(pos2(list.center().x - w / 2.0, top), Vec2::new(w, PILL_H));
         let resp = ui.interact(r, Id::new(id), Sense::click());
-        let bg = if resp.is_pointer_button_down_on() { hex(0x063A75) } else if resp.hovered() { hex(0x0353A8) } else { hex(0x1170CF) };
+        let bg = if resp.is_pointer_button_down_on() { C::JumpButtonDown.fixed() } else if resp.hovered() { C::JumpButtonHover.fixed() } else { C::JumpButton.fixed() };
         ui.painter().rect_filled(r, PILL_H / 2.0, bg);
         ui.painter().galley(pos2(r.left() + 16.0, r.center().y - g.size().y / 2.0), g, wa(Color32::WHITE, 0.95));
         self.icons.paint(ui, icon, Rect::from_center_size(pos2(r.right() - 16.0 - 6.0, r.center().y), Vec2::splat(12.0)), wa(Color32::WHITE, 0.95));

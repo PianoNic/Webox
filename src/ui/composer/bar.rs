@@ -35,7 +35,7 @@ impl App {
             };
             if icon == "sparkle-bold" && id == super::super::new_message::DRAFT_ID { continue; } // no AI button in "New message"
             // The M button keeps the normal icon colour in both states (no accent).
-            let tint = if icon == "sparkle-bold" { hex(0x6F6F6F) } else { hex(0xF3F3F3) };
+            let tint = if icon == "sparkle-bold" { t.c(C::ComposerIconDim) } else { hex(0xF3F3F3) };
             let tint = if light && icon != "sparkle-bold" { hex(0x121212) } else { tint };
             if icon == "sparkle-bold" { // disabled: drawn, not interactive
                 let (r, _) = c.allocate_exact_size(Vec2::splat(28.0), Sense::hover());
@@ -87,20 +87,20 @@ impl App {
 
     /// The send pill / send button (part of `composer`, draw.rs). Returns whether Send was clicked.
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn composer_send_buttons(&mut self, ui: &mut egui::Ui, t: &Th, pr: Rect, light: bool, st: &mut St, id: &String, ctx: &egui::Context, edit: bool, now: f64) -> bool {
+    pub(super) fn composer_send_buttons(&mut self, ui: &mut egui::Ui, t: &Th, pr: Rect, _light: bool, st: &mut St, id: &String, ctx: &egui::Context, edit: bool, now: f64) -> bool {
         let mut now_send = false;
         // "New message": one round send button where the schedule half sits, no schedule.
         if id == super::super::new_message::DRAFT_ID {
             let cr = Rect::from_min_max(pos2(pr.center().x, pr.top()), pr.max);
             let s = ui.interact(cr, ui.id().with("send"), Sense::click());
             crate::ui::theme::fx::send_button(cr);
-            ui.painter().circle_stroke(cr.center(), pr.height() / 2.0 - 0.5, Stroke::new(1.0_f32, if light { hex(0xCCCCCC) } else { hex(0x3B3B3B) }));
-            self.icons.paint(ui, "send-filled", Rect::from_center_size(cr.center(), Vec2::splat(16.0)), if s.hovered() { t.text1 } else { hex(0x6F6F6F) });
+            ui.painter().circle_stroke(cr.center(), pr.height() / 2.0 - 0.5, Stroke::new(1.0_f32, t.c(C::ComposerSendBorder)));
+            self.icons.paint(ui, "send-filled", Rect::from_center_size(cr.center(), Vec2::splat(16.0)), if s.hovered() { t.text1 } else { t.c(C::ComposerIconDim) });
             if s.on_hover_text(tr("Send")).clicked() { now_send = true; }
         } else {
         // Send pill: send | schedule.
-        ui.painter().rect_stroke(pr, 13.0, Stroke::new(1.0_f32, if light { hex(0xCCCCCC) } else { hex(0x3B3B3B) }), egui::StrokeKind::Inside);
-        ui.painter().vline(pr.center().x, pr.y_range().shrink(6.0), Stroke::new(1.0_f32, if light { hex(0xCCCCCC) } else { hex(0x3B3B3B) }));
+        ui.painter().rect_stroke(pr, 13.0, Stroke::new(1.0_f32, t.c(C::ComposerSendBorder)), egui::StrokeKind::Inside);
+        ui.painter().vline(pr.center().x, pr.y_range().shrink(6.0), Stroke::new(1.0_f32, t.c(C::ComposerSendBorder)));
         let sr = Rect::from_min_max(pr.min, pos2(pr.center().x, pr.bottom()));
         let cr = Rect::from_min_max(pos2(pr.center().x, pr.top()), pr.max);
         // States: both halves are disabled (dim #6F6F6F) until there is something to send; "Send later" needs text and isn't
@@ -110,7 +110,7 @@ impl App {
         let can_sched = has_text && !edit;
         let s = ui.interact(sr, ui.id().with("send"), if can_send { Sense::click() } else { Sense::hover() });
         let k = ui.interact(cr, ui.id().with("later"), if can_sched { Sense::click() } else { Sense::hover() });
-        let dim = hex(0x6F6F6F);
+        let dim = t.c(C::ComposerIconDim);
         let on = |hov: bool| if hov { t.text1 } else { t.text1.gamma_multiply(0.85) };
         crate::ui::theme::fx::send_button(sr);
         if can_send && crate::ui::theme::decor::on(collabhost_plugin_api::deco::SEND_BUTTON) {
