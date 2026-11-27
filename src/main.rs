@@ -155,6 +155,8 @@ struct App {
     photos: assets::photos::Photos,
     /// Reply / edit mode of the message box, and the space-settings dialogs.
     compose: Compose, rename_input: Option<String>, add_people: bool, people_filter: String, open_threads: HashSet<String>, confirm_leave: Option<String>, forward_text: Option<String>, rail_wide: bool,
+    /// The main window's layout, solved once per change (ui/layout/main.rs).
+    layout: ui::layout::main::Main,
     /// WEBOX_SAMPLE_TOUR (ui/sample_scale.rs): the next space to open and when.
     tour: (usize, f64),
     fonts_set: bool, row_salt: String, row_draft: bool,

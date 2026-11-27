@@ -51,8 +51,10 @@ impl App {
     }
 
     pub(crate) fn messaging(&mut self, ctx: &egui::Context, t: &Th, now: f64) {
-        let card_w = self.list_card_width(ctx);
-        if !self.list_hidden {
+        // The list card's width and whether it shows come from the layout (its region is the card).
+        let list = self.layout.rect(crate::ui::layout::Component::SpaceList);
+        let card_w = list.map_or(0.0, |r| r.width());
+        if list.is_some() {
             // Card with a 4 px gap to the conversation card.
             egui::SidePanel::left("spaces").exact_width(card_w + 4.0).resizable(false).show_separator_line(false)
                 .frame(egui::Frame::default().inner_margin(egui::Margin { left: 0, right: 4, top: 0, bottom: 0 })).show(ctx, |ui| {
@@ -68,7 +70,7 @@ impl App {
             });
         }
 
-        if !self.list_hidden { self.list_splitter(ctx, t, card_w); }
+        if list.is_some() { self.list_splitter(ctx, t, card_w); }
         // No right margin: the chat card reaches the window's right edge; the 4 pt gap is only between the list card and the chat card.
         egui::CentralPanel::default().frame(egui::Frame::default().inner_margin(egui::Margin { left: 0, right: 0, top: 0, bottom: 0 })).show(ctx, |ui| {
                 ui.set_min_size(ui.available_size());

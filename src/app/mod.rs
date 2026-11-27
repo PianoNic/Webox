@@ -26,7 +26,7 @@ impl App {
             login_page: LoginPage::Start, config_open: false, meeting_input: String::new(), login_sized: false,
             webview: None, hwnd: None, autosignin: a.signin,
             cover: None, cover_bytes: None, photos: Default::default(),
-            compose: Compose::New, rename_input: None, add_people: false, people_filter: String::new(), open_threads: HashSet::new(), confirm_leave: None, forward_text: None, rail_wide: false, tour: (0, 0.0), fonts_set: false, row_salt: String::new(), row_draft: false, call: Default::default(),
+            compose: Compose::New, rename_input: None, add_people: false, people_filter: String::new(), open_threads: HashSet::new(), confirm_leave: None, forward_text: None, rail_wide: false, layout: Default::default(), tour: (0, 0.0), fonts_set: false, row_salt: String::new(), row_draft: false, call: Default::default(),
             sc: Default::default(),
             notify: Default::default(),
             msgx: Default::default(),

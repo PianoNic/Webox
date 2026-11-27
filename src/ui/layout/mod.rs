@@ -1,4 +1,4 @@
-#![allow(dead_code)] // the main window draws through it from theming phase 4, part 2; until then the tests use it
+#![allow(dead_code)] // contract items (needs, variants, node ids) serve theme packages and lint (theming phase 7)
 //! The layout engine (docs/theming-engine.md, "Layout layer"): a window is a declarative tree of regions (docks, splits,
 //! stacks, switches, cards) whose leaves are components. The tree comes as data (`webox-ui-layout/1` JSON); the built-in
 //! Webex arrangement is [`DEFAULT_LAYOUT`], in the same format a theme uses.
@@ -10,6 +10,7 @@
 use eframe::egui::{pos2, Rect};
 use serde_json::Value;
 
+pub(crate) mod main;
 mod parse;
 #[cfg(test)]
 mod tests;

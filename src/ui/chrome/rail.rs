@@ -49,14 +49,13 @@ impl App {
         if self.rail_wide { resp } else { resp.on_hover_text(label) }
     }
 
-    pub(crate) fn rail(&mut self, ctx: &egui::Context, t: &Th) {
+    /// The rail, `width` wide (the layout's rail region: it slides between RAIL_NARROW and RAIL_WIDE, see `rail_width`), on
+    /// the window's left or, when the layout docks it there, right side.
+    pub(crate) fn rail(&mut self, ctx: &egui::Context, t: &Th, width: f32, right: bool) {
         self.about_dialog(ctx, t);
-        // Expand / collapse slides the rail between RAIL_NARROW and RAIL_WIDE.
-        let k = ctx.animate_bool_with_time(egui::Id::new("rail-open"), self.rail_wide, M::RailExpand.secs());
-        let width = RAIL_NARROW + (RAIL_WIDE - RAIL_NARROW) * k;
         // Collapsed: left 5 puts the 40 pt circle at 5-45, right 15 leaves exactly its 40 pt (60.8 - 5 - 15).
         let (m, mr, h, gap) = if self.rail_wide { (12, 12, 40.0, 5.0) } else { (5, 15, 40.0, 5.0) }; // same 45 pt pitch collapsed and expanded
-        egui::SidePanel::left("rail").exact_width(width).resizable(false).show_separator_line(false)
+        (if right { egui::SidePanel::right("rail") } else { egui::SidePanel::left("rail") }).exact_width(width).resizable(false).show_separator_line(false)
             .frame(egui::Frame::default().inner_margin(egui::Margin { left: m, right: mr, top: 8, bottom: 8 })).show(ctx, |ui| {
             ui.spacing_mut().item_spacing = Vec2::ZERO;
             let unread = self.spaces.iter().any(|s| s.unread);
@@ -142,6 +141,12 @@ impl App {
     /// navigation-bar-divider-1) runs down it and a 20 pt round button (fill = the window gradient bottom #0F0F0F, ring white
     /// 70 %, thin chevron) sits centred in the area under the header. ">" opens the labelled rail, "<" closes it (same as
     /// Alt+Shift+Q, ToggleNavigationMenu).
+    /// The rail's width this frame: expand / collapse slides it between RAIL_NARROW and RAIL_WIDE.
+    pub(crate) fn rail_width(&self, ctx: &egui::Context) -> f32 {
+        let k = ctx.animate_bool_with_time(egui::Id::new("rail-open"), self.rail_wide, M::RailExpand.secs());
+        RAIL_NARROW + (RAIL_WIDE - RAIL_NARROW) * k
+    }
+
     pub(crate) fn rail_edge_button(&mut self, ctx: &egui::Context, t: &Th) {
         let k = ctx.animate_bool_with_time(egui::Id::new("rail-open"), self.rail_wide, M::RailExpand.secs());
         let e = edge_inset(ctx);

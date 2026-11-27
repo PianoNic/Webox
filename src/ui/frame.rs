@@ -146,19 +146,23 @@ impl eframe::App for App {
             crate::ui::theme::decor::paint_wash(&ctx.layer_painter(egui::LayerId::background()), ctx.screen_rect(), 0.0, &w);
         }
         super::chrome::edge_strips(ctx); // the 6 pt margin (resize border) while not maximised, see chrome::EDGE_INSET
-        self.top_bar(ctx, &t, now); // splash covers everything below the header
+        // The arrangement comes from the layout (ui/layout/main.rs): which components show, their sizes and sides. They are
+        // still drawn in egui panels, so ctx.available_rect() stays right for every popup and overlay.
+        self.solve_layout(ctx);
+        use crate::ui::layout::Component as Cp;
+        if let Some(r) = self.layout.rect(Cp::Header) { self.top_bar(ctx, &t, now, r.height()); } // splash covers everything below the header
         self.connectivity_banner(ctx, &t, load.banner.as_deref());
         let splash_area = ctx.screen_rect(); // the splash covers the ENTIRE window, header and rail included (a Webox choice)
-        self.rail(ctx, &t);
-        self.rail_edge_button(ctx, &t);
-        crate::ui::theme::decor::chrome(ctx); // a design plugin's flag band on the rail / stripe under the header
-        match self.tab {
-            Tab::Messaging => self.messaging(ctx, &t, now),
-            // A team's spaces keep the messaging layout; every other page uses the page frame (ui/page_kit.rs).
-            Tab::Teams if self.team_sel.is_some() => self.messaging(ctx, &t, now),
-            Tab::Settings => self.settings_tab(ctx, &t, now), // in-window Settings page (ui/settings/)
-            _ => self.pages_frame(ctx, &t, now),
+        if let Some(r) = self.layout.rect(Cp::Rail) {
+            let right = self.layout.at_right(Cp::Rail);
+            self.rail(ctx, &t, r.width(), right);
+            if !right { self.rail_edge_button(ctx, &t); }
         }
+        crate::ui::theme::decor::chrome(ctx); // a design plugin's flag band on the rail / stripe under the header
+        // The content: the conversation (with the space list when the layout shows it), Settings, or a page (ui/page_kit.rs).
+        if self.layout.rect(Cp::Conversation).is_some() { self.messaging(ctx, &t, now) }
+        else if self.layout.rect(Cp::SettingsPage).is_some() { self.settings_tab(ctx, &t, now) } // in-window Settings page (ui/settings/)
+        else if self.layout.rect(Cp::Page).is_some() { self.pages_frame(ctx, &t, now) }
         self.splash_overlay(ctx, &t, splash_area, load.splash.as_deref());
         }
 
