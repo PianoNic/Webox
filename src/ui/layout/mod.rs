@@ -22,7 +22,11 @@ pub(crate) const DEFAULT_LAYOUT: &str = include_str!("default.json");
 
 /// A component a layout can place. Each keeps all of its behaviour; a layout only places it (theming engine §1).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
-pub(crate) enum Component { Header, Rail, SpaceList, Conversation, SettingsNav, SettingsPage, Page }
+pub(crate) enum Component {
+    Header, Rail, SpaceList, Conversation, SettingsNav, SettingsPage, Page,
+    /// Parts of the conversation composite (contract `conversation@1`).
+    ChatHeader, SpaceTabs, MessageList, Composer,
+}
 
 /// How much a layout must offer a component.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -31,33 +35,71 @@ pub(crate) enum Need {
     Required,
     /// Placed somewhere, or reachable through a toggle (the list, the rail, the settings navigation).
     RequiredReachable,
+    /// A part of a composite: drawn with it. Placing parts on their own follows in a later contract version.
+    PartOf(Component),
 }
 
+/// A component's contract (docs/plugins.md, "UI components"): what a layout or theme may rely on. Additions keep the
+/// version; a change of meaning gets a new id.
+pub(crate) struct Spec {
+    pub id: &'static str,
+    pub version: u16,
+    pub need: Need,
+    /// Smallest region it works in (points), for lint at the smallest window.
+    pub min: [f32; 2],
+    /// State keys it shows (docs/plugins.md, "Actions and state keys").
+    pub reads: &'static [&'static str],
+    /// Actions it dispatches.
+    pub emits: &'static [&'static str],
+    /// Where extra content may go.
+    pub slots: &'static [&'static str],
+    /// Enumerated looks: (variant, options); the first option is the default.
+    pub variants: &'static [(&'static str, &'static [&'static str])],
+    /// Stylable parts for component tokens (`<id>.<part>.<property>`).
+    pub parts: &'static [&'static str],
+}
+
+const SPECS: [Spec; 11] = [
+    Spec { id: "header", version: 1, need: Need::Required, min: [560.0, 32.0], reads: &["call.active", "unread.count"],
+        emits: &["nav.back", "nav.forward", "search.open", "space.new"], slots: &["actions"], variants: &[],
+        parts: &["search", "avatar", "device_button"] },
+    Spec { id: "rail", version: 1, need: Need::RequiredReachable, min: [48.0, 300.0], reads: &["nav.page", "ui.rail_wide", "unread.count"],
+        emits: &["nav.page", "ui.rail_wide", "settings.open"], slots: &["items", "more_menu"],
+        variants: &[("orientation", &["vertical"]), ("labels", &["when_wide", "never", "always"])], parts: &["item", "item.badge"] },
+    Spec { id: "space_list", version: 1, need: Need::RequiredReachable, min: [220.0, 200.0], reads: &["space.selected", "unread.count"],
+        emits: &["space.open", "space.favorite", "space.new", "list.tab"], slots: &["top", "row.trailing"],
+        variants: &[("row", &["two_line", "one_line"])], parts: &["row", "row.avatar", "row.unread"] },
+    Spec { id: "conversation", version: 1, need: Need::Required, min: [420.0, 300.0],
+        reads: &["space.selected", "space.selected.direct", "space.selected.closed", "call.active"],
+        emits: &["space.favorite", "call.start", "call.hang_up"], slots: &[], variants: &[],
+        parts: &["chat_header", "space_tabs", "message_list", "composer"] },
+    Spec { id: "settings_nav", version: 1, need: Need::RequiredReachable, min: [200.0, 300.0], reads: &[], emits: &["settings.open"],
+        slots: &[], variants: &[], parts: &["row"] },
+    Spec { id: "settings_page", version: 1, need: Need::Required, min: [360.0, 300.0], reads: &[], emits: &[], slots: &[], variants: &[], parts: &[] },
+    Spec { id: "page", version: 1, need: Need::Required, min: [420.0, 300.0], reads: &["nav.page"], emits: &["space.open", "call.start"],
+        slots: &[], variants: &[], parts: &["list", "detail"] },
+    Spec { id: "chat_header", version: 1, need: Need::PartOf(Component::Conversation), min: [420.0, 60.0],
+        reads: &["space.selected", "space.selected.direct", "call.active"], emits: &["space.favorite", "call.start"],
+        slots: &["actions"], variants: &[], parts: &["banner", "title", "call_button", "share_button"] },
+    Spec { id: "space_tabs", version: 1, need: Need::PartOf(Component::Conversation), min: [300.0, 28.0], reads: &["space.selected"],
+        emits: &[], slots: &["tabs"], variants: &[], parts: &["tab"] },
+    Spec { id: "message_list", version: 1, need: Need::PartOf(Component::Conversation), min: [300.0, 120.0], reads: &["space.selected"],
+        emits: &["space.open"], slots: &["hover_bar"], variants: &[], parts: &["row", "bubble", "jump_button"] },
+    Spec { id: "composer", version: 1, need: Need::PartOf(Component::Conversation), min: [300.0, 60.0], reads: &["space.selected.closed"],
+        emits: &["composer.command"], slots: &["toolbar"], variants: &[], parts: &["toolbar", "send", "popup"] },
+];
+
 impl Component {
-    pub(crate) const ALL: [Component; 7] = [Component::Header, Component::Rail, Component::SpaceList, Component::Conversation,
-        Component::SettingsNav, Component::SettingsPage, Component::Page];
-    pub(crate) fn id(self) -> &'static str {
-        match self {
-            Component::Header => "header", Component::Rail => "rail", Component::SpaceList => "space_list",
-            Component::Conversation => "conversation", Component::SettingsNav => "settings_nav", Component::SettingsPage => "settings_page",
-            Component::Page => "page",
-        }
-    }
+    pub(crate) const ALL: [Component; 11] = [Component::Header, Component::Rail, Component::SpaceList, Component::Conversation,
+        Component::SettingsNav, Component::SettingsPage, Component::Page, Component::ChatHeader, Component::SpaceTabs,
+        Component::MessageList, Component::Composer];
+    /// The component's contract.
+    pub(crate) fn spec(self) -> &'static Spec { &SPECS[self as usize] }
+    pub(crate) fn id(self) -> &'static str { self.spec().id }
     pub(crate) fn parse(s: &str) -> Option<Component> { Self::ALL.into_iter().find(|c| c.id() == s) }
-    pub(crate) fn need(self) -> Need {
-        match self {
-            Component::Header | Component::Conversation | Component::SettingsPage | Component::Page => Need::Required,
-            Component::Rail | Component::SpaceList | Component::SettingsNav => Need::RequiredReachable,
-        }
-    }
-    /// The variants this component knows (contract version 1), with their options.
-    pub(crate) fn variants(self) -> &'static [(&'static str, &'static [&'static str])] {
-        match self {
-            Component::Rail => &[("orientation", &["vertical"]), ("labels", &["never", "when_wide", "always"])],
-            Component::SpaceList => &[("row", &["two_line", "one_line"])],
-            _ => &[],
-        }
-    }
+    pub(crate) fn need(self) -> Need { self.spec().need }
+    /// The variants this component knows, with their options.
+    pub(crate) fn variants(self) -> &'static [(&'static str, &'static [&'static str])] { self.spec().variants }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -125,6 +167,13 @@ pub(crate) fn validate(l: &Layout) -> Result<(), Vec<Error>> {
         }
     });
     for c in Component::ALL {
+        if let Need::PartOf(whole) = c.need() {
+            // Parts draw inside their composite; placing them on their own needs the composite's next contract version.
+            if found.contains(&c) {
+                errs.push(Error { path: "surfaces.main".into(), msg: format!("{} is drawn by {} and cannot be placed on its own yet ({}@{})", c.id(), whole.id(), whole.id(), whole.spec().version) })
+            }
+            continue;
+        }
         if !found.contains(&c) { errs.push(Error { path: "surfaces.main".into(), msg: format!("{} is not placed ({:?})", c.id(), c.need()) }) }
     }
     if errs.is_empty() { Ok(()) } else { Err(errs) }

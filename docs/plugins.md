@@ -965,3 +965,30 @@ State keys (read-only):
 | `window.width_class` | `narrow` (< 720 pt), `medium` (< 1100 pt), `wide`; layout conditions only |
 
 </details>
+
+<details>
+<summary><b>UI components</b> (layout contracts, unstable until theme packages ship)</summary>
+
+A layout (`webox-ui-layout/1`, docs/theming-engine.md) places components; each keeps all of its behaviour in Webox. A
+component's contract says what a layout or theme may rely on: its need, its smallest size, the state keys it reads, the
+actions it dispatches, its slots, variants (the first option is the default) and stylable parts. Additions keep the
+version; a change of meaning gets a new id. The authoritative table is `SPECS` in `src/ui/layout/mod.rs`.
+
+| Contract | Need | Min (pt) | Reads | Emits | Slots | Variants | Parts |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `header@1` | required | 560 × 32 | `call.active`, `unread.count` | `nav.back`, `nav.forward`, `search.open`, `space.new` | `actions` | | `search`, `avatar`, `device_button` |
+| `rail@1` | required, or reachable | 48 × 300 | `nav.page`, `ui.rail_wide`, `unread.count` | `nav.page`, `ui.rail_wide`, `settings.open` | `items`, `more_menu` | `orientation`: vertical; `labels`: when_wide, never, always | `item`, `item.badge` |
+| `space_list@1` | required, or reachable | 220 × 200 | `space.selected`, `unread.count` | `space.open`, `space.favorite`, `space.new`, `list.tab` | `top`, `row.trailing` | `row`: two_line, one_line | `row`, `row.avatar`, `row.unread` |
+| `conversation@1` | required | 420 × 300 | `space.selected`, `space.selected.direct`, `space.selected.closed`, `call.active` | `space.favorite`, `call.start`, `call.hang_up` | | | `chat_header`, `space_tabs`, `message_list`, `composer` |
+| `settings_nav@1` | required, or reachable | 200 × 300 | | `settings.open` | | | `row` |
+| `settings_page@1` | required | 360 × 300 | | | | | |
+| `page@1` | required | 420 × 300 | `nav.page` | `space.open`, `call.start` | | | `list`, `detail` |
+| `chat_header@1` | part of `conversation` | 420 × 60 | `space.selected`, `space.selected.direct`, `call.active` | `space.favorite`, `call.start` | `actions` | | `banner`, `title`, `call_button`, `share_button` |
+| `space_tabs@1` | part of `conversation` | 300 × 28 | `space.selected` | | `tabs` | | `tab` |
+| `message_list@1` | part of `conversation` | 300 × 120 | `space.selected` | `space.open` | `hover_bar` | | `row`, `bubble`, `jump_button` |
+| `composer@1` | part of `conversation` | 300 × 60 | `space.selected.closed` | `composer.command` | `toolbar` | | `toolbar`, `send`, `popup` |
+
+Parts draw inside their composite; a layout that places one on its own is refused until the composite's next contract
+version.
+
+</details>

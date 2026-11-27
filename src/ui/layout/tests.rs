@@ -101,3 +101,30 @@ fn required_components_and_variants_are_checked() {
     assert!(e.iter().any(|m| m == "surfaces.main.rest.child: rail.labels has no option \"sometimes\""), "{e:?}");
     assert!(e.iter().any(|m| m.contains("rail has no variant \"shape\" (contract rail@1)")), "{e:?}");
 }
+
+#[test]
+fn contracts_line_up_with_the_components() {
+    for c in Component::ALL {
+        let s = c.spec();
+        assert_eq!(Component::parse(s.id), Some(c), "{} is at the wrong place in SPECS", s.id);
+        assert!(s.version >= 1 && s.min[0] > 0.0 && s.min[1] > 0.0, "{}", s.id);
+        for (v, opts) in s.variants { assert!(!opts.is_empty(), "{}.{v} has no options", s.id); }
+        if let Need::PartOf(whole) = s.need { assert!(whole.spec().parts.contains(&s.id), "{} is not listed as a part of {}", s.id, whole.id()); }
+        for a in s.emits { assert!(a.contains('.'), "{}: action id {a}", s.id); }
+    }
+}
+
+#[test]
+fn every_contract_is_documented() {
+    let docs = include_str!("../../../docs/plugins.md");
+    for c in Component::ALL {
+        assert!(docs.contains(&format!("| `{}@{}` |", c.id(), c.spec().version)), "docs/plugins.md lacks {}@{}", c.id(), c.spec().version);
+    }
+}
+
+#[test]
+fn parts_cannot_be_placed_on_their_own_yet() {
+    let bad = DEFAULT_LAYOUT.replace(r#""child": { "slot": "conversation" }"#, r#""child": { "slot": "message_list" }"#);
+    let e = errors(&bad);
+    assert!(e.iter().any(|m| m == "surfaces.main: message_list is drawn by conversation and cannot be placed on its own yet (conversation@1)"), "{e:?}");
+}
