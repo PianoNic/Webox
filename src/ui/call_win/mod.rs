@@ -11,7 +11,7 @@
 //! in a floating mini window when other apps cover it"), `dock_keep_in_front` (bool, default false: "Keep the calling dock in
 //! front" = the pin button), `calling_dock` (bool, default true: "Enable the calling dock"; off = no automatic dock),
 //! `dock_dont_ask` (bool: "Don't ask me again"), `dock_rect` ([x,y,w,h]).
-use super::call::{state_text, CallActions, CallView};
+use super::call::{CallActions, CallView};
 use super::call_toast::{ghost_at, round_at};
 use super::menu::{menu_toggle, webex_menu, Align, Entry, Item, Side};
 use super::toast_pos::{round_by_title, work_area};

@@ -49,7 +49,7 @@ impl App {
             Resp::Messages(id, _) | Resp::OlderMessages(id, ..) | Resp::Incoming(id, _) | Resp::ReadMarks(id, _) => msgs(id),
             Resp::Flagged(space, ..) => msgs(space),
             Resp::Flags(_) => { let mut m = Marks::default(); m.all_messages = true; m }
-            Resp::Error(_) | Resp::Call(_) | Resp::CallShare(_) | Resp::RemoteShare(_) | Resp::CallVideo(_) | Resp::CallMute(_) | Resp::CallRoster(_) =>
+            Resp::Error(_) | Resp::Call(_) | Resp::CallShare(_) | Resp::RemoteShare(_) | Resp::CallVideo(_) | Resp::CallMute(_) | Resp::CallRoster(_) | Resp::CallReconnecting(_) =>
                 Marks::of(&[Call, App, Person, Presence]),
             Resp::Avatars(_) | Resp::Covers(_) | Resp::SpaceAvatars(_) | Resp::SpaceCovers(_) => Marks::of(&[Person, Space]),
             // message thumbnails and link-preview pictures: mostly of the open space

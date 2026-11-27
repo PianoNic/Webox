@@ -450,3 +450,4 @@ signature not checked	Signatur nicht geprüft
 Unsigned repository: Webox can't check that this list comes from its publisher.	Unsigniertes Repository: Webox kann nicht prüfen, ob diese Liste von ihrem Herausgeber stammt.
 The repository's signature is invalid: the list may have been changed by someone else.	Die Signatur des Repositorys ist ungültig: Die Liste wurde möglicherweise von jemand anderem geändert.
 Allow unsigned repositories below to install it anyway.	Erlauben Sie unten unsignierte Repositorys, um es trotzdem zu installieren.
+Reconnecting...	Verbindung wird wiederhergestellt...

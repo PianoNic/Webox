@@ -12,6 +12,7 @@ mod activities;
 pub mod features; // feature toggles + client policies (App::feature)
 mod images;
 pub mod locus;
+pub mod call_log; // always-on call log (call.log in the settings folder): call events only
 pub mod media;
 pub mod media_stats; // call statistics: packet counters, receiver reports and get_stats for the call window's panel
 pub mod share_rx; // a screen share received in a call: decode, newest picture for the call window
@@ -286,6 +287,8 @@ pub enum Resp {
     CallShare(bool),
     /// Mute in the call changed: the other side's microphone, ours as Locus has it, ours here.
     CallMute(locus::MuteInfo),
+    /// The call's media was up and is down for a while (true; the call window says "Reconnecting…"), or back (false).
+    CallReconnecting(bool),
     /// The call's participants for the roster (sent when it changes).
     CallRoster(locus::controls::Roster),
     /// The other side shares its screen (their name), or stopped (None). The pictures: `share_rx::latest`.

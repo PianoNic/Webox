@@ -314,7 +314,7 @@ impl App {
             if let Some((id, size)) = remote {
                 ui.painter().rect_filled(body, 0.0, Color32::BLACK);
                 ui.painter().image(id, Rect::from_center_size(body.center(), fit_size(size, body.size())), Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
-                let label = format!("{} · {}", v.name, state_text(&v.state, v.secs));
+                let label = format!("{} · {}", v.name, v.status());
                 let g = ui.painter().layout_no_wrap(label, semibold(13.0), Color32::WHITE);
                 let tag = Rect::from_min_size(pos2(body.left() + 8.0, pip_area.bottom() - 8.0 - 28.0), Vec2::new((g.size().x + 20.0).min(body.width() - 16.0), 28.0));
                 ui.painter().rect_filled(tag, 4.0, Color32::from_black_alpha(150)); // overlayFade-meetings-background
@@ -339,7 +339,7 @@ impl App {
                 } else {
                     ui.painter().text(pos2(cx, name_y), egui::Align2::CENTER_CENTER, &v.name, semibold(22.0), t.text1);
                 }
-                ui.painter().text(pos2(cx, name_y + 28.0), egui::Align2::CENTER_CENTER, state_text(&v.state, v.secs), FontId::proportional(14.0), t.text2);
+                ui.painter().text(pos2(cx, name_y + 28.0), egui::Align2::CENTER_CENTER, v.status(), FontId::proportional(14.0), t.text2);
             }
             if v.ended { return; }
             if !connected {

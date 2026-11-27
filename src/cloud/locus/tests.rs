@@ -407,3 +407,38 @@ fn media_drop_after_it_was_up_is_no_stall() {
     // but a failed peer connection is still reported
     assert!(media_stall(t0 + Duration::from_secs(60), None, Some(t0), Some(t0), 500, Some(MediaState::Failed)).is_some());
 }
+
+/// Locus removed us (self LEFT with a reason): the call log gets every reason / state field of `self` (enum values, no
+/// urls or names) and the user a short English notice; the other side simply leaving gets no notice.
+#[test]
+fn locus_ending_the_call_is_explained() {
+    let mut l = locus("LEFT", "JOINED", true);
+    l["self"]["reason"] = json!("MEDIA_INACTIVITY");
+    l["self"]["devices"] = json!([{"url": "https://wdm-a.wbx2.com/wdm/api/v1/devices/d1", "state": "LEFT", "reason": "FORCED",
+        "intents": [{"type": "LEAVE"}], "mediaConnections": [{"mediaId": "m-1", "keepAliveUrl": "https://locus-a.wbx2.com/k"}]}]);
+    let f = self_reason_fields(&l);
+    assert!(f.contains("self.reason=MEDIA_INACTIVITY") && f.contains("self.devices.0.state=LEFT") && f.contains("self.devices.0.reason=FORCED"), "{f}");
+    assert!(f.contains("self.devices.0.intents.0.type=LEAVE"), "{f}");
+    assert!(!f.contains("https") && !f.contains("me@example.com") && !f.contains("m-1"), "no urls, names or ids: {f}");
+    assert_eq!(end_notice(&l, "left").as_deref(), Some("Webex ended the call for this device (reason: MEDIA_INACTIVITY)."));
+    l["self"]["reason"] = json!(null);
+    assert_eq!(end_notice(&l, "left").as_deref(), Some("Webex ended the call for this device (reason: FORCED)."), "a device's reason when self has none");
+    assert!(end_notice(&locus("JOINED", "LEFT", false), "left").is_none(), "the other side hung up: the call window says so");
+    assert!(end_notice(&locus("JOINED", "DECLINED", false), "declined").is_none());
+    assert_eq!(end_notice(&locus("JOINED", "JOINED", false), "left").as_deref(), Some("Webex ended the call (call state INACTIVE)."), "ended under both of us");
+}
+
+/// The join answer's keep-alive (`mediaConnections[{keepAliveUrl, keepAliveSecs}]`, top level or under this device) and
+/// how often it goes out.
+#[test]
+fn keep_alive_from_the_join_answer() {
+    let mc = json!([{"mediaId": "m-1", "type": "SDP", "keepAliveSecs": 20, "keepAliveUrl": "https://locus-a.wbx2.com/locus/api/v1/loci/abc/participant/p/keepAlive"}]);
+    let top = json!({"locus": locus("JOINED", "IDLE", true), "mediaConnections": mc.clone()});
+    assert_eq!(keep_alive_of(&top, "d1"), Some(KeepAlive { url: "https://locus-a.wbx2.com/locus/api/v1/loci/abc/participant/p/keepAlive".into(), secs: 20 }));
+    let mut l = locus("JOINED", "IDLE", true);
+    l["self"]["devices"] = json!([{"url": "d1", "mediaConnections": mc}]);
+    assert_eq!(keep_alive_of(&json!({"locus": l}), "d1").map(|k| k.secs), Some(20), "under self.devices[]");
+    assert_eq!(keep_alive_of(&json!({"locus": locus("JOINED", "IDLE", true)}), "d1"), None);
+    assert_eq!(keep_alive_every(20), Duration::from_millis(6_270), "the official interval for keepAliveSecs 20");
+    assert_eq!(keep_alive_every(1), Duration::from_millis(330));
+}
